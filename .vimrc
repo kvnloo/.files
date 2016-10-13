@@ -1,6 +1,8 @@
 syntax on
 set number
-
+set tabstop=2
+"set smarttab
+set softtabstop=2
 execute pathogen#infect()
 
 if (empty($TMUX))
