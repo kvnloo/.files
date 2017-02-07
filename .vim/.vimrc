@@ -47,3 +47,6 @@ endif
 colorscheme onedark
 "let g:onedark_termcolors=256
 set softtabstop=2
+set shiftwidth=2
+set expandtab
+set encoding=utf-8
