@@ -30,5 +30,5 @@ alias rm='rmtrash'
 alias '`kwm`'='brew services restart kwm'
 
 alias '`cdresume`'='cd ~/GoogleDrive/Jobs/resume'
-alias '`cdrepos`'='cd ~/GoogleDrive/College/repos'
+alias '`cdrepos`'='cd ~/Desktop/repos'
 alias '`cdprojects`'='cd ~/GoogleDrive/Projects'
