@@ -10,4 +10,5 @@ Has my vim config, and fish config
     ln -s /pathTo/.files/.vim/ ~/.vim
     ln -s /pathTo/.files/.vim/.vimrc ~/.vimrc
     ln -s /pathTo/.files/.fish/ ~/.config/fish
-    ln -s /pathTo/.files/omf/ ~/.config/omf
+    ln -s /pathTo/.files/.omf/ ~/.config/omf
+    ln -s /pathTo/.files/.kwm ~/.config/.kwm
