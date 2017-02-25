@@ -12,3 +12,4 @@ Has my vim config, and fish config
     ln -s /pathTo/.files/.fish/ ~/.config/fish
     ln -s /pathTo/.files/.omf/ ~/.config/omf
     ln -s /pathTo/.files/.kwm ~/.config/.kwm
+    ln -s /pathTo/.files/.khd/.khdrc ~/.config/.khdrc
