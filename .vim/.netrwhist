@@ -1,5 +1,5 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhist_cnt =8
+let g:netrw_dirhist_cnt =9
 let g:netrw_dirhist_1='/Users/Kevin/.config'
 let g:netrw_dirhist_2='/Users/Kevin'
 let g:netrw_dirhist_3='/Users/Kevin/GoogleDrive/College/repos/cs410/meta'
@@ -8,3 +8,4 @@ let g:netrw_dirhist_5='/Users/Kevin/GoogleDrive/College/repos/cs410/meta'
 let g:netrw_dirhist_6='/Users/Kevin/GoogleDrive/College/repos/cs410/meta/data'
 let g:netrw_dirhist_7='/Users/Kevin/GoogleDrive/College/repos/cs410/meta/data/ceeaus'
 let g:netrw_dirhist_8='/Users/Kevin/GoogleDrive/College/repos/cs410/meta/data/ceeaus/english'
+let g:netrw_dirhist_9='/Users/Kevin/Desktop/repos/cs498-df/hw1'
