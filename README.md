@@ -13,3 +13,5 @@ Has my vim config, and fish config
     ln -s /pathTo/.files/.omf/ ~/.config/omf
     ln -s /pathTo/.files/.kwm ~/.config/.kwm
     ln -s /pathTo/.files/.khd/.khdrc ~/.config/.khdrc
+    ln -s /pathTo/.files/.zsh/.zshrc ~/.zshrc
+    ln -s /pathTo/.files/.oh-my-zsh ~/.oh-my-zsh

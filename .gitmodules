@@ -1,0 +1,12 @@
+[submodule "oh-my-zsh"]
+	path = .oh-my-zsh
+	url = https://github.com/robbyrussell/oh-my-zsh.git
+
+
+[submodule "terminal-on-fb-messenger"]
+	path = Terminal-on-FB-Messenger
+	url = https://github.com/dhruvramani/Terminal-on-FB-Messenger.git
+
+[submodule "zsh-autosuggestions"]
+	path = .zsh/zsh-autosuggestions
+	url = https://github.com/zsh-users/zsh-autosuggestions.git
