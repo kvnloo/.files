@@ -5,6 +5,11 @@ Has my vim config, and fish config
 
     git clone https://github.com/lesseradmin/.files 
 
+# Install all the submodules
+    
+    cd .files
+    git submodule update --recursive --init
+
 # Create symlinks!
 
     ln -s /pathTo/.files/.vim/ ~/.vim
