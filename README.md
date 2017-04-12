@@ -1,7 +1,7 @@
 # .files
 My dotfiles folder
 
-Has my configuration for the following tools
+Has my configuration for the following "tools"
   * vim
   * fish
   * oh-my-fish
