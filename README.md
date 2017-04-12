@@ -1,7 +1,17 @@
 # .files
 My dotfiles folder
 
-Has my vim config, and fish config
+Has my configuration for the following tools
+  * vim
+  * fish
+  * oh-my-fish
+  * zsh
+  * oh-my-zsh
+  * Android stuff
+    * Nova backup
+    * Zooper widget
+
+# Clone the repo
 
     git clone https://github.com/lesseradmin/.files 
 
@@ -10,7 +20,7 @@ Has my vim config, and fish config
     cd .files
     git submodule update --recursive --init
 
-# Create symlinks!
+# Create symlinks
 
     ln -s /pathTo/.files/.vim/ ~/.vim
     ln -s /pathTo/.files/.vim/.vimrc ~/.vimrc
