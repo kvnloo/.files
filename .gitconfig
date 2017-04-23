@@ -1,2 +1,5 @@
 [alias]
       random = !"git add -A; git commit -am \"$(echo $(curl -s http://whatthecommit.com/index.txt)\" (http://whatthecommit.com)\")\"; git push"
+[user]
+	name = =
+	email = =
