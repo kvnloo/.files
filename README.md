@@ -1,5 +1,5 @@
 # .files
-My dotfiles folder
+Welcome to my dot files! If you have any sugguestions or cool configurations feel free to contact me at lesseradmin@ek.vin
 
 Has my configuration for the following "tools"
   * vim
@@ -7,6 +7,7 @@ Has my configuration for the following "tools"
   * oh-my-fish
   * zsh
   * oh-my-zsh
+  * gitconfig
   * Android stuff
     * Nova backup
     * Zooper widget
