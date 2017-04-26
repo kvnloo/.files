@@ -35,6 +35,7 @@ export ZSH=~/.oh-my-zsh
 # -- it'll load a random theme each time that oh-my-zsh is loaded.
 # -- See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
 ZSH_THEME="agnoster"
+# export TERM="xterm-256color"
 
 
 # --------+
@@ -90,11 +91,13 @@ export KEYTIMEOUT=1
 # -- * Example format: plugins=(rails git textmate ruby lighthouse)
 # -- ADD WISELY! (too many plugins slow down shell startup)
 
-# -- User configuration
+# -- User configuration:
+
 # -- zsh-syntax-highlighting
 plugins=(git zsh-syntax-highlighting)
 source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
-# ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=orange'
+export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=3"
+# AUTOSUGGESTION_HIGHLIGHT_STYLE=''
 
 # -- oh-my-zsh
 source $ZSH/oh-my-zsh.sh
@@ -182,6 +185,7 @@ alias 'rekwm'='brew services restart kwm'
 
 # -- Shortcut for editing zsh config file
 alias zshconfig="vim ~/.zshrc"
+alias vimconfig="vim ~/.vimrc"
 
 # -- REQUIRES: "z" - jump around (https://github.com/rupa/z)
 alias c='z'
@@ -198,3 +202,9 @@ alias cdprojects="cd ~/GoogleDrive/Projects"
 
 # REQUIRES: "tmux" - terminal tiling and much more (https://tmux.github.io/)
 if [ "$TMUX" = "" ]; then tmux; fi
+
+# REQUIRES:  "archey"
+archey
+
+# REQUIRES: "screenfetch"
+# screenfetch
