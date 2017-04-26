@@ -1,15 +1,15 @@
 # .files
 Welcome to my dot files! If you have any sugguestions or cool configurations feel free to contact me at lesseradmin@ek.vin
 
-Has my configuration for the following "tools"
-  * vim
-  * fish
-  * oh-my-fish
-  * zsh
-  * oh-my-zsh
-  * gitconfig
-  * Android stuff
-    * Nova backup
+This repo has my configuration for the following "tools"
+  * vim (I don't emacs)
+  * fish (I prefer zsh)
+  * oh-my-fish (gotta theme up my fish)
+  * zsh (zsh is cool)
+  * oh-my-zsh (gotta theme up my zsh)
+  * gitconfig (cuz whatthecommit.com)
+  * Android stuff (if you don't customize your phone life gets boring)
+    * Nova backup (nova master race)
     * Zooper widget
 
 # Clone the repo
