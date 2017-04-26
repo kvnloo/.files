@@ -1,5 +1,5 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhist_cnt =7
+let g:netrw_dirhist_cnt =9
 let g:netrw_dirhist_1='/Users/Kevin/GoogleDrive/Projects/.files/.fish'
 let g:netrw_dirhist_2='/Users/Kevin/GoogleDrive/Projects/.files'
 let g:netrw_dirhist_3='/Users/Kevin/GoogleDrive/Projects/.files/.omf'
@@ -7,3 +7,5 @@ let g:netrw_dirhist_4='/Users/Kevin/GoogleDrive/Projects/.files'
 let g:netrw_dirhist_5='/Users/Kevin/GoogleDrive/Projects/.files/.fish'
 let g:netrw_dirhist_6='/Users/Kevin/GoogleDrive/Projects/.files/.fish/conf.d'
 let g:netrw_dirhist_7='/Users/Kevin/GoogleDrive/Projects/.files/.fish'
+let g:netrw_dirhist_8='/Users/Kevin/Desktop/repos/cs421/mps/mp5-parser'
+let g:netrw_dirhist_9='/Users/Kevin/Desktop/repos/cs421/mps'
