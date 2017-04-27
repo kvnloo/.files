@@ -194,6 +194,7 @@ alias c='z'
 alias cdresume="cd ~/GoogleDrive/Jobs/resume"
 alias cdrepos="cd ~/Desktop/repos"
 alias cdprojects="cd ~/GoogleDrive/Projects"
+alias gits="find . -name '.git'"
 
 # ------------------+
 # STARTUP PROGRAMS: |
