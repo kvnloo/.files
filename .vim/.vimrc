@@ -23,10 +23,10 @@ set softtabstop=2
 " # -- Shift Width (http://vimdoc.sourceforge.net/htmldoc/options.html#'shiftwidth')
 set shiftwidth=2
 
-
+" # -- Expand Tab (http://vimdoc.sourceforge.net/htmldoc/options.html#'expandtab')
 set expandtab
 
-
+" # -- Encoding (http://vimdoc.sourceforge.net/htmldoc/options.html#'fileencoding')
 set encoding=utf-8
 
 

@@ -183,17 +183,22 @@ alias rm='rmtrash'
 # -- REQUIRES: "kwm" - a tiling window manager on macos
 alias 'rekwm'='brew services restart kwm'
 
-# -- Shortcut for editing zsh config file
+# -- Shortcut for editing config files
 alias zshconfig="vim ~/.zshrc"
 alias vimconfig="vim ~/.vimrc"
+alias gitconfig="vim ~/.gitconfig"
 
 # -- REQUIRES: "z" - jump around (https://github.com/rupa/z)
 alias c='z'
+
 
 # -- cd aliases: these paths are specific to me, you'll probably want to change them
 alias cdresume="cd ~/GoogleDrive/Jobs/resume"
 alias cdrepos="cd ~/Desktop/repos"
 alias cdprojects="cd ~/GoogleDrive/Projects"
+
+# -- random aliases
+alias timon='la | lolcat'
 alias gits="find . -name '.git'"
 
 # ------------------+
@@ -205,7 +210,7 @@ alias gits="find . -name '.git'"
 if [ "$TMUX" = "" ]; then tmux; fi
 
 # REQUIRES:  "archey"
-archey
+if [ "$ARCHEY" = "" ]; then archey; fi
 
 # REQUIRES: "screenfetch"
-# screenfetch
+# if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
