@@ -188,6 +188,8 @@ alias zshconfig="vim ~/.zshrc"
 alias vimconfig="vim ~/.vimrc"
 alias gitconfig="vim ~/.gitconfig"
 alias wmconfig="vim ~/.chunkwmrc"
+alias hyperconfig="vim ~/.hyper.js"
+alias khdconfig="vim ~/.khdrc"
 
 # -- REQUIRES: "z" - jump around (https://github.com/rupa/z)
 alias c='z'
@@ -197,6 +199,7 @@ alias c='z'
 alias cdresume="cd ~/GoogleDrive/Jobs/resume"
 alias cdrepos="cd ~/Desktop/repos"
 alias cdprojects="cd ~/GoogleDrive/Projects"
+alias cdconfig="cd ~/GoogleDrive/Projects/.files"
 
 # -- random aliases
 alias timon='la | lolcat'
