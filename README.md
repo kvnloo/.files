@@ -15,7 +15,7 @@ This repo has my configuration for the following "tools"
     * Tiling Window Managers:
       * [chunkwm](https://github.com/koekeishiya/chunkwm)
       * [kwm](https://github.com/koekeishiya/kwm)
-    * Terminal Skins
+    * Terminal
       * [iTerm](https://www.iterm2.com/)
       * [Hyper Terminal](hyper.is)
   * Linux / Arch
@@ -35,7 +35,7 @@ This repo has my configuration for the following "tools"
 
 # Create symlinks
     
-    # zsh
+    ## zsh
     ln -s /pathTo/.files/.zsh/.zshrc ~/.zshrc
     ln -s /pathTo/.files/.oh-my-zsh ~/.oh-my-zsh
     # fish
