@@ -12,6 +12,5 @@
 	url = https://github.com/zsh-users/zsh-autosuggestions.git
 
 [submodule "lightline"]
-	path = .vim/bundle
+	path = .vim/bundle/lightline.vim
 	url = https://github.com/itchyny/lightline.vim.git
-
