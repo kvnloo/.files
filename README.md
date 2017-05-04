@@ -4,25 +4,25 @@ Welcome to my dot files! If you have any sugguestions or cool configurations fee
 This repo has my configuration for the following "tools"
   * Universal
     * Custom Shells:
-      * tmux config
-      * zsh (zsh is cool)
-        * oh-my-zsh (gotta theme up my zsh)
-      * fish (I prefer zsh)
-        * oh-my-fish (gotta theme up my fish)
-    * vim (I don't emacs)
-    * gitconfig (cuz whatthecommit.com)
+      * [tmux](https://tmux.github.io/)
+      * [zsh](zsh.org)
+        * [oh-my-zsh](https://github.com/robbyrussell/oh-my-zsh)
+      * [fish](https://fishshell.com/)
+        * [oh-my-fish](https://github.com/oh-my-fish/oh-my-fish)
+    * [vim](http://www.vim.org/) (I don't emacs)
+    * [gitconfig](https://git-scm.com/docs/git-config)
   * MacOS Specific:
     * Tiling Window Managers:
-      * chunkwm (still in alpha stage but I like it better)
-      * kwm
+      * [chunkwm](https://github.com/koekeishiya/chunkwm)
+      * [kwm](https://github.com/koekeishiya/kwm)
     * Terminal Skins
-      * iTermColors
-      * Hyper Terminal Config
+      * [iTerm](https://www.iterm2.com/)
+      * [Hyper Terminal](hyper.is)
   * Linux / Arch
-    * i3 config coming soon
-  * Android (if you don't customize your phone life gets boring):
-    * Nova backup (nova master race)
-    * Zooper widget
+    * [i3 coming soon!](https://i3wm.org/)
+  * Android
+    * [Nova](http://novalauncher.com/) (nova master race)
+    * [Zooper widget](https://play.google.com/store/apps/details?id=org.zooper.zwfree&hl=en)
 
 # Clone the repo
 
