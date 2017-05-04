@@ -35,7 +35,7 @@ This repo has my configuration for the following "tools"
 
 # Create symlinks
     
-    ## zsh
+    # zsh
     ln -s /pathTo/.files/.zsh/.zshrc ~/.zshrc
     ln -s /pathTo/.files/.oh-my-zsh ~/.oh-my-zsh
     # fish
