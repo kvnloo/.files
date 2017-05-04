@@ -79,7 +79,7 @@ module.exports = {
     env: {},
 
     // set to false for no bell
-    bell: 'SOUND',
+    bell: '~/',
 
     // if true, selected text will automatically be copied to the clipboard
     copyOnSelect: false
@@ -98,6 +98,7 @@ module.exports = {
   //   `project#1.0.1`
   plugins: [
     "hyperminimal",
+    "hyper-chesterish"
   ],
 
   // in development, you can create a directory under

@@ -23,13 +23,13 @@ shift + cmd - k : chunkc window --warp north
 shift + cmd - l : chunkc window --warp east
 
 # move floating windows / windows on a floating space
-shift + alt - up     : chunkc window --warp-floating fullscreen
-shift + alt - left   : chunkc window --warp-floating left
-shift + alt - right  : chunkc window --warp-floating right
-shift + cmd - left   : chunkc window --warp-floating top-left
-shift + cmd - right  : chunkc window --warp-floating top-right
-shift + ctrl - left  : chunkc window --warp-floating bottom-left
-shift + ctrl - right : chunkc window --warp-floating bottom-right
+#shift + escape - up     : chunkc window --warp-floating fullscreen
+#shift + escape - left   : chunkc window --warp-floating left
+#shift + escape - right  : chunkc window --warp-floating right
+#shift + escape + cmd - left   : chunkc window --warp-floating top-left
+#shift + escape + cmd  - right  : chunkc window --warp-floating top-right
+#shift + escape + ctrl - left  : chunkc window --warp-floating bottom-left
+#shift + escape + ctrl - right : chunkc window --warp-floating bottom-right
 
 # send window to desktop
 shift + alt - f : chunkc window --send-to-desktop $(chunkc query _last_active_desktop)
