@@ -187,6 +187,7 @@ alias 'rekwm'='brew services restart kwm'
 alias zshconfig="vim ~/.zshrc"
 alias vimconfig="vim ~/.vimrc"
 alias gitconfig="vim ~/.gitconfig"
+alias wmconfig="vim ~/.chunkwmrc"
 
 # -- REQUIRES: "z" - jump around (https://github.com/rupa/z)
 alias c='z'

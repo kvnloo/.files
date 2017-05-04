@@ -31,3 +31,5 @@ This repo has my configuration for the following "tools"
     ln -s /pathTo/.files/.khd/.khdrc ~/.config/.khdrc
     ln -s /pathTo/.files/.zsh/.zshrc ~/.zshrc
     ln -s /pathTo/.files/.oh-my-zsh ~/.oh-my-zsh
+    ln -s /pathTo/.files/.chunkwm/.chunkwmrc ~/.chunkwmrc
+    ln -s /pathTo/.files/.chunkwm/.chunkwm_plugins ~/.chunkwm_plugins
