@@ -213,8 +213,14 @@ alias gits="find . -name '.git'"
 # REQUIRES: "tmux" - terminal tiling and much more (https://tmux.github.io/)
 if [ "$TMUX" = "" ]; then tmux; fi
 
+# all of the following are tools that display device information
+# although neofetch looks the nicest, when I checked the execution
+# times, archey was significantly faster than the other two
 # REQUIRES:  "archey"
 if [ "$ARCHEY" = "" ]; then archey; fi
 
 # REQUIRES: "screenfetch"
 # if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
+
+# REQUIRES: "neofetch"
+# if [ "$NEOFETCH" = "" ]; then neofetch; fi
