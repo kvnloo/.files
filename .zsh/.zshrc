@@ -135,7 +135,7 @@ zle -N zle-line-init
 zle -N zle-keymap-select
 
 # -- prints out terminal colors
-colors() {
+all_colors() {
   for x in {0..8}; do 
     for i in {30..37}; do 
       for a in {40..47}; do 
@@ -146,7 +146,9 @@ colors() {
   done
   echo ""
 }
-
+colors() {
+  echo "[0m[31m[41m   [0m[31m[41m   [0m[32m[42m   [0m[32m[42m   [0m[33m[43m   [0m[33m[43m   [0m[34m[44m   [0m[34m[44m   [0m[35m[45m   [0m[35m[45m   [0m[36m[46m   [0m[36m[46m   [0m[37m[47m   [0m[37m[47m   "
+}
 # export MANPATH="/usr/local/man:$MANPATH"
 
 
@@ -217,8 +219,7 @@ if [ "$TMUX" = "" ]; then tmux; fi
 # although neofetch looks the nicest, when I checked the execution
 # times, archey was significantly faster than the other two
 # REQUIRES:  "archey"
-if [ "$ARCHEY" = "" ]; then archey; fi
-
+if [ "$ARCHEY" = "" ]; then archey && colors && echo && echo; fi
 # REQUIRES: "screenfetch"
 # if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
 
