@@ -1,4 +1,4 @@
-" # Outline of zshconfig:
+" # Outline of vimconfig:
 " # =====================
 " # 1. BASIC SETTINGS
 " # 2. PLUGINS
