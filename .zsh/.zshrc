@@ -200,7 +200,7 @@ alias c='z'
 # -- cd aliases: these paths are specific to me, you'll probably want to change them
 alias cdresume="cd ~/GoogleDrive/Jobs/resume"
 alias cdrepos="cd ~/Desktop/repos"
-alias cdprojects="cd ~/GoogleDrive/Projects"
+alias cdprojects="cd ~/Desktop/Projects"
 alias cdconfig="cd ~/GoogleDrive/Projects/.files"
 
 # -- random aliases
@@ -225,3 +225,10 @@ if [ "$ARCHEY" = "" ]; then archey && colors && echo && echo; fi
 
 # REQUIRES: "neofetch"
 # if [ "$NEOFETCH" = "" ]; then neofetch; fi
+
+# echo "$PS1"
+export $PS1="echo $PS1 | cut -d '}' -f 2"
+
+
+# Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
+export PATH="$PATH:$HOME/.rvm/bin"
