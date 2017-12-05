@@ -19,10 +19,10 @@ chunkc core::hotload 1
 #
 
 chunkc set global_desktop_mode           bsp
-chunkc set 2_desktop_mode                monocle
+chunkc set 1_desktop_mode                monocle
 chunkc set 5_desktop_mode                float
 
-chunkc set 1_desktop_tree                ~/.chunkwm_layouts/dev_1
+chunkc set 2_desktop_tree                ~/.chunkwm_layouts/dev_1
 
 chunkc set global_desktop_offset_top     20
 chunkc set global_desktop_offset_bottom  20
@@ -36,10 +36,11 @@ chunkc set 1_desktop_offset_left         190
 chunkc set 1_desktop_offset_right        190
 chunkc set 1_desktop_offset_gap          15
 
-chunkc set 3_desktop_offset_top          190
-chunkc set 3_desktop_offset_bottom       190
-chunkc set 3_desktop_offset_left         190
-chunkc set 3_desktop_offset_right        190
+chunkc set 2_desktop_offset_top          190
+chunkc set 2_desktop_offset_bottom       190
+chunkc set 2_desktop_offset_left         190
+chunkc set 2_desktop_offset_right        190
+chunkc set 2_desktop_offset_gap          15
 
 chunkc set desktop_padding_step_size     10.0
 chunkc set desktop_gap_step_size         5.0
@@ -68,9 +69,9 @@ chunkc set window_float_topmost          0
 #
 
 chunkc set focused_border_color          0xffc0b18b
-chunkc set focused_border_width          4
-chunkc set focused_border_radius         4
-chunkc set focused_border_skip_floating  0
+chunkc set focused_border_width          8
+chunkc set focused_border_radius         0
+chunkc set focused_border_skip_floating  4
 
 #
 # NOTE: specify plugins to load when chunkwm starts.
@@ -80,8 +81,8 @@ chunkc core::load tiling.so
 chunkc core::load ffm.so
 chunkc core::load border.so
 
-chunkc tiling::rule --owner \"System Preferences\" --state tile
-chunkc tiling::rule --owner Finder --name Copy --state float
+# chunkc tiling::rule --owner \"System Preferences\" --state tile
+# chunkc tiling::rule --owner Finder --name Copy --state float
 
 #
 # NOTE: if chunkc plugin_dir is not set, the absolutepath is necessary.

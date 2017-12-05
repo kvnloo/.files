@@ -30,10 +30,10 @@ shift + cmd - l : chunkc tiling::window --warp east
 
 # move floating windows / windows on a floating space
 shift + alt - up     : chunkc tiling::window --warp-floating fullscreen
-shift + alt - left   : chunkc tiling::window --warp-floating left
-shift + alt - right  : chunkc tiling::window --warp-floating right
-shift + cmd - left   : chunkc tiling::window --warp-floating top-left
-shift + cmd - right  : chunkc tiling::window --warp-floating top-right
+# shift + alt - left   : chunkc tiling::window --warp-floating left
+# shift + alt - right  : chunkc tiling::window --warp-floating right
+# shift + cmd - left   : chunkc tiling::window --warp-floating top-left
+# shift + cmd - right  : chunkc tiling::window --warp-floating top-right
 shift + ctrl - left  : chunkc tiling::window --warp-floating bottom-left
 shift + ctrl - right : chunkc tiling::window --warp-floating bottom-right
 
