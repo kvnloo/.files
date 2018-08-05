@@ -1,5 +1,5 @@
 # reload config
-cmd + alt + ctrl - r : khd -e "reload"
+cmd + alt + ctrl - r : killall chunkwm
 
 # open terminal, blazingly fast compared to iTerm/Hyper
 # cmd - return : open -na /Applications/Kitty.app
