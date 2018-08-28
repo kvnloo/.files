@@ -244,7 +244,7 @@ alias chrome-canary="/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Goo
 # export $PS1="echo $PS1 | cut -d '}' -f 2"
 
 # Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
-cowsay -f dragon "hello\!" | lolcat
+cowsay -f dragon "hello!" | lolcat
 colors
 export PATH="$PATH:$HOME/.rvm/bin"
 
