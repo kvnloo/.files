@@ -11,22 +11,19 @@
 # 9. STARTUP PROGRAMS
 # =====================
 
-
-
-
 # ----------------------------+
 # $PATH: Configure your $PATH |
 # ----------------------------+------------------------------------------------
 # -- If you come from bash you might have to change your $PATH.
 # -- export PATH=$HOME/bin:/usr/local/bin:$PATH
 
-
 # ------------------------------------+
 # OH-MY-ZSH: export oh-my-zsh changes |
 # ------------------------------------+---------------------------------------
 # -- Path to your oh-my-zsh installation.
 export ZSH=~/.oh-my-zsh
-
+export PATH="/usr/local/sbin:$PATH"
+fpath=(/usr/local/share/zsh-completions $fpath)
 
 # --------+
 # THEMES: |
@@ -34,9 +31,9 @@ export ZSH=~/.oh-my-zsh
 # -- Set name of the theme to load. Optionally, if you set this to "random"
 # -- it'll load a random theme each time that oh-my-zsh is loaded.
 # -- See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
-ZSH_THEME="agnoster"
+# ZSH_THEME="agnoster"
+ZSH_THEME="robbyrussell"
 # export TERM="xterm-256color"
-
 
 # --------+
 # RANDOM: |
@@ -82,7 +79,6 @@ export KEYTIMEOUT=1
 # -- Would you like to use another custom folder than $ZSH/custom?
 # ZSH_CUSTOM=/path/to/new-custom-folder
 
-
 # ---------+
 # PLUGINS: |
 # ---------+------------------------------------------------------------------
@@ -104,7 +100,6 @@ source $ZSH/oh-my-zsh.sh
 
 # -- z
 source "$(brew --prefix)/etc/profile.d/z.sh"
-
 
 # -------------+
 # KEYBINDINGS: |
@@ -134,7 +129,7 @@ function zle-line-init zle-keymap-select {
 zle -N zle-line-init
 zle -N zle-keymap-select
 
-# -- prints out terminal colors
+# -- prints out all terminal colors
 all_colors() {
   for x in {0..8}; do 
     for i in {30..37}; do 
@@ -146,11 +141,23 @@ all_colors() {
   done
   echo ""
 }
-colors() {
-  echo "[0m[31m[41m   [0m[31m[41m   [0m[32m[42m   [0m[32m[42m   [0m[33m[43m   [0m[33m[43m   [0m[34m[44m   [0m[34m[44m   [0m[35m[45m   [0m[35m[45m   [0m[36m[46m   [0m[36m[46m   [0m[37m[47m   [0m[37m[47m   "
-}
-# export MANPATH="/usr/local/man:$MANPATH"
 
+# -- prints out certain terminal colors
+colors() {
+  echo "\n[0m[31m[41m   [0m[31m[41m   [0m[32m[42m   [0m[32m[42m   [0m[33m[43m   [0m[33m[43m   [0m[34m[44m   [0m[34m[44m   [0m[35m[45m   [0m[35m[45m   [0m[36m[46m   [0m[36m[46m   [0m[37m[47m   [0m[37m[47m   \n"
+}
+
+
+efimount(){
+  efidisk=$(diskutil list | grep "EFI EFI" | grep -o -E 'disk[0-9]*s[0-9]*')
+  sudo mkdir /Volumes/efi && sudo mount -t msdos /dev/$efidisk /Volumes/efi && cd /Volumes/efi
+}
+
+trackpad_speed() {
+  defaults write -g com.apple.mouse.scaling $1
+}
+
+# export MANPATH="/usr/local/man:$MANPATH"
 
 # You may need to manually set your language environment
 # export LANG=en_US.UTF-8
@@ -170,7 +177,6 @@ export EDITOR='vim'
 # ssh
 # export SSH_KEY_PATH="~/.ssh/rsa_id"
 
-
 # ---------+
 # ALIASES: |
 # ---------+------------------------------------------------------------------
@@ -184,6 +190,7 @@ alias rm='rmtrash'
  
 # -- REQUIRES: "kwm" - a tiling window manager on macos
 alias 'rekwm'='brew services restart kwm'
+alias 'rechunk'='brew services restart chunkwm'
 
 # -- Shortcut for editing config files
 alias zshconfig="vim ~/.zshrc"
@@ -196,6 +203,9 @@ alias khdconfig="vim ~/.khdrc"
 # -- REQUIRES: "z" - jump around (https://github.com/rupa/z)
 alias c='z'
 
+# -- REQUIRES: "python", "python3", "pip", "pip3"
+alias python='python3'
+alias pip='pip3'
 
 # -- cd aliases: these paths are specific to me, you'll probably want to change them
 alias cdresume="cd ~/GoogleDrive/Jobs/resume"
@@ -205,7 +215,11 @@ alias cdconfig="cd ~/GoogleDrive/Projects/.files"
 
 # -- random aliases
 alias timon='la | lolcat'
+alias sl='sl | lolcat'
 alias gits="find . -name '.git'"
+alias reloadzsh="source ~/.zshrc"
+alias chrome="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
+alias chrome-canary="/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary"
 
 # ------------------+
 # STARTUP PROGRAMS: |
@@ -213,22 +227,23 @@ alias gits="find . -name '.git'"
 # -- Programs to open when zsh starts
 
 # REQUIRES: "tmux" - terminal tiling and much more (https://tmux.github.io/)
-if [ "$TMUX" = "" ]; then tmux; fi
+# if [ "$TMUX" = "" ]; then tmux; fi
 
 # all of the following are tools that display device information
 # although neofetch looks the nicest, when I checked the execution
 # times, archey was significantly faster than the other two
 # REQUIRES:  "archey"
-if [ "$ARCHEY" = "" ]; then archey && colors && echo && echo; fi
+# if [ "$ARCHEY" = "" ]; then archey && colors && echo && echo; fi
 # REQUIRES: "screenfetch"
 # if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
-
 # REQUIRES: "neofetch"
 # if [ "$NEOFETCH" = "" ]; then neofetch; fi
 
 # echo "$PS1"
-export $PS1="echo $PS1 | cut -d '}' -f 2"
-
+# export $PS1="echo $PS1 | cut -d '}' -f 2"
 
 # Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
+cowsay -f dragon "hello\!" | lolcat
+colors
 export PATH="$PATH:$HOME/.rvm/bin"
+
