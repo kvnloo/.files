@@ -233,8 +233,10 @@ alias chrome-canary="/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Goo
 # all of the following are tools that display device information
 # although neofetch looks the nicest, when I checked the execution
 # times, archey was significantly faster than the other two
-# REQUIRES:  "archey"
-# if [ "$ARCHEY" = "" ]; then archey && colors && echo && echo; fi
+# REQUIRES:  "archey", "cowcay", and "lolcat"
+archey -o
+cowsay -f dragon "hello!" | lolcat
+colors
 # REQUIRES: "screenfetch"
 # if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
 # REQUIRES: "neofetch"
@@ -244,7 +246,5 @@ alias chrome-canary="/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Goo
 # export $PS1="echo $PS1 | cut -d '}' -f 2"
 
 # Add RVM to PATH for scripting. Make sure this is the last PATH variable change.
-cowsay -f dragon "hello!" | lolcat
-colors
 export PATH="$PATH:$HOME/.rvm/bin"
 
