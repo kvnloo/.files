@@ -5,3 +5,7 @@
 [submodule "zsh-autosuggestions"]
 	path = .zsh/zsh-autosuggestions
 	url = https://github.com/zsh-users/zsh-autosuggestions.git
+
+[submodule "lightline.vim"]
+  path = .vim/bundle/.lightline.vim
+  url = https://github.com/itchyny/lightline.vim
