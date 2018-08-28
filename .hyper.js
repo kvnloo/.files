@@ -6,21 +6,21 @@ module.exports = {
     // font family with optional fallbacks
     fontFamily: '"Roboto Mono for Powerline", "Input Mono", "Menlo", "DejaVu Sans Mono", "Lucida Console", "monospace"',
 
-    // terminal cursor background color and opacity (hex, rgb, hsl, hsv, hwb or cmyk)
-    cursorColor: 'rgba(192,177,139,0.60)',
-
     // `BEAM` for |, `UNDERLINE` for _, `BLOCK` for █
     cursorShape: 'BLOCK',
 
-    // color of the text
-    foregroundColor: '#c0b18b',
 
     // terminal background color
-    backgroundColor: '#191919',
-    // backgroundColor: 'rgba(19,19,19,0.9)',
+    backgroundColor: '#293340',
+
+    // color of the text
+    foregroundColor: '#CDD2E9',
+
+    // terminal cursor background color and opacity (hex, rgb, hsl, hsv, hwb or cmyk)
+    cursorColor: 'rgba(192,177,139,0.60)',
 
     // border color (window, tabs)
-    borderColor: 'rgba(0,0,0,0)',
+    borderColor: '#323E4D',
 
     // custom css to embed in the main window
     css: '',
@@ -49,22 +49,22 @@ module.exports = {
     // including the 6 x 6 color cubes and the grayscale map, just provide
     // an array here instead of a color map object
     colors: {
-      black: '#2f2f2f',
-      red: '#d75f5f',
-      green: '#8fee96',
-      yellow: '#cd950c',
-      blue: '#458588',
-      magenta: '#775759',
-      cyan: '#84edb9',
-      white: '#c0b18b',
-      lightBlack: '#4f4f4f',
-      lightRed: '#d75f5f',
-      lightGreen: '#e1f837',
-      lightYellow: '#af865a',
-      lightBlue: '#535c5c',
-      lightMagenta: '#775759',
-      lightCyan: '#84edb9',
-      lightWhite: '#d5c4a1',
+      black             : '#293340',
+      red               : '#E17E85',
+      green             : '#61BA86',
+      yellow            : '#FFEC8E',
+      blue              : '#4CB2FF',
+      magenta           : '#BE86E3',
+      cyan              : '#2DCED0',
+      white             : '#CDD2E9',
+      lightBlack        : '#546386',
+      lightRed          : '#E17E85',
+      lightGreen        : '#61BA86',
+      lightYellow       : '#FFB68E',
+      lightBlue         : '#4CB2FF',
+      lightMagenta      : '#BE86E3',
+      lightCyan         : '#2DCED0',
+      lightWhite        : '#CDD2E9'
     },
 
     // the shell to run when spawning a new session (i.e. /usr/local/bin/fish)
@@ -98,7 +98,7 @@ module.exports = {
   //   `project#1.0.1`
   plugins: [
     "hyperminimal",
-    "hyper-chesterish"
+    // "hyper-chesterish"
   ],
 
   // in development, you can create a directory under

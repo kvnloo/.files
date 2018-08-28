@@ -4,6 +4,9 @@
 # install hyper
 brew cask install hyper
 
+# hide scrollbar in terminal
+defaults write com.apple.Terminal AppleShowScrollBars -string WhenScrolling
+
 # install zsh, oh-my-zsh, zsh-autosuggestions
 brew install zsh
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
