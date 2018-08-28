@@ -91,6 +91,7 @@ export KEYTIMEOUT=1
 
 # -- zsh-syntax-highlighting
 plugins=(git zsh-syntax-highlighting)
+ZSH_DISABLE_COMPFIX=true
 source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
 export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=3"
 # AUTOSUGGESTION_HIGHLIGHT_STYLE=''
