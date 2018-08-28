@@ -27,4 +27,5 @@ ln -s ~/.files/.vim/.vimrc ~/.vimrc
 ln -s ~/.files/.chunkwm/.chunkwmrc ~/.chunkwmrc
 ln -s ~/.files/.khd/.khdrc-chunkwm ~/.khdrc
 ln -s ~/.files/.gitconfig ~/.gitconfig
+ln -s ~/.files/.hyper.js ~/.hyper.js
 
