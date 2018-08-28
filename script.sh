@@ -14,18 +14,27 @@ brew tap crisidev/homebrew-chunkwm
 brew install chunkwm
 
 # install random packages
-brew install cowsay sl
+brew install cowsay sl tmux archey z
 
 # clone dotfiles
 git clone https://github.com/lesseradmin/.files ~/.files
 
 # create symlinks
+rm ~/.zshrc
 ln -s ~/.files/.zsh/.zshrc ~/.zshrc
+rm ~/.oh-my-zsh
 ln -s ~/.files/.oh-my-zsh ~/.oh-my-zsh
+rm ~/.vim
 ln -s ~/.files/.vim/ ~/.vim
+rm ~/.vimrc
 ln -s ~/.files/.vim/.vimrc ~/.vimrc
+rm ~/.chunkwmrc
 ln -s ~/.files/.chunkwm/.chunkwmrc ~/.chunkwmrc
+rm ~/.khdrc
 ln -s ~/.files/.khd/.khdrc-chunkwm ~/.khdrc
+rm ~/.gitconfig
 ln -s ~/.files/.gitconfig ~/.gitconfig
+rm ~/.hyper.js
 ln -s ~/.files/.hyper.js ~/.hyper.js
-
+rm ~/.zsh
+ln -s ~/.files/.zsh/zsh-autosuggestions ~/.zsh/zsh-autosuggestions
