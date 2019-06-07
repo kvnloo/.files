@@ -10,7 +10,7 @@ ln -s ~/.files/.gitconfig ~/.gitconfig
 echo "Remember to change your email and name."
 
 # install apps
-brew cask install hyper spotify spotmenu cheatsheet google-chrome avibrazil-rdm sublime-text firefox-developer-edition
+brew cask install hyper spotify spotmenu cheatsheet google-chrome avibrazil-rdm sublime-text firefox-developer-edition slack 
 echo "Make sure to sign into Spotify and Google Chrome to pull user preferences"
 
 # symlink new hyper config
