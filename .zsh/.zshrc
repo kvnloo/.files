@@ -215,6 +215,7 @@ alias cdprojects="cd ~/Desktop/Projects"
 alias cdconfig="cd ~/GoogleDrive/Projects/.files"
 
 # -- random aliases
+alias la='ls -al'
 alias timon='la | lolcat'
 alias sl='sl | lolcat'
 alias gits="find . -name '.git'"
