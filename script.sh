@@ -35,6 +35,11 @@ clone_dotfiles() {
     fi
 }
 
+# Function to check if a package is already installed
+is_installed() {
+    command -v "$1" &>/dev/null
+}
+
 # Function to install necessary packages
 install_packages() {
     # Define global packages (common for macOS and Ubuntu)
@@ -51,7 +56,7 @@ install_packages() {
 
         # Install global packages
         for package in "${global_packages[@]}"; do
-            if brew list "$package" &>/dev/null; then
+            if is_installed "$package"; then
                 echo "$package is already installed."
             else
                 echo "Installing $package..."
@@ -76,7 +81,7 @@ install_packages() {
 
             # Install global packages
             for package in "${global_packages[@]}"; do
-                if dpkg -l | grep -qw "$package"; then
+                if is_installed "$package"; then
                     echo "$package is already installed."
                 else
                     echo "Installing $package..."
@@ -86,7 +91,7 @@ install_packages() {
 
             # Install Ubuntu-specific packages
             for package in "${ubuntu_packages[@]}"; do
-                if dpkg -l | grep -qw "$package"; then
+                if is_installed "$package"; then
                     echo "$package is already installed."
                 else
                     echo "Installing $package..."
@@ -97,16 +102,26 @@ install_packages() {
             # Additional custom installations
             echo "Installing additional Ubuntu-specific configurations..."
             # Install Liquorix kernel
-            curl -s 'https://liquorix.net/install-liquorix.sh' | sudo bash
+            if ! is_installed "liquorix"; then
+                curl -s 'https://liquorix.net/install-liquorix.sh' | sudo bash
+            fi
 
             # Install Codeium (Windsurf)
-            curl -fsSL "https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/windsurf.gpg" | sudo gpg --dearmor -o /usr/share/keyrings/windsurf-stable-archive-keyring.gpg
-            echo "deb [signed-by=/usr/share/keyrings/windsurf-stable-archive-keyring.gpg arch=amd64] https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/apt stable main" | sudo tee /etc/apt/sources.list.d/windsurf.list > /dev/null
-            sudo apt-get update
-            sudo apt-get upgrade -y windsurf
+            if ! grep -q "windsurf" /etc/apt/sources.list.d/*; then
+                curl -fsSL "https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/windsurf.gpg" | sudo gpg --dearmor -o /usr/share/keyrings/windsurf-stable-archive-keyring.gpg
+                echo "deb [signed-by=/usr/share/keyrings/windsurf-stable-archive-keyring.gpg arch=amd64] https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/apt stable main" | sudo tee /etc/apt/sources.list.d/windsurf.list > /dev/null
+                sudo apt-get update
+                sudo apt-get upgrade -y windsurf
+            else
+                echo "Windsurf is already configured."
+            fi
 
             # GitHub CLI Authentication
-            gh auth login
+            if is_installed "gh"; then
+                echo "GitHub CLI is already installed."
+            else
+                gh auth login
+            fi
         else
             echo "Linux detected, but not Ubuntu. Skipping package installation."
         fi
