@@ -5,7 +5,7 @@ set $mod Mod4
 set $director 
 
 #font files should be copied from ~/.i3/.fonts to ~/.fonts (fonts were put in .i3/.fonts for packaging convenience
-font pango:System San Franciso Display 8
+font pango:System San Francisco Display 8
 # Theme
 set $bg-color							#2f343f
 set $inactive-bg-color		#2f343f
@@ -13,11 +13,11 @@ set $text-color						#f3f4f5
 set $inactive-text-color	#676E7D
 set $urgent-bg-color			#E53935
 # Window Colors
-#													border							background					text								indicator
-client.focused						$bg-color						$bg-color						$text-color					#00ff00
-client.unfocused					$inactive-bg-color	$inactive-bg-color	$inactive-bg-color	#00ff00
-client.focused_inactive		$inactive-bg-color	$inactive-bg-color	$inactive-bg-color	#00ff00
-client.urgent							$urgent-bg					$urgent-bg					$text-color					#00ff00
+#                       border              background          text                indicator           child_border
+client.focused          $bg-color           $bg-color          $text-color         #00ff00            $bg-color
+client.unfocused        $inactive-bg-color  $inactive-bg-color $inactive-text-color #00ff00           $inactive-bg-color
+client.focused_inactive $inactive-bg-color  $inactive-bg-color $inactive-text-color #00ff00           $inactive-bg-color
+client.urgent          $urgent-bg-color    $urgent-bg-color   $text-color         #00ff00            $urgent-bg-color
 ### Borders ###
 new_window pixel 4
 new_float pixel 4
@@ -103,7 +103,7 @@ bindsym $mod+9 workspace $ws9
 bindsym $mod+0 workspace $ws10
 # move focused container to workspace
 bindsym $mod+Shift+1 move container to workspace $ws1
-bindsym $mod+Shift+b move container to workspace $ws2
+bindsym $mod+Shift+2 move container to workspace $ws2
 bindsym $mod+Shift+3 move container to workspace $ws3
 bindsym $mod+Shift+4 move container to workspace $ws4
 bindsym $mod+Shift+5 move container to workspace $ws5
