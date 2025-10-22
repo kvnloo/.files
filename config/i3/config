@@ -79,9 +79,13 @@ set $right l
 floating_modifier $mod
 
 # Core Application Shortcuts
-bindsym $mod+Return exec i3-sensible-terminal
-bindsym $mod+d exec dmenu_run
+bindsym $mod+Return exec warp-terminal
 bindsym $mod+Shift+q kill
+
+# Rofi Launchers
+bindsym $mod+d exec "rofi -show drun"
+bindsym $mod+Shift+d exec "rofi -show run"
+bindsym $mod+Tab exec "rofi -show window"
 
 # Lock Screen
 set $lock x
@@ -126,6 +130,22 @@ bindsym $mod+space focus mode_toggle
 # Container Focus
 bindsym $mod+a focus parent
 #bindsym $mod+d focus child
+
+# =====================================================
+# SECTION 4.1: SCRATCHPAD & MARKS
+# =====================================================
+
+# Scratchpad (quick access for floating windows)
+bindsym $mod+Shift+minus move scratchpad
+bindsym $mod+minus scratchpad show
+
+# Quick scratchpad terminal (use grave/backtick for easy access)
+for_window [instance="scratch_term"] move scratchpad, border pixel 5
+bindsym $mod+grave [instance="scratch_term"] scratchpad show
+
+# Marks System (named bookmarks for windows)
+bindsym $mod+m exec i3-input -F 'mark %s' -P 'Mark window as: '
+bindsym $mod+apostrophe exec i3-input -F '[con_mark="%s"] focus' -P 'Go to mark: '
 
 # =====================================================
 # SECTION 5: WORKSPACES
@@ -209,6 +229,56 @@ mode "resize" {
 bindsym $mod+r mode "resize"
 
 # =====================================================
+# SECTION 7.1: SYSTEM MODE
+# =====================================================
+
+set $mode_system System: (l)ock (e)xit (s)uspend (r)eboot (Shift+s)hutdown
+mode "$mode_system" {
+    bindsym l exec --no-startup-id i3lock, mode "default"
+    bindsym e exec --no-startup-id i3-msg exit, mode "default"
+    bindsym s exec --no-startup-id systemctl suspend, mode "default"
+    bindsym r exec --no-startup-id systemctl reboot, mode "default"
+    bindsym Shift+s exec --no-startup-id systemctl poweroff, mode "default"
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+Shift+x mode "$mode_system"
+
+# =====================================================
+# SECTION 7.2: GAPS MODE
+# =====================================================
+
+set $mode_gaps Gaps: (o)uter, (i)nner, (r)eset
+mode "$mode_gaps" {
+    bindsym o mode "$mode_gaps_outer"
+    bindsym i mode "$mode_gaps_inner"
+    bindsym r gaps inner all set $default_gaps_inner, gaps outer all set $default_gaps_outer, mode "default"
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+Shift+g mode "$mode_gaps"
+
+mode "$mode_gaps_inner" {
+    bindsym plus  gaps inner current plus 5
+    bindsym minus gaps inner current minus 5
+    bindsym 0     gaps inner current set 0
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+
+mode "$mode_gaps_outer" {
+    bindsym plus  gaps outer current plus 5
+    bindsym minus gaps outer current minus 5
+    bindsym 0     gaps outer current set 0
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+
+# =====================================================
 # SECTION 8: BAR CONFIGURATION
 # =====================================================
 
@@ -249,12 +319,18 @@ bindsym XF86AudioPrev				 exec playerctl previous
 # SECTION 10: STARTUP APPLICATIONS
 # =====================================================
 
+# Compositor (picom for transparency, blur, shadows)
+exec_always --no-startup-id picom --config ~/.config/picom/picom.conf
+
 # Background Image (dynamic path)
 set $bgdir $HOME/.i3/.background/
 set $bgmatdir $HOME/.i3/.background/
 set $bgtransdir $HOME/.i3/.background/
 set $favorite_background $HOME/.i3/.background/material/favorite.png
 exec_always feh --bg-scale $favorite_background
+
+# Scratchpad Terminal (press $mod+grave to show/hide)
+exec --no-startup-id warp-terminal --class scratch_term
 
 # Launch Applications
 exec spotify

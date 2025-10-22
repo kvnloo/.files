@@ -40,7 +40,7 @@
     icon_path = /usr/share/icons/Papirus/16x16/
     sticky_history = no
     history_length = 50
-    dmenu = /usr/bin/dmenu -p dunst:
+    dmenu = /usr/bin/rofi -dmenu -p dunst
     browser = /usr/bin/sensible-browser
     always_run_script = true
     title = Dunst
