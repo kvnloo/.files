@@ -10,10 +10,6 @@
 # Modifier Key (Mod4 = Super/Windows key)
 set $mod Mod4
 
-# Font Configuration
-# Note: font files should be copied from ~/.i3/.fonts to ~/.fonts
-font pango:System San Francisco Display 8
-
 # =====================================================
 # SECTION 2: COLOR SCHEMES
 # =====================================================
@@ -126,24 +122,17 @@ bindsym $mod+space focus mode_toggle
 # Container Focus
 bindsym $mod+a focus parent
 #bindsym $mod+d focus child
-
-# =====================================================
-# SECTION 5: WORKSPACES
-# =====================================================
-
-# Workspace Names
-set $ws1 "I:  (Personal)"
-set $ws2 "II: "
-set $ws3 "III:  (Work)"
-set $ws4 "IV: "
-set $ws5 "V: "
-set $ws6 "VI: "
-set $ws7  "VII: Music ( /  / )"
-set $ws8 "VIII "
-set $ws9 "IX: "
-set $ws10 "X: "
-
-# Switch to Workspace
+set $ws1 "I:  (Personal)"
+set $ws2 "II: "
+set $ws3 "III:  (Work)"
+set $ws4 "IV: "
+set $ws5 "V: "  
+set $ws6 "VI: "    
+set $ws7  "VII: Music ( /  / )"
+set $ws8 "VIII "
+set $ws9 "IX: "
+set $ws10 "X: "
+# switch to workspace
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
 bindsym $mod+3 workspace $ws3
@@ -154,8 +143,7 @@ bindsym $mod+7 workspace $ws7
 bindsym $mod+8 workspace $ws8
 bindsym $mod+9 workspace $ws9
 bindsym $mod+0 workspace $ws10
-
-# Move Container to Workspace
+# move focused container to workspace
 bindsym $mod+Shift+1 move container to workspace $ws1
 bindsym $mod+Shift+2 move container to workspace $ws2
 bindsym $mod+Shift+3 move container to workspace $ws3
@@ -166,53 +154,63 @@ bindsym $mod+Shift+7 move container to workspace $ws7
 bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
 bindsym $mod+Shift+0 move container to workspace $ws10
-
-# Assign Applications to Workspaces
+# automove windows to proper workspace
 assign [class="Spotify"] workspace $ws10
 assign [class="google-chrome"] workspace $ws1
 assign [class="google-chrome-unstable"] workspace $ws1
-
-# =====================================================
-# SECTION 6: i3 CONTROL
-# =====================================================
-
-# Reload Configuration
+# reload the configuration file
 bindsym $mod+Shift+c reload
-
-# Restart i3 (preserves layout/session)
+# restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
-
-# Exit i3
+# exit i3 (logs you out of your X session)
 bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -b 'Yes, exit i3' 'i3-msg exit'"
 
-# =====================================================
-# SECTION 7: RESIZE MODE
-# =====================================================
-
+# resize window (you can also use the mouse for that)
 mode "resize" {
-        # vim-style resize keys
+        # These bindings trigger as soon as you enter the resize mode
+        # Pressing left will shrink the window’s width.
+        # Pressing right will grow the window’s width.
+        # Pressing up will shrink the window’s height.
+        # Pressing down will grow the window’s height.
         bindsym j resize shrink width 10 px or 10 ppt
         bindsym k resize grow height 10 px or 10 ppt
         bindsym l resize shrink height 10 px or 10 ppt
         bindsym semicolon resize grow width 10 px or 10 ppt
-
-        # Arrow key resize
+        # same bindings, but for the arrow keys
         bindsym Left resize shrink width 10 px or 10 ppt
         bindsym Down resize grow height 10 px or 10 ppt
         bindsym Up resize shrink height 10 px or 10 ppt
         bindsym Right resize grow width 10 px or 10 ppt
-
-        # Exit resize mode
+        # back to normal: Enter or Escape
         bindsym Return mode "default"
         bindsym Escape mode "default"
 }
 bindsym $mod+r mode "resize"
-
-# =====================================================
-# SECTION 8: BAR CONFIGURATION
-# =====================================================
-
-bar {
+#	Constant colors set for different windows --> an new system for theming
+set $base00 #101218
+set $base01 #1f222d
+set $base02 #252936
+set $base03 #7780a1
+set $base04 #C0C5CE
+set $base05 #d1d4e0
+set $base06 #C9CCDB
+set $base07 #ffffff
+set $base08 #ee829f
+set $base09 #f99170
+set $base0A #ffefcc
+set $base0B #a5ffe1
+set $base0C #97e0ff
+set $base0D #97bbf7
+set $base0E #c0b7f9
+set $base0F #fcc09e
+# Widow Colours
+#                         border  background text    indicator
+  client.focused          $base01 $base01    $base07 $base0F
+  client.focused_inactive $base02 $base02    $base03 $base0F
+  client.unfocused        $base02 $base02    $base03 $base0F
+  client.urgent           $base02 $base08    $base00 $base0F
+# Bar
+  bar {
     font pango: System San Francisco Display, FontAwesome 11
     position bottom
     height 25
@@ -228,35 +226,23 @@ bar {
       inactive_workspace $base01 $base01    $base03
       urgent_workspace   $base01 $base01    $base08
     }
-}
+  }
 
-# =====================================================
-# SECTION 9: MEDIA CONTROLS
-# =====================================================
-
-# Volume Controls
+# Pulse Audio controls
 bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 0 +5%
 bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 0 -5%
 bindsym XF86AudioMute				 exec --no-startup-id pactl set-sink-mute	  0 toggle
-
 # Media Player Controls
 bindsym XF86AudioPlay				 exec playerctl play
 bindsym XF86AudioPause			 exec playerctl pause
 bindsym XF86AudioNext				 exec playerctl next
 bindsym XF86AudioPrev				 exec playerctl previous
-
-# =====================================================
-# SECTION 10: STARTUP APPLICATIONS
-# =====================================================
-
-# Background Image (dynamic path)
-set $bgdir $HOME/.i3/.background/
-set $bgmatdir $HOME/.i3/.background/
-set $bgtransdir $HOME/.i3/.background/
-set $favorite_background $HOME/.i3/.background/material/favorite.png
-exec_always feh --bg-scale $favorite_background
-
-# Launch Applications
+# Commands to execute on startup
 exec spotify
+set $bgdir /home/kev1n/.i3/.background/
+set $bgmatdir /home/kev1n/.i3/.background/
+set $bgtransdir /home/kev1n/.i3/.background/
+set $favorite_background /home/kev1n/.i3/.background/material/favorite.png
+exec_always feh --bg-scale $favorite_background
 exec google-chrome-unstable
 exec gnome-terminal
