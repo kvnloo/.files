@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Polybar Theme Selector
+Comment=Switch between Polybar themes
+Exec=/home/kvn/.config/polybar/theme-selector.sh
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Settings;DesktopSettings;
