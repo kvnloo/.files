@@ -333,10 +333,10 @@ exec_always --no-startup-id dunst
 exec_always --no-startup-id $HOME/workspace/.files/scripts/set-max-refresh-rate.sh
 
 # Background Image (dynamic path)
-set $bgdir $HOME/.i3/.background/
-set $bgmatdir $HOME/.i3/.background/
-set $bgtransdir $HOME/.i3/.background/
-set $favorite_background $HOME/.i3/.background/material/favorite.png
+set $bgdir $HOME/workspace/UX/
+set $bgmatdir $HOME/workspace/UX/
+set $bgtransdir $HOME/workspace/UX/
+set $favorite_background $HOME/workspace/UX/2800x1800/xerus.png
 exec_always feh --bg-scale $favorite_background
 
 # Scratchpad Terminal (press $mod+grave to show/hide)
