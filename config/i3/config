@@ -83,8 +83,8 @@ bindsym $mod+Return exec warp-terminal
 bindsym $mod+Shift+q kill
 
 # Rofi Launchers
-bindsym $mod+d exec "rofi -show drun"
-bindsym $mod+Shift+d exec "rofi -show run"
+bindsym $mod+space exec "rofi -show drun"
+bindsym $mod+Shift+space exec "rofi -show run"
 bindsym $mod+Tab exec "rofi -show window"
 
 # Lock Screen
@@ -124,8 +124,8 @@ bindsym $mod+w layout tabbed
 bindsym $mod+e layout toggle split
 
 # Floating Windows
-bindsym $mod+Shift+space floating toggle
-bindsym $mod+space focus mode_toggle
+bindsym $mod+Shift+f floating toggle
+# Removed: $mod+space focus mode_toggle (not needed - launchers use space now)
 
 # Container Focus
 bindsym $mod+a focus parent
