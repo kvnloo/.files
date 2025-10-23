@@ -152,16 +152,16 @@ bindsym $mod+apostrophe exec i3-input -F '[con_mark="%s"] focus' -P 'Go to mark:
 # =====================================================
 
 # Workspace Names
-set $ws1 "I:  (Personal)"
-set $ws2 "II: "
-set $ws3 "III:  (Work)"
-set $ws4 "IV: "
-set $ws5 "V: "
-set $ws6 "VI: "
-set $ws7  "VII: Music ( /  / )"
-set $ws8 "VIII "
-set $ws9 "IX: "
-set $ws10 "X: "
+set $ws1 "I: 󰈹 Code"
+set $ws2 "II:  Business"
+set $ws3 "III:  Research"
+set $ws4 "IV:  Outreach"
+set $ws5 "V:  LLM/Auto"
+set $ws6 "VI:  Learning"
+set $ws7 "VII:  Music"
+set $ws8 "VIII:  Browse"
+set $ws9 "IX:  Flex"
+set $ws10 "X:  Flex"
 
 # Switch to Workspace
 bindsym $mod+1 workspace $ws1
@@ -282,23 +282,27 @@ mode "$mode_gaps_outer" {
 # SECTION 8: BAR CONFIGURATION
 # =====================================================
 
-bar {
-    font pango: System San Francisco Display, FontAwesome 11
-    position bottom
-    height 25
-    bindsym button4 nop
-    bindsym button5 nop
-    colors {
-      separator $base03
-      background $base01
-      statusline $base05
-#                        border  background text
-      focused_workspace  $base01 $base01    $base07
-      active_workspace   $base01 $base02    $base03
-      inactive_workspace $base01 $base01    $base03
-      urgent_workspace   $base01 $base01    $base08
-    }
-}
+# i3bar (DISABLED - using polybar instead)
+# bar {
+#     font pango: System San Francisco Display, FontAwesome 11
+#     position bottom
+#     height 25
+#     bindsym button4 nop
+#     bindsym button5 nop
+#     colors {
+#       separator $base03
+#       background $base01
+#       statusline $base05
+# #                        border  background text
+#       focused_workspace  $base01 $base01    $base07
+#       active_workspace   $base01 $base02    $base03
+#       inactive_workspace $base01 $base01    $base03
+#       urgent_workspace   $base01 $base01    $base08
+#     }
+# }
+
+# Launch Polybar
+exec_always --no-startup-id ~/.config/polybar/launch.sh
 
 # =====================================================
 # SECTION 9: MEDIA CONTROLS
@@ -322,6 +326,12 @@ bindsym XF86AudioPrev				 exec playerctl previous
 # Compositor (picom for transparency, blur, shadows)
 exec_always --no-startup-id picom --config ~/.config/picom/picom.conf
 
+# Notification daemon (dunst)
+exec_always --no-startup-id dunst
+
+# Auto-detect and set maximum refresh rate for all connected monitors
+exec_always --no-startup-id $HOME/workspace/.files/scripts/set-max-refresh-rate.sh
+
 # Background Image (dynamic path)
 set $bgdir $HOME/.i3/.background/
 set $bgmatdir $HOME/.i3/.background/
@@ -333,6 +343,3 @@ exec_always feh --bg-scale $favorite_background
 exec --no-startup-id warp-terminal --class scratch_term
 
 # Launch Applications
-exec spotify
-exec google-chrome-unstable
-exec gnome-terminal
