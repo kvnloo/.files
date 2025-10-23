@@ -12,3 +12,6 @@
 [submodule "config/polybar-themes"]
 	path = config/polybar-themes
 	url = https://github.com/adi1090x/polybar-themes.git
+[submodule "config/rofi-themes"]
+	path = config/rofi-themes
+	url = https://github.com/adi1090x/rofi.git
