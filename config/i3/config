@@ -48,9 +48,9 @@ set $base0F #fcc09e
 # SECTION 3: WINDOW APPEARANCE
 # =====================================================
 
-# Borders
-default_border pixel 4
-default_floating_border pixel 4
+# Borders (Increased for better visibility)
+default_border pixel 6
+default_floating_border pixel 6
 
 # Gaps
 set $default_gaps_inner 12
@@ -58,12 +58,12 @@ set $default_gaps_outer 0
 gaps inner $default_gaps_inner
 gaps outer $default_gaps_outer
 
-# Window Colors (Enhanced Visibility)
+# Window Colors (Maximum Contrast for Active Window)
 #                         border  background text    indicator
-client.focused          $base0D $base01    $base07 $base0F
-client.focused_inactive $base03 $base02    $base03 $base0F
+client.focused          $base0C $base01    $base07 $base0C
+client.focused_inactive $base02 $base02    $base03 $base0F
 client.unfocused        $base00 $base02    $base03 $base0F
-client.urgent           $base08 $base08    $base00 $base0F
+client.urgent           $base08 $base08    $base00 $base08
 
 # =====================================================
 # SECTION 4: KEY BINDINGS
