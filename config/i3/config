@@ -26,23 +26,26 @@ font pango:System San Francisco Display 8
 # set $inactive-text-color	#676E7D
 # set $urgent-bg-color			#E53935
 
-# Base16 Color Scheme (ACTIVE)
-set $base00 #101218
-set $base01 #1f222d
-set $base02 #252936
-set $base03 #7780a1
-set $base04 #C0C5CE
-set $base05 #d1d4e0
-set $base06 #C9CCDB
-set $base07 #ffffff
-set $base08 #ee829f
-set $base09 #f99170
-set $base0A #ffefcc
-set $base0B #a5ffe1
-set $base0C #97e0ff
-set $base0D #97bbf7
-set $base0E #c0b7f9
-set $base0F #fcc09e
+# Pywal Colors (dynamically generated from wallpaper)
+# Import colors from pywal
+set_from_resource $base00 color0  #000000
+set_from_resource $base01 color1  #000000
+set_from_resource $base02 color2  #000000
+set_from_resource $base03 color3  #000000
+set_from_resource $base04 color4  #000000
+set_from_resource $base05 color5  #000000
+set_from_resource $base06 color6  #000000
+set_from_resource $base07 color7  #000000
+set_from_resource $base08 color8  #000000
+set_from_resource $base09 color9  #000000
+set_from_resource $base0A color10 #000000
+set_from_resource $base0B color11 #000000
+set_from_resource $base0C color12 #000000
+set_from_resource $base0D color13 #000000
+set_from_resource $base0E color14 #000000
+set_from_resource $base0F color15 #000000
+set_from_resource $fg foreground #000000
+set_from_resource $bg background #000000
 
 # =====================================================
 # SECTION 3: WINDOW APPEARANCE
@@ -58,12 +61,12 @@ set $default_gaps_outer 0
 gaps inner $default_gaps_inner
 gaps outer $default_gaps_outer
 
-# Window Colors
+# Window Colors (Enhanced Visibility)
 #                         border  background text    indicator
-client.focused          $base01 $base01    $base07 $base0F
-client.focused_inactive $base02 $base02    $base03 $base0F
-client.unfocused        $base02 $base02    $base03 $base0F
-client.urgent           $base02 $base08    $base00 $base0F
+client.focused          $base0D $base01    $base07 $base0F
+client.focused_inactive $base03 $base02    $base03 $base0F
+client.unfocused        $base00 $base02    $base03 $base0F
+client.urgent           $base08 $base08    $base00 $base0F
 
 # =====================================================
 # SECTION 4: KEY BINDINGS
@@ -83,13 +86,17 @@ bindsym $mod+Return exec warp-terminal
 bindsym $mod+Shift+q kill
 
 # Rofi Launchers
-bindsym $mod+d exec "rofi -show drun"
-bindsym $mod+Shift+d exec "rofi -show run"
+bindsym $mod+space exec "rofi -show drun"
+bindsym $mod+Shift+space exec "rofi -show run"
 bindsym $mod+Tab exec "rofi -show window"
 
 # Lock Screen
 set $lock x
 bindsym $mod+$lock exec i3lock
+
+# Theme Switcher (pywal)
+bindsym $mod+Shift+t exec --no-startup-id $HOME/workspace/.files/scripts/theme-switcher.sh menu
+bindsym $mod+Shift+w exec --no-startup-id $HOME/workspace/.files/scripts/theme-switcher.sh cycle
 
 # Focus Navigation (vim-style and arrow keys)
 bindsym $mod+$left focus left
@@ -124,8 +131,8 @@ bindsym $mod+w layout tabbed
 bindsym $mod+e layout toggle split
 
 # Floating Windows
-bindsym $mod+Shift+space floating toggle
-bindsym $mod+space focus mode_toggle
+bindsym $mod+Shift+f floating toggle
+# Removed: $mod+space focus mode_toggle (not needed - launchers use space now)
 
 # Container Focus
 bindsym $mod+a focus parent
@@ -332,12 +339,14 @@ exec_always --no-startup-id dunst
 # Auto-detect and set maximum refresh rate for all connected monitors
 exec_always --no-startup-id $HOME/workspace/.files/scripts/set-max-refresh-rate.sh
 
-# Background Image (dynamic path)
-set $bgdir $HOME/.i3/.background/
-set $bgmatdir $HOME/.i3/.background/
-set $bgtransdir $HOME/.i3/.background/
-set $favorite_background $HOME/.i3/.background/material/favorite.png
-exec_always feh --bg-scale $favorite_background
+# Pywal - Restore wallpaper and color scheme
+exec_always --no-startup-id wal -R
+
+# Background Image (dynamic path) - Managed by pywal
+set $bgdir $HOME/workspace/UX/background/
+set $bgmatdir $HOME/workspace/UX/background/
+set $bgtransdir $HOME/workspace/UX/background/
+set $favorite_background $HOME/workspace/UX/background/2800x1800/xerus.png
 
 # Scratchpad Terminal (press $mod+grave to show/hide)
 exec --no-startup-id warp-terminal --class scratch_term
