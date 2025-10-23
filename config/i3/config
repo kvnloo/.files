@@ -58,12 +58,12 @@ set $default_gaps_outer 0
 gaps inner $default_gaps_inner
 gaps outer $default_gaps_outer
 
-# Window Colors
+# Window Colors (Enhanced Visibility)
 #                         border  background text    indicator
-client.focused          $base01 $base01    $base07 $base0F
-client.focused_inactive $base02 $base02    $base03 $base0F
-client.unfocused        $base02 $base02    $base03 $base0F
-client.urgent           $base02 $base08    $base00 $base0F
+client.focused          $base0D $base01    $base07 $base0F
+client.focused_inactive $base03 $base02    $base03 $base0F
+client.unfocused        $base00 $base02    $base03 $base0F
+client.urgent           $base08 $base08    $base00 $base0F
 
 # =====================================================
 # SECTION 4: KEY BINDINGS
