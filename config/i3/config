@@ -320,6 +320,25 @@ bindsym XF86AudioNext				 exec playerctl next
 bindsym XF86AudioPrev				 exec playerctl previous
 
 # =====================================================
+# SECTION 9.1: SCREENSHOT SHORTCUTS
+# =====================================================
+
+# Screenshot directory
+set $screenshot_dir ~/Pictures/Screenshots
+
+# Select area screenshots (most common use case)
+bindsym $mod+p exec --no-startup-id maim -s "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+bindsym $mod+Shift+p exec --no-startup-id maim -s | xclip -selection clipboard -t image/png
+
+# Full screen screenshots
+bindsym $mod+Ctrl+p exec --no-startup-id maim "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+bindsym $mod+Ctrl+Shift+p exec --no-startup-id maim | xclip -selection clipboard -t image/png
+
+# Active window screenshots
+bindsym $mod+Mod1+p exec --no-startup-id maim -i $(xdotool getactivewindow) "$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+bindsym $mod+Mod1+Shift+p exec --no-startup-id maim -i $(xdotool getactivewindow) | xclip -selection clipboard -t image/png
+
+# =====================================================
 # SECTION 10: STARTUP APPLICATIONS
 # =====================================================
 
