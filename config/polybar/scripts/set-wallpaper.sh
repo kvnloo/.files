@@ -14,13 +14,13 @@ if [ ! -f "$WALLPAPER" ]; then
     exit 1
 fi
 
-# Set wallpaper with feh
-feh --bg-scale "$WALLPAPER"
+# Generate colors from wallpaper using pywal
+wal -i "$WALLPAPER" -n
 
-# Update polybar colors with pywal
-~/.config/polybar/material/scripts/pywal.sh "$WALLPAPER"
+# Reload Xresources with new pywal colors
+xrdb -merge ~/.cache/wal/colors.Xresources
 
-# Restart polybar to apply colors
-~/.config/polybar/launch.sh --material
+# Restart polybar to apply new colors
+~/.config/polybar/launch.sh
 
 notify-send "Wallpaper & Colors Updated" "Polybar colors synced to wallpaper"
