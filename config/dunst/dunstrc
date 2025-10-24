@@ -17,7 +17,7 @@
     padding = 12
     horizontal_padding = 12
     frame_width = 2
-    frame_color = "#842757"
+    frame_color = "#603f58"
     separator_color = frame
     sort = yes
     idle_threshold = 120
@@ -61,15 +61,15 @@
     context = ctrl+shift+period
 # Pywal colors - dynamically updated
 [urgency_low]
-    background = "#160613"
-    foreground = "#c6a7c0"
+    background = "#07060b"
+    foreground = "#a7a5b0"
     timeout = 5
 [urgency_normal]
-    background = "#160613"
-    foreground = "#c6a7c0"
+    background = "#07060b"
+    foreground = "#a7a5b0"
     timeout = 5
 [urgency_critical]
-    background = "#160613"
-    foreground = "#c6a7c0"
-    frame_color = "#842757"
+    background = "#07060b"
+    foreground = "#a7a5b0"
+    frame_color = "#603f58"
     timeout = 0  

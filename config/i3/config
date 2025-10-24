@@ -159,16 +159,16 @@ bindsym $mod+apostrophe exec i3-input -F '[con_mark="%s"] focus' -P 'Go to mark:
 # =====================================================
 
 # Workspace Names
-set $ws1 "I: 󰈹 Code"
-set $ws2 "II:  Business"
-set $ws3 "III:  Research"
-set $ws4 "IV:  Outreach"
-set $ws5 "V:  LLM/Auto"
-set $ws6 "VI:  Learning"
-set $ws7 "VII:  Music"
-set $ws8 "VIII:  Browse"
-set $ws9 "IX:  Flex"
-set $ws10 "X:  Flex"
+set $ws1  "I:  Code"
+set $ws2  "II: 󰦑 Business"
+set $ws3  "III: 󱝩 Research"
+set $ws4  "IV: 󰶈 Outreach"
+set $ws5  "V: 󰣖 LLM/Auto"
+set $ws6  "VI:  Learning"
+set $ws7  "VII: 󰽰 Music"
+set $ws8  "VIII:  Browse"
+set $ws9  "IX:  Flex"
+set $ws10 "X:  Flex"
 
 # Switch to Workspace
 bindsym $mod+1 workspace $ws1
