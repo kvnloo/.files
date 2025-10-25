@@ -2,7 +2,7 @@
 Type=Application
 Name=Polybar Theme Selector
 Comment=Switch between Polybar themes
-Exec=/home/kvn/.config/polybar/theme-selector.sh
+Exec=/home/kvn/workspace/.files/config/polybar/theme-selector-with-pywal.sh
 Icon=preferences-desktop-theme
 Terminal=false
 Categories=Settings;DesktopSettings;

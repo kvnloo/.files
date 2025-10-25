@@ -14,7 +14,7 @@ apply_theme() {
     fi
 
     # Generate color scheme with pywal
-    wal -i "$wallpaper" -n --backend colorthief
+    wal -i "$wallpaper" --backend colorthief
 
     # Update dunst colors dynamically
     update_dunst_colors
@@ -23,7 +23,7 @@ apply_theme() {
     i3-msg reload
 
     # Reload polybar
-    ~/.config/polybar/launch.sh
+    ~/.config/polybar/hack/scripts/pywal.sh $wallpaper
 
     # Send notification
     notify-send "Theme Switcher" "Applied theme from: $(basename "$wallpaper")"
