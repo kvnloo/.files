@@ -62,3 +62,5 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # For machine-specific configuration that shouldn't be version-controlled,
 # create a ~/.zshrc.local file with your custom settings
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
+
+export PATH=$PATH:/home/kvn/.spicetify
