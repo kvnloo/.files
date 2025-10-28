@@ -159,18 +159,19 @@ bindsym $mod+apostrophe exec i3-input -F '[con_mark="%s"] focus' -P 'Go to mark:
 # =====================================================
 
 # Workspace Names
-set $ws1  "I:  Code"
-set $ws2  "II: 󰦑 Business"
-set $ws3  "III: 󱝩 Research"
-set $ws4  "IV: 󰶈 Outreach"
-set $ws5  "V: 󰣖 LLM/Auto"
-set $ws6  "VI:  Learning"
-set $ws7  "VII: 󰽰 Music"
-set $ws8  "VIII:  Browse"
-set $ws9  "IX:  Flex"
-set $ws10 "X:  Flex"
+set $ws0  "0: 󰽰+ Music/Flex"
+set $ws1  "1:  Code"
+set $ws2  "2:  Browse" 
+set $ws3  "3:  Learning"
+set $ws4  "4: 󱝩 Research"
+set $ws5  "5: 󰶈 Networking"
+set $ws6  "6: 󰣖 LLM/Auto"
+set $ws7  "7: 󰦑 Business"
+set $ws8  "8:  Flex"
+set $ws9  "9:  Flex"
 
 # Switch to Workspace
+bindsym $mod+0 workspace $ws0
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
 bindsym $mod+3 workspace $ws3
@@ -180,9 +181,9 @@ bindsym $mod+6 workspace $ws6
 bindsym $mod+7 workspace $ws7
 bindsym $mod+8 workspace $ws8
 bindsym $mod+9 workspace $ws9
-bindsym $mod+0 workspace $ws10
 
 # Move Container to Workspace
+bindsym $mod+Shift+0 move container to workspace $ws0
 bindsym $mod+Shift+1 move container to workspace $ws1
 bindsym $mod+Shift+2 move container to workspace $ws2
 bindsym $mod+Shift+3 move container to workspace $ws3
@@ -192,12 +193,10 @@ bindsym $mod+Shift+6 move container to workspace $ws6
 bindsym $mod+Shift+7 move container to workspace $ws7
 bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
-bindsym $mod+Shift+0 move container to workspace $ws10
 
 # Assign Applications to Workspaces
-assign [class="Spotify"] workspace $ws10
-assign [class="google-chrome"] workspace $ws1
-assign [class="google-chrome-unstable"] workspace $ws1
+assign [class="Spotify|high-tide" ] workspace $ws0
+assign [class="google-chrome|google-chrome-unstable"] workspace $ws2
 
 # =====================================================
 # SECTION 6: i3 CONTROL
