@@ -83,6 +83,7 @@ floating_modifier $mod
 
 # Core Application Shortcuts
 bindsym $mod+Return exec warp-terminal
+bindsym $mod+Shift+e exec nautilus
 bindsym $mod+Shift+q kill
 
 # Rofi Launchers
@@ -159,16 +160,16 @@ bindsym $mod+apostrophe exec i3-input -F '[con_mark="%s"] focus' -P 'Go to mark:
 # =====================================================
 
 # Workspace Names
-set $ws0  "0: 󰽰+ Music/Flex"
-set $ws1  "1:  Code"
-set $ws2  "2:  Browse" 
-set $ws3  "3:  Learning"
-set $ws4  "4: 󱝩 Research"
-set $ws5  "5: 󰶈 Networking"
-set $ws6  "6: 󰣖 LLM/Auto"
-set $ws7  "7: 󰦑 Business"
-set $ws8  "8:  Flex"
-set $ws9  "9:  Flex"
+set $ws0  "󰽰 0:  Music/Flex"
+set $ws1  " 1:  Code"
+set $ws2  " 2:  Browse" 
+set $ws3  " 3:  Learning"
+set $ws4  "󱝩 4:  Research"
+set $ws5  "󰶈 5:  Networking"
+set $ws6  "󰣖 6:  LLM/Auto"
+set $ws7  "󰦑 7:  Business"
+set $ws8  " 8:  Flex"
+set $ws9  " 9:  Flex"
 
 # Switch to Workspace
 bindsym $mod+0 workspace $ws0
@@ -209,7 +210,7 @@ bindsym $mod+Shift+c reload
 bindsym $mod+Shift+r restart
 
 # Exit i3
-bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -b 'Yes, exit i3' 'i3-msg exit'"
+# bindsym $mod+Shift+x exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -b 'Yes, exit i3' 'i3-msg exit'"
 
 # =====================================================
 # SECTION 7: RESIZE MODE
@@ -317,13 +318,13 @@ exec_always --no-startup-id ~/.config/polybar/launch.sh
 # Volume Controls
 bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 0 +5%
 bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 0 -5%
-bindsym XF86AudioMute				 exec --no-startup-id pactl set-sink-mute	  0 toggle
+bindsym XF86AudioMute        exec --no-startup-id pactl set-sink-mute	  0 toggle
 
 # Media Player Controls
-bindsym XF86AudioPlay				 exec playerctl play
-bindsym XF86AudioPause			 exec playerctl pause
-bindsym XF86AudioNext				 exec playerctl next
-bindsym XF86AudioPrev				 exec playerctl previous
+bindsym XF86AudioPlay  exec playerctl play
+bindsym XF86AudioPause exec playerctl pause
+bindsym XF86AudioNext  exec playerctl next
+bindsym XF86AudioPrev  exec playerctl previous
 
 # =====================================================
 # SECTION 9.1: SCREENSHOT SHORTCUTS
@@ -370,3 +371,4 @@ set $favorite_background $HOME/workspace/UX/background/2800x1800/xerus.png
 exec --no-startup-id warp-terminal --class scratch_term
 
 # Launch Applications
+
