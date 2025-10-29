@@ -25,11 +25,11 @@ alsa_monitor.rules = {
 
       -- Start delay: Time for DAC to lock to new clock before audio begins
       -- This is measured in SAMPLES (adaptive to sample rate):
-      --   @ 44.1kHz: 8192 samples = 186ms
-      --   @ 48kHz:   8192 samples = 171ms
-      --   @ 96kHz:   8192 samples = 85ms
-      --   @ 192kHz:  8192 samples = 43ms
-      ["api.alsa.start-delay"] = 8192,      -- Double previous value for more lock time
+      --   @ 44.1kHz: 12288 samples = 278ms
+      --   @ 48kHz:   12288 samples = 256ms
+      --   @ 96kHz:   12288 samples = 128ms
+      --   @ 192kHz:  12288 samples = 64ms
+      ["api.alsa.start-delay"] = 12288,     -- Increased to 50% more time (Option 1 from tuning guide)
 
       -- Period size: Number of samples per hardware interrupt
       ["api.alsa.period-size"] = 1024,      -- Larger periods = more buffering

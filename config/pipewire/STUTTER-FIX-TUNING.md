@@ -3,7 +3,7 @@
 ## Current Configuration (Applied)
 
 ```lua
-["api.alsa.start-delay"] = 8192,     -- ~171ms @ 48kHz, ~186ms @ 44.1kHz
+["api.alsa.start-delay"] = 12288,    -- ~256ms @ 48kHz, ~278ms @ 44.1kHz (Option 1)
 ["api.alsa.period-size"] = 1024,     -- Larger buffer chunks
 ["api.alsa.headroom"] = 4096,        -- Extra safety margin
 ["session.suspend-timeout-seconds"] = 0,  -- Never suspend DX5
@@ -15,14 +15,14 @@ The `start-delay` is measured in **samples**, not milliseconds. This means it au
 
 | Sample Rate | Delay (samples) | Time (ms) | Use Case |
 |-------------|-----------------|-----------|----------|
-| 44.1 kHz | 8192 | **186ms** | Spotify, CD-quality FLAC |
-| 48 kHz | 8192 | **171ms** | YouTube, video audio |
-| 88.2 kHz | 8192 | **93ms** | Hi-res music (CD family) |
-| 96 kHz | 8192 | **85ms** | Hi-res music (DVD family) |
-| 176.4 kHz | 8192 | **46ms** | Ultra hi-res (CD family) |
-| 192 kHz | 8192 | **43ms** | Ultra hi-res (DVD family) |
-| 384 kHz | 8192 | **21ms** | Extreme hi-res |
-| 768 kHz | 8192 | **11ms** | Maximum DX5 capability |
+| 44.1 kHz | 12288 | **278ms** | Spotify, CD-quality FLAC |
+| 48 kHz | 12288 | **256ms** | YouTube, video audio |
+| 88.2 kHz | 12288 | **139ms** | Hi-res music (CD family) |
+| 96 kHz | 12288 | **128ms** | Hi-res music (DVD family) |
+| 176.4 kHz | 12288 | **70ms** | Ultra hi-res (CD family) |
+| 192 kHz | 12288 | **64ms** | Ultra hi-res (DVD family) |
+| 384 kHz | 12288 | **32ms** | Extreme hi-res |
+| 768 kHz | 12288 | **16ms** | Maximum DX5 capability |
 
 **Key insight:** Higher sample rates get proportionally shorter delays because the DAC clock locks faster at higher frequencies!
 
@@ -55,7 +55,7 @@ Before fix:
 PipeWire → "Switch to 48kHz" → Audio immediately → CLICK! ❌
 
 After fix:
-PipeWire → "Switch to 48kHz" → 8192 samples silence → Audio starts → Smooth! ✅
+PipeWire → "Switch to 48kHz" → 12288 samples silence → Audio starts → Smooth! ✅
                                  ↑
                          DAC locks during this silence
 ```
@@ -178,12 +178,12 @@ Song @ 44.1kHz → brief silence (~170ms) → Song @ 48kHz
 | Delay (samples) | @ 44.1kHz | @ 48kHz | Smoothness | Perceived Latency |
 |-----------------|-----------|---------|------------|-------------------|
 | **4096** (original) | 93ms | 85ms | Moderate | Barely noticeable |
-| **8192** (current) | 186ms | 171ms | Better | Still acceptable |
-| **12288** | 278ms | 256ms | Very good | Noticeable but okay |
+| **8192** | 186ms | 171ms | Better | Still acceptable |
+| **12288** (current) | 278ms | 256ms | Very good | Noticeable but okay |
 | **16384** | 371ms | 341ms | Excellent | Noticeable delay |
 | **24576** | 557ms | 512ms | Perfect | Half-second pause |
 
-**Sweet spot for most users:** 8192-12288 samples
+**Sweet spot for most users:** 12288-16384 samples
 
 ---
 
@@ -234,9 +234,9 @@ cat /proc/asound/card0/pcm0p/sub0/hw_params
 
 ## Next Steps
 
-1. **Test the current fix** (8192 samples)
-2. **If still stuttering:** Try Option 1 (12288 samples)
-3. **If Option 1 insufficient:** Try Option 2 (16384 samples)
+1. **Test the current fix** (12288 samples)
+2. **If still stuttering:** Try Option 2 (16384 samples)
+3. **If Option 2 insufficient:** Try Option 3 (24576 samples)
 4. **Report back:** What delay value worked for you?
 
 ---
@@ -270,11 +270,11 @@ The Topping DX5 is a high-quality DAC, but USB audio class compliance means it f
 
 ## Summary
 
-✅ **Current config**: 8192 samples (~171-186ms)
+✅ **Current config**: 12288 samples (~256-278ms)
 ✅ **Should eliminate most stuttering**
 ✅ **Automatically adaptive** to sample rate
 ✅ **Preserves bit-perfect playback**
 
-If still stuttering: Increase `start-delay` in increments of 4096 samples until smooth.
+If still stuttering: Increase `start-delay` to 16384 or 24576 samples.
 
 **Test it now!** Switch between Spotify and YouTube rapidly - should be smooth! 🎧
