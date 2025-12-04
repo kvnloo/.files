@@ -3,6 +3,7 @@
 # Polybar Theme Selector with Rofi
 # Allows switching between all installed polybar themes
 
+
 DIR="$HOME/.config/polybar"
 
 # Get list of available themes

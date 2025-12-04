@@ -6,7 +6,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Safety & Utilities
 # ──────────────────────────────────────────────────────────────────────────────
-alias rm='rmtrash'                                # Safer deletion (requires: brew install rmtrash)
+# alias rm='rmtrash'                                # Safer deletion (requires: brew install rmtrash)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Python Environment

@@ -195,6 +195,17 @@ bindsym $mod+Shift+7 move container to workspace $ws7
 bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
 
+# Move current workspace to the monitor on the left or right
+bindsym $mod+Shift+Ctrl+h move workspace to output left
+bindsym $mod+Shift+Ctrl+l move workspace to output right
+bindsym $mod+Shift+Ctrl+k move workspace to output up
+bindsym $mod+Shift+Ctrl+j move workspace to output down
+
+workspace 0 output HDMI-0
+workspace 1 output DP-2
+workspace 2 output DP-0
+
+
 # Assign Applications to Workspaces
 assign [class="Spotify|high-tide" ] workspace $ws0
 assign [class="google-chrome|google-chrome-unstable"] workspace $ws2
@@ -325,6 +336,18 @@ bindsym XF86AudioPlay  exec playerctl play
 bindsym XF86AudioPause exec playerctl pause
 bindsym XF86AudioNext  exec playerctl next
 bindsym XF86AudioPrev  exec playerctl previous
+
+# Start dictation on key press
+bindsym --no-repeat code134 exec --no-startup-id \
+  /home/kvn/workspace/whisper/bin/python \
+  /home/kvn/workspace/whisper/whisper_dictation.py \
+  --model small \
+  --device cpu \
+  --compute-type int8
+
+# Stop dictation on key release
+bindsym --release code134 exec --no-startup-id \
+  pkill -f whisper_dictation.py
 
 # =====================================================
 # SECTION 9.1: SCREENSHOT SHORTCUTS

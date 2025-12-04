@@ -64,3 +64,5 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 export PATH=$PATH:/home/kvn/.spicetify
+
+. /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
