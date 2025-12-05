@@ -378,8 +378,13 @@ exec_always --no-startup-id picom --config ~/.config/picom/picom.conf
 # Notification daemon (dunst)
 exec_always --no-startup-id dunst
 
-# Auto-detect and set maximum refresh rate for all connected monitors
-exec_always --no-startup-id $HOME/workspace/.files/scripts/set-max-refresh-rate.sh
+# Monitor layout (position, rotation, resolution)
+exec_always --no-startup-id $HOME/workspace/.files/scripts/monitor-layout.sh
+
+# Set refresh rates for monitors
+exec_always --no-startup-id sleep 1 && $HOME/workspace/.files/scripts/set-max-refresh-rate.sh HDMI-0
+exec_always --no-startup-id sleep 1 && $HOME/workspace/.files/scripts/set-max-refresh-rate.sh DP-0
+exec_always --no-startup-id sleep 1 && xrandr --output DP-2 --mode 1920x1080 --rate 239.96  # 390hz cable issue, hardcode 240hz
 
 # Pywal - Restore wallpaper and color scheme
 exec_always --no-startup-id wal -R
