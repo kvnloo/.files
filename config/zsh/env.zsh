@@ -18,3 +18,11 @@ export PATH="$PATH:$HOME/.rvm/bin"                # Ruby Version Manager
 # Language-Specific Paths
 # Note: NVM, Cargo, and other runtime managers are loaded in external.zsh
 # to avoid conflicts with their initialization scripts
+
+# Android SDK (idempotent - won't duplicate PATH entries)
+export ANDROID_HOME=$HOME/android/sdk
+export NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+[[ ":$PATH:" != *":$ANDROID_HOME/cmdline-tools/latest/bin:"* ]] && export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin"
+[[ ":$PATH:" != *":$ANDROID_HOME/platform-tools:"* ]] && export PATH="$PATH:$ANDROID_HOME/platform-tools"
+[[ ":$PATH:" != *":$ANDROID_HOME/emulator:"* ]] && export PATH="$PATH:$ANDROID_HOME/emulator"
+[[ ":$PATH:" != *":$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:"* ]] && export PATH="$PATH:$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"

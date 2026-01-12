@@ -66,3 +66,10 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 export PATH=$PATH:/home/kvn/.spicetify
 
 . /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
+
+# bun completions
+[ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
