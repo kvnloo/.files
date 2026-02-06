@@ -1,0 +1,14 @@
+[Unit]
+Description=PulseEffects IR Auto-Switcher
+Documentation=https://github.com/jaakkopasanen/AutoEq
+After=pulseaudio.service
+Wants=pulseaudio.service
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/workspace/.files/config/pulse/pulseeffects-ir-switcher.sh monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
