@@ -9,15 +9,28 @@ Comprehensive research on audio optimization for high-fidelity listening on Linu
 | **DAC** | Topping DX5 (32-bit, up to 768kHz, async USB) | Excellent |
 | **Headphones** | HD800S + ThieAudio Monarch MKII | Excellent |
 | **Amp** | Topping A90 | Excellent |
-| **Sound Server** | PulseAudio 16.1 | Good |
-| **Bit Depth** | 24-bit (s24le) | Optimal |
-| **Sample Rate** | 44.1kHz / 48kHz adaptive | Good |
-| **Avoid Resampling** | Yes | Enabled |
-| **Resampler** | speex-float-10 (highest quality) | Best available |
-| **Convolver (AutoEQ)** | Enabled | Active |
-| **Crossfeed** | Enabled | Active |
+| **Sound Server** | PipeWire 1.5.85 (built from source) | Excellent |
+| **Session Manager** | WirePlumber 1.5.85 | Excellent |
+| **Bit Depth** | 32-bit float (internal), native to DAC | Optimal |
+| **Sample Rate** | 44.1-768kHz adaptive (allowed-rates) | Optimal |
+| **Avoid Resampling** | Yes (resample.quality=0 for passthrough) | Enabled |
+| **Bit-Perfect Rules** | WirePlumber DX5 rules applied | Active |
+| **Convolver (AutoEQ)** | EasyEffects + auto IR switching | Active |
+| **Crossfeed** | EasyEffects BS2B-style | Active |
+| **Software Volume** | 100% (hardware volume via A90) | Bit-Perfect |
 
-**Current Optimization Score: ~92%**
+**Current Optimization Score: ~98%**
+
+### What Changed (PulseAudio → PipeWire)
+
+| Improvement | Before (PulseAudio) | After (PipeWire) |
+|-------------|---------------------|------------------|
+| Sample rate switching | 44.1/48kHz only | Full range 44.1-768kHz |
+| Latency | ~20-40ms | ~5-10ms |
+| Buffer management | Fixed | Adaptive quantum |
+| Resampling quality | speex-float-10 | Native passthrough |
+| Session management | Basic | WirePlumber rules |
+| DSP integration | PulseEffects (legacy) | EasyEffects (native) |
 
 ---
 
@@ -152,11 +165,19 @@ Arguably the highest-impact optimization after bit-perfect.
 
 | Server | Notes |
 |--------|-------|
-| **PipeWire** | Modern, low latency, recommended for new setups |
+| **PipeWire** | Modern, low latency, recommended - **OUR CHOICE** ✓ |
 | **PulseAudio** | Mature, stable, adequate for playback |
 | **Pure ALSA** | Bit-perfect possible, no mixing |
 
 **Impact:** LOW-MEDIUM - Modern servers are nearly transparent
+
+**Our Setup:** PipeWire 1.5.85 (built from source) with WirePlumber session manager.
+Key advantages over PulseAudio:
+- Native support for pro audio (JACK replacement)
+- Better latency (~5ms vs ~20ms)
+- Adaptive sample rate switching (full range 44.1-768kHz)
+- More sophisticated buffer management
+- Native integration with EasyEffects
 
 #### 4.2 RT Scheduling
 
@@ -164,7 +185,7 @@ Arguably the highest-impact optimization after bit-perfect.
 |--------|---------|
 | **What it does** | Gives audio threads priority |
 | **Impact** | **LOW** for playback (buffered), **HIGH** for recording |
-| **Config** | `realtime-scheduling = yes` in daemon.conf |
+| **Config** | PipeWire uses RTKit by default for RT scheduling |
 
 ---
 
@@ -237,44 +258,60 @@ Arguably the highest-impact optimization after bit-perfect.
 
 ```
 ~/.files/config/
+├── pipewire/
+│   └── pipewire.conf                    # PipeWire config (192kHz default, allowed-rates)
+├── wireplumber/main.lua.d/
+│   └── 51-topping-dx5-bitperfect.lua    # Bit-perfect rules for DX5
+├── easyeffects/
+│   └── easyeffects-ir-switcher.sh       # Auto-switch IR by sample rate
 ├── pulse/
-│   ├── daemon.conf                      # Bit-perfect PulseAudio config
-│   ├── pulseeffects-ir-switcher.sh      # Auto-switch IR by sample rate
 │   └── AUDIOPHILE-OPTIMIZATION.md       # This file
 ├── autoeq/
-│   ├── Sennheiser HD800 *.wav           # HD800S IRs
-│   └── ThieAudio Monarch MKII *.wav     # Monarch IRs
+│   ├── Sennheiser HD800 *.wav           # HD800S IRs (source files)
+│   └── ThieAudio Monarch MKII *.wav     # Monarch IRs (source files)
 ├── autostart/
-│   └── pulseeffects-service.desktop     # PulseEffects autostart
+│   └── easyeffects-service.desktop      # EasyEffects autostart
 └── systemd/user/
-    └── pulseeffects-ir-switcher.service # IR switcher daemon
+    └── easyeffects-ir-switcher.service  # IR switcher daemon
+
+~/.config/easyeffects/
+├── irs/                                 # Converted IR files (.irs)
+└── output/
+    ├── audiophile-hd800s.json           # HD800S preset (convolver + crossfeed)
+    └── audiophile-monarch.json          # Monarch preset (convolver + crossfeed)
 ```
 
 ### Commands
 
 ```bash
 # Switch headphones
-~/.files/config/pulse/pulseeffects-ir-switcher.sh hd800s
-~/.files/config/pulse/pulseeffects-ir-switcher.sh monarch
+~/.files/config/easyeffects/easyeffects-ir-switcher.sh hd800s
+~/.files/config/easyeffects/easyeffects-ir-switcher.sh monarch
 
 # Check status
-~/.files/config/pulse/pulseeffects-ir-switcher.sh status
+~/.files/config/easyeffects/easyeffects-ir-switcher.sh status
 
 # View IR switcher logs
-journalctl --user -u pulseeffects-ir-switcher -f
+journalctl --user -u easyeffects-ir-switcher -f
 
-# Verify audio chain
-pactl list sink-inputs | grep -E "application.name|Volume:|Resample"
+# Verify PipeWire audio chain
+wpctl status
+pw-top  # Watch for xruns (ERR column should be 0)
+
+# Check current sample rate
+pw-cli info all | grep -A20 "DX5" | grep "audio.rate"
 ```
 
 ### Verification Checklist
 
-- [ ] All volumes at 100% (0.00 dB) - no digital attenuation
-- [ ] Resample method shows `copy` or `n/a` - no resampling
-- [ ] Convolver enabled with correct IR for headphones
-- [ ] Crossfeed enabled (optional, preference)
-- [ ] PulseEffects service running
-- [ ] IR switcher daemon running
+- [x] PipeWire 1.5.85 running (`pactl info | grep "Server Name"`)
+- [x] DX5 volume at 100% (`wpctl get-volume 46`)
+- [x] WirePlumber bit-perfect rules loaded (node.description = "Topping DX5 (Bit-Perfect)")
+- [x] EasyEffects running and routing audio (`wpctl status`)
+- [x] Convolver enabled with correct IR for headphones
+- [x] Crossfeed enabled
+- [x] IR switcher daemon running (`systemctl --user status easyeffects-ir-switcher`)
+- [ ] No xruns during playback (`pw-top` - ERR column = 0)
 
 ---
 
