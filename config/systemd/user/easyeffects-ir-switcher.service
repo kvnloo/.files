@@ -1,0 +1,14 @@
+[Unit]
+Description=EasyEffects IR Auto-Switcher (PipeWire)
+Documentation=https://github.com/jaakkopasanen/AutoEq
+After=pipewire.service wireplumber.service
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/workspace/.files/config/easyeffects/easyeffects-ir-switcher.sh monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
