@@ -1,4 +1,7 @@
 /** @type {import('next').NextConfig} */
+const isProd = process.env.NODE_ENV === 'production'
+const basePath = isProd ? '/.files' : ''
+
 const nextConfig = {
   output: 'export',
   trailingSlash: true,
@@ -6,8 +9,11 @@ const nextConfig = {
     unoptimized: true,
   },
   // For GitHub Pages deployment
-  basePath: process.env.NODE_ENV === 'production' ? '/.files' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/.files' : '',
+  basePath,
+  assetPrefix: basePath,
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
+  },
 }
 
 module.exports = nextConfig

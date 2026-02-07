@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Header, Footer } from '@/components'
 import { Box, Download } from 'lucide-react'
 import Image from 'next/image'
+import { assetPath } from '@/lib/utils'
 
 const icons = [
   // System
@@ -129,7 +130,7 @@ export default function IconsPage() {
                 {/* Icon Image */}
                 <div className="relative w-12 h-12">
                   <Image
-                    src={`/icons/${icon.file}`}
+                    src={assetPath(`/icons/${icon.file}`)}
                     alt={icon.name}
                     fill
                     className="object-contain"

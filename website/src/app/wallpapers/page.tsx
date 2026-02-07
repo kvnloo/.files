@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Header, Footer } from '@/components'
 import { Image as ImageIcon } from 'lucide-react'
 import Image from 'next/image'
+import { assetPath } from '@/lib/utils'
 
 const wallpapers = [
   // Space
@@ -130,7 +131,7 @@ export default function WallpapersPage() {
                 onClick={() => setSelectedWallpaper(wallpaper)}
               >
                 <Image
-                  src={`/wallpapers/3440x1440/${wallpaper.file}`}
+                  src={assetPath(`/wallpapers/3440x1440/${wallpaper.file}`)}
                   alt={wallpaper.name}
                   fill
                   className="object-cover"
@@ -161,7 +162,7 @@ export default function WallpapersPage() {
             <div className="relative max-w-6xl w-full" onClick={(e) => e.stopPropagation()}>
               <div className="relative aspect-video">
                 <Image
-                  src={`/wallpapers/3440x1440/${selectedWallpaper.file}`}
+                  src={assetPath(`/wallpapers/3440x1440/${selectedWallpaper.file}`)}
                   alt={selectedWallpaper.name}
                   fill
                   className="object-contain"
