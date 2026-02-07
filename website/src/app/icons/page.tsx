@@ -3,20 +3,70 @@
 import { useState } from 'react'
 import { Header, Footer } from '@/components'
 import { Box, Download } from 'lucide-react'
+import Image from 'next/image'
 
 const icons = [
-  { name: 'finder', category: 'system' },
-  { name: 'safari', category: 'productivity' },
-  { name: 'mail', category: 'communication' },
-  { name: 'calendar', category: 'productivity' },
-  { name: 'photos', category: 'media' },
-  { name: 'music', category: 'media' },
-  { name: 'facetime', category: 'communication' },
-  { name: 'messages', category: 'communication' },
-  { name: 'slack', category: 'communication' },
-  { name: 'spotify', category: 'media' },
-  { name: 'steam', category: 'tools' },
-  { name: 'vlc', category: 'media' },
+  // System
+  { name: 'finder', file: 'finder.icns.png', category: 'system' },
+  { name: 'system-preferences', file: 'system-preferences.png', category: 'system' },
+  { name: 'terminal', file: 'terminal.icns.png', category: 'system' },
+  { name: 'automator', file: 'automator.png', category: 'system' },
+  { name: 'calculator', file: 'calculator.png', category: 'system' },
+  { name: 'dictionary', file: 'dictionary.png', category: 'system' },
+  { name: 'font-book', file: 'font-book.png', category: 'system' },
+  // Productivity
+  { name: 'safari', file: 'safari.icns.png', category: 'productivity' },
+  { name: 'safari-alt', file: 'safari-alt.png', category: 'productivity' },
+  { name: 'calendar', file: 'calendar.png', category: 'productivity' },
+  { name: 'contacts', file: 'contacts.icns.png', category: 'productivity' },
+  { name: 'notes', file: 'notes.png', category: 'productivity' },
+  { name: 'maps', file: 'maps.png', category: 'productivity' },
+  { name: 'ibooks', file: 'ibooks.png', category: 'productivity' },
+  { name: 'kindle', file: 'kindle.png', category: 'productivity' },
+  { name: 'google-drive', file: 'google-drive.png', category: 'productivity' },
+  { name: 'google-inbox', file: 'google-inbox.png', category: 'productivity' },
+  { name: 'google-keep', file: 'google_keep.png', category: 'productivity' },
+  // Communication
+  { name: 'mail', file: 'mail.png', category: 'communication' },
+  { name: 'messages', file: 'messages.icns.png', category: 'communication' },
+  { name: 'facetime', file: 'facetime.png', category: 'communication' },
+  { name: 'slack', file: 'slack.icns.png', category: 'communication' },
+  { name: 'skype', file: 'skype.png', category: 'communication' },
+  { name: 'facebook', file: 'facebook.icns.png', category: 'communication' },
+  { name: 'twitter', file: 'twitter.icns.png', category: 'communication' },
+  { name: 'nylas', file: 'nylas.icns.png', category: 'communication' },
+  { name: 'google-voice', file: 'google-voice.png', category: 'communication' },
+  // Media
+  { name: 'photos', file: 'photos.icns.png', category: 'media' },
+  { name: 'camera', file: 'camera.png', category: 'media' },
+  { name: 'camera-app', file: 'camera-app.png', category: 'media' },
+  { name: 'imovie', file: 'imovie.png', category: 'media' },
+  { name: 'spotify', file: 'spotify.icns.png', category: 'media' },
+  { name: 'vlc', file: 'vlc.icns.png', category: 'media' },
+  { name: 'plex', file: 'plex.png', category: 'media' },
+  { name: 'youtube', file: 'youtube.icns.png', category: 'media' },
+  { name: 'dvd', file: 'dvd.png', category: 'media' },
+  // Tools
+  { name: 'app-store', file: 'app-store.png', category: 'tools' },
+  { name: 'xcode', file: 'xcode.icns.png', category: 'tools' },
+  { name: 'sublime-text', file: 'sublime-text.png', category: 'tools' },
+  { name: 'sketch', file: 'sketch.icns.png', category: 'tools' },
+  { name: 'photoshop', file: 'photoshop.icns.png', category: 'tools' },
+  { name: 'photoshop-file', file: 'photoshop-file.png', category: 'tools' },
+  { name: 'steam', file: 'steam.icns.png', category: 'tools' },
+  { name: 'dolphin-emulator', file: 'dolphin-emulator.png', category: 'tools' },
+  { name: 'pokemon-reborn', file: 'pokemon-reborn.png', category: 'tools' },
+  { name: 'opera', file: 'opera.png', category: 'tools' },
+  { name: 'utorrent', file: 'utorrent.png', category: 'tools' },
+  { name: 'purevpn', file: 'purevpn.png', category: 'tools' },
+  { name: 'vnc-viewer', file: 'vnc-viewer.png', category: 'tools' },
+  { name: 'igetter', file: 'igetter.png', category: 'tools' },
+  { name: 'superbeam', file: 'superbeam.png', category: 'tools' },
+  // Microsoft Office
+  { name: 'microsoft-word', file: 'microsoft-word.png', category: 'productivity' },
+  { name: 'microsoft-excel', file: 'microsoft-excel.png', category: 'productivity' },
+  { name: 'microsoft-powerpoint', file: 'microsoft-powerpoint.png', category: 'productivity' },
+  { name: 'microsoft-onenote', file: 'microsoft-onenote.png', category: 'productivity' },
 ]
 
 const categories = ['all', 'system', 'productivity', 'media', 'communication', 'tools']
@@ -36,13 +86,13 @@ export default function IconsPage() {
             <Box size={48} className="text-[#3FB950]" />
             <h1 className="text-5xl font-bold font-mono text-[#E6EDF3]">icon_collection/</h1>
             <p className="text-lg text-[#8B949E] font-[Inter] leading-relaxed max-w-xl">
-              80+ custom macOS application icons with consistent design language. Categories: system, productivity, media, and communication.
+              {icons.length}+ custom macOS application icons with consistent design language. Categories: system, productivity, media, and communication.
             </p>
           </div>
 
           {/* Count Badge */}
           <div className="flex flex-col items-center gap-2 p-6 bg-[#ffffff08] border border-[#3FB95040] rounded-lg">
-            <span className="text-4xl font-bold font-mono text-[#3FB950]">80+</span>
+            <span className="text-4xl font-bold font-mono text-[#3FB950]">{icons.length}+</span>
             <span className="text-xs text-[#8B949E] font-mono">icons</span>
           </div>
         </section>
@@ -74,11 +124,17 @@ export default function IconsPage() {
             {filtered.map((icon) => (
               <div
                 key={icon.name}
-                className="flex flex-col items-center gap-3 p-4 bg-[#161B22] border border-[#30363D] rounded-lg hover:border-[#3FB95050] transition-colors cursor-pointer"
+                className="group flex flex-col items-center gap-3 p-4 bg-[#161B22] border border-[#30363D] rounded-lg hover:border-[#3FB95050] transition-colors cursor-pointer"
               >
-                {/* Icon Placeholder */}
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#21262D] to-[#30363D] flex items-center justify-center">
-                  <Box size={24} className="text-[#6E7681]" />
+                {/* Icon Image */}
+                <div className="relative w-12 h-12">
+                  <Image
+                    src={`/icons/${icon.file}`}
+                    alt={icon.name}
+                    fill
+                    className="object-contain"
+                    sizes="48px"
+                  />
                 </div>
                 <span className="text-[10px] font-mono text-[#8B949E] truncate max-w-full">{icon.name}</span>
               </div>
@@ -92,7 +148,7 @@ export default function IconsPage() {
           <div className="flex items-center justify-between p-6 bg-[#161B22] border border-[#30363D] rounded-lg">
             <div>
               <h3 className="text-lg font-semibold font-mono text-[#E6EDF3] mb-2">Download all icons</h3>
-              <p className="text-sm text-[#8B949E] font-mono">git clone to get all 80+ icons</p>
+              <p className="text-sm text-[#8B949E] font-mono">git clone to get all {icons.length}+ icons</p>
             </div>
             <a
               href="https://github.com/kvnloo/.files/tree/master/icons"
