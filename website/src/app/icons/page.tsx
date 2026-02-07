@@ -77,6 +77,12 @@ export default function IconsPage() {
 
   const filtered = activeCategory === 'all' ? icons : icons.filter((i) => i.category === activeCategory)
 
+  // Count by category for badges
+  const catCounts: Record<string, number> = {}
+  categories.forEach(c => {
+    catCounts[c] = c === 'all' ? icons.length : icons.filter(i => i.category === c).length
+  })
+
   return (
     <>
       <Header />
@@ -101,7 +107,7 @@ export default function IconsPage() {
         {/* Filters */}
         <section className="py-8 px-[120px]">
           <p className="text-sm font-mono text-[#6E7681] mb-4">// filter_by_category</p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -112,7 +118,7 @@ export default function IconsPage() {
                     : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
                 }`}
               >
-                {cat}
+                {cat} ({catCounts[cat]})
               </button>
             ))}
           </div>
@@ -120,7 +126,7 @@ export default function IconsPage() {
 
         {/* Icons Grid */}
         <section className="py-8 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-6">// all_icons</p>
+          <p className="text-sm font-mono text-[#6E7681] mb-6">// showing {filtered.length} icons</p>
           <div className="grid grid-cols-6 gap-4">
             {filtered.map((icon) => (
               <div
