@@ -1,206 +1,139 @@
 'use client'
 
 import { useState } from 'react'
-import { Header, Footer, GlassCard, Filter, Button } from '@/components'
-import { Sparkles, Download, Apple, Info } from 'lucide-react'
+import { Header, Footer } from '@/components'
+import { Box, Download } from 'lucide-react'
 
-// Sample icons organized by category
 const icons = [
-  // System
   { name: 'finder', category: 'system' },
-  { name: 'app-store', category: 'system' },
-  { name: 'automator', category: 'system' },
-  { name: 'calculator', category: 'system' },
-  { name: 'calendar', category: 'productivity' },
-  { name: 'contacts', category: 'productivity' },
-  { name: 'dictionary', category: 'productivity' },
-  { name: 'font-book', category: 'system' },
-  // Media
-  { name: 'camera', category: 'media' },
-  { name: 'camera-app', category: 'media' },
-  { name: 'dvd', category: 'media' },
-  { name: 'imovie', category: 'media' },
-  { name: 'ibooks', category: 'media' },
-  // Communication
-  { name: 'facetime', category: 'communication' },
+  { name: 'safari', category: 'productivity' },
   { name: 'mail', category: 'communication' },
-  { name: 'facebook', category: 'communication' },
-  // Productivity
-  { name: 'google-drive', category: 'productivity' },
-  { name: 'google-inbox', category: 'communication' },
-  { name: 'google-keep', category: 'productivity' },
-  { name: 'google-voice', category: 'communication' },
-  { name: 'kindle', category: 'media' },
-  // Tools
-  { name: 'dolphin-emulator', category: 'tools' },
-  { name: 'igetter', category: 'tools' },
+  { name: 'calendar', category: 'productivity' },
+  { name: 'photos', category: 'media' },
+  { name: 'music', category: 'media' },
+  { name: 'facetime', category: 'communication' },
+  { name: 'messages', category: 'communication' },
+  { name: 'slack', category: 'communication' },
+  { name: 'spotify', category: 'media' },
+  { name: 'steam', category: 'tools' },
+  { name: 'vlc', category: 'media' },
 ]
 
-const categories = [
-  { label: 'All', value: 'all' },
-  { label: 'System', value: 'system' },
-  { label: 'Productivity', value: 'productivity' },
-  { label: 'Media', value: 'media' },
-  { label: 'Communication', value: 'communication' },
-  { label: 'Tools', value: 'tools' },
-]
+const categories = ['all', 'system', 'productivity', 'media', 'communication', 'tools']
 
 export default function IconsPage() {
-  const [category, setCategory] = useState('all')
-  const [selectedIcon, setSelectedIcon] = useState<typeof icons[0] | null>(null)
+  const [activeCategory, setActiveCategory] = useState('all')
 
-  const filteredIcons = category === 'all'
-    ? icons
-    : icons.filter((i) => i.category === category)
+  const filtered = activeCategory === 'all' ? icons : icons.filter((i) => i.category === activeCategory)
 
   return (
     <>
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="container py-16 text-center">
-          <div className="inline-flex items-center gap-3 mb-6">
-            <Sparkles size={48} className="text-[var(--accent-purple)]" />
+        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
+          <div className="flex flex-col gap-6">
+            <Box size={48} className="text-[#3FB950]" />
+            <h1 className="text-5xl font-bold font-mono text-[#E6EDF3]">icon_collection/</h1>
+            <p className="text-lg text-[#8B949E] font-[Inter] leading-relaxed max-w-xl">
+              80+ custom macOS application icons with consistent design language. Categories: system, productivity, media, and communication.
+            </p>
           </div>
-          <h1 className="text-3xl md:text-5xl font-bold font-mono mb-4">
-            icons/
-          </h1>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto mb-8">
-            80+ custom macOS application icons with consistent design language. Perfect replacement icons for your dock.
-          </p>
 
-          {/* macOS Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#8B949E]/20 rounded-full border border-[#8B949E]/30">
-            <Apple size={16} className="text-[#8B949E]" />
-            <span className="font-mono text-sm text-[#8B949E]">macOS Icons</span>
+          {/* Count Badge */}
+          <div className="flex flex-col items-center gap-2 p-6 bg-[#ffffff08] border border-[#3FB95040] rounded-lg">
+            <span className="text-4xl font-bold font-mono text-[#3FB950]">80+</span>
+            <span className="text-xs text-[#8B949E] font-mono">icons</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="container pb-8">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="font-mono text-sm text-[var(--text-muted)]">Category:</span>
-            <Filter options={categories} value={category} onChange={setCategory} />
+        <section className="py-8 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-4">// filter_by_category</p>
+          <div className="flex gap-2">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`px-3 py-1.5 text-xs font-mono transition-colors ${
+                  activeCategory === cat
+                    ? 'bg-[#3FB95020] text-[#3FB950] border border-[#3FB950]'
+                    : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
         </section>
 
         {/* Icons Grid */}
-        <section className="container pb-16">
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4">
-            {filteredIcons.map((icon) => (
+        <section className="py-8 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-6">// all_icons</p>
+          <div className="grid grid-cols-6 gap-4">
+            {filtered.map((icon) => (
               <div
                 key={icon.name}
-                className="group flex flex-col items-center gap-2 p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-muted)] cursor-pointer card-hover"
-                onClick={() => setSelectedIcon(icon)}
+                className="flex flex-col items-center gap-3 p-4 bg-[#161B22] border border-[#30363D] rounded-lg hover:border-[#3FB95050] transition-colors cursor-pointer"
               >
                 {/* Icon Placeholder */}
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent-blue)]/20 to-[var(--accent-purple)]/20 flex items-center justify-center">
-                  <Sparkles size={24} className="text-[var(--accent-blue)]" />
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#21262D] to-[#30363D] flex items-center justify-center">
+                  <Box size={24} className="text-[#6E7681]" />
                 </div>
-                <span className="font-mono text-[10px] text-[var(--text-muted)] truncate max-w-full">
-                  {icon.name}
-                </span>
+                <span className="text-[10px] font-mono text-[#8B949E] truncate max-w-full">{icon.name}</span>
               </div>
             ))}
           </div>
+        </section>
 
-          {filteredIcons.length === 0 && (
-            <div className="text-center py-16">
-              <p className="font-mono text-[var(--text-muted)]">
-                No icons match your filter
-              </p>
+        {/* Quick Install */}
+        <section className="py-12 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-6">// quick_install</p>
+          <div className="flex items-center justify-between p-6 bg-[#161B22] border border-[#30363D] rounded-lg">
+            <div>
+              <h3 className="text-lg font-semibold font-mono text-[#E6EDF3] mb-2">Download all icons</h3>
+              <p className="text-sm text-[#8B949E] font-mono">git clone to get all 80+ icons</p>
             </div>
-          )}
-        </section>
-
-        {/* Installation Instructions */}
-        <section className="container pb-16">
-          <GlassCard hover={false} className="max-w-3xl mx-auto">
-            <div className="flex items-start gap-4 mb-6">
-              <Info size={24} className="text-[var(--accent-blue)] flex-shrink-0 mt-1" />
-              <div>
-                <h2 className="font-mono text-lg font-semibold text-[var(--text-primary)] mb-2">
-                  How to Install Icons on macOS
-                </h2>
-                <p className="font-mono text-sm text-[var(--text-muted)]">
-                  Replace application icons with these custom designs
-                </p>
-              </div>
-            </div>
-
-            <ol className="space-y-4 font-mono text-sm text-[var(--text-secondary)]">
-              <li className="flex gap-3">
-                <span className="text-[var(--accent-blue)]">1.</span>
-                <span>Find the app in <code className="px-1 bg-[var(--bg-tertiary)] rounded">/Applications</code></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[var(--accent-blue)]">2.</span>
-                <span>Right-click → <code className="px-1 bg-[var(--bg-tertiary)] rounded">Get Info</code> (or ⌘+I)</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[var(--accent-blue)]">3.</span>
-                <span>Drag the .icns file onto the icon in the top-left corner</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="text-[var(--accent-blue)]">4.</span>
-                <span>Restart the app or run <code className="px-1 bg-[var(--bg-tertiary)] rounded">killall Dock</code></span>
-              </li>
-            </ol>
-          </GlassCard>
-        </section>
-
-        {/* Download Info */}
-        <section className="container pb-16">
-          <GlassCard hover={false} className="max-w-3xl mx-auto text-center">
-            <Download size={32} className="text-[var(--accent-purple)] mx-auto mb-4" />
-            <h2 className="font-mono text-lg font-semibold text-[var(--text-primary)] mb-4">
-              Download All Icons
-            </h2>
-            <p className="font-mono text-sm text-[var(--text-muted)] mb-6">
-              Clone the repository to get all 80+ icons in .icns and .png formats
-            </p>
-            <code className="block px-4 py-3 bg-[var(--bg-primary)] rounded-md font-mono text-sm text-[var(--text-secondary)] mb-4">
-              git clone https://github.com/kvn/.files.git
-            </code>
-            <p className="font-mono text-xs text-[var(--text-dim)]">
-              Icons are located in /icons/ directory
-            </p>
-          </GlassCard>
-        </section>
-
-        {/* Icon Detail Modal */}
-        {selectedIcon && (
-          <div
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-            onClick={() => setSelectedIcon(null)}
-          >
-            <div
-              className="bg-[var(--bg-secondary)] rounded-xl p-8 max-w-sm w-full"
-              onClick={(e) => e.stopPropagation()}
+            <a
+              href="https://github.com/kvnloo/.files/tree/master/icons"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-[#3FB950] text-[#0D1117] text-sm font-semibold font-mono rounded hover:bg-[#2ea043] transition-colors"
             >
-              {/* Large Icon Preview */}
-              <div className="w-32 h-32 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-[var(--accent-blue)]/20 to-[var(--accent-purple)]/20 flex items-center justify-center">
-                <Sparkles size={64} className="text-[var(--accent-blue)]" />
+              <Download size={16} />
+              <span>Download All</span>
+            </a>
+          </div>
+        </section>
+
+        {/* Installation */}
+        <section className="py-12 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-6">// how_to_use</p>
+          <div className="w-[600px] border border-[#30363D] overflow-hidden rounded-lg">
+            {/* Terminal Header */}
+            <div className="flex items-center gap-2 px-4 py-3 bg-[#161B22]">
+              <div className="w-3 h-3 rounded-full bg-[#F85149]" />
+              <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+              <div className="w-3 h-3 rounded-full bg-[#3FB950]" />
+              <span className="ml-2 text-xs font-mono text-[#8B949E]">terminal</span>
+            </div>
+            {/* Terminal Body */}
+            <div className="flex flex-col gap-2 p-5 bg-[#0D1117]">
+              <div className="flex items-center gap-2">
+                <span className="text-[#6E7681] font-mono text-sm">#</span>
+                <span className="text-[#8B949E] font-mono text-sm">Right-click app → Get Info</span>
               </div>
-
-              <h3 className="font-mono text-xl font-semibold text-[var(--text-primary)] text-center mb-2">
-                {selectedIcon.name}
-              </h3>
-              <p className="font-mono text-sm text-[var(--text-muted)] text-center mb-6 capitalize">
-                {selectedIcon.category}
-              </p>
-
-              <div className="flex gap-3">
-                <Button variant="secondary" className="flex-1" onClick={() => setSelectedIcon(null)}>
-                  Close
-                </Button>
-                <Button variant="primary" className="flex-1" href={`https://github.com/kvn/.files/tree/main/icons`}>
-                  View on GitHub
-                </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-[#6E7681] font-mono text-sm">#</span>
+                <span className="text-[#8B949E] font-mono text-sm">Drag .icns onto icon in top-left</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[#58A6FF] font-mono text-sm">$</span>
+                <span className="text-[#E6EDF3] font-mono text-sm">killall Dock</span>
               </div>
             </div>
           </div>
-        )}
+        </section>
       </main>
       <Footer />
     </>

@@ -1,62 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { Header, Footer, GlassCard, Filter, Button } from '@/components'
-import { Image, Download, Monitor, Maximize2 } from 'lucide-react'
-import Link from 'next/link'
+import { Header, Footer } from '@/components'
+import { Image, Monitor } from 'lucide-react'
 
-// Sample wallpapers organized by category
 const wallpapers = [
-  // Space/Astronomy
-  { name: 'galaxy-spiral-purple', category: 'space', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'ghosts', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  // Nature
-  { name: 'autumn-forest-lake', category: 'nature', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'forest-path-fog', category: 'nature', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'canyon-red-rocks', category: 'nature', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'desert-dunes-golden', category: 'nature', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'landscape-mountain-vista', category: 'nature', resolution: '3440x1440', ext: 'png' },
-  { name: 'lighthouse-coastal-sunset', category: 'nature', resolution: '3440x1440', ext: 'jpg' },
-  // Abstract
-  { name: 'abstract-colorful-shapes', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  { name: 'abstract-geometric-blue', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  { name: 'abstract-pattern-green', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  { name: 'abstract-pink-gradient', category: 'abstract', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'abstract-purple-smoke', category: 'abstract', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'geometric-purple-pattern', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  { name: 'gradient-blue-texture', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  { name: 'low-poly-triangles-colorful-abstract', category: 'abstract', resolution: '3440x1440', ext: 'png' },
-  // Urban
-  { name: 'city-skyline-night', category: 'urban', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'city-buildings-reflection', category: 'urban', resolution: '3440x1440', ext: 'jpg' },
-  { name: 'city-towers', category: 'urban', resolution: '3440x1440', ext: 'jpg' },
+  { name: 'galaxy-spiral-purple', category: 'space', resolution: '3440x1440' },
+  { name: 'autumn-forest-lake', category: 'nature', resolution: '3440x1440' },
+  { name: 'abstract-colorful-shapes', category: 'abstract', resolution: '3440x1440' },
+  { name: 'city-skyline-night', category: 'urban', resolution: '3440x1440' },
+  { name: 'forest-path-fog', category: 'nature', resolution: '3440x1440' },
+  { name: 'geometric-purple-pattern', category: 'abstract', resolution: '3440x1440' },
+  { name: 'canyon-red-rocks', category: 'nature', resolution: '3440x1440' },
+  { name: 'minimalist-mountains-blue', category: 'abstract', resolution: '3440x1440' },
 ]
 
-const resolutions = [
-  { label: 'All', value: 'all' },
-  { label: '2K', value: '2560x1440' },
-  { label: 'Ultrawide', value: '3440x1440' },
-  { label: '4K', value: '3840x2160' },
-  { label: '8K', value: '7680x4320' },
-]
-
-const categories = [
-  { label: 'All', value: 'all' },
-  { label: 'Space', value: 'space' },
-  { label: 'Nature', value: 'nature' },
-  { label: 'Abstract', value: 'abstract' },
-  { label: 'Urban', value: 'urban' },
-]
+const categories = ['all', 'space', 'nature', 'abstract', 'urban', 'gaming']
+const resolutions = ['all', '2K', '3440x1440', '4K', '8K']
 
 export default function WallpapersPage() {
-  const [resolution, setResolution] = useState('all')
-  const [category, setCategory] = useState('all')
-  const [selectedWallpaper, setSelectedWallpaper] = useState<typeof wallpapers[0] | null>(null)
+  const [activeCategory, setActiveCategory] = useState('all')
+  const [activeResolution, setActiveResolution] = useState('all')
 
-  const filteredWallpapers = wallpapers.filter((w) => {
-    const matchesRes = resolution === 'all' || w.resolution === resolution
-    const matchesCat = category === 'all' || w.category === category
-    return matchesRes && matchesCat
+  const filtered = wallpapers.filter((w) => {
+    const matchCat = activeCategory === 'all' || w.category === activeCategory
+    const matchRes = activeResolution === 'all' || w.resolution === activeResolution
+    return matchCat && matchRes
   })
 
   return (
@@ -64,139 +33,103 @@ export default function WallpapersPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="container py-16 text-center">
-          <div className="inline-flex items-center gap-3 mb-6">
-            <Image size={48} className="text-[var(--accent-blue)]" />
+        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
+          <div className="flex flex-col gap-6">
+            <Image size={48} className="text-[#58A6FF]" />
+            <h1 className="text-5xl font-bold font-mono text-[#E6EDF3]">wallpaper_gallery/</h1>
+            <p className="text-lg text-[#8B949E] font-[Inter] leading-relaxed max-w-xl">
+              160+ curated wallpapers across 5 resolutions. From 2K to 8K, space to urban, minimal to vibrant.
+            </p>
           </div>
-          <h1 className="text-3xl md:text-5xl font-bold font-mono mb-4">
-            wallpapers/
-          </h1>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto mb-8">
-            160+ curated wallpapers spanning 5 resolutions from 2K to 8K. Perfect for any display setup.
-          </p>
 
-          {/* Resolution Stats */}
-          <div className="flex flex-wrap justify-center gap-4">
-            {[
-              { res: '2560×1440', label: '2K' },
-              { res: '2800×1800', label: 'Retina' },
-              { res: '3440×1440', label: 'Ultrawide' },
-              { res: '3840×2160', label: '4K' },
-              { res: '7680×4320', label: '8K' },
-            ].map((item) => (
-              <div
-                key={item.res}
-                className="px-4 py-2 bg-[var(--bg-tertiary)] rounded-md border border-[var(--border-default)]"
-              >
-                <span className="font-mono text-xs text-[var(--text-muted)]">
-                  {item.res}
-                </span>
-              </div>
-            ))}
+          {/* Count Badge */}
+          <div className="flex flex-col items-center gap-2 p-6 bg-[#ffffff08] border border-[#58A6FF40] rounded-lg">
+            <span className="text-4xl font-bold font-mono text-[#58A6FF]">160+</span>
+            <span className="text-xs text-[#8B949E] font-mono">wallpapers</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="container pb-8">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+        <section className="py-8 px-[120px]">
+          <div className="flex flex-col gap-4">
+            {/* Category Filter */}
             <div className="flex items-center gap-4">
-              <span className="font-mono text-sm text-[var(--text-muted)]">Resolution:</span>
-              <Filter options={resolutions} value={resolution} onChange={setResolution} />
+              <span className="text-sm font-mono text-[#6E7681] w-20">category:</span>
+              <div className="flex gap-2">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`px-3 py-1.5 text-xs font-mono transition-colors ${
+                      activeCategory === cat
+                        ? 'bg-[#58A6FF20] text-[#58A6FF] border border-[#58A6FF]'
+                        : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
+            {/* Resolution Filter */}
             <div className="flex items-center gap-4">
-              <span className="font-mono text-sm text-[var(--text-muted)]">Category:</span>
-              <Filter options={categories} value={category} onChange={setCategory} />
+              <span className="text-sm font-mono text-[#6E7681] w-20">resolution:</span>
+              <div className="flex gap-2">
+                {resolutions.map((res) => (
+                  <button
+                    key={res}
+                    onClick={() => setActiveResolution(res)}
+                    className={`px-3 py-1.5 text-xs font-mono transition-colors ${
+                      activeResolution === res
+                        ? 'bg-[#58A6FF20] text-[#58A6FF] border border-[#58A6FF]'
+                        : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
+                    }`}
+                  >
+                    {res}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Wallpapers Grid */}
-        <section className="container pb-16">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredWallpapers.map((wallpaper) => (
+        {/* Gallery Grid */}
+        <section className="py-8 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-6">// browse_gallery</p>
+          <div className="grid grid-cols-3 gap-6">
+            {filtered.map((wallpaper) => (
               <div
                 key={wallpaper.name}
-                className="group relative aspect-video rounded-lg overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-muted)] cursor-pointer card-hover"
-                onClick={() => setSelectedWallpaper(wallpaper)}
+                className="group relative aspect-video bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden cursor-pointer hover:border-[#58A6FF50] transition-colors"
               >
-                {/* Placeholder - in production, use actual images */}
-                <div className="w-full h-full bg-gradient-to-br from-[var(--bg-secondary)] to-[var(--bg-tertiary)] flex items-center justify-center">
-                  <Monitor size={32} className="text-[var(--text-dim)]" />
+                {/* Placeholder */}
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#161B22] to-[#21262D]">
+                  <Monitor size={32} className="text-[#30363D]" />
                 </div>
-
                 {/* Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="absolute bottom-0 left-0 right-0 p-3">
-                    <p className="font-mono text-xs text-white truncate">
-                      {wallpaper.name}
-                    </p>
-                    <p className="font-mono text-[10px] text-white/60">
-                      {wallpaper.resolution}
-                    </p>
+                  <div className="absolute bottom-0 left-0 right-0 p-4">
+                    <p className="text-sm font-mono text-white truncate">{wallpaper.name}</p>
+                    <p className="text-xs font-mono text-white/60">{wallpaper.resolution}</p>
                   </div>
-                  <button className="absolute top-2 right-2 p-1.5 bg-white/20 rounded-md hover:bg-white/30 transition-colors">
-                    <Maximize2 size={14} className="text-white" />
-                  </button>
+                </div>
+                {/* Resolution Badge */}
+                <div className="absolute top-3 right-3 px-2 py-1 bg-[#0D1117CC] rounded text-[10px] font-mono text-[#8B949E]">
+                  {wallpaper.resolution}
                 </div>
               </div>
             ))}
           </div>
-
-          {filteredWallpapers.length === 0 && (
-            <div className="text-center py-16">
-              <p className="font-mono text-[var(--text-muted)]">
-                No wallpapers match your filters
-              </p>
-            </div>
-          )}
         </section>
 
-        {/* Download Info */}
-        <section className="container pb-16">
-          <GlassCard hover={false} className="max-w-3xl mx-auto text-center">
-            <Download size={32} className="text-[var(--accent-blue)] mx-auto mb-4" />
-            <h2 className="font-mono text-lg font-semibold text-[var(--text-primary)] mb-4">
-              Download All Wallpapers
-            </h2>
-            <p className="font-mono text-sm text-[var(--text-muted)] mb-6">
-              Clone the repository to get all 160+ wallpapers organized by resolution
-            </p>
-            <code className="block px-4 py-3 bg-[var(--bg-primary)] rounded-md font-mono text-sm text-[var(--text-secondary)] mb-4">
-              git clone https://github.com/kvn/.files.git
-            </code>
-            <p className="font-mono text-xs text-[var(--text-dim)]">
-              Wallpapers are located in /background/{'{resolution}'}/ directory
-            </p>
-          </GlassCard>
-        </section>
-
-        {/* Lightbox Modal */}
-        {selectedWallpaper && (
-          <div
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-            onClick={() => setSelectedWallpaper(null)}
-          >
-            <div className="max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
-              {/* Placeholder for actual image */}
-              <div className="aspect-video bg-[var(--bg-secondary)] rounded-lg flex items-center justify-center mb-4">
-                <Monitor size={64} className="text-[var(--text-dim)]" />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-mono text-lg text-white">
-                    {selectedWallpaper.name}
-                  </p>
-                  <p className="font-mono text-sm text-white/60">
-                    {selectedWallpaper.resolution} • {selectedWallpaper.category}
-                  </p>
-                </div>
-                <Button variant="primary" onClick={() => setSelectedWallpaper(null)}>
-                  Close
-                </Button>
-              </div>
-            </div>
+        {/* Pagination */}
+        <section className="py-8 px-[120px] flex justify-center">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-[#58A6FF]" />
+            <div className="w-2 h-2 rounded-full bg-[#30363D]" />
+            <div className="w-2 h-2 rounded-full bg-[#30363D]" />
           </div>
-        )}
+        </section>
       </main>
       <Footer />
     </>

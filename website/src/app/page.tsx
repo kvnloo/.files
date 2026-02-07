@@ -1,345 +1,328 @@
+'use client'
+
+import { useState } from 'react'
+import { Header, Footer, TerminalBlock } from '@/components'
 import {
-  Header,
-  Footer,
-  GlassCard,
-  TerminalBlock,
-  Button,
-  CountBadge,
-} from '@/components'
-import {
+  FolderTree,
   Palette,
-  Image,
-  Sparkles,
-  Music,
-  Terminal,
-  Settings,
+  Headphones,
   Monitor,
-  Layers,
-  Folder,
+  Terminal,
+  Code,
+  Copy,
+  Check,
+  Search,
+  Github,
 } from 'lucide-react'
 import Link from 'next/link'
 
-const stats = [
-  { count: '72+', label: 'Configs' },
-  { count: '160+', label: 'Wallpapers' },
-  { count: '80+', label: 'Icons' },
-  { count: '10', label: 'Themes' },
-  { count: '3', label: 'Platforms' },
+const showcaseItems = [
+  { id: 1, title: 'Polybar Themes', colors: ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a855f7', '#3b82f6'] },
+  { id: 2, title: 'Wallpapers', colors: ['#0ea5e9', '#8b5cf6', '#ec4899', '#f97316', '#22c55e'] },
+  { id: 3, title: 'Desktop', colors: ['#6366f1', '#14b8a6', '#f43f5e', '#eab308', '#06b6d4'] },
+  { id: 4, title: 'Audio Stack', colors: ['#f59e0b', '#84cc16', '#ef4444', '#8b5cf6', '#06b6d4'] },
+]
+
+const features = [
+  {
+    icon: FolderTree,
+    iconColor: '#58A6FF',
+    title: 'modular_architecture/',
+    description: 'Clean hierarchy with symlink management. Each config is self-contained and independently deployable.',
+    link: '#',
+    linkText: 'Learn more →',
+  },
+  {
+    icon: Palette,
+    iconColor: '#A371F7',
+    title: '10_polybar_themes/',
+    description: 'Handcrafted Polybar themes with Pywal integration. One command to transform your entire desktop aesthetic.',
+    link: '/themes',
+    linkText: 'Browse themes →',
+  },
+  {
+    icon: Headphones,
+    iconColor: '#F59E0B',
+    title: 'audiophile_setup/',
+    description: '98% optimized PipeWire 1.5.85 with bit-perfect playback, AutoEQ convolver, and crossfeed DSP.',
+    link: '/audio',
+    linkText: 'View setup →',
+  },
 ]
 
 const categories = [
   {
     icon: Monitor,
-    title: 'Desktop Environment',
-    description: 'i3 window manager, Polybar, Rofi launcher, Picom compositor, Dunst notifications',
-    href: '/themes',
-    count: 15,
+    iconColor: '#58A6FF',
+    title: 'desktop/',
+    description: 'i3, Polybar, Rofi, Picom, Dunst',
+    files: 15,
     os: ['linux'],
-  },
-  {
-    icon: Palette,
-    title: '10 Polybar Themes',
-    description: 'Complete theme collection with Pywal integration for dynamic color matching',
-    href: '/themes',
-    count: 10,
-    os: ['linux'],
-    featured: true,
-  },
-  {
-    icon: Music,
-    title: 'Audiophile Setup',
-    description: 'PipeWire 1.5.85 bit-perfect audio, WirePlumber DAC rules, EasyEffects + AutoEQ',
-    href: '/audio',
-    count: 11,
-    os: ['linux'],
-    featured: true,
   },
   {
     icon: Terminal,
-    title: 'Shell Environment',
-    description: 'Modular ZSH with oh-my-zsh, Fish shell, Tmux multiplexer, custom aliases',
-    href: '#shell',
-    count: 8,
+    iconColor: '#3FB950',
+    title: 'shell/',
+    description: 'ZSH, Fish, Tmux',
+    files: 8,
     os: ['linux', 'macos'],
   },
   {
-    icon: Settings,
-    title: 'System Services',
-    description: 'Systemd user services, autostart scripts, environment configuration',
-    href: '#system',
-    count: 6,
+    icon: Headphones,
+    iconColor: '#F59E0B',
+    title: 'audio/',
+    description: 'PipeWire, WirePlumber, EasyEffects',
+    files: 11,
     os: ['linux'],
   },
   {
-    icon: Layers,
-    title: 'Development Tools',
-    description: 'Vim/Neovim configs, Git settings, fonts, development environment setup',
-    href: '#dev',
-    count: 12,
+    icon: Code,
+    iconColor: '#A371F7',
+    title: 'dev/',
+    description: 'Vim, Git, Fonts',
+    files: 12,
     os: ['linux', 'macos'],
-  },
-]
-
-const featuresHighlights = [
-  {
-    icon: Folder,
-    title: 'Modular Architecture',
-    description: 'Clean separation of concerns with stow-compatible symlink structure for easy deployment',
-  },
-  {
-    icon: Palette,
-    title: '10 Complete Themes',
-    description: 'Polybar themes with Pywal integration for automatic color matching with wallpapers',
-  },
-  {
-    icon: Music,
-    title: 'Audiophile Audio',
-    description: 'PipeWire bit-perfect setup with DAC-specific rules and headphone correction via AutoEQ',
   },
 ]
 
 export default function HomePage() {
+  const [copied, setCopied] = useState(false)
+  const [activeShowcase, setActiveShowcase] = useState(0)
+  const [activeFilter, setActiveFilter] = useState('all')
+
+  const copyClone = () => {
+    navigator.clipboard.writeText('git clone https://github.com/kvnloo/.files.git')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <>
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero Section */}
-        <section className="container py-16 md:py-24">
-          <div className="text-center max-w-4xl mx-auto">
+        <section className="py-20 px-[120px]">
+          <div className="flex flex-col items-center gap-8">
             {/* Title */}
-            <h1 className="text-4xl md:text-6xl font-bold mb-6">
-              <span className="gradient-text">.files</span>
-              <span className="text-[var(--text-muted)]"> + </span>
-              <span className="text-[var(--text-primary)]">UX</span>
-            </h1>
+            <div className="flex items-center gap-4">
+              <span className="text-[72px] font-bold font-mono text-[#58A6FF]">.</span>
+              <span className="text-[72px] font-bold font-mono text-[#E6EDF3]">files</span>
+              <span className="text-[72px] font-bold font-mono text-[#8B949E]">+</span>
+              <span className="text-[72px] font-bold font-mono bg-gradient-to-b from-[#A371F7] to-[#58A6FF] bg-clip-text text-transparent">UX</span>
+            </div>
 
             {/* Tagline */}
-            <p className="text-lg md:text-xl text-[var(--text-muted)] mb-4">
+            <p className="text-xl text-[#8B949E] text-center font-[Inter]">
               Meticulously Organized Linux Dotfiles & Visual Assets
             </p>
 
-            {/* Subtitle Stats */}
-            <p className="font-mono text-sm text-[var(--text-dim)] mb-8">
-              72+ configs • 160+ wallpapers • 80+ icons • 10 themes
+            {/* Stats inline */}
+            <p className="text-sm text-[#6E7681] font-mono text-center">
+              72+ configs  •  160+ wallpapers  •  80+ icons  •  10 themes
             </p>
 
-            {/* Terminal Block */}
-            <div className="max-w-2xl mx-auto mb-8">
-              <TerminalBlock
-                title="Quick Install"
-                lines={[
-                  { text: '$ git clone https://github.com/kvn/.files.git', type: 'command' },
-                  { text: '$ cd .files && ./install.sh', type: 'command' },
-                  { text: '✓ Installing configurations...', type: 'success' },
-                ]}
-              />
+            {/* Clone Command */}
+            <div className="flex items-center justify-between gap-4 px-6 py-4 bg-[#161B22] border border-[#30363D] rounded-none w-[600px]">
+              <div className="flex items-center gap-3">
+                <span className="text-[#58A6FF] font-mono text-sm">$</span>
+                <span className="text-[#E6EDF3] font-mono text-sm">git clone https://github.com/kvnloo/.files.git</span>
+              </div>
+              <button
+                onClick={copyClone}
+                className="flex items-center gap-2 px-3 py-2 bg-[#21262D] border border-[#30363D] hover:bg-[#30363D] transition-colors"
+              >
+                {copied ? (
+                  <Check size={16} className="text-[#3FB950]" />
+                ) : (
+                  <Copy size={16} className="text-[#8B949E]" />
+                )}
+              </button>
             </div>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-wrap justify-center gap-4">
-              <Button href="https://github.com/kvn/.files" variant="primary">
-                View on GitHub
-              </Button>
-              <Button href="/themes" variant="secondary">
-                Browse Themes
-              </Button>
+            {/* Showcase Carousel */}
+            <div className="w-[900px] p-6 bg-[#ffffff08] border border-[#30363D] rounded-lg backdrop-blur-xl">
+              <div className="grid grid-cols-4 gap-4 h-[240px]">
+                {showcaseItems.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={`flex flex-col gap-3 p-4 bg-[#ffffff05] border border-[#30363D] rounded-lg backdrop-blur-sm cursor-pointer transition-all ${
+                      activeShowcase === index ? 'border-[#58A6FF]' : ''
+                    }`}
+                    onClick={() => setActiveShowcase(index)}
+                  >
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="flex gap-1">
+                        {item.colors.map((color, i) => (
+                          <div
+                            key={i}
+                            className="w-4 h-4 rounded-sm"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono text-[#8B949E] text-center">{item.title}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Dot indicators */}
+              <div className="flex justify-center gap-2 mt-4">
+                {showcaseItems.map((_, index) => (
+                  <div
+                    key={index}
+                    className={`w-2 h-2 rounded-full cursor-pointer ${
+                      activeShowcase === index ? 'bg-[#58A6FF]' : 'bg-[#30363D]'
+                    }`}
+                    onClick={() => setActiveShowcase(index)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
         {/* Stats Bar */}
-        <section className="container py-8">
-          <div className="flex flex-wrap justify-center gap-4 md:gap-8">
-            {stats.map((stat) => (
-              <Link
-                key={stat.label}
-                href={stat.label === 'Configs' ? '#categories' : stat.label === 'Wallpapers' ? '/wallpapers' : stat.label === 'Icons' ? '/icons' : stat.label === 'Themes' ? '/themes' : '#'}
-                className="group"
-              >
-                <CountBadge
-                  count={stat.count}
-                  label={stat.label}
-                  className="group-hover:border-[var(--accent-blue)] transition-colors"
-                />
-              </Link>
-            ))}
+        <section className="flex items-center justify-center gap-12 py-6 px-[120px] bg-[#161B22] border-y border-[#21262D]">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-bold font-mono text-[#E6EDF3]">72+</span>
+            <span className="text-xs text-[#8B949E] font-[Inter]">configs</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-bold font-mono text-[#E6EDF3]">160+</span>
+            <span className="text-xs text-[#8B949E] font-[Inter]">wallpapers</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-bold font-mono text-[#E6EDF3]">80+</span>
+            <span className="text-xs text-[#8B949E] font-[Inter]">icons</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-bold font-mono text-[#58A6FF]">10</span>
+            <span className="text-xs text-[#8B949E] font-[Inter]">themes</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-2xl font-bold font-mono text-[#E6EDF3]">3</span>
+            <span className="text-xs text-[#8B949E] font-[Inter]">platforms</span>
           </div>
         </section>
 
         {/* Feature Highlights */}
-        <section className="container py-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">
-            Why This Setup?
-          </h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            {featuresHighlights.map((feature) => (
-              <GlassCard key={feature.title} hover={false}>
-                <feature.icon
-                  size={40}
-                  className="text-[var(--accent-blue)] mb-4"
-                />
-                <h3 className="font-mono text-lg font-semibold text-[var(--text-primary)] mb-2">
-                  {feature.title}
-                </h3>
-                <p className="font-mono text-sm text-[var(--text-muted)]">
-                  {feature.description}
-                </p>
-              </GlassCard>
-            ))}
-          </div>
-        </section>
-
-        {/* Categories Grid */}
-        <section id="categories" className="container py-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-            Browse Configurations
-          </h2>
-          <p className="text-center text-[var(--text-muted)] mb-12 max-w-2xl mx-auto">
-            Explore organized configuration categories. Each section includes installation commands, feature lists, and detailed documentation.
-          </p>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {categories.map((category) => (
-              <Link key={category.title} href={category.href}>
-                <GlassCard className={category.featured ? 'border-[var(--accent-blue)]/30' : ''}>
-                  <div className="flex items-start justify-between mb-4">
-                    <category.icon
-                      size={32}
-                      className={category.featured ? 'text-[var(--accent-purple)]' : 'text-[var(--accent-blue)]'}
-                    />
-                    <div className="flex gap-1">
-                      {category.os.map((os) => (
-                        <span
-                          key={os}
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
-                            os === 'linux'
-                              ? 'bg-[#D29922]/20 text-[#D29922]'
-                              : os === 'macos'
-                              ? 'bg-[#8B949E]/20 text-[#8B949E]'
-                              : 'bg-[#3FB950]/20 text-[#3FB950]'
-                          }`}
-                        >
-                          {os}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <h3 className="font-mono text-base font-semibold text-[var(--text-secondary)] mb-2">
-                    {category.title}
-                  </h3>
-                  <p className="font-mono text-xs text-[var(--text-muted)] mb-4">
-                    {category.description}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-[var(--accent-blue)]">
-                      {category.count} files →
-                    </span>
-                    {category.featured && (
-                      <Sparkles size={14} className="text-[var(--accent-purple)]" />
-                    )}
-                  </div>
-                </GlassCard>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        {/* Quick Start Section */}
-        <section className="container py-16">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-              Quick Start
-            </h2>
-            <p className="text-center text-[var(--text-muted)] mb-8">
-              Get up and running in minutes with the automated installer
-            </p>
-
-            <TerminalBlock
-              title="install.sh"
-              lines={[
-                { text: '# Clone the repository', type: 'output' },
-                { text: '$ git clone https://github.com/kvn/.files.git ~/.files', type: 'command' },
-                { text: '', type: 'output' },
-                { text: '# Run the installer', type: 'output' },
-                { text: '$ cd ~/.files && ./install.sh', type: 'command' },
-                { text: '', type: 'output' },
-                { text: '# Or install specific modules', type: 'output' },
-                { text: '$ stow -t ~ zsh polybar i3', type: 'command' },
-                { text: '', type: 'output' },
-                { text: '✓ Configurations installed successfully!', type: 'success' },
-              ]}
-            />
-
-            <div className="text-center mt-8">
-              <Button
-                href="https://github.com/kvn/.files#installation"
-                variant="secondary"
+        <section className="py-16 px-[120px]">
+          <p className="text-sm font-mono text-[#6E7681] mb-10">// feature_highlights</p>
+          <div className="grid grid-cols-3 gap-6">
+            {features.map((feature) => (
+              <div
+                key={feature.title}
+                className="flex flex-col gap-5 p-8 bg-[#ffffff05] border border-[#30363D] rounded-lg backdrop-blur-sm"
               >
-                View Full Documentation
-              </Button>
+                <feature.icon size={40} style={{ color: feature.iconColor }} />
+                <h3 className="text-lg font-semibold font-mono text-[#E6EDF3]">{feature.title}</h3>
+                <p className="text-sm text-[#8B949E] font-[Inter] leading-relaxed">{feature.description}</p>
+                <Link href={feature.link} className="flex items-center gap-2 text-sm text-[#58A6FF] font-mono hover:underline">
+                  {feature.linkText}
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Categories */}
+        <section className="py-16 px-[120px]">
+          <div className="flex items-center justify-between mb-8">
+            <p className="text-sm font-mono text-[#6E7681]">// categories</p>
+            <div className="flex items-center gap-4">
+              {['all', 'linux', 'macos'].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-4 py-2 text-sm font-mono rounded-none transition-colors ${
+                    activeFilter === filter
+                      ? 'bg-[#58A6FF20] text-[#58A6FF] border border-[#58A6FF]'
+                      : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#161B22] border border-[#30363D] w-[180px]">
+                <Search size={14} className="text-[#6E7681]" />
+                <input
+                  type="text"
+                  placeholder="search..."
+                  className="bg-transparent text-sm font-mono text-[#E6EDF3] placeholder-[#6E7681] outline-none w-full"
+                />
+              </div>
             </div>
           </div>
+
+          <div className="grid grid-cols-4 gap-5">
+            {categories
+              .filter((cat) => activeFilter === 'all' || cat.os.includes(activeFilter))
+              .map((category) => (
+                <div
+                  key={category.title}
+                  className="flex flex-col gap-4 p-6 bg-[#161B22] border border-[#30363D] rounded-lg backdrop-blur-sm hover:border-[#58A6FF50] transition-colors cursor-pointer"
+                >
+                  <category.icon size={28} style={{ color: category.iconColor }} />
+                  <h3 className="text-base font-semibold font-mono text-[#E6EDF3]">{category.title}</h3>
+                  <p className="text-xs text-[#8B949E] font-[Inter]">{category.description}</p>
+                  <div className="flex items-center gap-2 mt-auto">
+                    {category.os.map((os) => (
+                      <span
+                        key={os}
+                        className={`px-2 py-0.5 text-[10px] font-mono rounded ${
+                          os === 'linux'
+                            ? 'bg-[#D29922]/20 text-[#D29922]'
+                            : 'bg-[#8B949E]/20 text-[#8B949E]'
+                        }`}
+                      >
+                        {os}
+                      </span>
+                    ))}
+                    <span className="ml-auto text-xs font-mono text-[#6E7681]">{category.files} files</span>
+                  </div>
+                </div>
+              ))}
+          </div>
         </section>
 
-        {/* Visual Assets Preview */}
-        <section className="container py-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-4">
-            Visual Assets
-          </h2>
-          <p className="text-center text-[var(--text-muted)] mb-12">
-            Curated wallpapers and custom icons to complete your setup
-          </p>
-
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* Wallpapers Preview */}
-            <Link href="/wallpapers">
-              <GlassCard className="h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <Image size={24} className="text-[var(--accent-blue)]" />
-                  <h3 className="font-mono text-lg font-semibold text-[var(--text-secondary)]">
-                    160+ Wallpapers
-                  </h3>
+        {/* Quick Start */}
+        <section className="py-16 px-[120px] flex flex-col items-center">
+          <p className="text-sm font-mono text-[#6E7681] mb-8 self-start">// quick_start</p>
+          <div className="w-[700px] border border-[#30363D] overflow-hidden">
+            {/* Terminal Header */}
+            <div className="flex items-center gap-2 px-4 py-3 bg-[#161B22]">
+              <div className="w-3 h-3 rounded-full bg-[#F85149]" />
+              <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+              <div className="w-3 h-3 rounded-full bg-[#3FB950]" />
+              <span className="ml-2 text-xs font-mono text-[#8B949E]">terminal</span>
+            </div>
+            {/* Terminal Body */}
+            <div className="flex flex-col gap-4 p-6 bg-[#0D1117]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#6E7681] font-mono text-sm">#</span>
+                  <span className="text-[#8B949E] font-mono text-sm">Clone the repository</span>
                 </div>
-                <p className="font-mono text-sm text-[var(--text-muted)] mb-4">
-                  Curated collection spanning 5 resolutions from 2K to 8K. Categories include space, nature, abstract, gaming, and urban themes.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {['2560×1440', '3440×1440', '3840×2160', '7680×4320'].map((res) => (
-                    <span
-                      key={res}
-                      className="px-2 py-1 bg-[var(--bg-tertiary)] rounded text-[10px] font-mono text-[var(--text-muted)]"
-                    >
-                      {res}
-                    </span>
-                  ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#58A6FF] font-mono text-sm">$</span>
+                  <span className="text-[#E6EDF3] font-mono text-sm">git clone https://github.com/kvnloo/.files.git ~/.files</span>
                 </div>
-              </GlassCard>
-            </Link>
-
-            {/* Icons Preview */}
-            <Link href="/icons">
-              <GlassCard className="h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <Sparkles size={24} className="text-[var(--accent-purple)]" />
-                  <h3 className="font-mono text-lg font-semibold text-[var(--text-secondary)]">
-                    80+ Custom Icons
-                  </h3>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#6E7681] font-mono text-sm">#</span>
+                  <span className="text-[#8B949E] font-mono text-sm">Run the installer</span>
                 </div>
-                <p className="font-mono text-sm text-[var(--text-muted)] mb-4">
-                  Custom macOS application icons with consistent design language. Categories span system, productivity, media, and tools.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {['System', 'Productivity', 'Media', 'Tools'].map((cat) => (
-                    <span
-                      key={cat}
-                      className="px-2 py-1 bg-[var(--bg-tertiary)] rounded text-[10px] font-mono text-[var(--text-muted)]"
-                    >
-                      {cat}
-                    </span>
-                  ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#58A6FF] font-mono text-sm">$</span>
+                  <span className="text-[#E6EDF3] font-mono text-sm">cd ~/.files && ./install.sh</span>
                 </div>
-              </GlassCard>
-            </Link>
+              </div>
+            </div>
           </div>
         </section>
       </main>
