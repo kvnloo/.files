@@ -1,0 +1,15 @@
+[Unit]
+Description=EasyEffects Audio DSP (PipeWire)
+Documentation=https://github.com/wwmm/easyeffects
+After=pipewire.service wireplumber.service
+Wants=pipewire.service
+Before=easyeffects-ir-switcher.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/easyeffects --gapplication-service
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

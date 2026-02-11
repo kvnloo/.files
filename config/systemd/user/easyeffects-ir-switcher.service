@@ -1,8 +1,9 @@
 [Unit]
 Description=EasyEffects IR Auto-Switcher (PipeWire)
 Documentation=https://github.com/jaakkopasanen/AutoEq
-After=pipewire.service wireplumber.service
+After=pipewire.service wireplumber.service easyeffects.service
 Wants=pipewire.service
+Requires=easyeffects.service
 
 [Service]
 Type=simple
