@@ -1,5 +1,6 @@
-import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, SPATIAL_SINK_NAMES, EQ_PROFILES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
+import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, SPATIAL_SINK_NAMES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
 import { buildLinks, rewriteConfigLinks } from './chain-builder';
+import { getProfileFilePattern } from '../autoeq/profiles';
 
 const AUTOEQ_DIR = '/home/kvn/workspace/.files/config/autoeq';
 const BRIR_DIR = '/home/kvn/workspace/.files/config/brir';
@@ -105,12 +106,13 @@ export async function setSpatialMode(mode: SpatialMode): Promise<void> {
 export async function getActiveEqProfile(): Promise<EqProfile> {
   const link = `${AUTOEQ_DIR}/active_44100Hz.wav`;
   try {
-    const target = await Bun.file(link).text().catch(() => '');
-    // Actually read the symlink
     const { stdout } = await run(['readlink', link]);
     const resolved = stdout.trim();
     if (resolved.includes('Monarch')) return 'monarch';
     if (resolved.includes('HD800')) return 'hd800s';
+    // Custom profile: symlink target is "{id}/{id} minimum phase {rate}Hz.wav"
+    const match = resolved.match(/^([^/]+)\//);
+    if (match) return match[1];
   } catch {
     // fallback
   }
@@ -119,10 +121,13 @@ export async function getActiveEqProfile(): Promise<EqProfile> {
 
 /** Switch EQ profile by updating symlinks */
 export async function setEqProfile(profile: EqProfile): Promise<void> {
-  const info = EQ_PROFILES[profile];
+  const filePattern = await getProfileFilePattern(profile);
+  if (!filePattern) {
+    throw new Error(`Unknown profile: ${profile}`);
+  }
   for (const rate of SAMPLE_RATES) {
     const linkPath = `${AUTOEQ_DIR}/active_${rate}Hz.wav`;
-    const target = info.filePattern(rate);
+    const target = filePattern(rate);
     const { exitCode } = await run(['ln', '-sf', target, linkPath]);
     if (exitCode !== 0) {
       throw new Error(`Failed to create symlink for ${rate}Hz`);

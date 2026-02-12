@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId } from '@aural/shared';
+import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId, InstalledProfile, HeadphoneSearchResult } from '@aural/shared';
 import { dspStages } from '$lib/content/dsp-stages';
 import type { DspStageId } from '@aural/shared';
 
@@ -15,6 +15,7 @@ export const spatialMode = derived(dspState, ($s) => $s?.spatialMode ?? 'clean')
 export const eqProfile = derived(dspState, ($s) => $s?.eqProfile ?? 'monarch');
 export const brirRoom = derived(dspState, ($s) => $s?.brirRoom ?? 'R02');
 export const mbcEnabled = derived(dspState, ($s) => $s?.mbcEnabled ?? false);
+export const profiles = derived(dspState, ($s) => $s?.profiles ?? []);
 
 export const bypassed = derived(dspState, ($s) => $s?.bypassed ?? []);
 
@@ -44,9 +45,14 @@ export const fullChain = derived(dspState, ($s): DspStageId[] => {
 });
 
 // ─── API Actions ─────────────────────────────────────────────────
-async function apiCall<T = void>(path: string, method = 'POST'): Promise<ApiResponse<T>> {
+async function apiCall<T = void>(path: string, method = 'POST', body?: unknown): Promise<ApiResponse<T>> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, { method });
+    const opts: RequestInit = { method };
+    if (body !== undefined) {
+      opts.headers = { 'Content-Type': 'application/json' };
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(`${API_BASE}${path}`, opts);
     return await res.json();
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Network error' };
@@ -118,6 +124,40 @@ export async function toggleBypass(stageId: BypassableStageId): Promise<void> {
   if (!res.ok) {
     error.set(res.error ?? 'Failed to toggle bypass');
     await fetchState();
+  }
+  loading.set(false);
+}
+
+// ─── Headphone Search & Install ──────────────────────────────────
+
+export async function searchHeadphones(query: string): Promise<HeadphoneSearchResult[]> {
+  const res = await apiCall<HeadphoneSearchResult[]>(`/headphones/search?q=${encodeURIComponent(query)}`, 'GET');
+  return res.ok && res.data ? res.data : [];
+}
+
+export async function installHeadphone(source: string, rig: string, model: string): Promise<InstalledProfile | null> {
+  loading.set(true);
+  error.set(null);
+  const res = await apiCall<InstalledProfile>('/headphones/install', 'POST', { source, rig, model });
+  if (res.ok && res.data) {
+    // Refresh state to pick up new profile
+    await fetchState();
+    loading.set(false);
+    return res.data;
+  }
+  error.set(res.error ?? 'Failed to install headphone profile');
+  loading.set(false);
+  return null;
+}
+
+export async function removeHeadphone(id: string): Promise<void> {
+  loading.set(true);
+  error.set(null);
+  const res = await apiCall(`/headphones/${id}`, 'DELETE');
+  if (res.ok) {
+    await fetchState();
+  } else {
+    error.set(res.error ?? 'Failed to remove headphone profile');
   }
   loading.set(false);
 }

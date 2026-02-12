@@ -3,6 +3,7 @@
   import ChainFlow from '$lib/components/chain/ChainFlow.svelte';
   import SpatialSelector from '$lib/components/controls/SpatialSelector.svelte';
   import HeadphoneSelector from '$lib/components/controls/HeadphoneSelector.svelte';
+  import HeadphoneSearch from '$lib/components/controls/HeadphoneSearch.svelte';
   import Guide from '$lib/components/learn/Guide.svelte';
   import AudioStackBadge from '$lib/components/stack/AudioStackBadge.svelte';
   import AudioStackModal from '$lib/components/stack/AudioStackModal.svelte';
@@ -61,6 +62,8 @@
       <!-- Left: Controls -->
       <div class="glass rounded-xl p-4 space-y-5 overflow-y-auto">
         <SpatialSelector />
+        <div class="border-t border-border/50"></div>
+        <HeadphoneSearch />
         <div class="border-t border-border/50"></div>
         <HeadphoneSelector />
       </div>

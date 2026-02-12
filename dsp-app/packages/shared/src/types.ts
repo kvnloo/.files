@@ -8,10 +8,13 @@ export const SPATIAL_SINK_NAMES: Record<SpatialMode, string> = {
 };
 
 // ─── EQ Profiles ─────────────────────────────────────────────────
-export type EqProfile = 'monarch' | 'hd800s';
+/** Profile ID — builtin string literals or any custom string */
+export type EqProfile = string;
+
+export type BuiltinEqProfile = 'monarch' | 'hd800s';
 
 export interface EqProfileInfo {
-  id: EqProfile;
+  id: string;
   name: string;
   fullName: string;
   target: string;
@@ -19,7 +22,7 @@ export interface EqProfileInfo {
   filePattern: (rate: number) => string;
 }
 
-export const EQ_PROFILES: Record<EqProfile, EqProfileInfo> = {
+export const BUILTIN_EQ_PROFILES: Record<BuiltinEqProfile, EqProfileInfo> = {
   monarch: {
     id: 'monarch',
     name: 'Monarch MKII',
@@ -37,6 +40,30 @@ export const EQ_PROFILES: Record<EqProfile, EqProfileInfo> = {
     filePattern: (rate) => `Sennheiser HD800 minimum phase ${rate} Hz.wav`,
   },
 };
+
+/** @deprecated Use BUILTIN_EQ_PROFILES — kept for backward compat */
+export const EQ_PROFILES = BUILTIN_EQ_PROFILES;
+
+/** A headphone profile installed on this system (builtin or custom) */
+export interface InstalledProfile {
+  id: string;
+  name: string;
+  fullName: string;
+  target: string;
+  character: string;
+  builtin: boolean;
+  /** Measurement source (e.g. "crinacle", "oratory1990") */
+  source?: string;
+  /** Measurement rig (e.g. "GRAS 43AG-7") */
+  rig?: string;
+}
+
+/** Search result from AutoEQ measurement index */
+export interface HeadphoneSearchResult {
+  source: string;
+  rig: string;
+  model: string;
+}
 
 export const SAMPLE_RATES = [44100, 48000, 96000, 192000, 384000] as const;
 export type SampleRate = (typeof SAMPLE_RATES)[number];
@@ -125,6 +152,8 @@ export interface DspState {
   limiter: LimiterState;
   /** Stages currently bypassed by the user */
   bypassed: BypassableStageId[];
+  /** All installed headphone profiles (builtin + custom) */
+  profiles: InstalledProfile[];
 }
 
 // ─── Stage Bypass ────────────────────────────────────────────────
