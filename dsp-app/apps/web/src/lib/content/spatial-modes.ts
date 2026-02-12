@@ -12,6 +12,7 @@ export interface SpatialModeContent {
     fatigue: { score: number; label: string };
   };
   icon: string;
+  vocabulary: string[];
 }
 
 export const spatialModes: Record<SpatialMode, SpatialModeContent> = {
@@ -19,6 +20,7 @@ export const spatialModes: Record<SpatialMode, SpatialModeContent> = {
     name: 'Pure Stereo',
     tagline: 'The recording, unaltered',
     icon: '◎',
+    vocabulary: ['Imaging', 'Stereo separation', 'Transient', 'Micro-detail', 'Channel isolation'],
     description:
       'No spatial processing. Each ear receives exactly what the mixing engineer intended. Maximum detail retrieval and transient precision.',
     listenFor: [
@@ -38,6 +40,7 @@ export const spatialModes: Record<SpatialMode, SpatialModeContent> = {
     name: 'Crossfeed',
     tagline: 'Speaker-like intimacy',
     icon: '◉',
+    vocabulary: ['Crossfeed', 'Externalization', 'Inter-aural crosstalk', 'Intimacy'],
     description:
       'bs2b crossfeed blends a touch of each channel into the other, mimicking how speakers naturally mix in a room. The Jan Meier preset (700 Hz, 4.5 dB) is tuned for natural vocal presence.',
     listenFor: [
@@ -57,6 +60,7 @@ export const spatialModes: Record<SpatialMode, SpatialModeContent> = {
     name: 'Room Simulation',
     tagline: 'A seat in the control room',
     icon: '◈',
+    vocabulary: ['BRIR', 'Early reflections', 'RT60', 'Externalization', 'Convolution'],
     description:
       'ASH Binaural Room Impulse Response places you in a real, measured acoustic space. True stereo convolution creates authentic reflections, distance cues, and room ambience.',
     listenFor: [

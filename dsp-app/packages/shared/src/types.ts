@@ -123,7 +123,13 @@ export interface DspState {
   mbcBands: MbcBand[];
   loudness: LoudnessState;
   limiter: LimiterState;
+  /** Stages currently bypassed by the user */
+  bypassed: BypassableStageId[];
 }
+
+// ─── Stage Bypass ────────────────────────────────────────────────
+/** Stages that can be individually bypassed (AutoEQ + Limiter are always on) */
+export type BypassableStageId = 'crossfeed' | 'brir' | 'loudness' | 'mbc';
 
 // ─── Signal Chain Node ───────────────────────────────────────────
 export type DspStageId = 'autoeq' | 'crossfeed' | 'brir' | 'loudness' | 'mbc' | 'limiter';

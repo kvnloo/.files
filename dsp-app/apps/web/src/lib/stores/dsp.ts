@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse } from '@aural/shared';
+import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId } from '@aural/shared';
 import { dspStages } from '$lib/content/dsp-stages';
 import type { DspStageId } from '@aural/shared';
 
@@ -16,8 +16,23 @@ export const eqProfile = derived(dspState, ($s) => $s?.eqProfile ?? 'monarch');
 export const brirRoom = derived(dspState, ($s) => $s?.brirRoom ?? 'R02');
 export const mbcEnabled = derived(dspState, ($s) => $s?.mbcEnabled ?? false);
 
-/** Active signal chain stages for the current spatial mode */
+export const bypassed = derived(dspState, ($s) => $s?.bypassed ?? []);
+
+/** Active signal chain stages for the current spatial mode (respects bypass) */
 export const activeChain = derived(dspState, ($s): DspStageId[] => {
+  if (!$s) return [];
+  const bp = new Set($s.bypassed ?? []);
+  const chain: DspStageId[] = ['autoeq'];
+  if ($s.spatialMode === 'crossfeed' && !bp.has('crossfeed')) chain.push('crossfeed');
+  if ($s.spatialMode === 'room' && !bp.has('brir')) chain.push('brir');
+  if (!bp.has('loudness')) chain.push('loudness');
+  if ($s.mbcEnabled && !bp.has('mbc')) chain.push('mbc');
+  chain.push('limiter');
+  return chain;
+});
+
+/** Full chain including bypassed stages (for showing greyed-out nodes) */
+export const fullChain = derived(dspState, ($s): DspStageId[] => {
   if (!$s) return [];
   const chain: DspStageId[] = ['autoeq'];
   if ($s.spatialMode === 'crossfeed') chain.push('crossfeed');
@@ -82,6 +97,26 @@ export async function switchBrirRoom(room: BrirRoom): Promise<void> {
   const res = await apiCall(`/brir/${room}`);
   if (!res.ok) {
     error.set(res.error ?? 'Failed to switch BRIR room');
+    await fetchState();
+  }
+  loading.set(false);
+}
+
+export async function toggleBypass(stageId: BypassableStageId): Promise<void> {
+  loading.set(true);
+  error.set(null);
+  // Optimistic update
+  dspState.update((s) => {
+    if (!s) return s;
+    const current = s.bypassed ?? [];
+    const next = current.includes(stageId)
+      ? current.filter((id) => id !== stageId)
+      : [...current, stageId];
+    return { ...s, bypassed: next };
+  });
+  const res = await apiCall<BypassableStageId[]>(`/bypass/${stageId}`);
+  if (!res.ok) {
+    error.set(res.error ?? 'Failed to toggle bypass');
     await fetchState();
   }
   loading.set(false);

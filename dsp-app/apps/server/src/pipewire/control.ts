@@ -1,8 +1,44 @@
-import { type SpatialMode, type EqProfile, type BrirRoom, SPATIAL_SINK_NAMES, EQ_PROFILES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
+import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, SPATIAL_SINK_NAMES, EQ_PROFILES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
+import { buildLinks, rewriteConfigLinks } from './chain-builder';
 
 const AUTOEQ_DIR = '/home/kvn/workspace/.files/config/autoeq';
 const BRIR_DIR = '/home/kvn/workspace/.files/config/brir';
 const DSP_CONFIG = '/home/kvn/workspace/.files/config/pipewire/pipewire.conf.d/10-headphone-dsp.conf';
+
+/** In-memory bypass state (persists across requests, reset on server restart) */
+const bypassedStages = new Set<BypassableStageId>();
+
+export function getBypassed(): BypassableStageId[] {
+  return [...bypassedStages];
+}
+
+const SINK_DESCRIPTIONS: Record<SpatialMode, string> = {
+  clean: 'Headphone DSP',
+  crossfeed: 'Headphone DSP + Crossfeed',
+  room: 'Headphone DSP + Room',
+};
+
+/** Toggle a stage bypass and rewrite the active sink's filter chain */
+export async function toggleStageBypass(
+  stageId: BypassableStageId,
+  spatialMode: SpatialMode,
+): Promise<void> {
+  if (bypassedStages.has(stageId)) {
+    bypassedStages.delete(stageId);
+  } else {
+    bypassedStages.add(stageId);
+  }
+
+  const newLinks = buildLinks(spatialMode, bypassedStages);
+  let config = await Bun.file(DSP_CONFIG).text();
+  const desc = SINK_DESCRIPTIONS[spatialMode];
+  config = rewriteConfigLinks(config, desc, newLinks);
+  await Bun.write(DSP_CONFIG, config);
+  await restartPipeWire();
+
+  // Re-set the default sink after restart (IDs change)
+  await setSpatialMode(spatialMode);
+}
 
 async function run(cmd: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' });
@@ -29,24 +65,27 @@ async function findSinkId(nodeName: string): Promise<number | null> {
 /** Get the currently active (default) sink */
 export async function getActiveSink(): Promise<SpatialMode> {
   const { stdout } = await run(['wpctl', 'status']);
-  // The default sink has an asterisk (*) in wpctl status
-  for (const [mode, name] of Object.entries(SPATIAL_SINK_NAMES)) {
-    // Match the node description from the config
-    const descriptions: Record<string, string> = {
-      clean: 'Headphone DSP',
-      crossfeed: 'Headphone DSP + Crossfeed',
-      room: 'Headphone DSP + Room',
-    };
-    const desc = descriptions[mode];
-    // Look for the asterisk marker near the sink name
-    const lines = stdout.split('\n');
-    for (const line of lines) {
-      if (line.includes('*') && line.includes(desc)) {
-        return mode as SpatialMode;
-      }
+
+  // The Settings section at the bottom shows:
+  //   0. Audio/Sink    effect_input.headphone_dsp_room
+  const settingsMatch = stdout.match(/Audio\/Sink\s+(\S+)/);
+  if (settingsMatch) {
+    const defaultName = settingsMatch[1];
+    for (const [mode, sinkName] of Object.entries(SPATIAL_SINK_NAMES)) {
+      if (defaultName === sinkName) return mode as SpatialMode;
     }
   }
-  return 'clean'; // default fallback
+
+  // Fallback: look for the * marker in Filters section next to the node name
+  // Lines look like: │  *   42. effect_input.headphone_dsp_room   [Audio/Sink]
+  for (const [mode, sinkName] of Object.entries(SPATIAL_SINK_NAMES)) {
+    const escaped = sinkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\*.*${escaped}`).test(stdout)) {
+      return mode as SpatialMode;
+    }
+  }
+
+  return 'clean';
 }
 
 /** Switch the active PipeWire sink to a spatial mode */

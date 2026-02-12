@@ -4,8 +4,12 @@
   import SpatialSelector from '$lib/components/controls/SpatialSelector.svelte';
   import HeadphoneSelector from '$lib/components/controls/HeadphoneSelector.svelte';
   import Guide from '$lib/components/learn/Guide.svelte';
+  import AudioStackBadge from '$lib/components/stack/AudioStackBadge.svelte';
+  import AudioStackModal from '$lib/components/stack/AudioStackModal.svelte';
   import { dspState, loading, error } from '$lib/stores/dsp';
   import { spectrumConnected } from '$lib/stores/spectrum';
+
+  let stackModalOpen = $state(false);
 </script>
 
 <svelte:head>
@@ -26,7 +30,7 @@
         <span class="text-[10px] text-red-400/80">{$error}</span>
       {/if}
       <div class="flex items-center gap-1.5">
-        <div class="w-1.5 h-1.5 rounded-full {$spectrumConnected ? 'bg-green-500/80' : 'bg-text-tertiary/40'}"></div>
+        <div class="w-1.5 h-1.5 rounded-full {$spectrumConnected ? 'bg-green-500/80 animate-breathe' : 'bg-text-tertiary/40'}"></div>
         <span class="text-[10px] text-text-tertiary font-mono">
           {$spectrumConnected ? 'live' : 'offline'}
         </span>
@@ -40,6 +44,11 @@
     <section class="h-40 md:h-52 shrink-0 glass rounded-xl overflow-hidden">
       <Spectrum />
     </section>
+
+    <!-- Audio Stack Badge — persistent status strip -->
+    {#if $dspState}
+      <AudioStackBadge onopen={() => stackModalOpen = true} />
+    {/if}
 
     <!-- Signal Chain Flow — Interactive node graph -->
     <section class="relative shrink-0">
@@ -70,5 +79,9 @@
         {/if}
       </div>
     </section>
+
   </main>
 </div>
+
+<!-- Audio Stack Modal — full stack detail overlay -->
+<AudioStackModal bind:open={stackModalOpen} />

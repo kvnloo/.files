@@ -37,33 +37,36 @@
   <div class="space-y-2">
     <div class="text-xs font-medium text-text-tertiary">Characteristics</div>
 
-    <div class="grid gap-1.5">
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="text-text-tertiary w-20">Soundstage</span>
+    <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 max-w-sm">
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="text-text-tertiary w-[70px] shrink-0">Soundstage</span>
         <span class="font-mono text-amber-dim tracking-widest">{charBar(currentMode.characteristics.soundstage.width)}</span>
-        <span class="text-text-tertiary text-[10px] w-28 text-right">{currentMode.characteristics.soundstage.label}</span>
       </div>
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="text-text-tertiary w-20">Detail</span>
+      <span class="text-text-tertiary text-[10px]">{currentMode.characteristics.soundstage.label}</span>
+
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="text-text-tertiary w-[70px] shrink-0">Detail</span>
         <span class="font-mono text-amber-dim tracking-widest">{charBar(currentMode.characteristics.detail.score)}</span>
-        <span class="text-text-tertiary text-[10px] w-28 text-right">{currentMode.characteristics.detail.label}</span>
       </div>
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="text-text-tertiary w-20">Naturalness</span>
+      <span class="text-text-tertiary text-[10px]">{currentMode.characteristics.detail.label}</span>
+
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="text-text-tertiary w-[70px] shrink-0">Naturalness</span>
         <span class="font-mono text-amber-dim tracking-widest">{charBar(currentMode.characteristics.naturalness.score)}</span>
-        <span class="text-text-tertiary text-[10px] w-28 text-right">{currentMode.characteristics.naturalness.label}</span>
       </div>
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="text-text-tertiary w-20">Fatigue</span>
+      <span class="text-text-tertiary text-[10px]">{currentMode.characteristics.naturalness.label}</span>
+
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="text-text-tertiary w-[70px] shrink-0">Fatigue</span>
         <span class="font-mono text-amber-dim tracking-widest">{charBar(currentMode.characteristics.fatigue.score)}</span>
-        <span class="text-text-tertiary text-[10px] w-28 text-right">{currentMode.characteristics.fatigue.label}</span>
       </div>
+      <span class="text-text-tertiary text-[10px]">{currentMode.characteristics.fatigue.label}</span>
     </div>
   </div>
 
   <!-- Vocabulary badges -->
   <div class="flex flex-wrap gap-1.5 pt-1">
-    {#each ['Soundstage', 'Imaging', 'Externalization'] as term}
+    {#each currentMode.vocabulary as term}
       <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-ghost text-amber-warm border border-amber-dim/20 cursor-help"
             title="Click to learn more">
         {term}

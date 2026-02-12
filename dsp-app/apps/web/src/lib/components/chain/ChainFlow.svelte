@@ -1,9 +1,13 @@
 <script lang="ts">
-  import { activeChain, dspState } from '$lib/stores/dsp';
+  import { fullChain, activeChain, dspState, bypassed, toggleBypass } from '$lib/stores/dsp';
   import { dspStages } from '$lib/content/dsp-stages';
-  import type { DspStageId } from '@aural/shared';
+  import { audioStack } from '$lib/content/audio-stack';
+  import type { DspStageId, BypassableStageId } from '@aural/shared';
+
+  const BYPASSABLE: BypassableStageId[] = ['crossfeed', 'brir', 'loudness', 'mbc'];
 
   let expandedStage: DspStageId | null = $state(null);
+  let contextMenu: { x: number; y: number; stageId: DspStageId } | null = $state(null);
 
   function toggleStage(id: DspStageId) {
     expandedStage = expandedStage === id ? null : id;
@@ -23,19 +27,46 @@
     }
   }
 
+  function isBypassed(stageId: DspStageId): boolean {
+    return ($bypassed ?? []).includes(stageId as BypassableStageId);
+  }
+
+  function canBypass(stageId: DspStageId): boolean {
+    return BYPASSABLE.includes(stageId as BypassableStageId);
+  }
+
+  function handleContextMenu(e: MouseEvent, stageId: DspStageId) {
+    if (!canBypass(stageId)) return;
+    e.preventDefault();
+    contextMenu = { x: e.clientX, y: e.clientY, stageId };
+  }
+
+  function handleBypassClick(stageId: DspStageId) {
+    contextMenu = null;
+    toggleBypass(stageId as BypassableStageId);
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
   let expandedContent = $derived(expandedStage ? dspStages[expandedStage] : null);
+  let expandedPlugin = $derived(expandedStage ? audioStack.plugins[expandedStage] : null);
 </script>
+
+<svelte:window onclick={closeContextMenu} />
 
 <div class="relative">
   <!-- Chain node row -->
   <div class="flex items-center gap-2 overflow-x-auto py-4 px-2 scrollbar-none">
-    {#each $activeChain as stageId, i (stageId)}
+    {#each $fullChain as stageId, i (stageId)}
       {@const stage = dspStages[stageId]}
       {@const isExpanded = expandedStage === stageId}
+      {@const isBp = isBypassed(stageId)}
 
       {#if i > 0}
         <div class="flex items-center shrink-0">
-          <svg width="24" height="12" viewBox="0 0 24 12" class="text-amber-dim">
+          <svg width="24" height="12" viewBox="0 0 24 12" class="{isBp ? 'text-text-tertiary/30' : 'text-amber-dim'}">
             <line x1="0" y1="6" x2="18" y2="6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
             <polygon points="17,2 23,6 17,10" fill="currentColor" />
           </svg>
@@ -44,19 +75,56 @@
 
       <button
         onclick={() => toggleStage(stageId)}
+        oncontextmenu={(e) => handleContextMenu(e, stageId)}
         class="group relative shrink-0 glass rounded-lg px-4 py-3 transition-all duration-300 cursor-pointer
-               hover:border-amber-dim/50 {isExpanded ? 'glow-amber border-amber-dim/40' : ''}"
+               hover:border-amber-dim/50 {isExpanded ? 'glow-amber border-amber-dim/40' : ''}
+               {isBp ? 'opacity-35 border-dashed !border-text-tertiary/30' : ''}"
         style="--stage-color: {stage.color}"
       >
         <!-- Active indicator dot -->
-        <div class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-pulse-glow"
-             style="background: {stage.color}"></div>
+        {#if !isBp}
+          <div class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full animate-pulse-glow"
+               style="background: {stage.color}"></div>
+        {/if}
 
-        <div class="text-xs font-medium text-text-primary">{stage.shortName}</div>
-        <div class="text-[10px] text-text-tertiary mt-0.5 font-mono">{getStageLabel(stageId)}</div>
+        <div class="text-xs font-medium {isBp ? 'text-text-tertiary line-through' : 'text-text-primary'}">{stage.shortName}</div>
+        <div class="text-[10px] text-text-tertiary mt-0.5 font-mono">{isBp ? 'bypassed' : getStageLabel(stageId)}</div>
+
+        {#if canBypass(stageId)}
+          <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] text-text-tertiary/0 group-hover:text-text-tertiary/60 transition-all">
+            right-click
+          </div>
+        {/if}
       </button>
     {/each}
   </div>
+
+  <!-- Context menu -->
+  {#if contextMenu}
+    {@const isBp = isBypassed(contextMenu.stageId)}
+    <div
+      class="fixed z-50 glass rounded-lg border border-amber-dim/30 shadow-xl shadow-black/60 py-1 min-w-[160px]"
+      style="left: {contextMenu.x}px; top: {contextMenu.y}px"
+      role="menu"
+    >
+      <button
+        class="w-full text-left px-3 py-2 text-xs hover:bg-amber-ghost/30 transition-colors cursor-pointer flex items-center gap-2"
+        onclick={() => handleBypassClick(contextMenu!.stageId)}
+        role="menuitem"
+      >
+        {#if isBp}
+          <span class="text-green-400">&#10003;</span>
+          <span class="text-text-secondary">Enable {dspStages[contextMenu.stageId].shortName}</span>
+        {:else}
+          <span class="text-red-400">&#10007;</span>
+          <span class="text-text-secondary">Bypass {dspStages[contextMenu.stageId].shortName}</span>
+        {/if}
+      </button>
+      <div class="px-3 py-1.5 text-[10px] text-text-tertiary border-t border-surface-2/50">
+        Rewrites PipeWire filter chain in real-time
+      </div>
+    </div>
+  {/if}
 
   <!-- Expanded detail panel — rendered outside the flex row -->
   {#if expandedContent}
@@ -100,6 +168,30 @@
           <div class="text-text-secondary">{stage.tradeoff.sacrifice}</div>
         </div>
       </div>
+
+      <!-- Audio Stack — plugin details -->
+      {#if expandedPlugin}
+        {@const plugin = expandedPlugin}
+        <div class="mt-4 pt-3 border-t border-border/30">
+          <div class="text-[10px] font-medium text-amber-dim uppercase tracking-wider mb-2">Audio Stack</div>
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="text-xs text-text-primary font-medium">{plugin.pluginName}</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-surface-2/80 text-text-tertiary font-mono">
+              {plugin.pluginType === 'lv2' ? 'LV2' : plugin.pluginType === 'ladspa' ? 'LADSPA' : 'Built-in'}
+            </span>
+          </div>
+          <div class="text-[10px] text-text-tertiary mb-2">{plugin.developer}</div>
+          <p class="text-[11px] text-text-secondary leading-relaxed mb-2">{plugin.whyChosen}</p>
+          <div class="grid grid-cols-2 gap-1.5">
+            {#each plugin.keyParameters as param}
+              <div class="bg-surface-0/50 rounded px-2 py-1">
+                <span class="text-[9px] text-text-tertiary">{param.name}:</span>
+                <span class="text-[10px] text-text-primary font-mono ml-1">{param.value}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

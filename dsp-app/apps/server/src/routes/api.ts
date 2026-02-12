@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { DspState, ApiResponse, SpatialMode, EqProfile, BrirRoom } from '@aural/shared';
+import type { DspState, ApiResponse, SpatialMode, EqProfile, BrirRoom, BypassableStageId } from '@aural/shared';
 import {
   getActiveSink,
   setSpatialMode,
@@ -9,8 +9,12 @@ import {
   getActiveBrirRoom,
   setBrirRoom,
   isMbcEnabled,
+  getBypassed,
+  toggleStageBypass,
 } from '../pipewire/control';
 import { MBC_BAND_DEFAULTS } from '@aural/shared';
+
+const BYPASSABLE: BypassableStageId[] = ['crossfeed', 'brir', 'loudness', 'mbc'];
 
 const api = new Hono();
 
@@ -43,6 +47,7 @@ api.get('/state', async (c) => {
         threshold: -0.3,
         release: 25.0,
       },
+      bypassed: getBypassed(),
     };
 
     return c.json({ ok: true, data: state } satisfies ApiResponse<DspState>);
@@ -96,6 +101,23 @@ api.post('/brir/:room', async (c) => {
     await setBrirRoom(room);
     await restartPipeWire();
     return c.json({ ok: true } satisfies ApiResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({ ok: false, error: message } satisfies ApiResponse, 500);
+  }
+});
+
+// ─── POST /api/bypass/:stageId — Toggle stage bypass ─────────────
+api.post('/bypass/:stageId', async (c) => {
+  const stageId = c.req.param('stageId') as BypassableStageId;
+  if (!BYPASSABLE.includes(stageId)) {
+    return c.json({ ok: false, error: `Invalid stage: ${stageId}` } satisfies ApiResponse, 400);
+  }
+
+  try {
+    const currentMode = await getActiveSink();
+    await toggleStageBypass(stageId, currentMode);
+    return c.json({ ok: true, data: getBypassed() } satisfies ApiResponse<BypassableStageId[]>);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return c.json({ ok: false, error: message } satisfies ApiResponse, 500);
