@@ -11,9 +11,20 @@
 # After running this, reboot and select "CachyOS Installer" from GRUB to
 # install CachyOS onto the rest of the NVMe (partitions p1-p4 per MIGRATION-PLAN.md).
 #
+# Usage:
+#   ./00b-prepare-nvme-installer.sh              # Full run (download/copy ISO + update GRUB)
+#   ./00b-prepare-nvme-installer.sh --grub-only   # Skip ISO download/copy, only update GRUB
+#   ./00b-prepare-nvme-installer.sh /path/to.iso  # Use a local ISO file
+#
 # Run ON UBUNTU before migration.
 
 set -euo pipefail
+
+GRUB_ONLY=false
+if [[ "${1:-}" == "--grub-only" ]]; then
+    GRUB_ONLY=true
+    shift
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
@@ -70,6 +81,10 @@ fi
 PART_SIZE=$(lsblk -bno SIZE "$INSTALLER_PART" 2>/dev/null)
 PART_SIZE_GB=$(( PART_SIZE / 1073741824 ))
 log "Installer partition: $INSTALLER_PART ($PART_SIZE_GB GB, UUID: $INSTALLER_UUID)"
+
+if [[ "$GRUB_ONLY" == true ]]; then
+    log "Skipping ISO download and copy (--grub-only)"
+else
 
 # -------------------------------------------------------
 # Get CachyOS ISO
@@ -207,6 +222,8 @@ sudo umount "$MOUNT_POINT"
 MOUNT_POINT=""
 log "Partition unmounted"
 
+fi # end --grub-only skip
+
 # -------------------------------------------------------
 # Update GRUB entry
 # -------------------------------------------------------
@@ -221,10 +238,11 @@ if [[ -f "$GRUB_CUSTOM" ]]; then
 fi
 
 # Write new entry
-# CachyOS uses a different boot structure than Arch:
-#   - Kernel: boot/vmlinuz-linux
-#   - Initrd: boot/initramfs-linux.img
-#   - Boot params: copytoram loads entire ISO into RAM (installer runs from RAM,
+# CachyOS uses archiso with the 'arch' base directory:
+#   - Kernel: arch/boot/x86_64/vmlinuz-linux
+#   - Initrd: arch/boot/x86_64/initramfs-linux.img
+#   - Boot params: archisobasedir tells archiso where to find the squashfs,
+#     copytoram loads entire ISO into RAM (installer runs from RAM,
 #     safe to repartition the source drive during install)
 sudo tee "$GRUB_CUSTOM" > /dev/null << GRUBEOF
 #!/bin/sh
@@ -243,13 +261,14 @@ menuentry "CachyOS Installer (loopboot from NVMe)" {
     set iso_path="/$CACHYOS_ISO_NAME"
     loopback loop (\${root})\${iso_path}
 
-    linux   (loop)/boot/vmlinuz-linux \\
+    linux   (loop)/arch/boot/x86_64/vmlinuz-linux \\
+            archisobasedir=arch \\
             img_dev=/dev/disk/by-uuid/$INSTALLER_UUID \\
             img_loop=\${iso_path} \\
             copytoram=y \\
             cow_spacesize=4G \\
             driver=free
-    initrd  (loop)/boot/initramfs-linux.img
+    initrd  (loop)/arch/boot/x86_64/initramfs-linux.img
 }
 GRUBEOF
 
@@ -267,7 +286,7 @@ log_section "Summary"
 
 log "CachyOS installer is ready on $INSTALLER_PART"
 log ""
-log "ISO:        $CACHYOS_ISO_NAME ($ISO_SIZE_MB MB)"
+log "ISO:        $CACHYOS_ISO_NAME${ISO_SIZE_MB:+ ($ISO_SIZE_MB MB)}"
 log "Partition:  $INSTALLER_PART (UUID: $INSTALLER_UUID)"
 log "GRUB entry: 'CachyOS Installer (loopboot from NVMe)'"
 log "Log:        $LOG_FILE"
