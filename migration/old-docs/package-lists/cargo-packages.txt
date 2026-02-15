@@ -1,0 +1,2 @@
+git-graph v0.6.0:
+    git-graph

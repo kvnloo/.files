@@ -1,0 +1,185 @@
+/* =====================================================
+ * WAYBAR STYLESHEET
+ * =====================================================
+ * Dark theme translated from polybar blocks material
+ * Color palette from polybar blocks/colors.ini
+ * =====================================================
+ */
+
+/* -----------------------------------------------
+ * Global
+ * ----------------------------------------------- */
+
+* {
+    font-family: "Roboto Mono", "JetBrains Mono Nerd Font", monospace;
+    font-size: 12px;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+
+window#waybar {
+    background: rgba(15, 15, 20, 0.85);
+    color: #f3f4f5;
+}
+
+/* Transparent tooltip styling */
+tooltip {
+    background: rgba(47, 52, 63, 0.95);
+    border: 1px solid rgba(196, 199, 197, 0.2);
+    border-radius: 8px;
+}
+
+tooltip label {
+    color: #f3f4f5;
+    padding: 4px;
+}
+
+/* -----------------------------------------------
+ * Left Modules
+ * ----------------------------------------------- */
+
+#workspaces {
+    margin: 2px 4px;
+}
+
+#workspaces button {
+    padding: 2px 8px;
+    margin: 2px 1px;
+    color: #C4C7C5;
+    background: transparent;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+#workspaces button:hover {
+    background: rgba(196, 199, 197, 0.15);
+    color: #f3f4f5;
+}
+
+#workspaces button.active {
+    background: #75A4CD;
+    color: #1C1E20;
+    border-radius: 4px;
+}
+
+#workspaces button.urgent {
+    background: #EC7875;
+    color: #1C1E20;
+}
+
+#submap {
+    padding: 2px 10px;
+    margin: 2px 4px;
+    background: #EC7875;
+    color: #1C1E20;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+/* -----------------------------------------------
+ * Center Modules
+ * ----------------------------------------------- */
+
+#window {
+    padding: 2px 12px;
+    color: #C4C7C5;
+    font-weight: normal;
+}
+
+window#waybar.empty #window {
+    background: transparent;
+}
+
+/* -----------------------------------------------
+ * Right Modules (block style)
+ * ----------------------------------------------- */
+
+/* Common right-module styling */
+#tray,
+#custom-media,
+#pulseaudio,
+#network,
+#cpu,
+#memory,
+#temperature,
+#clock {
+    padding: 2px 10px;
+    margin: 2px 1px;
+    border-radius: 4px;
+    background: rgba(196, 199, 197, 0.08);
+    color: #f3f4f5;
+    transition: all 0.2s ease;
+}
+
+/* Icon accent colors (matching polybar block prefix colors) */
+#custom-media {
+    color: #61C766;
+}
+
+#pulseaudio {
+    color: #75A4CD;
+}
+
+#pulseaudio.muted {
+    color: #EC7875;
+    background: rgba(236, 120, 117, 0.1);
+}
+
+#network {
+    color: #BE78D1;
+}
+
+#network.disconnected {
+    color: #E57C46;
+    background: rgba(229, 124, 70, 0.1);
+}
+
+#cpu {
+    color: #00B19F;
+}
+
+#memory {
+    color: #6C77BB;
+}
+
+#temperature {
+    color: #00C7DF;
+}
+
+#temperature.critical {
+    color: #EC7875;
+    background: rgba(236, 120, 117, 0.1);
+}
+
+#clock {
+    color: #EDB83F;
+    font-weight: bold;
+}
+
+/* -----------------------------------------------
+ * Tray
+ * ----------------------------------------------- */
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background: rgba(236, 120, 117, 0.15);
+}
+
+/* -----------------------------------------------
+ * Hover effects
+ * ----------------------------------------------- */
+
+#custom-media:hover,
+#pulseaudio:hover,
+#network:hover,
+#cpu:hover,
+#memory:hover,
+#temperature:hover,
+#clock:hover {
+    background: rgba(196, 199, 197, 0.15);
+}

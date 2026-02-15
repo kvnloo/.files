@@ -1,0 +1,14 @@
+/home/kvn/.nvm/versions/node/v20.19.5/lib
+├── @21st-dev/magic@0.1.0
+├── @google/gemini-cli@0.17.1
+├── @modelcontextprotocol/server-sequential-thinking@2025.7.1
+├── @morph-llm/morph-fast-apply@0.8.1
+├── @musistudio/claude-code-router@1.0.71
+├── @openai/codex@0.63.0
+├── @playwright/mcp@0.0.43
+├── @superclaude-org/superagent@0.1.15
+├── @upstash/context7-mcp@1.0.21
+├── claude-code-router@2.1.1
+├── corepack@0.33.0
+└── npm@10.8.2
+

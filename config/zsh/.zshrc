@@ -74,3 +74,10 @@ export PATH=$PATH:/home/kvn/.spicetify
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# duckdb
+export PATH='/home/kvn/.duckdb/cli/latest':$PATH

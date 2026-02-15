@@ -1,0 +1,161 @@
+// =====================================================
+// WAYBAR CONFIGURATION
+// =====================================================
+// Translated from polybar blocks theme
+// See: https://github.com/Alexays/Waybar/wiki/Configuration
+// =====================================================
+{
+    "layer": "top",
+    "position": "bottom",
+    "height": 34,
+    "spacing": 0,
+
+    // Module layout (from polybar: launcher, workspaces, mpd | title | alsa, battery, network, date, sysmenu)
+    "modules-left": [
+        "hyprland/workspaces",
+        "hyprland/submap"
+    ],
+    "modules-center": [
+        "hyprland/window"
+    ],
+    "modules-right": [
+        "tray",
+        "custom/media",
+        "pulseaudio",
+        "network",
+        "cpu",
+        "memory",
+        "temperature",
+        "clock"
+    ],
+
+    // -----------------------------------------------
+    // Left Modules
+    // -----------------------------------------------
+
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "1": "\uf121",
+            "2": "\udb80\ude39",
+            "3": "\uf02d",
+            "4": "\udb81\udda9",
+            "5": "\udb80\ude08",
+            "6": "\udb83\udd96",
+            "7": "\udb80\udea1",
+            "8": "\uf1b3",
+            "9": "\uf009",
+            "10": "\udb81\udcae",
+            "urgent": "\uf06a",
+            "default": "\uf111"
+        },
+        "on-scroll-up": "hyprctl dispatch workspace e+1",
+        "on-scroll-down": "hyprctl dispatch workspace e-1",
+        "persistent-workspaces": {
+            "DP-3": [1, 4, 5],
+            "DP-1": [2, 3, 6, 7, 8, 9],
+            "HDMI-A-1": [10]
+        }
+    },
+
+    "hyprland/submap": {
+        "format": " {}",
+        "max-length": 20,
+        "tooltip": false
+    },
+
+    // -----------------------------------------------
+    // Center Modules
+    // -----------------------------------------------
+
+    "hyprland/window": {
+        "format": "{}",
+        "max-length": 50,
+        "separate-outputs": true
+    },
+
+    // -----------------------------------------------
+    // Right Modules
+    // -----------------------------------------------
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8
+    },
+
+    "custom/media": {
+        "format": "\uf001 {}",
+        "max-length": 30,
+        "exec": "playerctl metadata --format '{{artist}} - {{title}}' 2>/dev/null",
+        "exec-if": "playerctl status 2>/dev/null",
+        "interval": 3,
+        "on-click": "playerctl play-pause",
+        "on-scroll-up": "playerctl next",
+        "on-scroll-down": "playerctl previous",
+        "tooltip": false
+    },
+
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-bluetooth": "\uf294 {volume}%",
+        "format-muted": "\uf6a9 Muted",
+        "format-icons": {
+            "headphone": "\uf025",
+            "default": ["\uf026", "\uf027", "\uf028"]
+        },
+        "on-click": "pavucontrol",
+        "on-click-right": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+        "tooltip-format": "{desc} | {volume}%"
+    },
+
+    "network": {
+        "format-wifi": "\uf1eb {essid}",
+        "format-ethernet": "\udb80\ude00 {ipaddr}/{cidr}",
+        "format-linked": "\udb80\ude00 {ifname}",
+        "format-disconnected": "\udb80\ude01 Offline",
+        "format-alt": "\uf093 {bandwidthUpBytes} \uf019 {bandwidthDownBytes}",
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr}\n\uf093 {bandwidthUpBits} \uf019 {bandwidthDownBits}",
+        "interval": 5,
+        "on-click-right": "nm-connection-editor"
+    },
+
+    "cpu": {
+        "format": "\uf2db {usage}%",
+        "interval": 2,
+        "tooltip-format": "CPU: {usage}%\n{avg_frequency} GHz",
+        "on-click": "btop"
+    },
+
+    "memory": {
+        "format": "\uf538 {used:0.1f}G",
+        "interval": 5,
+        "tooltip-format": "RAM: {used:0.1f}G / {total:0.1f}G ({percentage}%)\nSwap: {swapUsed:0.1f}G / {swapTotal:0.1f}G",
+        "on-click": "btop"
+    },
+
+    "temperature": {
+        "critical-threshold": 80,
+        "format": "{icon} {temperatureC}°C",
+        "format-critical": "{icon} {temperatureC}°C",
+        "format-icons": ["\uf2cb", "\uf2c9", "\uf2c7"],
+        "tooltip-format": "{temperatureC}°C / {temperatureF}°F"
+    },
+
+    "clock": {
+        "format": "\uf017 {:%I:%M %p}",
+        "format-alt": "\uf073 {:%a, %d %b %Y}",
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+        "calendar": {
+            "mode": "month",
+            "weeks-pos": "right",
+            "on-scroll": 1,
+            "format": {
+                "months": "<span color='#f3f4f5'><b>{}</b></span>",
+                "days": "<span color='#C4C7C5'>{}</span>",
+                "weeks": "<span color='#75A4CD'><b>W{}</b></span>",
+                "weekdays": "<span color='#EDB83F'><b>{}</b></span>",
+                "today": "<span color='#EC7875'><b><u>{}</u></b></span>"
+            }
+        }
+    }
+}
