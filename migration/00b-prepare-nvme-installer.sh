@@ -72,7 +72,9 @@ fi
 
 # Verify UUID matches expected
 ACTUAL_UUID=$(lsblk -no UUID "$INSTALLER_PART" 2>/dev/null)
-if [[ "$ACTUAL_UUID" != "$INSTALLER_UUID" ]]; then
+if [[ -z "$ACTUAL_UUID" ]]; then
+    log_warn "Could not detect UUID via lsblk, keeping configured UUID: $INSTALLER_UUID"
+elif [[ "$ACTUAL_UUID" != "$INSTALLER_UUID" ]]; then
     log_warn "UUID mismatch: expected $INSTALLER_UUID, got $ACTUAL_UUID"
     log_warn "Proceeding with detected UUID: $ACTUAL_UUID"
     INSTALLER_UUID="$ACTUAL_UUID"
@@ -239,8 +241,8 @@ fi
 
 # Write new entry
 # CachyOS uses archiso with the 'arch' base directory:
-#   - Kernel: arch/boot/x86_64/vmlinuz-linux
-#   - Initrd: arch/boot/x86_64/initramfs-linux.img
+#   - Kernel: arch/boot/x86_64/vmlinuz-linux-cachyos-lts
+#   - Initrd: arch/boot/x86_64/initramfs-linux-cachyos-lts.img
 #   - Boot params: archisobasedir tells archiso where to find the squashfs,
 #     copytoram loads entire ISO into RAM (installer runs from RAM,
 #     safe to repartition the source drive during install)
@@ -261,14 +263,14 @@ menuentry "CachyOS Installer (loopboot from NVMe)" {
     set iso_path="/$CACHYOS_ISO_NAME"
     loopback loop (\${root})\${iso_path}
 
-    linux   (loop)/arch/boot/x86_64/vmlinuz-linux \\
+    linux   (loop)/arch/boot/x86_64/vmlinuz-linux-cachyos-lts \\
             archisobasedir=arch \\
             img_dev=/dev/disk/by-uuid/$INSTALLER_UUID \\
             img_loop=\${iso_path} \\
             copytoram=y \\
             cow_spacesize=4G \\
             driver=free
-    initrd  (loop)/arch/boot/x86_64/initramfs-linux.img
+    initrd  (loop)/arch/boot/x86_64/initramfs-linux-cachyos-lts.img
 }
 GRUBEOF
 

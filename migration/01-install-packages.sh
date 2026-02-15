@@ -33,11 +33,11 @@ TOTAL_INSTALLED=0; TOTAL_FAILED=0; TOTAL_SKIPPED=0
 install_pkg() {
     local pkg="$1"
     if sudo pacman -S --needed --noconfirm "$pkg" &>>"$LOG_FILE"; then
-        ((TOTAL_INSTALLED++))
+        (( TOTAL_INSTALLED++ )) || true
     elif command -v paru &>/dev/null && paru -S --needed --noconfirm "$pkg" &>>"$LOG_FILE"; then
-        ((TOTAL_INSTALLED++))
+        (( TOTAL_INSTALLED++ )) || true
     else
-        ((TOTAL_FAILED++))
+        (( TOTAL_FAILED++ )) || true
         log_warn "Failed: $pkg"
         echo "$pkg" >> "$FAILED_LOG"
     fi
@@ -63,9 +63,9 @@ install_aur_batch() {
     log "$desc"
     for pkg in "$@"; do
         if paru -S --needed --noconfirm "$pkg" &>>"$LOG_FILE"; then
-            ((TOTAL_INSTALLED++))
+            (( TOTAL_INSTALLED++ )) || true
         else
-            ((TOTAL_FAILED++))
+            (( TOTAL_FAILED++ )) || true
             log_warn "AUR failed: $pkg"
             echo "$pkg (AUR)" >> "$FAILED_LOG"
         fi
@@ -88,7 +88,7 @@ sudo pacman -Syu --noconfirm 2>>"$LOG_FILE" || log_warn "System update had warni
 if ! command -v paru &>/dev/null; then
     log "Installing paru (AUR helper)..."
     sudo pacman -S --needed --noconfirm base-devel git || error_exit "Failed to install base-devel"
-    local tmpdir=$(mktemp -d)
+    tmpdir=$(mktemp -d)
     git clone https://aur.archlinux.org/paru.git "$tmpdir/paru" || error_exit "Failed to clone paru"
     (cd "$tmpdir/paru" && makepkg -si --noconfirm) || error_exit "Failed to build paru"
     rm -rf "$tmpdir"
@@ -244,8 +244,8 @@ install_aur_batch "AUR apps" \
 # Flatpak apps
 log "Installing Flatpak apps..."
 flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>>"$LOG_FILE" || true
-flatpak install -y flathub com.mastermindzh.tidal-hifi 2>>"$LOG_FILE" && ((TOTAL_INSTALLED++)) || ((TOTAL_FAILED++))
-flatpak install -y flathub io.github.nokse22.high-tide 2>>"$LOG_FILE" && ((TOTAL_INSTALLED++)) || ((TOTAL_FAILED++))
+flatpak install -y flathub com.mastermindzh.tidal-hifi 2>>"$LOG_FILE" && { (( TOTAL_INSTALLED++ )) || true; } || { (( TOTAL_FAILED++ )) || true; }
+flatpak install -y flathub io.github.nokse22.high-tide 2>>"$LOG_FILE" && { (( TOTAL_INSTALLED++ )) || true; } || { (( TOTAL_FAILED++ )) || true; }
 
 # -------------------------------------------------------
 # 8. Shell and terminal

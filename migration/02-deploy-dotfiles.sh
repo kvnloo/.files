@@ -65,10 +65,9 @@ link "$DOTFILES/config/pipewire/pipewire.conf" "$HOME/.config/pipewire/pipewire.
 link "$DOTFILES/config/pipewire/pipewire.conf.d/10-headphone-dsp.conf" \
      "$HOME/.config/pipewire/pipewire.conf.d/10-headphone-dsp.conf"
 
-# WirePlumber 0.5 format (new config deployed by setup-audio.sh)
-# The old Lua config is also linked as fallback
-link "$DOTFILES/config/wireplumber/main.lua.d/51-topping-dx5-bitperfect.lua" \
-     "$HOME/.config/wireplumber/main.lua.d/51-topping-dx5-bitperfect.lua"
+# WirePlumber 0.5 config (SPA-JSON format, deployed by setup-audio.sh)
+link "$DOTFILES/config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf" \
+     "$HOME/.config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf"
 
 # -------------------------------------------------------
 # 4. Audio scripts (make executable)
