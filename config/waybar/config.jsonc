@@ -53,11 +53,8 @@
         },
         "on-scroll-up": "hyprctl dispatch workspace e+1",
         "on-scroll-down": "hyprctl dispatch workspace e-1",
-        "persistent-workspaces": {
-            "DP-2": [1, 4, 5],
-            "DP-1": [2, 3, 6, 7, 8, 9],
-            "HDMI-A-1": [10]
-        }
+        "show-special": false,
+        "all-outputs": false
     },
 
     "hyprland/submap": {
@@ -100,8 +97,8 @@
     "custom/dac": {
         "exec": "~/.config/waybar/scripts/dac-samplerate.sh",
         "format": "\uf001 {}",
-        "interval": 1,
-        "tooltip": "DAC Sample Rate"
+        "interval": 5,
+        "tooltip-format": "DAC Sample Rate: {}"
     },
 
     "pulseaudio": {
