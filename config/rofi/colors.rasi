@@ -1,3 +1,9 @@
-/* Pywal colors for Rofi */
-/* Import colors from pywal */
-@import "~/.cache/wal/colors-rofi-dark.rasi"
+/* Tokyo Night color scheme */
+* {
+    bg: #1a1b26;
+    fg: #c0caf5;
+    ac: #1a1b26;
+    se: #24283b;
+    br: #414868;
+    al: #1a1b26;
+}
