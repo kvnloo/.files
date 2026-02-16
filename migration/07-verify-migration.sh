@@ -11,7 +11,7 @@ set -uo pipefail  # no -e, we want to continue on test failures
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/verify-migration-$DATE.log"
 REPORT_FILE="$LOG_DIR/verify-report-$DATE.txt"
@@ -43,13 +43,13 @@ test_result() {
 verify_system_basics() {
     log_section "1. System Basics"
 
-    # CachyOS detected
-    if [[ -f /etc/cachyos-release ]]; then
-        test_result pass "CachyOS detected" "$(cat /etc/cachyos-release 2>/dev/null | head -1)"
+    # CachyOS detected (check os-release, fallback to cachyos-release)
+    if grep -qi "cachyos" /etc/os-release 2>/dev/null || [[ -f /etc/cachyos-release ]]; then
+        test_result pass "CachyOS detected" "$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')"
     elif [[ -f /etc/arch-release ]]; then
-        test_result warn "Arch-based detected but not CachyOS" "Missing /etc/cachyos-release"
+        test_result warn "Arch-based detected but not CachyOS" ""
     else
-        test_result fail "CachyOS/Arch not detected" "Expected /etc/cachyos-release or /etc/arch-release"
+        test_result fail "CachyOS/Arch not detected" ""
     fi
 
     # Hostname
@@ -95,8 +95,9 @@ verify_system_basics() {
         test_result warn "Non-CachyOS kernel" "$kernel (expected linux-cachyos)"
     fi
 
-    # systemd-boot
-    if bootctl is-installed &>/dev/null; then
+    # systemd-boot (bootctl needs root for /boot, fallback to EFI check)
+    if bootctl is-installed &>/dev/null || \
+       efibootmgr 2>/dev/null | grep -qi "systemd-boot"; then
         test_result pass "systemd-boot is active bootloader" ""
     else
         test_result fail "systemd-boot not detected" "Expected systemd-boot as bootloader"
@@ -153,7 +154,7 @@ verify_disk_filesystem() {
         # Swap size >= 30GB
         local swap_bytes
         swap_bytes=$(swapon --show=SIZE --bytes --noheadings 2>/dev/null | awk '{sum+=$1} END {print sum}')
-        local swap_gb=$(( swap_bytes / 1073741824 ))
+        local swap_gb=$(( ${swap_bytes:-0} / 1073741824 ))
         if [[ $swap_gb -ge 30 ]]; then
             test_result pass "Swap size >= 30GB" "${swap_gb}GB"
         else
@@ -173,19 +174,22 @@ verify_disk_filesystem() {
         test_result warn "Root disk usage high" "${root_usage}% used (threshold: 80%)"
     fi
 
-    # EFI partition
-    if mountpoint -q /boot/efi 2>/dev/null; then
-        local efi_fs
-        efi_fs=$(findmnt -n -o FSTYPE /boot/efi 2>/dev/null)
-        if [[ "$efi_fs" == "vfat" ]]; then
-            test_result pass "EFI partition mounted at /boot/efi (FAT32)" ""
-        else
-            test_result warn "EFI partition unexpected filesystem" "$efi_fs (expected vfat)"
+    # EFI partition (CachyOS mounts at /boot, Ubuntu at /boot/efi)
+    local efi_mount=""
+    for mp in /boot /boot/efi /efi; do
+        if mountpoint -q "$mp" 2>/dev/null; then
+            local fs
+            fs=$(findmnt -n -o FSTYPE "$mp" 2>/dev/null)
+            if [[ "$fs" == "vfat" ]]; then
+                efi_mount="$mp"
+                break
+            fi
         fi
-    elif mountpoint -q /efi 2>/dev/null; then
-        test_result pass "EFI partition mounted at /efi" ""
+    done
+    if [[ -n "$efi_mount" ]]; then
+        test_result pass "EFI partition mounted at $efi_mount (FAT32)" ""
     else
-        test_result warn "EFI partition mount not detected" "Check /boot/efi or /efi"
+        test_result warn "EFI partition mount not detected" "Check /boot, /boot/efi, or /efi"
     fi
 }
 
@@ -195,15 +199,20 @@ verify_disk_filesystem() {
 verify_nvidia_display() {
     log_section "3. NVIDIA & Display"
 
-    # nvidia-open-dkms installed
-    if pacman -Q nvidia-open-dkms &>/dev/null; then
+    # NVIDIA driver package (CachyOS uses pre-built modules, not DKMS)
+    if pacman -Q linux-cachyos-nvidia-open &>/dev/null || \
+       pacman -Q linux-cachyos-lts-nvidia-open &>/dev/null; then
+        local nv_ver
+        nv_ver=$(pacman -Q nvidia-utils 2>/dev/null | awk '{print $2}')
+        test_result pass "CachyOS NVIDIA driver installed" "Version: $nv_ver"
+    elif pacman -Q nvidia-open-dkms &>/dev/null; then
         local nv_ver
         nv_ver=$(pacman -Q nvidia-open-dkms 2>/dev/null | awk '{print $2}')
         test_result pass "nvidia-open-dkms installed" "Version: $nv_ver"
     elif pacman -Q nvidia-dkms &>/dev/null; then
         test_result warn "nvidia-dkms installed (not open)" "Consider nvidia-open-dkms"
     else
-        test_result fail "No NVIDIA DKMS package found" "Install nvidia-open-dkms"
+        test_result fail "No NVIDIA driver package found" "Install nvidia-utils"
     fi
 
     # nvidia kernel module loaded
@@ -257,7 +266,7 @@ verify_nvidia_display() {
         test_result warn "Xwayland not found" "Some X11 apps may not work"
     fi
 
-    # DRM modeset enabled (kernel cmdline or module param)
+    # DRM modeset enabled (kernel cmdline, module param, or modprobe.d config)
     if grep -q "nvidia_drm.modeset=1" /proc/cmdline 2>/dev/null; then
         test_result pass "DRM modeset in kernel cmdline" ""
     elif [[ -f /sys/module/nvidia_drm/parameters/modeset ]]; then
@@ -266,8 +275,15 @@ verify_nvidia_display() {
         if [[ "$val" == "Y" ]] || [[ "$val" == "1" ]]; then
             test_result pass "DRM modeset enabled via module parameter" ""
         else
-            test_result warn "DRM modeset parameter is '$val'" "Expected Y or 1"
+            # sysfs may report empty — check modprobe.d as fallback
+            if grep -rq "modeset=1" /etc/modprobe.d/nvidia*.conf 2>/dev/null; then
+                test_result pass "DRM modeset configured via modprobe.d" ""
+            else
+                test_result warn "DRM modeset parameter is '$val'" "Expected Y or 1"
+            fi
         fi
+    elif grep -rq "modeset=1" /etc/modprobe.d/nvidia*.conf 2>/dev/null; then
+        test_result pass "DRM modeset configured via modprobe.d" ""
     else
         test_result warn "Cannot verify DRM modeset" "Module parameter file not found"
     fi
@@ -381,9 +397,10 @@ verify_audio_stack() {
         test_result fail "WirePlumber service not active" "Run: systemctl --user start wireplumber"
     fi
 
-    # pipewire-pulse service
-    if systemctl --user is-active pipewire-pulse &>/dev/null; then
-        test_result pass "pipewire-pulse service active" ""
+    # pipewire-pulse (may be socket-activated, check both service and socket)
+    if systemctl --user is-active pipewire-pulse &>/dev/null || \
+       systemctl --user is-active pipewire-pulse.socket &>/dev/null; then
+        test_result pass "pipewire-pulse active" ""
     else
         test_result fail "pipewire-pulse not active" "PulseAudio compatibility layer missing"
     fi
@@ -492,9 +509,15 @@ verify_dev_tools() {
         test_result fail "No npm/pnpm found" ""
     fi
 
-    # Rust toolchain
+    # Rust toolchain (rustup installs to ~/.cargo/bin which may not be in PATH)
+    local rustc_cmd=""
     if command -v rustc &>/dev/null; then
-        test_result pass "Rust toolchain available" "$(rustc --version 2>/dev/null)"
+        rustc_cmd="rustc"
+    elif [[ -x "$HOME/.cargo/bin/rustc" ]]; then
+        rustc_cmd="$HOME/.cargo/bin/rustc"
+    fi
+    if [[ -n "$rustc_cmd" ]]; then
+        test_result pass "Rust toolchain available" "$($rustc_cmd --version 2>/dev/null)"
     else
         test_result warn "Rust toolchain not found" "Install via rustup if needed"
     fi
@@ -684,13 +707,21 @@ verify_system_tuning() {
         test_result warn "fs.file-max too low" "Value: $file_max (recommended >= 2097152)"
     fi
 
-    # vm.swappiness <= 10
+    # vm.swappiness (zram-aware check)
     local swappiness
     swappiness=$(sysctl -n vm.swappiness 2>/dev/null || echo "60")
-    if [[ $swappiness -le 10 ]]; then
-        test_result pass "vm.swappiness <= 10" "Value: $swappiness"
+    if [[ -e /sys/block/zram0 ]]; then
+        if [[ $swappiness -ge 100 ]]; then
+            test_result pass "vm.swappiness >= 100 (zram)" "Value: $swappiness"
+        else
+            test_result warn "vm.swappiness low for zram" "Value: $swappiness (recommended >= 100 with zram)"
+        fi
     else
-        test_result warn "vm.swappiness too high" "Value: $swappiness (recommended <= 10)"
+        if [[ $swappiness -le 10 ]]; then
+            test_result pass "vm.swappiness <= 10" "Value: $swappiness"
+        else
+            test_result warn "vm.swappiness too high" "Value: $swappiness (recommended <= 10 without zram)"
+        fi
     fi
 
     # NVMe I/O scheduler is "none"

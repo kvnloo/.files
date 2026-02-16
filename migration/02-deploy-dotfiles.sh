@@ -4,7 +4,14 @@ set -euo pipefail
 # CachyOS Dotfiles Deployment
 # Creates all symlinks from the dotfiles repo to their proper locations
 
-DOTFILES="$HOME/workspace/.files"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+DOTFILES="$(dirname "$SCRIPT_DIR")"
+
+# Ensure ~/workspace exists (CachyOS mounts workspace at /workspace)
+if [[ -d "/workspace" && ! -e "$HOME/workspace" ]]; then
+    ln -s /workspace "$HOME/workspace"
+    echo "  Created symlink: ~/workspace -> /workspace"
+fi
 
 echo "=== Dotfiles Deployment ==="
 echo "Source: $DOTFILES"
@@ -91,22 +98,10 @@ link "$DOTFILES/config/systemd/user/easyeffects.service" \
 link "$DOTFILES/config/systemd/user/easyeffects-ir-switcher.service" \
      "$HOME/.config/systemd/user/easyeffects-ir-switcher.service"
 
-# Browser bypass DSP service
-cat > "$HOME/.config/systemd/user/browser-bypass-dsp.service" << 'EOF'
-[Unit]
-Description=Browser Audio DSP Bypass
-After=pipewire.service wireplumber.service
-Requires=pipewire.service wireplumber.service
+# browser-bypass-dsp.service is created by 03-setup-audio.sh
+# (uses dynamic $DOTFILES path instead of hardcoded %h/workspace/.files)
 
-[Service]
-Type=simple
-ExecStart=%h/workspace/.files/config/pipewire/browser-bypass-dsp.sh
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
+systemctl --user daemon-reload 2>/dev/null || true
 
 # -------------------------------------------------------
 # 6. Font configuration

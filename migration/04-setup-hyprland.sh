@@ -5,7 +5,8 @@ set -euo pipefail
 # Generates Hyprland, hyprlock, hypridle, and Waybar configs
 # Run AFTER 02-deploy-dotfiles.sh (which creates the symlinks)
 
-DOTFILES="$HOME/workspace/.files"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+DOTFILES="$(dirname "$SCRIPT_DIR")"
 
 # Colors and logging
 RED='\033[0;31m'
@@ -27,9 +28,10 @@ echo "[1/5] Verifying Hyprland packages..."
 
 REQUIRED_PKGS=(
     hyprland waybar rofi-wayland dunst
-    grim slurp wl-clipboard
+    grim slurp wl-clipboard cliphist
     hyprlock hypridle swww
     python-pywal brightnessctl playerctl
+    polkit-gnome
 )
 MISSING=()
 
@@ -94,8 +96,15 @@ done
 # -------------------------------------------------------
 echo "[5/5] Setting wallpaper with pywal..."
 if [[ -d "$HOME/Pictures/wallpapers" ]]; then
-    wal -i "$HOME/Pictures/wallpapers/" -n
-    log "Pywal wallpaper set from ~/Pictures/wallpapers/"
+    # Find first image (wallpapers may be in resolution subdirectories)
+    local first_img
+    first_img=$(find "$HOME/Pictures/wallpapers" -type f \( -name '*.jpg' -o -name '*.png' -o -name '*.jpeg' \) | head -1)
+    if [[ -n "$first_img" ]]; then
+        wal -i "$first_img" -n
+        log "Pywal color scheme generated from $first_img"
+    else
+        warn "No image files found in ~/Pictures/wallpapers/ — skipping pywal"
+    fi
 else
     warn "~/Pictures/wallpapers/ not found -- skipping pywal"
     echo "    Create the directory and add wallpapers, then run: wal -i ~/Pictures/wallpapers/"

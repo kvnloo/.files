@@ -44,10 +44,12 @@ sudo cp -a /etc/environment "$BACKUP_ROOT/configs/" 2>/dev/null || true
 sudo cp -a /etc/NetworkManager/system-connections/ "$BACKUP_ROOT/configs/nm-connections/" 2>/dev/null || true
 
 echo "[3/8] Backing up SSH and GPG keys..."
-cp -a ~/.ssh "$BACKUP_ROOT/home-data/ssh/" 2>/dev/null || true
+rsync -a ~/.ssh/ "$BACKUP_ROOT/home-data/ssh/" 2>/dev/null || true
 gpg --export-secret-keys --armor > "$BACKUP_ROOT/home-data/gpg-private-keys.asc" 2>/dev/null || true
 gpg --export --armor > "$BACKUP_ROOT/home-data/gpg-public-keys.asc" 2>/dev/null || true
 gpg --export-ownertrust > "$BACKUP_ROOT/home-data/gpg-ownertrust.txt" 2>/dev/null || true
+# Remove empty GPG exports (means no keys existed)
+find "$BACKUP_ROOT/home-data/" -name "gpg-*" -empty -delete 2>/dev/null || true
 
 echo "[4/8] Backing up browser profiles..."
 # Firefox (snap stores profiles differently)

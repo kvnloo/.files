@@ -7,7 +7,7 @@ Requires=easyeffects.service
 
 [Service]
 Type=simple
-ExecStart=/home/kvn/workspace/.files/config/easyeffects/easyeffects-ir-switcher.sh monitor
+ExecStart=%h/workspace/.files/config/easyeffects/easyeffects-ir-switcher.sh monitor
 Restart=on-failure
 RestartSec=5
 

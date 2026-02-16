@@ -8,7 +8,7 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/setup-zsh-$DATE.log"
 mkdir -p "$LOG_DIR"
@@ -38,10 +38,10 @@ backup "$ZSH_DIR/oh-my-zsh.zsh"
 sed -i 's|^export ZSH=~/.oh-my-zsh$|# Arch: use system oh-my-zsh if available, else user install\nif [[ -d /usr/share/oh-my-zsh ]]; then\n  export ZSH=/usr/share/oh-my-zsh\nelse\n  export ZSH=~/.oh-my-zsh\nfi|' "$ZSH_DIR/oh-my-zsh.zsh"
 
 # Replace macOS zsh-completions fpath with Arch path
-sed -i 's|^fpath=(/usr/local/share/zsh-completions $fpath)$|fpath=(/usr/share/zsh/site-functions $fpath)|' "$ZSH_DIR/oh-my-zsh.zsh"
+sed -i 's|^fpath=(/usr/local/share/zsh-completions \$fpath)$|fpath=(/usr/share/zsh/site-functions \$fpath)|' "$ZSH_DIR/oh-my-zsh.zsh"
 
 log "oh-my-zsh.zsh: ZSH path → Arch-aware detection, fpath → /usr/share/zsh/site-functions"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "2. Fix autosuggestions sourcing (shell-behavior.zsh)"
@@ -58,7 +58,7 @@ elif [[ -f ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then\
 fi' "$ZSH_DIR/shell-behavior.zsh"
 
 log "shell-behavior.zsh: autosuggestions → Arch plugin path with fallback"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "3. Fix syntax-highlighting sourcing (oh-my-zsh.zsh)"
@@ -74,7 +74,7 @@ if [[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.
 fi
 EOF
     log "oh-my-zsh.zsh: appended Arch syntax-highlighting fallback"
-    ((CHANGED++))
+    CHANGED=$((CHANGED + 1))
 else
     log "oh-my-zsh.zsh: syntax-highlighting already has Arch path"
 fi
@@ -84,20 +84,32 @@ log_section "4. Fix external.zsh (remove Linuxbrew, z → zoxide)"
 # ─────────────────────────────────────────────────────────────────────────────
 backup "$ZSH_DIR/external.zsh"
 
-# Remove the entire Homebrew/Linuxbrew block
-sed -i '/^# ──.*$/{ N; /Homebrew (Linuxbrew)/{ N; /^# ──.*$/{ N; N; d } } }' "$ZSH_DIR/external.zsh"
-sed -i '/^eval "\$(\/home\/linuxbrew\/.linuxbrew\/bin\/brew shellenv)"$/d' "$ZSH_DIR/external.zsh"
+# Remove the entire Homebrew/Linuxbrew block (separator + header + separator + content)
+sed -i '/Homebrew (Linuxbrew)/d' "$ZSH_DIR/external.zsh"
+sed -i '/eval "\$(\/home\/linuxbrew\/.linuxbrew\/bin\/brew shellenv)"/d' "$ZSH_DIR/external.zsh"
 
-# Replace z block with zoxide
-sed -i '/^# ──.*$/{ N; /Z - Jump Around/{ N; /^# ──.*$/{ N; N; N;
-c\# ──────────────────────────────────────────────────────────────────────────────\n# Zoxide - Smarter cd\n# ──────────────────────────────────────────────────────────────────────────────\n# Smart directory jumping (replaces z/autojump)\n# Install: pacman -S zoxide\neval "$(zoxide init zsh)"
-} } }' "$ZSH_DIR/external.zsh"
+# Replace z/autojump block with zoxide
+# Remove old z lines and source command
+sed -i '/Z - Jump Around/d' "$ZSH_DIR/external.zsh"
+sed -i '/source "\$(brew --prefix)\/etc\/profile.d\/z.sh"/d' "$ZSH_DIR/external.zsh"
+sed -i '/# Install: brew install z/d' "$ZSH_DIR/external.zsh"
+sed -i '/# Tracks your most used directories/d' "$ZSH_DIR/external.zsh"
 
-# Fallback: if the multi-line sed didn't catch it, remove any remaining brew/z lines
-sed -i '/^source "\$(brew --prefix)\/etc\/profile.d\/z.sh"$/d' "$ZSH_DIR/external.zsh"
+# Append zoxide init if not already present
+if ! grep -q 'zoxide init zsh' "$ZSH_DIR/external.zsh"; then
+    cat >> "$ZSH_DIR/external.zsh" << 'EOF'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Zoxide - Smarter cd
+# ──────────────────────────────────────────────────────────────────────────────
+# Smart directory jumping (replaces z/autojump)
+# Install: pacman -S zoxide
+eval "$(zoxide init zsh)"
+EOF
+fi
 
 log "external.zsh: removed Linuxbrew, replaced z with zoxide, kept NVM + Cargo"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "5. Clean aliases.zsh (remove macOS, fix paths)"
@@ -133,7 +145,7 @@ sed -i 's|^alias cdprojects=.*$|alias cdprojects="cd ~/workspace"|' "$ZSH_DIR/al
 sed -i "s|^alias c='z'.*$|alias c='z'                                       # Jump around (requires: zoxide)|" "$ZSH_DIR/aliases.zsh"
 
 log "aliases.zsh: removed macOS aliases (chrome, kwm, chunkwm, hyper, khd), fixed paths"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "6. Clean functions.zsh (remove macOS functions)"
@@ -149,11 +161,11 @@ sed -i '/^# Usage: trackpad_speed/d' "$ZSH_DIR/functions.zsh"
 sed -i '/^# Example: trackpad_speed/d' "$ZSH_DIR/functions.zsh"
 sed -i '/^trackpad_speed()/,/^}/d' "$ZSH_DIR/functions.zsh"
 
-# Remove the macOS section separator line
-sed -i '/^# ──.*$/{ N; /^\n$/d }' "$ZSH_DIR/functions.zsh"
+# Remove orphaned separator lines (separator followed by blank line)
+sed -i -n '/^# ──/{N; /\n$/!{P;d}; /\n$/d}; p' "$ZSH_DIR/functions.zsh"
 
 log "functions.zsh: removed efimount(), trackpad_speed()"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "7. Fix startup.zsh (archey → fastfetch)"
@@ -165,7 +177,7 @@ sed -i 's|^archey -o$|fastfetch|' "$ZSH_DIR/startup.zsh"
 sed -i 's|^# Requires: archey.*$|# Requires: fastfetch (pacman -S fastfetch)|' "$ZSH_DIR/startup.zsh"
 
 log "startup.zsh: archey → fastfetch"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "8. Fix .zshrc (remove Linuxbrew, spicetify, dedup PATH)"
@@ -186,7 +198,7 @@ sed -i '0,/^# bun$/b; /^# bun$/{ N; /export BUN_INSTALL/{ N; /export PATH.*BUN_I
 sed -i '/^export PATH="\$HOME\/.local\/bin:\$PATH"$/d' "$ZSH_DIR/.zshrc"
 
 log ".zshrc: removed spicetify, asdf/linuxbrew, duplicate bun + PATH entries"
-((CHANGED++))
+CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 log_section "9. Create zshrc.local example for machine-specific overrides"
@@ -203,7 +215,7 @@ export LV2_PATH="$HOME/.local/lib/lv2:/usr/lib/lv2"
 export LADSPA_PATH="$HOME/.local/lib/ladspa:/usr/lib/ladspa"
 EOF
     log "Created zshrc.local.example for machine-specific overrides"
-    ((CHANGED++))
+    CHANGED=$((CHANGED + 1))
 else
     log "zshrc.local.example already exists"
 fi

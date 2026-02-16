@@ -71,7 +71,7 @@ if ! lsblk "$INSTALLER_PART" &>/dev/null; then
 fi
 
 # Verify UUID matches expected
-ACTUAL_UUID=$(lsblk -no UUID "$INSTALLER_PART" 2>/dev/null)
+ACTUAL_UUID=$(sudo lsblk -no UUID "$INSTALLER_PART" 2>/dev/null)
 if [[ -z "$ACTUAL_UUID" ]]; then
     log_warn "Could not detect UUID via lsblk, keeping configured UUID: $INSTALLER_UUID"
 elif [[ "$ACTUAL_UUID" != "$INSTALLER_UUID" ]]; then
@@ -80,7 +80,8 @@ elif [[ "$ACTUAL_UUID" != "$INSTALLER_UUID" ]]; then
     INSTALLER_UUID="$ACTUAL_UUID"
 fi
 
-PART_SIZE=$(lsblk -bno SIZE "$INSTALLER_PART" 2>/dev/null)
+PART_SIZE=$(sudo lsblk -bno SIZE "$INSTALLER_PART" 2>/dev/null)
+PART_SIZE=${PART_SIZE:-0}
 PART_SIZE_GB=$(( PART_SIZE / 1073741824 ))
 log "Installer partition: $INSTALLER_PART ($PART_SIZE_GB GB, UUID: $INSTALLER_UUID)"
 

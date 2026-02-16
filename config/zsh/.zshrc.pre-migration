@@ -63,7 +63,9 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # create a ~/.zshrc.local file with your custom settings
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
+export PATH=$PATH:/home/kvn/.spicetify
 
+. /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
 
 # bun completions
 [ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
@@ -71,7 +73,11 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
 # duckdb
 export PATH='/home/kvn/.duckdb/cli/latest':$PATH

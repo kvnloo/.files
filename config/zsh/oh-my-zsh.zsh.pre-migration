@@ -4,13 +4,8 @@
 # Core framework configuration - must load before plugins
 
 # Framework Paths
-# Arch: use system oh-my-zsh if available, else user install
-if [[ -d /usr/share/oh-my-zsh ]]; then
-  export ZSH=/usr/share/oh-my-zsh
-else
-  export ZSH=~/.oh-my-zsh
-fi
-fpath=(/usr/share/zsh/site-functions $fpath)
+export ZSH=~/.oh-my-zsh
+fpath=(/usr/local/share/zsh-completions $fpath)
 
 # Theme Configuration
 ZSH_THEME="robbyrussell"
@@ -42,8 +37,3 @@ plugins=(
 
 # Initialize Oh-My-Zsh
 source $ZSH/oh-my-zsh.sh
-
-# Arch: source syntax-highlighting from system package if omz plugin didn't load it
-if [[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
-  source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-fi

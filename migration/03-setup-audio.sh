@@ -19,7 +19,7 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/setup-audio-$DATE.log"
 mkdir -p "$LOG_DIR"
@@ -43,7 +43,7 @@ pkg_installed() { pacman -Qi "$1" &>/dev/null; }
 # -------------------------------------------------------
 log_section "1/14  Verify PipeWire core packages"
 
-PIPEWIRE_PKGS=(pipewire wireplumber pipewire-alsa pipewire-pulse pipewire-jack)
+PIPEWIRE_PKGS=(pipewire wireplumber pipewire-alsa pipewire-pulse)
 MISSING_CORE=()
 
 for pkg in "${PIPEWIRE_PKGS[@]}"; do
@@ -89,16 +89,16 @@ else
 fi
 
 # bs2b is typically in AUR
-if pkg_installed libbs2b || pkg_installed bs2b; then
+if pkg_installed ladspa-bs2b; then
     log "bs2b already installed"
     SKIPPED+=("bs2b (already installed)")
 else
     if command -v paru &>/dev/null; then
         log "Installing bs2b from AUR via paru..."
-        paru -S --needed --noconfirm libbs2b
+        paru -S --needed --noconfirm ladspa-bs2b
         DEPLOYED+=("bs2b (AUR)")
     else
-        log_warn "paru not found — install bs2b manually: paru -S libbs2b"
+        log_warn "paru not found — install ladspa-bs2b manually: paru -S ladspa-bs2b"
         WARNINGS+=("bs2b not installed (no AUR helper)")
     fi
 fi
@@ -125,6 +125,13 @@ if (( ${#MISSING_TOOLS[@]} > 0 )); then
     DEPLOYED+=("tools: ${MISSING_TOOLS[*]}")
 else
     SKIPPED+=("audio tools (already installed)")
+fi
+
+# Verify jq is installed (needed by browser-bypass-dsp.sh)
+if ! command -v jq &>/dev/null; then
+    log "Installing jq (required by browser-bypass-dsp.sh)..."
+    sudo pacman -S --needed --noconfirm jq &>>"$LOG_FILE"
+    DEPLOYED+=("jq")
 fi
 
 # -------------------------------------------------------
@@ -314,7 +321,7 @@ else
 [Unit]
 Description=Browser Bypass DSP — route browser audio directly to DAC
 After=pipewire.service wireplumber.service
-Requires=pipewire.service
+Requires=pipewire.service wireplumber.service
 
 [Service]
 Type=simple
@@ -346,6 +353,14 @@ for svc in "${PW_SERVICES[@]}"; do
         systemctl --user enable --now "$svc"
         log "Enabled and started $svc"
         DEPLOYED+=("service: $svc")
+    fi
+done
+
+# Enable socket activation for auto-start on login
+for sock in pipewire.socket pipewire-pulse.socket; do
+    if ! systemctl --user is-enabled --quiet "$sock" 2>/dev/null; then
+        systemctl --user enable "$sock"
+        log "Enabled $sock for auto-activation"
     fi
 done
 
@@ -455,8 +470,8 @@ fi
 echo -e "${BLUE}Audio stack layout:${NC}" | tee -a "$LOG_FILE"
 echo "  PipeWire daemon       ~/.config/pipewire/pipewire.conf (192kHz default)" | tee -a "$LOG_FILE"
 echo "  Filter-chain DSP      ~/.config/pipewire/pipewire.conf.d/10-headphone-dsp.conf" | tee -a "$LOG_FILE"
-echo "  WirePlumber (Lua)     ~/.config/wireplumber/main.lua.d/51-topping-dx5-bitperfect.lua" | tee -a "$LOG_FILE"
-echo "  WirePlumber (0.5)     ~/.config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf" | tee -a "$LOG_FILE"
+echo "  WirePlumber (0.5)     ~/.config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf (active)" | tee -a "$LOG_FILE"
+echo "  WirePlumber (legacy)  main.lua.d/ format deprecated on WP 0.5+ — not deployed" | tee -a "$LOG_FILE"
 echo "  AutoEQ IRs            $DOTFILES/config/autoeq/active_*Hz.wav" | tee -a "$LOG_FILE"
 echo "  BRIR room IRs         $DOTFILES/config/brir/BRIR_R*_True_Stereo.wav" | tee -a "$LOG_FILE"
 echo "  RT limits             /etc/security/limits.d/99-pipewire.conf" | tee -a "$LOG_FILE"

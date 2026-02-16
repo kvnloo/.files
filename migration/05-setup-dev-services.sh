@@ -5,12 +5,12 @@
 # Run after: 02-deploy-dotfiles.sh
 # Requires: base packages from 01-install-packages.sh
 
-set -euo pipefail
+set -uo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/setup-dev-services-$DATE.log"
 mkdir -p "$LOG_DIR"
@@ -37,27 +37,23 @@ declare -a CONFIGURED=()
 setup_nvm_node() {
     log_section "NVM + Node.js"
 
+    # Use AUR-installed nvm (from /usr/share/nvm) — don't curl a duplicate
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-
-    if [[ ! -d "$NVM_DIR" ]]; then
-        log "Installing nvm..."
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    if [[ -s /usr/share/nvm/init-nvm.sh ]]; then
+        source /usr/share/nvm/init-nvm.sh
+        log "Loaded nvm from AUR package (/usr/share/nvm)"
+    elif [[ -s "$NVM_DIR/nvm.sh" ]]; then
+        source "$NVM_DIR/nvm.sh"
+        log "Loaded nvm from $NVM_DIR"
     else
-        log "nvm already installed at $NVM_DIR"
-    fi
-
-    # Source nvm for this session
-    # shellcheck source=/dev/null
-    [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
-
-    if ! command -v nvm &>/dev/null; then
-        log_error "nvm failed to load after install"
+        log_warn "nvm not found — install via: paru -S nvm"
         return 1
     fi
 
-    log "Installing Node.js 24 LTS..."
+    log "Installing Node.js 24..."
     nvm install 24
     nvm alias default 24
+    nvm use 24
     log "Node $(node --version) active"
 
     log "Installing global npm packages..."
@@ -106,7 +102,7 @@ setup_docker() {
     log "Enabling and starting Docker service..."
     sudo systemctl enable --now docker
 
-    if ! groups "$USER" | grep -q docker; then
+    if ! id -nG "$USER" | grep -qw docker; then
         log "Adding $USER to docker group..."
         sudo usermod -aG docker "$USER"
         log_warn "Log out and back in for docker group to take effect"
@@ -127,7 +123,7 @@ setup_services() {
     local services=(tailscaled ollama NetworkManager bluetooth cronie)
 
     for svc in "${services[@]}"; do
-        if systemctl list-unit-files "${svc}.service" &>/dev/null; then
+        if systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "${svc}.service"; then
             log "Enabling ${svc}..."
             sudo systemctl enable --now "${svc}.service" 2>/dev/null \
                 && CONFIGURED+=("Service: ${svc}") \
@@ -146,6 +142,15 @@ setup_sysctl() {
 
     local target="/etc/sysctl.d/99-custom.conf"
     backup_file "$target"
+
+    # Detect zram — CachyOS uses zram by default, which benefits from high swappiness
+    if [[ -e /sys/block/zram0 ]]; then
+        SWAPPINESS=180
+        log "zram detected — using vm.swappiness=$SWAPPINESS"
+    else
+        SWAPPINESS=10
+        log "No zram — using vm.swappiness=$SWAPPINESS"
+    fi
 
     log "Writing optimized sysctl parameters..."
     sudo tee "$target" > /dev/null << 'EOF'
@@ -179,9 +184,12 @@ kernel.pid_max = 4194304
 kernel.threads-max = 4194304
 EOF
 
+    # Apply dynamic swappiness (heredoc was single-quoted so we patch it)
+    sudo sed -i "s/^vm.swappiness = .*/vm.swappiness = $SWAPPINESS/" "$target"
+
     log "Applying sysctl..."
     sudo sysctl --system 2>&1 | tail -1 | tee -a "$LOG_FILE"
-    CONFIGURED+=("Sysctl: file-max 2M, swappiness 10, inotify 524k watches")
+    CONFIGURED+=("Sysctl: file-max 2M, swappiness $SWAPPINESS, inotify 524k watches")
 }
 
 # =============================================================================

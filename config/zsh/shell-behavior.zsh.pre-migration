@@ -18,10 +18,5 @@ zle -N zle-keymap-select
 
 # Autosuggestions (Fish-like autosuggestions from history)
 # Requires: zsh-autosuggestions (install via: git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions)
-# Arch: use system package, fallback to manual install
-if [[ -f /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
-  source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-elif [[ -f ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
-  source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
-fi
+source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
 export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=3"    # Suggestion text color (yellow)

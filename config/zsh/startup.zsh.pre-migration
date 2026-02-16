@@ -4,8 +4,8 @@
 # Visual programs that run on shell start (loaded last for performance)
 
 # System Information Display
-# Requires: fastfetch (pacman -S fastfetch)
-fastfetch
+# Requires: archey (install via package manager)
+archey -o
 
 # Welcome Message
 # Requires: cowsay, lolcat

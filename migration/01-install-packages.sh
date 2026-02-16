@@ -9,7 +9,7 @@ set -euo pipefail
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/install-packages-$DATE.log"
 FAILED_LOG="$LOG_DIR/failed-packages-$DATE.txt"
@@ -83,7 +83,7 @@ log "Log: $LOG_FILE"
 # 1. System update + AUR helper
 # -------------------------------------------------------
 log_section "System Update & AUR Helper"
-sudo pacman -Syu --noconfirm 2>>"$LOG_FILE" || log_warn "System update had warnings"
+sudo pacman -Syu --noconfirm &>>"$LOG_FILE" || log_warn "System update had warnings"
 
 if ! command -v paru &>/dev/null; then
     log "Installing paru (AUR helper)..."
@@ -117,7 +117,6 @@ install_pacman_batch "System base" \
 # -------------------------------------------------------
 log_section "NVIDIA Drivers [3/9]"
 install_pacman_batch "NVIDIA stack" \
-    nvidia-open-dkms \
     nvidia-utils \
     lib32-nvidia-utils \
     nvidia-settings \
@@ -138,7 +137,7 @@ install_pacman_batch "Wayland desktop" \
     xdg-desktop-portal-hyprland \
     waybar \
     wofi \
-    mako \
+    dunst \
     swaylock swayidle swaybg \
     grim slurp \
     wl-clipboard \
@@ -170,19 +169,23 @@ install_pacman_batch "PipeWire audio" \
     pipewire \
     pipewire-alsa \
     pipewire-pulse \
-    pipewire-jack \
     wireplumber \
     alsa-utils \
     lsp-plugins-lv2 \
     zam-plugins \
     cava \
-    realtime-privileges
-
-install_aur_batch "AUR audio" \
-    bs2b-ladspa \
+    realtime-privileges \
     easyeffects
 
+install_aur_batch "AUR audio" \
+    ladspa-bs2b
+
 sudo usermod -aG realtime "$USER" 2>/dev/null && log "Added $USER to realtime group" || log_warn "realtime group add failed"
+if getent group docker &>/dev/null; then
+    sudo usermod -aG docker "$USER" && log "Added $USER to docker group" || log_warn "docker group add failed"
+else
+    log_warn "docker group does not exist yet — will be created on first dockerd start"
+fi
 
 # -------------------------------------------------------
 # 6. Development tools
@@ -224,7 +227,8 @@ install_pacman_batch "User apps" \
     firefox chromium thunderbird \
     mpv gimp blender \
     libreoffice-fresh \
-    obsidian steam \
+    steam \
+    telegram-desktop alacritty tailscale \
     flatpak \
     ffmpeg imagemagick
 
@@ -235,11 +239,9 @@ install_aur_batch "AUR apps" \
     zoom \
     spotify \
     figma-linux-bin \
-    telegram-desktop \
-    alacritty \
+    obsidian \
     warp-terminal-bin \
-    ollama-bin \
-    tailscale
+    ollama-bin
 
 # Flatpak apps
 log "Installing Flatpak apps..."
@@ -280,7 +282,6 @@ install_pacman_batch "Fonts" \
     xcursor-breeze \
     ibus ibus-table
 
-install_aur_batch "CJK input" ibus-cangjie
 
 # ===================================================================
 # SUMMARY
@@ -304,7 +305,7 @@ fi
 # Verify key tools
 log ""
 log "Verification:"
-for cmd in pacman paru node npm python3 rustc docker git hyprctl waybar zsh; do
+for cmd in pacman paru node npm python3 docker git hyprctl waybar zsh; do
     if command -v "$cmd" &>/dev/null; then
         log "  $cmd: installed"
     else

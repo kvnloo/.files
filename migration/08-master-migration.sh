@@ -4,7 +4,7 @@ set -uo pipefail  # no -e, we handle errors per-stage
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 DOTFILES="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$SCRIPT_DIR/../logs"
+LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/master-migration-$DATE.log"
 CHECKPOINT_FILE="$LOG_DIR/migration-checkpoint.txt"
@@ -28,7 +28,13 @@ is_stage_completed() {
 }
 
 get_last_checkpoint() {
-    [[ -f "$CHECKPOINT_FILE" ]] && tail -1 "$CHECKPOINT_FILE" | cut -d: -f1 || echo "none"
+    if [[ -f "$CHECKPOINT_FILE" ]]; then
+        local result
+        result=$(tail -1 "$CHECKPOINT_FILE" | cut -d: -f1)
+        echo "${result:-none}"
+    else
+        echo "none"
+    fi
 }
 
 # Trap for clean interruption
@@ -193,6 +199,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --stage)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --stage requires a stage number"
+                exit 1
+            fi
             SINGLE_STAGE="$2"
             if [[ "$SINGLE_STAGE" -lt 1 || "$SINGLE_STAGE" -gt ${#STAGES[@]} ]]; then
                 echo "Error: stage must be between 1 and ${#STAGES[@]}"

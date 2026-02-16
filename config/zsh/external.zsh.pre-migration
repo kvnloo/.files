@@ -4,12 +4,16 @@
 # Third-party tool initializations (load after core configuration)
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Homebrew (Linuxbrew)
 # ──────────────────────────────────────────────────────────────────────────────
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Z - Jump Around
 # ──────────────────────────────────────────────────────────────────────────────
 # Smart directory jumping based on frecency
 # Requires: https://github.com/rupa/z
+source "$(brew --prefix)/etc/profile.d/z.sh"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # NVM - Node Version Manager
@@ -25,10 +29,3 @@ export NVM_DIR="$HOME/.nvm"
 # ──────────────────────────────────────────────────────────────────────────────
 # Rust toolchain environment
 . "$HOME/.cargo/env"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Zoxide - Smarter cd
-# ──────────────────────────────────────────────────────────────────────────────
-# Smart directory jumping (replaces z/autojump)
-# Install: pacman -S zoxide
-eval "$(zoxide init zsh)"
