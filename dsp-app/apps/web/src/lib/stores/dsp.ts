@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId, InstalledProfile, HeadphoneSearchResult } from '@aural/shared';
+import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId, InstalledProfile, HeadphoneSearchResult, AudioFormat } from '@aural/shared';
 import { dspStages } from '$lib/content/dsp-stages';
 import type { DspStageId } from '@aural/shared';
 
@@ -18,6 +18,7 @@ export const mbcEnabled = derived(dspState, ($s) => $s?.mbcEnabled ?? false);
 export const profiles = derived(dspState, ($s) => $s?.profiles ?? []);
 
 export const bypassed = derived(dspState, ($s) => $s?.bypassed ?? []);
+export const audioFormat = derived(dspState, ($s) => $s?.audioFormat ?? null);
 
 /** Active signal chain stages for the current spatial mode (respects bypass) */
 export const activeChain = derived(dspState, ($s): DspStageId[] => {

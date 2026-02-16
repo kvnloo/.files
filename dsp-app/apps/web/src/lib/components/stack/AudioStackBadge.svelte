@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { spatialMode, activeChain, bypassed, dspState } from '$lib/stores/dsp';
+  import { spatialMode, activeChain, bypassed, dspState, audioFormat } from '$lib/stores/dsp';
   import { SPATIAL_SINK_NAMES } from '@aural/shared';
 
   let { onopen }: { onopen: () => void } = $props();
@@ -7,6 +7,14 @@
   let sinkName = $derived($dspState ? SPATIAL_SINK_NAMES[$spatialMode] : null);
   let filterCount = $derived($activeChain.length);
   let bypassedCount = $derived(($bypassed ?? []).length);
+  let formatLabel = $derived.by(() => {
+    const fmt = $audioFormat;
+    if (!fmt) return null;
+    const rate = fmt.sampleRate >= 1000
+      ? `${(fmt.sampleRate / 1000).toFixed(fmt.sampleRate % 1000 ? 1 : 0)}kHz`
+      : `${fmt.sampleRate}Hz`;
+    return `${rate}/${fmt.bitDepth}bit`;
+  });
 </script>
 
 <button
@@ -22,6 +30,10 @@
       {#if sinkName}
         <span class="text-text-tertiary/60">&middot;</span>
         {sinkName.replace('effect_input.headphone_dsp', '').replace('_', '') || 'clean'}
+      {/if}
+      {#if formatLabel}
+        <span class="text-text-tertiary/60">&middot;</span>
+        <span class="text-amber-dim/80">{formatLabel}</span>
       {/if}
       <span class="text-text-tertiary/60">&middot;</span>
       {filterCount} filter{filterCount !== 1 ? 's' : ''}

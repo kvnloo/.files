@@ -7,8 +7,8 @@
 {
     "layer": "top",
     "position": "bottom",
-    "height": 34,
-    "spacing": 0,
+    "height": 30,
+    "spacing": 4,
 
     // Module layout (from polybar: launcher, workspaces, mpd | title | alsa, battery, network, date, sysmenu)
     "modules-left": [
@@ -22,8 +22,10 @@
         "tray",
         "custom/media",
         "pulseaudio",
+        "custom/dac",
         "network",
         "cpu",
+        "custom/gpu",
         "memory",
         "temperature",
         "clock"
@@ -36,23 +38,23 @@
     "hyprland/workspaces": {
         "format": "{icon}",
         "format-icons": {
-            "1": "\uf121",
-            "2": "\udb80\ude39",
-            "3": "\uf02d",
-            "4": "\udb81\udda9",
-            "5": "\udb80\ude08",
-            "6": "\udb83\udd96",
-            "7": "\udb80\udea1",
-            "8": "\uf1b3",
-            "9": "\uf009",
-            "10": "\udb81\udcae",
-            "urgent": "\uf06a",
+            "1": "\uf121 1  Code",
+            "2": "\uf268 2  Browse",
+            "3": "\ue28c 3  Learning",
+            "4": "\udb85\udf69 4  Research",
+            "5": "\udb83\udd88 5  Networking",
+            "6": "\udb82\udcd6 6  LLM/Auto",
+            "7": "\udb82\udd91 7  Business",
+            "8": "\uf1b8 8  Flex",
+            "9": "\uf1b8 9  Flex",
+            "10": "\udb83\udf70 10  Music",
+            "urgent": "\uf06a !",
             "default": "\uf111"
         },
         "on-scroll-up": "hyprctl dispatch workspace e+1",
         "on-scroll-down": "hyprctl dispatch workspace e-1",
         "persistent-workspaces": {
-            "DP-3": [1, 4, 5],
+            "DP-2": [1, 4, 5],
             "DP-1": [2, 3, 6, 7, 8, 9],
             "HDMI-A-1": [10]
         }
@@ -95,6 +97,13 @@
         "tooltip": false
     },
 
+    "custom/dac": {
+        "exec": "~/.config/waybar/scripts/dac-samplerate.sh",
+        "format": "\uf001 {}",
+        "interval": 1,
+        "tooltip": "DAC Sample Rate"
+    },
+
     "pulseaudio": {
         "format": "{icon} {volume}%",
         "format-bluetooth": "\uf294 {volume}%",
@@ -123,6 +132,14 @@
         "format": "\uf2db {usage}%",
         "interval": 2,
         "tooltip-format": "CPU: {usage}%\n{avg_frequency} GHz",
+        "on-click": "btop"
+    },
+
+    "custom/gpu": {
+        "exec": "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits",
+        "format": "\uf26c {}%",
+        "interval": 2,
+        "tooltip-format": "GPU Utilization: {}%",
         "on-click": "btop"
     },
 

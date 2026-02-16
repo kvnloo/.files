@@ -141,6 +141,13 @@ export interface LimiterState {
   release: number;    // ms
 }
 
+// ─── Audio Format ───────────────────────────────────────────────
+export interface AudioFormat {
+  sampleRate: number;   // 44100, 48000, 96000, 192000, 384000
+  bitDepth: number;     // 16, 24, 32
+  format: string;       // "S32LE"
+}
+
 // ─── Full DSP State ──────────────────────────────────────────────
 export interface DspState {
   spatialMode: SpatialMode;
@@ -150,6 +157,8 @@ export interface DspState {
   mbcBands: MbcBand[];
   loudness: LoudnessState;
   limiter: LimiterState;
+  /** Current audio format (sample rate, bit depth) from PipeWire */
+  audioFormat: AudioFormat | null;
   /** Stages currently bypassed by the user */
   bypassed: BypassableStageId[];
   /** All installed headphone profiles (builtin + custom) */

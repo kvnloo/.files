@@ -1,0 +1,1 @@
+/workspace/.files/config/waybar/scripts/dac-samplerate.sh

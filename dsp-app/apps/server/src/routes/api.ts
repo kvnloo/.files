@@ -11,6 +11,7 @@ import {
   isMbcEnabled,
   getBypassed,
   toggleStageBypass,
+  getAudioFormat,
 } from '../pipewire/control';
 import { MBC_BAND_DEFAULTS } from '@aural/shared';
 import { searchHeadphones } from '../autoeq/index';
@@ -24,12 +25,13 @@ const api = new Hono();
 // ─── GET /api/state — Full DSP state snapshot ────────────────────
 api.get('/state', async (c) => {
   try {
-    const [spatialMode, eqProfile, brirRoom, mbcEnabled, profiles] = await Promise.all([
+    const [spatialMode, eqProfile, brirRoom, mbcEnabled, profiles, audioFormat] = await Promise.all([
       getActiveSink(),
       getActiveEqProfile(),
       getActiveBrirRoom(),
       isMbcEnabled(),
       getProfiles(),
+      getAudioFormat(),
     ]);
 
     const state: DspState = {
@@ -37,6 +39,7 @@ api.get('/state', async (c) => {
       eqProfile,
       brirRoom,
       mbcEnabled,
+      audioFormat,
       mbcBands: MBC_BAND_DEFAULTS,
       loudness: {
         enabled: true,

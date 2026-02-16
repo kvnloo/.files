@@ -1,4 +1,4 @@
-import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, SPATIAL_SINK_NAMES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
+import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, type AudioFormat, SPATIAL_SINK_NAMES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
 import { buildLinks, rewriteConfigLinks } from './chain-builder';
 import { getProfileFilePattern } from '../autoeq/profiles';
 
@@ -156,6 +156,28 @@ export async function setBrirRoom(room: BrirRoom): Promise<void> {
   // Replace all BRIR filename references
   config = config.replace(/BRIR_R\d{2}_C1_True_Stereo\.wav/g, info.filename);
   await Bun.write(DSP_CONFIG, config);
+}
+
+/** Get current audio format from PipeWire (sample rate, bit depth, format) */
+export async function getAudioFormat(): Promise<AudioFormat | null> {
+  try {
+    const { stdout } = await run(['pw-cli', 'info', '0']);
+    const rateMatch = stdout.match(/default\.clock\.rate\s*=\s*"(\d+)"/);
+    const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : null;
+    if (!sampleRate) return null;
+
+    // Try to get bit depth / format from the default sink node
+    const { stdout: wpOut } = await run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SINK@']);
+    const formatMatch = wpOut.match(/audio\.format\s*=\s*"(\S+)"/);
+    const format = formatMatch ? formatMatch[1] : 'S32LE';
+    // Derive bit depth from format string (e.g. S16LE→16, S24LE→24, S32LE→32)
+    const bitsMatch = format.match(/\d+/);
+    const bitDepth = bitsMatch ? parseInt(bitsMatch[0], 10) : 32;
+
+    return { sampleRate, bitDepth, format };
+  } catch {
+    return null;
+  }
 }
 
 /** Detect if MBC is currently bypassed by checking the filter chain links */

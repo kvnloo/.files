@@ -1,0 +1,179 @@
+/* =====================================================
+ * WAYBAR STYLESHEET — Rounded Pills
+ * ===================================================== */
+
+* {
+    font-family: "JetBrainsMono Nerd Font", FontAwesome, Roboto, sans-serif;
+    font-size: 12px;
+    min-height: 0;
+}
+
+window#waybar {
+    background: rgba(15, 15, 20, 0.75);
+    color: #cdd6f4;
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+tooltip {
+    background: rgba(30, 30, 46, 0.95);
+    border: 1px solid rgba(137, 180, 250, 0.2);
+    border-radius: 10px;
+}
+
+tooltip label {
+    color: #cdd6f4;
+    padding: 4px;
+}
+
+button {
+    border: none;
+    border-radius: 0;
+}
+
+#workspaces {
+    margin: 4px 4px;
+}
+
+#workspaces button {
+    padding: 2px 8px;
+    margin: 0 2px;
+    color: #bac2de;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    transition: all 0.2s ease;
+}
+
+#workspaces button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+#workspaces button.active {
+    background: rgba(137, 180, 250, 0.25);
+    color: #89b4fa;
+}
+
+#workspaces button.urgent {
+    background: rgba(243, 139, 168, 0.3);
+    color: #f38ba8;
+}
+
+#submap {
+    padding: 2px 10px;
+    margin: 4px 4px;
+    background: rgba(243, 139, 168, 0.25);
+    color: #f38ba8;
+    border-radius: 20px;
+    font-weight: bold;
+}
+
+#window {
+    padding: 2px 12px;
+    margin: 4px 0;
+    color: #a6adc8;
+}
+
+#clock,
+#cpu,
+#custom-gpu,
+#memory,
+#temperature,
+#network,
+#pulseaudio,
+#custom-media,
+#custom-dac,
+#tray {
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 20px;
+    transition: all 0.2s ease;
+}
+
+#custom-media {
+    background: rgba(166, 227, 161, 0.15);
+    color: #a6e3a1;
+}
+
+#pulseaudio {
+    background: rgba(137, 180, 250, 0.15);
+    color: #89b4fa;
+}
+
+#pulseaudio.muted {
+    background: rgba(243, 139, 168, 0.15);
+    color: #f38ba8;
+}
+
+#custom-dac {
+    background: rgba(250, 179, 135, 0.15);
+    color: #fab387;
+}
+
+#network {
+    background: rgba(203, 166, 247, 0.15);
+    color: #cba6f7;
+}
+
+#network.disconnected {
+    background: rgba(243, 139, 168, 0.15);
+    color: #f38ba8;
+}
+
+#cpu {
+    background: rgba(148, 226, 213, 0.15);
+    color: #94e2d5;
+}
+
+#custom-gpu {
+    background: rgba(249, 226, 175, 0.15);
+    color: #f9e2af;
+}
+
+#memory {
+    background: rgba(180, 190, 254, 0.15);
+    color: #b4befe;
+}
+
+#temperature {
+    background: rgba(250, 179, 135, 0.15);
+    color: #fab387;
+}
+
+#temperature.critical {
+    background: rgba(243, 139, 168, 0.25);
+    color: #f38ba8;
+}
+
+#clock {
+    background: rgba(137, 180, 250, 0.15);
+    color: #89b4fa;
+    font-weight: bold;
+}
+
+#tray {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background: rgba(243, 139, 168, 0.2);
+}
+
+#custom-media:hover,
+#custom-dac:hover,
+#pulseaudio:hover,
+#network:hover,
+#cpu:hover,
+#custom-gpu:hover,
+#memory:hover,
+#temperature:hover,
+#clock:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
