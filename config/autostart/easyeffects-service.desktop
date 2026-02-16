@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=EasyEffects Service
-Comment=EasyEffects audio DSP (background service for PipeWire)
-Exec=easyeffects --gapplication-service
-Icon=com.github.wwmm.easyeffects
-Type=Application
-Categories=AudioVideo;Audio;
-StartupNotify=false
-X-GNOME-Autostart-enabled=true

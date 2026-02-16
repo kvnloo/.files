@@ -1,5 +1,5 @@
 [alias]
-      random = !"git add -A; git commit -am \"$(echo $(curl -s https://whatthecommit.com/index.txt))\"; git push"
+	random = !"git add -A; git commit -am \"$(echo $(curl -s https://whatthecommit.com/index.txt))\"; git push"
 [user]
 	name = lesseradmin
 	email = veeman961@gmail.com
@@ -13,3 +13,31 @@
 	line-numbers = true
 [merge]
 	conflictstyle = zdiff3
+[push]
+	default = simple
+	autoSetupRemote = true
+	followTags = true
+[fetch]
+	prune = true
+	pruneTags = true
+	all = true
+[pull]
+	rebase = true
+[rerere]
+	enabled = true
+	autoUpdate = true
+[rebase]
+	autoSquash = true
+	autoStash = true
+	updateRefs = true
+[diff]
+	algorithm = histogram
+	colorMoved = plain
+	mnemonicPrefix = true
+	renames = true
+[branch]
+	sort = -committerdate
+[tag]
+	sort = -version:refname
+[init]
+	defaultBranch = main

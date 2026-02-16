@@ -1,2 +1,10 @@
+configuration {
+    modi: "drun,run,window";
+    show-icons: true;
+    icon-theme: "Papirus";
+    terminal: "kitty";
+    drun-display-format: "{icon} {name}";
+    disable-history: false;
+}
 
-@theme "/usr/share/rofi/themes/DarkBlue.rasi"
+@theme "main"

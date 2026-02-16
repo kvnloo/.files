@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=PulseEffects Service
-Comment=PulseEffects audio DSP (background service)
-Exec=flatpak run com.github.wwmm.pulseeffects --gapplication-service
-Icon=com.github.wwmm.pulseeffects
-Type=Application
-Categories=AudioVideo;Audio;
-StartupNotify=false
-X-GNOME-Autostart-enabled=true

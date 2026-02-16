@@ -56,6 +56,9 @@ link "$DOTFILES/config/waybar" "$HOME/.config/waybar"
 link "$DOTFILES/config/rofi" "$HOME/.config/rofi"
 link "$DOTFILES/config/dunst" "$HOME/.config/dunst"
 
+mkdir -p "$HOME/.config/zed"
+link "$DOTFILES/config/zed/settings.json" "$HOME/.config/zed/settings.json"
+
 # Keep i3/picom for X11 fallback
 link "$DOTFILES/config/i3" "$HOME/.config/i3"
 link "$DOTFILES/config/picom" "$HOME/.config/picom"
@@ -92,11 +95,6 @@ link "$DOTFILES/config/pipewire/headphone-switch.sh" "$HOME/.local/bin/headphone
 # -------------------------------------------------------
 echo "[5/8] Systemd user services..."
 mkdir -p "$HOME/.config/systemd/user"
-
-link "$DOTFILES/config/systemd/user/easyeffects.service" \
-     "$HOME/.config/systemd/user/easyeffects.service"
-link "$DOTFILES/config/systemd/user/easyeffects-ir-switcher.service" \
-     "$HOME/.config/systemd/user/easyeffects-ir-switcher.service"
 
 # browser-bypass-dsp.service is created by 03-setup-audio.sh
 # (uses dynamic $DOTFILES path instead of hardcoded %h/workspace/.files)
@@ -144,10 +142,22 @@ echo "  /etc/sysctl.d/99-custom.conf"
 
 # NVIDIA modprobe
 sudo tee /etc/modprobe.d/nvidia.conf > /dev/null << 'EOF'
-options nvidia_drm modeset=1
+options nvidia_drm modeset=1 fbdev=1
 options nvidia NVreg_PreserveVideoMemoryAllocations=1
+options nvidia NVreg_UsePageAttributeTable=1
+options nvidia NVreg_RegistryDwords="PowerMizerEnable=0x1;PerfLevelSrc=0x2222;PowerMizerDefault=0x1;PowerMizerDefaultAC=0x1"
 EOF
 echo "  /etc/modprobe.d/nvidia.conf"
+
+# Makepkg: use all CPU threads for compilation and compression
+if grep -q '^#MAKEFLAGS' /etc/makepkg.conf; then
+    sudo sed -i 's/^#MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' /etc/makepkg.conf
+    echo "  /etc/makepkg.conf: MAKEFLAGS=-j\$(nproc)"
+fi
+if grep -q '^COMPRESSZST' /etc/makepkg.conf; then
+    sudo sed -i 's/^COMPRESSZST=.*/COMPRESSZST=(zstd -c -T0 -)/' /etc/makepkg.conf
+    echo "  /etc/makepkg.conf: COMPRESSZST with -T0 (all threads)"
+fi
 
 # -------------------------------------------------------
 # 8. Wallpapers
