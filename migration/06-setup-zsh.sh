@@ -180,9 +180,13 @@ log "startup.zsh: archey → fastfetch"
 CHANGED=$((CHANGED + 1))
 
 # ─────────────────────────────────────────────────────────────────────────────
-log_section "8. Fix .zshrc (remove Linuxbrew, spicetify, dedup PATH)"
+log_section "8. Fix .zshrc (remove Linuxbrew, spicetify, fix ZSHRC_DIR, dedup PATH)"
 # ─────────────────────────────────────────────────────────────────────────────
 backup "$ZSH_DIR/.zshrc"
+
+# Fix ZSHRC_DIR resolution: ${0:A:h} resolves to /usr/bin during shell startup
+# because $0 is the shell binary name, not the script path
+sed -i 's|^ZSHRC_DIR="\${0:A:h}"$|# Note: \${0:A:h} does not work during shell startup because \$0 is the shell\n# binary name (e.g. "zsh"), not the script path. Resolve via the ~/.zshrc symlink.\nZSHRC_DIR="$(dirname "$(readlink -f "$HOME/.zshrc")")"|' "$ZSH_DIR/.zshrc"
 
 # Remove spicetify PATH
 sed -i '/^export PATH=\$PATH:\/home\/kvn\/.spicetify$/d' "$ZSH_DIR/.zshrc"
@@ -233,12 +237,14 @@ else
     log "No macOS/Linuxbrew remnants detected"
 fi
 
-# Quick zsh syntax check (non-fatal)
+# Quick zsh syntax check (non-fatal) — must use -i to test interactive startup
 if command -v zsh &>/dev/null; then
-    if zsh -c 'echo "zsh ok"' &>/dev/null 2>&1; then
-        log "zsh starts cleanly"
+    ZSH_ERRORS=$(zsh -i -c 'exit 0' 2>&1)
+    if [[ -z "$ZSH_ERRORS" ]]; then
+        log "zsh starts cleanly (interactive mode verified)"
     else
-        log_warn "zsh may have issues — check manually with: zsh -i"
+        log_warn "zsh interactive startup has errors:"
+        echo "$ZSH_ERRORS" | tee -a "$LOG_FILE"
     fi
 else
     log_warn "zsh not found in PATH"

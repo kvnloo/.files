@@ -4,9 +4,16 @@
 # Command shortcuts and overrides
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Safety & Utilities
+# Modern CLI Replacements
 # ──────────────────────────────────────────────────────────────────────────────
-# alias rm='rmtrash'                                # Safer deletion (requires: brew install rmtrash)
+# eza → ls (icons, git status, tree view)
+alias ls='eza --color=always --group-directories-first --icons'
+alias la='eza -la --color=always --group-directories-first --icons'
+alias ll='eza -l --color=always --group-directories-first --icons'
+alias lt='eza -aT --color=always --group-directories-first --icons'
+
+# bat → cat (syntax highlighting, line numbers)
+alias cat='bat --paging=never'
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Python Environment
@@ -33,14 +40,7 @@ alias cdprojects="cd ~/workspace"
 # ──────────────────────────────────────────────────────────────────────────────
 # Convenience Commands
 # ──────────────────────────────────────────────────────────────────────────────
-alias la='ls -al'                                 # List all files with details
 alias timon='la | lolcat'                         # Colorful file listing (requires: lolcat)
 alias sl='sl | lolcat'                            # Colorful steam locomotive (requires: sl, lolcat)
 alias gits="find . -name '.git'"                  # Find all git repositories
 alias reloadzsh="source ~/.zshrc"                 # Reload zsh configuration
-
-# ──────────────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────────────
-
-# ──────────────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────────────

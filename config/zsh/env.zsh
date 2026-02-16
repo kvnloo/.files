@@ -16,7 +16,7 @@ export PATH="~/.npm-global/bin:$PATH"             # Global npm packages
 export PATH="$PATH:$HOME/.rvm/bin"                # Ruby Version Manager
 
 # Language-Specific Paths
-# Note: NVM, Cargo, and other runtime managers are loaded in external.zsh
+# Note: fnm, Cargo, and other runtime managers are loaded in external.zsh
 # to avoid conflicts with their initialization scripts
 
 # Android SDK (idempotent - won't duplicate PATH entries)
@@ -26,3 +26,16 @@ export NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
 [[ ":$PATH:" != *":$ANDROID_HOME/platform-tools:"* ]] && export PATH="$PATH:$ANDROID_HOME/platform-tools"
 [[ ":$PATH:" != *":$ANDROID_HOME/emulator:"* ]] && export PATH="$PATH:$ANDROID_HOME/emulator"
 [[ ":$PATH:" != *":$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:"* ]] && export PATH="$PATH:$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# fzf - use fd for faster, .gitignore-aware file/directory finding
+# ──────────────────────────────────────────────────────────────────────────────
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+
+# ──────────────────────────────────────────────────────────────────────────────
+# bat - syntax-highlighted man pages
+# ──────────────────────────────────────────────────────────────────────────────
+export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+export MANROFFOPT="-c"

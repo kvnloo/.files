@@ -1,3 +1,8 @@
+# Enable Powerlevel10k instant prompt (must stay at top before any console output)
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 # ==============================================================================
 # ZSH CONFIGURATION - MODULAR STRUCTURE
 # ==============================================================================
@@ -44,7 +49,9 @@
 # ==============================================================================
 
 # Get the directory where this .zshrc file is located
-ZSHRC_DIR="${0:A:h}"
+# Note: ${0:A:h} doesn't work during shell startup because $0 is the shell
+# binary name (e.g. "zsh"), not the script path. Resolve via the ~/.zshrc symlink.
+ZSHRC_DIR="$(dirname "$(readlink -f "$HOME/.zshrc")")"
 
 # Source modular configuration files in dependency order
 source "$ZSHRC_DIR/env.zsh"             # 1. Environment variables & PATH

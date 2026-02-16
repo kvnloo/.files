@@ -2,30 +2,19 @@
 # STARTUP PROGRAMS
 # ==============================================================================
 # Visual programs that run on shell start (loaded last for performance)
+# Only runs on first terminal of the session to avoid ~500ms overhead on every shell
 
-# System Information Display
-# Requires: fastfetch (pacman -S fastfetch)
-fastfetch
+if [[ ! -f "/tmp/.zsh-started-$UID" ]]; then
+  # System Information Display
+  # Requires: fastfetch (pacman -S fastfetch)
+  fastfetch
 
-# Welcome Message
-# Requires: cowsay, lolcat
-cowsay -f dragon "hello!" | lolcat
+  # Welcome Message
+  # Requires: cowsay, lolcat
+  cowsay -f dragon "hello!" | lolcat
 
-# Color Palette Display
-colors
+  # Color Palette Display
+  colors
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Performance Note
-# ──────────────────────────────────────────────────────────────────────────────
-# These programs add ~500ms to shell startup time
-# Comment out for faster shell initialization if needed
-
-# Alternative system info tools (currently disabled):
-# REQUIRES: "tmux" - terminal tiling and much more (https://tmux.github.io/)
-# if [ "$TMUX" = "" ]; then tmux; fi
-
-# REQUIRES: "screenfetch"
-# if [ "$SCREENFETCH" = "" ]; then screenfetch; fi
-
-# REQUIRES: "neofetch"
-# if [ "$NEOFETCH" = "" ]; then neofetch; fi
+  touch "/tmp/.zsh-started-$UID"
+fi
