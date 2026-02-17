@@ -7,6 +7,13 @@
 # Core Environment
 export EDITOR='vim'
 export KEYTIMEOUT=1
+export BROWSER='google-chrome-stable'
+export TERMINAL='kitty'
+export MAIL='thunderbird'
+
+# Desktop toolkit theming
+export QT_QPA_PLATFORMTHEME='qt5ct'
+export GTK2_RC_FILES="$HOME/.gtkrc-2.0"
 
 # PATH Configuration (consolidated from scattered locations)
 # Each addition is documented with its purpose
