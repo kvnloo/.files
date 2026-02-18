@@ -59,7 +59,7 @@
 
     "hyprland/submap": {
         "format": " {}",
-        "max-length": 20,
+        "max-length": 80,
         "tooltip": false
     },
 

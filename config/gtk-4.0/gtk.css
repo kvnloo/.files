@@ -1,0 +1,56 @@
+/* Glassmorphic GTK4/libadwaita — transparent backgrounds for Hyprland blur
+ * Uses libadwaita named color overrides (standard CSS selectors don't work).
+ * Affects ALL GTK4/libadwaita apps.
+ */
+
+/* ── libadwaita color variable overrides ── */
+@define-color window_bg_color rgba(12, 12, 18, 0.82);
+@define-color window_fg_color #ffffff;
+@define-color headerbar_bg_color rgba(22, 22, 30, 0.78);
+@define-color headerbar_fg_color #ffffff;
+@define-color sidebar_bg_color rgba(14, 14, 20, 0.50);
+@define-color sidebar_fg_color #ffffff;
+@define-color secondary_sidebar_bg_color rgba(14, 14, 20, 0.50);
+@define-color view_bg_color rgba(12, 12, 18, 0.45);
+@define-color view_fg_color #ffffff;
+@define-color card_bg_color rgba(18, 18, 26, 0.55);
+@define-color card_fg_color #ffffff;
+@define-color popover_bg_color rgba(28, 28, 36, 0.88);
+@define-color popover_fg_color #ffffff;
+@define-color dialog_bg_color rgba(28, 28, 36, 0.85);
+@define-color dialog_fg_color #ffffff;
+@define-color shade_color rgba(0, 0, 0, 0.15);
+@define-color scrollbar_outline_color rgba(255, 255, 255, 0.08);
+
+/* Accent color — matched to your Hyprland border color */
+@define-color accent_bg_color rgba(117, 164, 205, 0.85);
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #75A4CD;
+
+/* ── Additional selector overrides as fallback ── */
+headerbar {
+  box-shadow: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+separator {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.navigation-sidebar row:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.navigation-sidebar row:selected {
+  background-color: rgba(117, 164, 205, 0.25) !important;
+}
+
+gridview > child:hover,
+listview > row:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+gridview > child:selected,
+listview > row:selected {
+  background-color: rgba(117, 164, 205, 0.20) !important;
+}
