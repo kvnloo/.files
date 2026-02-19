@@ -32,6 +32,8 @@ export FZF_BASE=/usr/share/fzf
 # ──────────────────────────────────────────────────────────────────────────────
 # Reminds you of existing aliases for commands you just typed
 # Install: paru -S zsh-you-should-use
+# Show after command output (P10k transient prompt eats preexec messages)
+export YSU_MESSAGE_POSITION="after"
 [[ -f /usr/share/zsh/plugins/zsh-you-should-use/you-should-use.plugin.zsh ]] && \
   source /usr/share/zsh/plugins/zsh-you-should-use/you-should-use.plugin.zsh
 
