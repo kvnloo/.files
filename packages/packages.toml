@@ -1,0 +1,391 @@
+# packages.toml - Cross-platform package manifest
+#
+# Canonical names default to the same name across all distros.
+# Use [overrides.<name>] when a package name differs by distro.
+# Arch "source" is "pacman" unless noted as "aur" in overrides.
+# Flatpak apps use reverse-domain IDs and are universal.
+
+# ---------------------------------------------------------
+# Core system
+# ---------------------------------------------------------
+[core]
+packages = [
+    "base-devel",
+    "linux-headers",
+    "networkmanager",
+    "bluez",
+    "bluez-utils",
+    "cups",
+    "udisks2",
+    "fwupd",
+    "man-db",
+    "man-pages",
+    "sysstat",
+    "cronie",
+]
+
+# ---------------------------------------------------------
+# NVIDIA drivers
+# ---------------------------------------------------------
+[nvidia]
+packages = [
+    "nvidia-utils",
+    "lib32-nvidia-utils",
+    "nvidia-settings",
+    "opencl-nvidia",
+    "libva-nvidia-driver",
+]
+
+# ---------------------------------------------------------
+# Wayland desktop
+# ---------------------------------------------------------
+[desktop]
+packages = [
+    "hyprland",
+    "xdg-desktop-portal-hyprland",
+    "waybar",
+    "wofi",
+    "dunst",
+    "swaylock",
+    "swayidle",
+    "swaybg",
+    "grim",
+    "slurp",
+    "wl-clipboard",
+    "cliphist",
+    "wlr-randr",
+    "xdg-utils",
+    "xdg-user-dirs",
+    "qt5-wayland",
+    "qt6-wayland",
+    "polkit-gnome",
+    "network-manager-applet",
+    "brightnessctl",
+    "playerctl",
+    "pamixer",
+    "pavucontrol",
+    "nautilus",
+    "gnome-keyring",
+    "seahorse",
+    "rofi-wayland",
+    "hyprpaper",
+    "hyprlock",
+    "hypridle",
+    "swww",
+    "nwg-look",
+    "wlogout",
+]
+
+# ---------------------------------------------------------
+# Audio
+# ---------------------------------------------------------
+[audio]
+packages = [
+    "pipewire",
+    "pipewire-alsa",
+    "pipewire-pulse",
+    "wireplumber",
+    "alsa-utils",
+    "lsp-plugins-lv2",
+    "zam-plugins",
+    "cava",
+    "realtime-privileges",
+    "easyeffects",
+    "ladspa-bs2b",
+]
+
+# ---------------------------------------------------------
+# Development tools
+# ---------------------------------------------------------
+[dev]
+packages = [
+    "git",
+    "github-cli",
+    "gcc",
+    "cmake",
+    "meson",
+    "ninja",
+    "make",
+    "pkg-config",
+    "python",
+    "python-pip",
+    "python-pipx",
+    "nodejs",
+    "npm",
+    "pnpm",
+    "nvm",
+    "jdk21-openjdk",
+    "ruby",
+    "docker",
+    "docker-compose",
+    "docker-buildx",
+    "neovim",
+    "vim",
+    "tmux",
+    "curl",
+    "wget",
+    "jq",
+    "ripgrep",
+    "fd",
+    "fzf",
+    "bat",
+    "eza",
+    "zoxide",
+    "btop",
+    "htop",
+    "lazygit",
+    "stow",
+    "unzip",
+    "zip",
+    "p7zip",
+    "tree",
+    "openssh",
+    "gnupg",
+    "dnsutils",
+    "nmap",
+    "socat",
+]
+
+# ---------------------------------------------------------
+# Applications
+# ---------------------------------------------------------
+[apps]
+packages = [
+    "firefox",
+    "chromium",
+    "google-chrome",
+    "thunderbird",
+    "mpv",
+    "gimp",
+    "blender",
+    "libreoffice-fresh",
+    "steam",
+    "telegram-desktop",
+    "alacritty",
+    "kitty",
+    "tailscale",
+    "flatpak",
+    "ffmpeg",
+    "imagemagick",
+    "discord",
+    "slack-desktop",
+    "zoom",
+    "spotify",
+    "figma-linux-bin",
+    "obsidian",
+    "warp-terminal-bin",
+    "ollama-bin",
+    "visual-studio-code-bin",
+    "cursor-bin",
+    "zed",
+]
+
+# ---------------------------------------------------------
+# Editors (subset of apps, for quick reference)
+# ---------------------------------------------------------
+[editors]
+packages = [
+    "neovim",
+    "vim",
+    "visual-studio-code-bin",
+    "cursor-bin",
+    "zed",
+]
+
+# ---------------------------------------------------------
+# Shell & terminal
+# ---------------------------------------------------------
+[shell]
+packages = [
+    "zsh",
+    "zsh-completions",
+    "zsh-syntax-highlighting",
+    "zsh-autosuggestions",
+    "oh-my-zsh-git",
+    "cowsay",
+    "lolcat",
+    "python-pywal",
+    "fastfetch",
+    "starship",
+]
+
+# ---------------------------------------------------------
+# Fonts & theming
+# ---------------------------------------------------------
+[fonts]
+packages = [
+    "ttf-roboto-mono",
+    "ttf-roboto-mono-nerd",
+    "ttf-jetbrains-mono",
+    "ttf-jetbrains-mono-nerd",
+    "ttf-firacode-nerd",
+    "ttf-iosevka-nerd",
+    "noto-fonts",
+    "noto-fonts-cjk",
+    "noto-fonts-emoji",
+    "papirus-icon-theme",
+    "adwaita-icon-theme",
+    "xcursor-breeze",
+    "ibus",
+    "ibus-table",
+]
+
+# ---------------------------------------------------------
+# Flatpak (universal IDs, same across all distros)
+# ---------------------------------------------------------
+[flatpak]
+packages = [
+    "com.mastermindzh.tidal-hifi",
+    "io.github.nokse22.high-tide",
+]
+
+# =========================================================
+# Overrides: distro-specific package names
+# =========================================================
+# arch.source = "aur" means install via paru instead of pacman
+
+[overrides.base-devel]
+arch = "base-devel"
+ubuntu = "build-essential"
+nix = "stdenv"
+
+[overrides.linux-headers]
+arch = "linux-headers"
+ubuntu = "linux-headers-generic"
+nix = "linuxHeaders"
+
+[overrides.python]
+arch = "python"
+ubuntu = "python3"
+nix = "python3"
+
+[overrides.python-pip]
+arch = "python-pip"
+ubuntu = "python3-pip"
+nix = "python3Packages.pip"
+
+[overrides.python-pipx]
+arch = "python-pipx"
+ubuntu = "pipx"
+nix = "pipx"
+
+[overrides.python-pywal]
+arch = "python-pywal"
+ubuntu = "python3-pywal"
+nix = "pywal"
+
+[overrides.fd]
+arch = "fd"
+ubuntu = "fd-find"
+nix = "fd"
+
+[overrides.bat]
+arch = "bat"
+ubuntu = "bat"
+nix = "bat"
+
+[overrides.dnsutils]
+arch = "dnsutils"
+ubuntu = "dnsutils"
+nix = "dnsutils"
+
+[overrides.visual-studio-code-bin]
+arch = { name = "visual-studio-code-bin", source = "aur" }
+ubuntu = "code"
+nix = "vscode"
+
+[overrides.cursor-bin]
+arch = { name = "cursor-bin", source = "aur" }
+
+[overrides.google-chrome]
+arch = { name = "google-chrome", source = "aur" }
+ubuntu = "google-chrome-stable"
+nix = "google-chrome"
+
+[overrides.discord]
+arch = { name = "discord", source = "aur" }
+nix = "discord"
+
+[overrides.slack-desktop]
+arch = { name = "slack-desktop", source = "aur" }
+ubuntu = "slack-desktop"
+nix = "slack"
+
+[overrides.zoom]
+arch = { name = "zoom", source = "aur" }
+nix = "zoom-us"
+
+[overrides.spotify]
+arch = { name = "spotify", source = "aur" }
+nix = "spotify"
+
+[overrides.figma-linux-bin]
+arch = { name = "figma-linux-bin", source = "aur" }
+nix = "figma-linux"
+
+[overrides.obsidian]
+arch = { name = "obsidian", source = "aur" }
+nix = "obsidian"
+
+[overrides.warp-terminal-bin]
+arch = { name = "warp-terminal-bin", source = "aur" }
+
+[overrides.ollama-bin]
+arch = { name = "ollama-bin", source = "aur" }
+ubuntu = "ollama"
+nix = "ollama"
+
+[overrides.rofi-wayland]
+arch = { name = "rofi-wayland", source = "aur" }
+
+[overrides.hyprpaper]
+arch = { name = "hyprpaper", source = "aur" }
+
+[overrides.hyprlock]
+arch = { name = "hyprlock", source = "aur" }
+
+[overrides.hypridle]
+arch = { name = "hypridle", source = "aur" }
+
+[overrides.swww]
+arch = { name = "swww", source = "aur" }
+
+[overrides.nwg-look]
+arch = { name = "nwg-look", source = "aur" }
+
+[overrides.wlogout]
+arch = { name = "wlogout", source = "aur" }
+
+[overrides.ladspa-bs2b]
+arch = { name = "ladspa-bs2b", source = "aur" }
+
+[overrides.oh-my-zsh-git]
+arch = { name = "oh-my-zsh-git", source = "aur" }
+
+[overrides.pnpm]
+arch = { name = "pnpm", source = "aur" }
+nix = "pnpm"
+
+[overrides.nvm]
+arch = { name = "nvm", source = "aur" }
+nix = "nvm"
+
+[overrides.libreoffice-fresh]
+arch = "libreoffice-fresh"
+ubuntu = "libreoffice"
+nix = "libreoffice"
+
+[overrides.jdk21-openjdk]
+arch = "jdk21-openjdk"
+ubuntu = "openjdk-21-jdk"
+nix = "jdk21"
+
+[overrides.p7zip]
+arch = "p7zip"
+ubuntu = "p7zip-full"
+nix = "p7zip"
+
+[overrides.github-cli]
+arch = "github-cli"
+ubuntu = "gh"
+nix = "gh"
