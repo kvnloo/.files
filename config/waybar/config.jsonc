@@ -24,7 +24,7 @@
         "pulseaudio",
         "custom/dac",
         "network",
-        "cpu",
+        "custom/cpu",
         "custom/gpu",
         "memory",
         "temperature",
@@ -125,19 +125,24 @@
         "on-click-right": "nm-connection-editor"
     },
 
-    "cpu": {
-        "format": "\uf2db {usage}%",
+    "custom/cpu": {
+        "exec": "~/.config/waybar/scripts/cpu-toggle.sh",
+        "return-type": "json",
+        "format": "\uf2db {}",
         "interval": 2,
-        "tooltip-format": "CPU: {usage}%\n{avg_frequency} GHz",
-        "on-click": "btop"
+        "signal": 8,
+        "on-click": "~/.config/waybar/scripts/cpu-toggle.sh toggle",
+        "on-click-right": "btop"
     },
 
     "custom/gpu": {
-        "exec": "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits",
-        "format": "\uf26c {}%",
+        "exec": "~/.config/waybar/scripts/gpu-toggle.sh",
+        "return-type": "json",
+        "format": "\uf26c {}",
         "interval": 2,
-        "tooltip-format": "GPU Utilization: {}%",
-        "on-click": "btop"
+        "signal": 9,
+        "on-click": "~/.config/waybar/scripts/gpu-toggle.sh toggle",
+        "on-click-right": "btop"
     },
 
     "memory": {

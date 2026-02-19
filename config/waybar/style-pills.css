@@ -77,7 +77,7 @@ button {
 }
 
 #clock,
-#cpu,
+#custom-cpu,
 #custom-gpu,
 #memory,
 #temperature,
@@ -122,7 +122,7 @@ button {
     color: #f38ba8;
 }
 
-#cpu {
+#custom-cpu {
     background: rgba(148, 226, 213, 0.15);
     color: #94e2d5;
 }
