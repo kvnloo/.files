@@ -11,7 +11,7 @@ if [[ ! -f "/tmp/.zsh-started-$UID" ]]; then
 
   # Welcome Message
   # Requires: cowsay, lolcat
-  cowsay -f dragon "hello!" | lolcat
+  # cowsay -f dragon "hello!" | lolcat
 
   # Color Palette Display
   colors
