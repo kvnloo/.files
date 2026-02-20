@@ -44,3 +44,9 @@ alias timon='la | lolcat'                         # Colorful file listing (requi
 alias sl='sl | lolcat'                            # Colorful steam locomotive (requires: sl, lolcat)
 alias gits="find . -name '.git'"                  # Find all git repositories
 alias reloadzsh="source ~/.zshrc"                 # Reload zsh configuration
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Claude Code (separate work/home configs)
+# ──────────────────────────────────────────────────────────────────────────────
+alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
+alias claude-home='CLAUDE_CONFIG_DIR=$HOME/.claude-home claude'
