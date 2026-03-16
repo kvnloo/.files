@@ -4,6 +4,17 @@
 # Third-party tool initializations (load after core configuration)
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Homebrew
+# ──────────────────────────────────────────────────────────────────────────────
+if [ -f /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+elif [ -f /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -f /usr/local/bin/brew ]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────────────
 # evalcache - cache eval init calls for faster startup
 # ──────────────────────────────────────────────────────────────────────────────
 # Wraps `eval "$(tool init zsh)"` so output is cached to file (~1-2ms vs ~20-50ms)
@@ -15,9 +26,20 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # Ctrl-T: fuzzy file finder, Alt-C: fuzzy cd
 # Note: Ctrl-R is handled by Atuin below (superior history search)
-export FZF_BASE=/usr/share/fzf
-[[ -f /usr/share/fzf/completion.zsh ]] && source /usr/share/fzf/completion.zsh
-[[ -f /usr/share/fzf/key-bindings.zsh ]] && source /usr/share/fzf/key-bindings.zsh
+if [[ -f /usr/share/fzf/completion.zsh ]]; then
+  # Linux (Arch/CachyOS)
+  export FZF_BASE=/usr/share/fzf
+  source /usr/share/fzf/completion.zsh
+  [[ -f /usr/share/fzf/key-bindings.zsh ]] && source /usr/share/fzf/key-bindings.zsh
+elif command -v brew &>/dev/null; then
+  # macOS / Linuxbrew
+  _fzf_prefix="$(brew --prefix fzf 2>/dev/null)"
+  if [[ -n "$_fzf_prefix" && -d "$_fzf_prefix" ]]; then
+    [[ -f "$_fzf_prefix/shell/completion.zsh" ]] && source "$_fzf_prefix/shell/completion.zsh"
+    [[ -f "$_fzf_prefix/shell/key-bindings.zsh" ]] && source "$_fzf_prefix/shell/key-bindings.zsh"
+  fi
+  unset _fzf_prefix
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # History Substring Search
@@ -43,7 +65,11 @@ export YSU_MESSAGE_POSITION="after"
 # Rust-based, ~5ms vs NVM's ~300-500ms startup
 # Install: pacman -S fnm
 if command -v fnm &>/dev/null; then
-  _evalcache fnm env --use-on-cd --shell zsh
+  if type _evalcache &>/dev/null; then
+    _evalcache fnm env --use-on-cd --shell zsh
+  else
+    eval "$(fnm env --use-on-cd --shell zsh)"
+  fi
 elif [[ -d "$HOME/.nvm" ]]; then
   # Fallback to NVM if fnm not yet installed
   export NVM_DIR="$HOME/.nvm"
@@ -54,13 +80,20 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Cargo - Rust Package Manager
 # ──────────────────────────────────────────────────────────────────────────────
+# Rust toolchain environment
 [[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Zoxide - Smarter cd
 # ──────────────────────────────────────────────────────────────────────────────
+# Smart directory jumping based on frecency (replaces z)
+# Install: brew install zoxide / pacman -S zoxide
 if command -v zoxide &>/dev/null; then
-  _evalcache zoxide init zsh
+  if type _evalcache &>/dev/null; then
+    _evalcache zoxide init zsh
+  else
+    eval "$(zoxide init zsh)"
+  fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -69,7 +102,11 @@ fi
 # Overrides Ctrl-R with superior history search (after fzf so it takes priority)
 # Install: pacman -S atuin
 if command -v atuin &>/dev/null; then
-  _evalcache atuin init zsh
+  if type _evalcache &>/dev/null; then
+    _evalcache atuin init zsh
+  else
+    eval "$(atuin init zsh)"
+  fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -77,7 +114,11 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Install: pacman -S direnv
 if command -v direnv &>/dev/null; then
-  _evalcache direnv hook zsh
+  if type _evalcache &>/dev/null; then
+    _evalcache direnv hook zsh
+  else
+    eval "$(direnv hook zsh)"
+  fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -85,5 +126,9 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Install: pacman -S navi
 if command -v navi &>/dev/null; then
-  _evalcache navi widget zsh
+  if type _evalcache &>/dev/null; then
+    _evalcache navi widget zsh
+  else
+    eval "$(navi widget zsh)"
+  fi
 fi

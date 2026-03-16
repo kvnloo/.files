@@ -46,6 +46,16 @@ alias gits="find . -name '.git'"                  # Find all git repositories
 alias reloadzsh="source ~/.zshrc"                 # Reload zsh configuration
 
 # ──────────────────────────────────────────────────────────────────────────────
+# macOS-specific (guarded)
+# ──────────────────────────────────────────────────────────────────────────────
+if [[ "$OSTYPE" == darwin* ]]; then
+  alias chrome="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
+  alias chrome-canary="/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary"
+  alias rekwm='brew services restart kwm'          # Restart kwm window manager
+  alias rechunk='brew services restart chunkwm'    # Restart chunkwm window manager
+fi
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Claude Code (separate work/home configs)
 # ──────────────────────────────────────────────────────────────────────────────
 alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'

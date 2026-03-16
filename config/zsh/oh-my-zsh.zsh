@@ -13,9 +13,13 @@ fi
 fpath=(/usr/share/zsh/site-functions $fpath)
 
 # Theme Configuration
-# Powerlevel10k is sourced directly from system package (not via ZSH_THEME)
-# Run `p10k configure` to customize, config saved to ~/.p10k.zsh
-ZSH_THEME=""
+# On Arch/CachyOS, Powerlevel10k is sourced directly from system package below.
+# On macOS (Homebrew install), oh-my-zsh handles it via ZSH_THEME.
+if [[ -f /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]]; then
+  ZSH_THEME=""
+else
+  ZSH_THEME="powerlevel10k/powerlevel10k"
+fi
 
 # Framework Behavior
 ZSH_DISABLE_COMPFIX=true                # Disable insecure directory warnings
@@ -38,7 +42,7 @@ plugins=(
 )
 
 # Initialize Oh-My-Zsh (runs compinit)
-source $ZSH/oh-my-zsh.sh
+[ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # fzf-tab: fuzzy tab completion (must load AFTER compinit, BEFORE autosuggestions)
@@ -60,7 +64,9 @@ elif [[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlightin
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Powerlevel10k theme (system package)
+# Powerlevel10k theme (system package on Arch/CachyOS)
 # ──────────────────────────────────────────────────────────────────────────────
-source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
+# On macOS, p10k is loaded via ZSH_THEME above through oh-my-zsh
+[[ -f /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]] && \
+  source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh

@@ -43,7 +43,7 @@ zstyle ':completion:*:*:*:*:processes' command "ps -u $USER -o pid,user,comm -w"
 # Autosuggestions
 # ──────────────────────────────────────────────────────────────────────────────
 # Fish-like autosuggestions from history AND the completion system
-# Arch: use system package, fallback to manual install
+# Check system package (Arch), user install (~/.zsh), and Homebrew paths
 if [[ -f /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
   source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 elif [[ -f ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
@@ -61,7 +61,7 @@ if [[ -f ~/.zsh/zsh-autopair/autopair.zsh ]]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# System Clipboard - sync vi-mode yank/paste with Wayland clipboard
+# System Clipboard - sync vi-mode yank/paste with system clipboard
 # ──────────────────────────────────────────────────────────────────────────────
 if [[ -f ~/.zsh/zsh-system-clipboard/zsh-system-clipboard.zsh ]]; then
   source ~/.zsh/zsh-system-clipboard/zsh-system-clipboard.zsh

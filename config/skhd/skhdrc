@@ -1,0 +1,235 @@
+# =====================================================
+# SKHD CONFIG (converted from i3 config)
+# =====================================================
+# Modifier: alt (option key) = i3's $mod
+# i3 used Mod4 (Super), but on macOS cmd conflicts
+# with system shortcuts, so alt is the standard choice.
+# =====================================================
+
+# =====================================================
+# CORE APPLICATION SHORTCUTS
+# =====================================================
+
+# Open terminal (i3: $mod+Return)
+alt - return : open -na /Applications/Warp.app
+
+# Kill focused window (i3: $mod+shift+q)
+alt + shift - q : yabai -m window --close
+
+# App launcher - Spotlight/Raycast (i3: $mod+space used rofi)
+# Note: cmd+space is already Spotlight. If using Raycast, configure its hotkey separately.
+
+# File manager (i3: $mod+shift+e opened nautilus)
+alt + shift - e : open -a Finder
+
+# =====================================================
+# FOCUS NAVIGATION (i3: $mod+h/j/k/l)
+# =====================================================
+
+alt - h : yabai -m window --focus west
+alt - j : yabai -m window --focus south
+alt - k : yabai -m window --focus north
+alt - l : yabai -m window --focus east
+
+# =====================================================
+# MOVE/SWAP WINDOWS (i3: $mod+shift+h/j/k/l)
+# =====================================================
+
+shift + alt - h : yabai -m window --swap west
+shift + alt - j : yabai -m window --swap south
+shift + alt - k : yabai -m window --swap north
+shift + alt - l : yabai -m window --swap east
+
+# Warp (move window and modify layout, like i3 move)
+shift + cmd - h : yabai -m window --warp west
+shift + cmd - j : yabai -m window --warp south
+shift + cmd - k : yabai -m window --warp north
+shift + cmd - l : yabai -m window --warp east
+
+# =====================================================
+# WINDOW SPLITTING (i3: $mod+c horizontal, $mod+v vertical)
+# =====================================================
+
+# Force next split direction
+alt - c : yabai -m window --insert east
+alt - v : yabai -m window --insert south
+
+# Toggle split orientation (i3: $mod+e toggle split)
+alt - e : yabai -m window --toggle split
+
+# =====================================================
+# FULLSCREEN & LAYOUT (i3: $mod+f, $mod+s/w/e)
+# =====================================================
+
+# Toggle zoom-fullscreen (i3: $mod+f)
+alt - f : yabai -m window --toggle zoom-fullscreen
+
+# Toggle native macOS fullscreen (like i3 native fullscreen)
+shift + alt - f : yabai -m window --toggle native-fullscreen
+
+# Toggle float (i3: $mod+shift+f for floating toggle)
+# Also centers and resizes the floating window
+shift + alt - space : yabai -m window --toggle float --grid 4:4:1:1:2:2
+
+# Toggle layout: bsp / float (i3: $mod+s stacking, $mod+w tabbed, $mod+e split)
+# macOS doesn't have stacking/tabbed, so toggle between bsp and float
+alt - s : yabai -m space --layout stack
+alt - w : yabai -m space --layout bsp
+
+# Stack navigation (when in stack layout, like i3 stacking)
+alt - n : yabai -m window --focus stack.next || yabai -m window --focus stack.first
+alt - p : yabai -m window --focus stack.prev || yabai -m window --focus stack.last
+
+# =====================================================
+# WORKSPACES / SPACES (i3: $mod+0-9)
+# =====================================================
+# Note: Requires scripting addition for --focus space
+# Without it, use ctrl+number in Mission Control settings
+# =====================================================
+
+# Switch to space (i3: $mod+1-9, $mod+0)
+alt - 1 : yabai -m space --focus 1
+alt - 2 : yabai -m space --focus 2
+alt - 3 : yabai -m space --focus 3
+alt - 4 : yabai -m space --focus 4
+alt - 5 : yabai -m space --focus 5
+alt - 6 : yabai -m space --focus 6
+alt - 7 : yabai -m space --focus 7
+alt - 8 : yabai -m space --focus 8
+alt - 9 : yabai -m space --focus 9
+alt - 0 : yabai -m space --focus 10
+
+# Move window to space (i3: $mod+shift+1-9)
+shift + alt - 1 : yabai -m window --space 1
+shift + alt - 2 : yabai -m window --space 2
+shift + alt - 3 : yabai -m window --space 3
+shift + alt - 4 : yabai -m window --space 4
+shift + alt - 5 : yabai -m window --space 5
+shift + alt - 6 : yabai -m window --space 6
+shift + alt - 7 : yabai -m window --space 7
+shift + alt - 8 : yabai -m window --space 8
+shift + alt - 9 : yabai -m window --space 9
+shift + alt - 0 : yabai -m window --space 10
+
+# Move window to space and follow focus (i3: shift+cmd from khd config)
+shift + cmd - 1 : yabai -m window --space 1; yabai -m space --focus 1
+shift + cmd - 2 : yabai -m window --space 2; yabai -m space --focus 2
+shift + cmd - 3 : yabai -m window --space 3; yabai -m space --focus 3
+shift + cmd - 4 : yabai -m window --space 4; yabai -m space --focus 4
+shift + cmd - 5 : yabai -m window --space 5; yabai -m space --focus 5
+shift + cmd - 6 : yabai -m window --space 6; yabai -m space --focus 6
+shift + cmd - 7 : yabai -m window --space 7; yabai -m space --focus 7
+shift + cmd - 8 : yabai -m window --space 8; yabai -m space --focus 8
+shift + cmd - 9 : yabai -m window --space 9; yabai -m space --focus 9
+
+# =====================================================
+# MONITOR FOCUS (i3: $mod+shift+ctrl+h/l for output)
+# =====================================================
+
+# Focus monitor (i3: move workspace to output)
+ctrl + alt - h : yabai -m display --focus west
+ctrl + alt - l : yabai -m display --focus east
+ctrl + alt - k : yabai -m display --focus north
+ctrl + alt - j : yabai -m display --focus south
+
+# Move window to monitor and follow focus
+ctrl + cmd - h : yabai -m window --display west; yabai -m display --focus west
+ctrl + cmd - l : yabai -m window --display east; yabai -m display --focus east
+ctrl + cmd - k : yabai -m window --display north; yabai -m display --focus north
+ctrl + cmd - j : yabai -m window --display south; yabai -m display --focus south
+
+# Move space to monitor (i3: $mod+shift+ctrl+h/l move workspace to output)
+shift + ctrl + alt - h : yabai -m space --display west; yabai -m display --focus west
+shift + ctrl + alt - l : yabai -m space --display east; yabai -m display --focus east
+
+# =====================================================
+# RESIZE MODE (i3: $mod+r enters resize mode)
+# =====================================================
+
+# Resize windows directly (no mode needed in skhd)
+# Grow/shrink from edges
+shift + alt - left  : yabai -m window --resize left:-50:0
+shift + alt - right : yabai -m window --resize right:50:0
+shift + alt - up    : yabai -m window --resize top:0:-50
+shift + alt - down  : yabai -m window --resize bottom:0:50
+
+# Alternative: fine-grained resize
+shift + cmd + alt - h : yabai -m window --resize left:-20:0
+shift + cmd + alt - l : yabai -m window --resize right:20:0
+shift + cmd + alt - k : yabai -m window --resize top:0:-20
+shift + cmd + alt - j : yabai -m window --resize bottom:0:20
+
+# =====================================================
+# GAPS (i3: $mod+shift+g for gaps mode)
+# =====================================================
+
+# Increase gaps
+alt - g : yabai -m space --gap rel:5; yabai -m space --padding rel:5:5:5:5
+
+# Decrease gaps
+shift + alt - g : yabai -m space --gap rel:-5; yabai -m space --padding rel:-5:-5:-5:-5
+
+# Reset gaps to default (12)
+ctrl + alt - g : yabai -m space --gap abs:12; yabai -m space --padding abs:12:12:12:12
+
+# Toggle gaps on/off
+cmd + alt - g : yabai -m space --toggle padding; yabai -m space --toggle gap
+
+# =====================================================
+# ROTATE & MIRROR (from khd config)
+# =====================================================
+
+# Rotate layout 90 degrees (khd: alt - r)
+alt - r : yabai -m space --rotate 90
+
+# Mirror on y-axis (khd: alt - y)
+alt - y : yabai -m space --mirror y-axis
+
+# Mirror on x-axis (khd: alt - x)
+alt - x : yabai -m space --mirror x-axis
+
+# Balance window sizes (i3: equalize)
+shift + alt - 0 : yabai -m space --balance
+
+# =====================================================
+# CONFIG RELOAD (i3: $mod+shift+c reload, $mod+shift+r restart)
+# =====================================================
+
+# Reload skhd config
+shift + alt - c : skhd --reload
+
+# Restart yabai
+shift + alt - r : yabai --restart-service
+
+# =====================================================
+# SCRATCHPAD (i3: $mod+minus, $mod+shift+minus)
+# =====================================================
+# yabai doesn't have a native scratchpad, but we can
+# minimize/deminimize windows as a workaround
+
+# Minimize window (like move to scratchpad)
+alt - 0x1B : yabai -m window --minimize
+
+# Un-minimize last window (like show scratchpad)
+# This focuses the most recently minimized window
+shift + alt - 0x1B : yabai -m window --deminimize "$(yabai -m query --windows --space | jq '[.[] | select(.["is-minimized"] == true)] | last | .id')"
+
+# =====================================================
+# FOCUS PARENT / CONTAINER (i3: $mod+a focus parent)
+# =====================================================
+
+# Focus recent window (closest to parent focus in i3)
+alt - a : yabai -m window --focus recent
+
+# Cycle focus forward/backward
+alt - tab : yabai -m window --focus next || yabai -m window --focus first
+shift + alt - tab : yabai -m window --focus prev || yabai -m window --focus last
+
+# =====================================================
+# SCREENSHOT (i3: $mod+p area, $mod+shift+p clipboard)
+# =====================================================
+# macOS has built-in screenshot shortcuts:
+#   cmd+shift+3 = full screen
+#   cmd+shift+4 = selection
+#   cmd+shift+5 = screenshot toolbar
+# These are already available without skhd config.

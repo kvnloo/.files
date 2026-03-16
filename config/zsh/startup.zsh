@@ -6,15 +6,21 @@
 
 if [[ ! -f "/tmp/.zsh-started-$UID" ]]; then
   # System Information Display
-  # Requires: fastfetch (pacman -S fastfetch)
-  fastfetch
+  # fastfetch (Linux/CachyOS) or archey (macOS)
+  if command -v fastfetch &>/dev/null; then
+    fastfetch
+  elif command -v archey &>/dev/null; then
+    archey -o
+  fi
 
   # Welcome Message
   # Requires: cowsay, lolcat
-  # cowsay -f dragon "hello!" | lolcat
+  if command -v cowsay &>/dev/null && command -v lolcat &>/dev/null; then
+    cowsay -f dragon "hello!" | lolcat
+  fi
 
   # Color Palette Display
-  colors
+  command -v colors &>/dev/null && colors
 
   touch "/tmp/.zsh-started-$UID"
 fi

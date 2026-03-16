@@ -49,9 +49,8 @@ fi
 # ==============================================================================
 
 # Get the directory where this .zshrc file is located
-# Note: ${0:A:h} doesn't work during shell startup because $0 is the shell
-# binary name (e.g. "zsh"), not the script path. Resolve via the ~/.zshrc symlink.
-ZSHRC_DIR="$(dirname "$(readlink -f "$HOME/.zshrc")")"
+# Uses zsh-native :A modifier to resolve symlinks (cross-platform, works on macOS and Linux)
+ZSHRC_DIR="${${:-$HOME/.zshrc}:A:h}"
 
 # Source modular configuration files in dependency order
 source "$ZSHRC_DIR/env.zsh"             # 1. Environment variables & PATH
@@ -70,15 +69,32 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # create a ~/.zshrc.local file with your custom settings
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
+# spicetify
+[ -d "$HOME/.spicetify" ] && export PATH="$PATH:$HOME/.spicetify"
 
-
-# bun completions
-[ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
+# asdf
+if [ -f /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh ]; then
+  . /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
+elif [ -f /opt/asdf-vm/asdf.sh ]; then
+  . /opt/asdf-vm/asdf.sh
+elif command -v brew &>/dev/null && [ -f "$(brew --prefix asdf 2>/dev/null)/libexec/asdf.sh" ]; then
+  . "$(brew --prefix asdf)/libexec/asdf.sh"
+fi
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
+[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
+[ -d "$BUN_INSTALL/bin" ] && export PATH="$BUN_INSTALL/bin:$PATH"
 
 # duckdb
-export PATH='/home/kvn/.duckdb/cli/latest':$PATH
+[ -d "$HOME/.duckdb/cli/latest" ] && export PATH="$HOME/.duckdb/cli/latest:$PATH"
+
+# Google Cloud SDK (macOS Homebrew)
+if command -v brew &>/dev/null; then
+  _gcloud_dir="$(brew --prefix 2>/dev/null)/share/google-cloud-sdk"
+  [ -d "$_gcloud_dir/bin" ] && export PATH="$_gcloud_dir/bin:$PATH"
+  unset _gcloud_dir
+fi
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh

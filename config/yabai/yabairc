@@ -1,0 +1,80 @@
+#!/usr/bin/env sh
+
+# =====================================================
+# YABAI CONFIG (converted from i3 config)
+# =====================================================
+
+# Scripting addition (uncomment after configuring sudoers)
+# yabai -m signal --add event=dock_did_restart action="sudo yabai --load-sa"
+# sudo yabai --load-sa
+
+# =====================================================
+# GLOBAL SETTINGS
+# =====================================================
+
+yabai -m config                                 \
+    mouse_follows_focus          off            \
+    focus_follows_mouse          off            \
+    display_arrangement_order    default        \
+    window_origin_display        default        \
+    window_placement             second_child   \
+    window_insertion_point       focused        \
+    window_zoom_persist          on             \
+    window_shadow                on             \
+    window_animation_duration    0.0            \
+    window_animation_easing      ease_out_circ  \
+    window_opacity_duration      0.0            \
+    active_window_opacity        1.0            \
+    normal_window_opacity        0.90           \
+    window_opacity               off            \
+    insert_feedback_color        0xffd75f5f     \
+    split_ratio                  0.50           \
+    split_type                   auto           \
+    auto_balance                 off            \
+    layout                       bsp            \
+    mouse_modifier               alt            \
+    mouse_action1                move           \
+    mouse_action2                resize         \
+    mouse_drop_action            swap
+
+# =====================================================
+# GAPS & PADDING (from i3: gaps inner 12, outer 0)
+# =====================================================
+
+yabai -m config top_padding      12
+yabai -m config bottom_padding   12
+yabai -m config left_padding     12
+yabai -m config right_padding    12
+yabai -m config window_gap       12
+
+# =====================================================
+# SPACE LABELS (matching i3 workspace names)
+# =====================================================
+
+yabai -m space 1 --label music
+yabai -m space 2 --label code
+yabai -m space 3 --label browse
+yabai -m space 4 --label learning
+yabai -m space 5 --label research
+yabai -m space 6 --label networking
+yabai -m space 7 --label llm
+yabai -m space 8 --label business
+yabai -m space 9 --label flex1
+yabai -m space 10 --label flex2
+
+# =====================================================
+# WINDOW RULES (from i3 assign directives)
+# =====================================================
+
+yabai -m rule --add app="Spotify" space=1
+yabai -m rule --add app="Google Chrome" space=3
+
+# Float system apps that don't tile well
+yabai -m rule --add app="System Preferences" manage=off
+yabai -m rule --add app="System Settings" manage=off
+yabai -m rule --add app="Calculator" manage=off
+yabai -m rule --add app="Karabiner-Elements" manage=off
+yabai -m rule --add app="Archive Utility" manage=off
+yabai -m rule --add app="Activity Monitor" manage=off
+
+echo "yabai configuration loaded.."
