@@ -9,6 +9,11 @@ const DSP_CONFIG = '/home/kvn/workspace/.files/config/pipewire/pipewire.conf.d/1
 /** In-memory bypass state (persists across requests, reset on server restart) */
 const bypassedStages = new Set<BypassableStageId>();
 
+/** Timestamp of last sink switch — used by the format poller to avoid
+ *  broadcasting transient DAC rates during PipeWire renegotiation. */
+let lastSinkSwitchAt = 0;
+export function getLastSinkSwitchTime(): number { return lastSinkSwitchAt; }
+
 export function getBypassed(): BypassableStageId[] {
   return [...bypassedStages];
 }
@@ -41,7 +46,7 @@ export async function toggleStageBypass(
   await setSpatialMode(spatialMode);
 }
 
-async function run(cmd: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+export async function run(cmd: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' });
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
@@ -55,7 +60,7 @@ async function findSinkId(nodeName: string): Promise<number | null> {
   // Parse pw-cli output: look for blocks containing the node name
   const blocks = stdout.split(/(?=\tid \d+)/);
   for (const block of blocks) {
-    if (block.includes(nodeName)) {
+    if (new RegExp(`node\\.name\\s*=\\s*"${nodeName}"`).test(block)) {
       const match = block.match(/id (\d+)/);
       if (match) return parseInt(match[1], 10);
     }
@@ -81,7 +86,7 @@ export async function getActiveSink(): Promise<SpatialMode> {
   // Lines look like: │  *   42. effect_input.headphone_dsp_room   [Audio/Sink]
   for (const [mode, sinkName] of Object.entries(SPATIAL_SINK_NAMES)) {
     const escaped = sinkName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\*.*${escaped}`).test(stdout)) {
+    if (new RegExp(`\\*.*${escaped}(?![\\w])`).test(stdout)) {
       return mode as SpatialMode;
     }
   }
@@ -89,16 +94,37 @@ export async function getActiveSink(): Promise<SpatialMode> {
   return 'clean';
 }
 
-/** Switch the active PipeWire sink to a spatial mode */
+/** Switch the active PipeWire sink to a spatial mode.
+ *  Locks the graph clock rate during the switch so the DAC doesn't fall back
+ *  to 48 kHz while streams migrate between filter-chain sinks. */
 export async function setSpatialMode(mode: SpatialMode): Promise<void> {
-  const nodeName = SPATIAL_SINK_NAMES[mode];
-  const sinkId = await findSinkId(nodeName);
-  if (sinkId === null) {
-    throw new Error(`Sink not found: ${nodeName}`);
-  }
-  const { exitCode, stderr } = await run(['wpctl', 'set-default', String(sinkId)]);
-  if (exitCode !== 0) {
-    throw new Error(`wpctl set-default failed: ${stderr}`);
+  // Snapshot current DAC rate before switching — if audio is playing, we lock it
+  const currentFormat = await getAudioFormat();
+  const lockRate = currentFormat?.sampleRate ?? 0;
+
+  try {
+    if (lockRate > 0) {
+      await run(['pw-metadata', '-n', 'settings', '0', 'clock.force-rate', String(lockRate)]);
+    }
+
+    const nodeName = SPATIAL_SINK_NAMES[mode];
+    const sinkId = await findSinkId(nodeName);
+    if (sinkId === null) {
+      throw new Error(`Sink not found: ${nodeName}`);
+    }
+    const { exitCode, stderr } = await run(['wpctl', 'set-default', String(sinkId)]);
+    if (exitCode !== 0) {
+      throw new Error(`wpctl set-default failed: ${stderr}`);
+    }
+
+    // Let streams migrate while the rate is locked
+    await Bun.sleep(500);
+  } finally {
+    // Always release the rate lock (0 = no forced rate)
+    if (lockRate > 0) {
+      await run(['pw-metadata', '-n', 'settings', '0', 'clock.force-rate', '0']);
+    }
+    lastSinkSwitchAt = Date.now();
   }
 }
 
@@ -158,23 +184,41 @@ export async function setBrirRoom(room: BrirRoom): Promise<void> {
   await Bun.write(DSP_CONFIG, config);
 }
 
-/** Get current audio format from PipeWire (sample rate, bit depth, format) */
+/** Get current audio format from PipeWire (sample rate, bit depth, format).
+ *  Reads the negotiated Format from the hardware ALSA sink the DSP chain
+ *  feeds into, which reflects the actual rate the DAC is running at. */
 export async function getAudioFormat(): Promise<AudioFormat | null> {
   try {
-    const { stdout } = await run(['pw-cli', 'info', '0']);
-    const rateMatch = stdout.match(/default\.clock\.rate\s*=\s*"(\d+)"/);
-    const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : null;
-    if (!sampleRate) return null;
+    // pw-link shows what the active DSP output connects to (the hardware sink)
+    const { stdout: linkOut } = await run(['pw-link', '-l']);
+    // Find: effect_output.headphone_dsp*:output_FL\n  |-> alsa_output.*:playback_FL
+    const hwSinkMatch = linkOut.match(
+      /effect_output\.headphone_dsp\S*:output_FL\n\s+\|->\s+(alsa_output\.\S+):playback_FL/
+    );
+    const hwSinkName = hwSinkMatch?.[1];
+    if (!hwSinkName) return null;
 
-    // Try to get bit depth / format from the default sink node
-    const { stdout: wpOut } = await run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SINK@']);
-    const formatMatch = wpOut.match(/audio\.format\s*=\s*"(\S+)"/);
-    const format = formatMatch ? formatMatch[1] : 'S32LE';
-    // Derive bit depth from format string (e.g. S16LE→16, S24LE→24, S32LE→32)
-    const bitsMatch = format.match(/\d+/);
-    const bitDepth = bitsMatch ? parseInt(bitsMatch[0], 10) : 32;
-
-    return { sampleRate, bitDepth, format };
+    // pw-dump includes the negotiated Format params with the actual running rate
+    const { stdout: dumpOut } = await run(['pw-dump']);
+    const nodes = JSON.parse(dumpOut) as any[];
+    for (const node of nodes) {
+      const props = node?.info?.props;
+      if (props?.['node.name'] !== hwSinkName) continue;
+      const formats = node?.info?.params?.Format;
+      if (!Array.isArray(formats)) continue;
+      for (const fmt of formats) {
+        if (fmt?.rate) {
+          const format = fmt.format ?? 'S32LE';
+          const bitsMatch = format.match(/\d+/);
+          return {
+            sampleRate: fmt.rate,
+            bitDepth: bitsMatch ? parseInt(bitsMatch[0], 10) : 32,
+            format,
+          };
+        }
+      }
+    }
+    return null;
   } catch {
     return null;
   }

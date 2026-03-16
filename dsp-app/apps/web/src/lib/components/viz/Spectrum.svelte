@@ -4,8 +4,10 @@
   import { spatialMode } from '$lib/stores/dsp';
 
   let canvas: HTMLCanvasElement;
+  let container: HTMLDivElement;
   let ctx: CanvasRenderingContext2D;
   let animationId: number;
+  let isVisible = true;
   let smoothedBars: number[] = new Array(48).fill(0);
   let prevBars: number[] = new Array(48).fill(0);
 
@@ -136,15 +138,31 @@
     const resizeObserver = new ResizeObserver(resizeCanvas);
     resizeObserver.observe(canvas.parentElement!);
 
+    const intersectionObserver = new IntersectionObserver(
+      ([entry]) => {
+        isVisible = entry.isIntersecting;
+        if (isVisible) {
+          connectSpectrum();
+          animationId = requestAnimationFrame(draw);
+        } else {
+          cancelAnimationFrame(animationId);
+          disconnectSpectrum();
+        }
+      },
+      { threshold: 0 },
+    );
+    intersectionObserver.observe(container);
+
     return () => {
       resizeObserver.disconnect();
+      intersectionObserver.disconnect();
       cancelAnimationFrame(animationId);
       disconnectSpectrum();
     };
   });
 </script>
 
-<div class="relative w-full h-full overflow-hidden rounded-xl">
+<div bind:this={container} class="relative w-full h-full overflow-hidden rounded-xl">
   <!-- Ambient gradient background -->
   <div class="absolute inset-0 bg-gradient-to-t from-surface-0/80 via-transparent to-transparent pointer-events-none"></div>
   <canvas bind:this={canvas} class="w-full h-full"></canvas>

@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import api from './routes/api';
 import { startCava, stopCava } from './spectrum/cava';
-import type { WsSpectrumData } from '@aural/shared';
+import { getAudioFormat, getLastSinkSwitchTime } from './pipewire/control';
+import type { WsSpectrumData, WsStateChange, AudioFormat } from '@aural/shared';
 
 const app = new Hono();
 
@@ -64,6 +65,42 @@ startCava((bars) => {
     }
   }
 });
+
+// ─── Poll audioFormat and broadcast changes over WS ──────────────
+let lastAudioFormat: AudioFormat | null = null;
+
+const SINK_SWITCH_COOLDOWN_MS = 5000;
+
+async function pollAudioFormat() {
+  try {
+    // Skip polling while PipeWire is renegotiating after a sink switch
+    if (Date.now() - getLastSinkSwitchTime() < SINK_SWITCH_COOLDOWN_MS) return;
+
+    const fmt = await getAudioFormat();
+    // Skip null reads — transient during sink switching (links not yet established)
+    if (!fmt) return;
+    const changed =
+      fmt.sampleRate !== lastAudioFormat?.sampleRate ||
+      fmt.bitDepth !== lastAudioFormat?.bitDepth ||
+      fmt.format !== lastAudioFormat?.format;
+    if (changed) {
+      lastAudioFormat = fmt;
+      if (spectrumClients.size === 0) return;
+      const msg = JSON.stringify({ type: 'state', state: { audioFormat: fmt } } satisfies WsStateChange);
+      for (const client of spectrumClients) {
+        try {
+          client.send(msg);
+        } catch {
+          spectrumClients.delete(client);
+        }
+      }
+    }
+  } catch {
+    // Ignore polling errors
+  }
+}
+
+setInterval(pollAudioFormat, 3000);
 
 console.log(`🎧 Aural server running at http://localhost:${server.port}`);
 

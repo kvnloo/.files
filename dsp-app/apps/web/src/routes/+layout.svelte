@@ -10,6 +10,6 @@
   });
 </script>
 
-<div class="min-h-screen bg-void text-text-primary">
+<div class="h-screen bg-void text-text-primary">
   {@render children()}
 </div>

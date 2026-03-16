@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import type { WsSpectrumData } from '@aural/shared';
+import type { WsSpectrumData, WsMessage } from '@aural/shared';
+import { dspState } from './dsp';
 
 export const spectrumBars = writable<number[]>(new Array(48).fill(0));
 export const spectrumConnected = writable(false);
@@ -25,9 +26,11 @@ export function connectSpectrum(): void {
 
   ws.onmessage = (event) => {
     try {
-      const data: WsSpectrumData = JSON.parse(event.data);
+      const data: WsMessage = JSON.parse(event.data);
       if (data.type === 'spectrum') {
         spectrumBars.set(data.bars);
+      } else if (data.type === 'state') {
+        dspState.update((s) => (s ? { ...s, ...data.state } : s));
       }
     } catch {
       // Ignore parse errors

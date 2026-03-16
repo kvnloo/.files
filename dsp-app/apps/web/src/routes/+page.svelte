@@ -17,7 +17,7 @@
   <title>Aural — Listening Companion</title>
 </svelte:head>
 
-<div class="min-h-screen flex flex-col bg-void">
+<div class="h-screen flex flex-col bg-void">
   <!-- Header — minimal, recedes -->
   <header class="flex items-center justify-between px-6 py-4 shrink-0">
     <div class="flex items-center gap-3">
@@ -40,27 +40,30 @@
   </header>
 
   <!-- Main content -->
-  <main class="flex-1 flex flex-col gap-4 px-6 pb-6 overflow-hidden">
-    <!-- Spectrum Visualizer — The ambient backdrop -->
-    <section class="h-40 md:h-52 shrink-0 glass rounded-xl overflow-hidden">
-      <Spectrum />
-    </section>
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- Pinned top rows — never scroll -->
+    <div class="shrink-0 flex flex-col gap-4 px-6 pt-4">
+      <!-- Spectrum Visualizer — The ambient backdrop -->
+      <section class="h-40 md:h-52 glass rounded-xl overflow-hidden">
+        <Spectrum />
+      </section>
 
-    <!-- Audio Stack Badge — persistent status strip -->
-    {#if $dspState}
-      <AudioStackBadge onopen={() => stackModalOpen = true} />
-    {/if}
+      <!-- Audio Stack Badge — persistent status strip -->
+      {#if $dspState}
+        <AudioStackBadge onopen={() => stackModalOpen = true} />
+      {/if}
 
-    <!-- Signal Chain Flow — Interactive node graph -->
-    <section class="relative shrink-0">
-      <div class="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 px-1">Signal Chain</div>
-      <ChainFlow />
-    </section>
+      <!-- Signal Chain Flow — Interactive node graph -->
+      <section class="relative">
+        <div class="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 px-1">Signal Chain</div>
+        <ChainFlow />
+      </section>
+    </div>
 
-    <!-- Controls + Guide — Side by side -->
-    <section class="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 min-h-0">
+    <!-- Controls + Guide — scrollable -->
+    <section class="flex-1 grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 min-h-0 px-6 py-4 overflow-y-auto">
       <!-- Left: Controls -->
-      <div class="glass rounded-xl p-4 space-y-5 overflow-y-auto">
+      <div class="glass rounded-xl p-4 space-y-5">
         <SpatialSelector />
         <div class="border-t border-border/50"></div>
         <HeadphoneSearch />
@@ -69,7 +72,7 @@
       </div>
 
       <!-- Right: Listening Guide -->
-      <div class="glass rounded-xl p-5 overflow-y-auto">
+      <div class="glass rounded-xl p-5">
         <div class="text-[10px] text-text-tertiary uppercase tracking-wider mb-3">Listening Guide</div>
         {#if $dspState}
           <Guide />

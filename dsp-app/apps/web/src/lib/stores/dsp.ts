@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId, InstalledProfile, HeadphoneSearchResult, AudioFormat } from '@aural/shared';
+import type { DspState, SpatialMode, EqProfile, BrirRoom, ApiResponse, BypassableStageId, InstalledProfile, HeadphoneSearchResult } from '@aural/shared';
 import { dspStages } from '$lib/content/dsp-stages';
 import type { DspStageId } from '@aural/shared';
 
@@ -75,7 +75,8 @@ export async function fetchState(): Promise<void> {
 export async function switchSpatialMode(mode: SpatialMode): Promise<void> {
   loading.set(true);
   error.set(null);
-  // Optimistic update
+  // Optimistic update — only spatialMode, never audioFormat.
+  // Format changes come exclusively from the WS poller (source material changes).
   dspState.update((s) => (s ? { ...s, spatialMode: mode } : s));
   const res = await apiCall(`/spatial/${mode}`);
   if (!res.ok) {
