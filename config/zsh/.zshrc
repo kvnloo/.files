@@ -69,32 +69,5 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # create a ~/.zshrc.local file with your custom settings
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
-# spicetify
-[ -d "$HOME/.spicetify" ] && export PATH="$PATH:$HOME/.spicetify"
-
-# asdf
-if [ -f /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh ]; then
-  . /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
-elif [ -f /opt/asdf-vm/asdf.sh ]; then
-  . /opt/asdf-vm/asdf.sh
-elif command -v brew &>/dev/null && [ -f "$(brew --prefix asdf 2>/dev/null)/libexec/asdf.sh" ]; then
-  . "$(brew --prefix asdf)/libexec/asdf.sh"
-fi
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
-[ -d "$BUN_INSTALL/bin" ] && export PATH="$BUN_INSTALL/bin:$PATH"
-
-# duckdb
-[ -d "$HOME/.duckdb/cli/latest" ] && export PATH="$HOME/.duckdb/cli/latest:$PATH"
-
-# Google Cloud SDK (macOS Homebrew)
-if command -v brew &>/dev/null; then
-  _gcloud_dir="$(brew --prefix 2>/dev/null)/share/google-cloud-sdk"
-  [ -d "$_gcloud_dir/bin" ] && export PATH="$_gcloud_dir/bin:$PATH"
-  unset _gcloud_dir
-fi
-
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh

@@ -7,13 +7,17 @@
 # Modern CLI Replacements
 # ──────────────────────────────────────────────────────────────────────────────
 # eza → ls (icons, git status, tree view)
-alias ls='eza --color=always --group-directories-first --icons'
-alias la='eza -la --color=always --group-directories-first --icons'
-alias ll='eza -l --color=always --group-directories-first --icons'
-alias lt='eza -aT --color=always --group-directories-first --icons'
+if (( $+commands[eza] )); then
+  alias ls='eza --color=always --group-directories-first --icons'
+  alias la='eza -la --color=always --group-directories-first --icons'
+  alias ll='eza -l --color=always --group-directories-first --icons'
+  alias lt='eza -aT --color=always --group-directories-first --icons'
+fi
 
 # bat → cat (syntax highlighting, line numbers)
-alias cat='bat --paging=never'
+if (( $+commands[bat] )); then
+  alias cat='bat --paging=never'
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Python Environment
@@ -60,3 +64,4 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
 alias claude-home='CLAUDE_CONFIG_DIR=$HOME/.claude-home claude'
+alias claude-mem='bun "/Users/kvn/.claude-work/plugins/cache/thedotmack/claude-mem/10.5.6/scripts/worker-service.cjs"'

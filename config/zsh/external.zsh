@@ -4,6 +4,22 @@
 # Third-party tool initializations (load after core configuration)
 
 # ──────────────────────────────────────────────────────────────────────────────
+# asdf - version manager
+# ──────────────────────────────────────────────────────────────────────────────
+if [ -f /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh ]; then
+  . /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
+elif [ -f /opt/asdf-vm/asdf.sh ]; then
+  . /opt/asdf-vm/asdf.sh
+elif command -v brew &>/dev/null && [ -f "$(brew --prefix asdf 2>/dev/null)/libexec/asdf.sh" ]; then
+  . "$(brew --prefix asdf)/libexec/asdf.sh"
+fi
+
+# ──────────────────────────────────────────────────────────────────────────────
+# bun - completions
+# ──────────────────────────────────────────────────────────────────────────────
+[ -s "${BUN_INSTALL:-$HOME/.bun}/_bun" ] && source "${BUN_INSTALL:-$HOME/.bun}/_bun"
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Homebrew
 # ──────────────────────────────────────────────────────────────────────────────
 if [ -f /home/linuxbrew/.linuxbrew/bin/brew ]; then
