@@ -75,6 +75,7 @@ shift + alt - space : yabai -m window --toggle float --grid 4:4:1:1:2:2
 # macOS doesn't have stacking/tabbed, so toggle between bsp and float
 alt - s : yabai -m space --layout stack
 alt - w : yabai -m space --layout bsp
+alt - d : yabai -m space --layout float
 
 # Stack navigation (when in stack layout, like i3 stacking)
 alt - n : yabai -m window --focus stack.next || yabai -m window --focus stack.first
