@@ -1,0 +1,17 @@
+# CamillaGUI Backend Configuration
+# Web interface for CamillaDSP — accessible at http://localhost:5005
+
+camilla_host: "127.0.0.1"
+camilla_port: 1234
+port: 5005
+config_dir: "/Users/kvn/.config/camilladsp/configs"
+coeff_dir: "/Users/kvn/.config/camilladsp/coeffs"
+default_config: "/Users/kvn/.config/camilladsp/configs/camilladsp-96000.yml"
+statefile_path: "/Users/kvn/.local/share/camilladsp/statefile.yml"
+log_file: "/Users/kvn/.local/share/camilladsp/gui.log"
+on_set_active_config: null
+on_get_active_config: null
+supported_capture_types:
+  - CoreAudio
+supported_playback_types:
+  - CoreAudio

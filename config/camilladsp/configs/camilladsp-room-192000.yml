@@ -1,0 +1,182 @@
+# CamillaDSP — Headphone DSP + Room (BRIR True Stereo)
+#
+# Signal chain: AutoEQ FIR → BRIR True Stereo Convolution → Limiter
+#
+# BRIR R02 = WDR Broadcast Control Room (RT60 0.235s)
+# True stereo uses 4 convolution paths:
+#   FL→Left ear, FL→Right ear, FR→Left ear, FR→Right ear
+
+devices:
+  samplerate: 192000
+  chunksize: 1024
+  enable_rate_adjust: true
+  capture:
+    type: CoreAudio
+    channels: 2
+    device: "BlackHole 2ch"
+    format: F32
+  playback:
+    type: CoreAudio
+    channels: 2
+    device: "Moonriver 2"
+    exclusive: true
+    format: S32
+
+filters:
+  eq_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_192000Hz.wav"
+      channel: 0
+
+  eq_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_192000Hz.wav"
+      channel: 1
+
+  # BRIR True Stereo — 4-channel WAV: ch0=FL→L, ch1=FL→R, ch2=FR→L, ch3=FR→R
+  brir_fl_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/BRIR_R02_C1_True_Stereo.wav"
+      channel: 0
+
+  brir_fl_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/BRIR_R02_C1_True_Stereo.wav"
+      channel: 1
+
+  brir_fr_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/BRIR_R02_C1_True_Stereo.wav"
+      channel: 2
+
+  brir_fr_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/BRIR_R02_C1_True_Stereo.wav"
+      channel: 3
+
+  # BRIR gain (level matching with non-BRIR profiles)
+  brir_gain:
+    type: Gain
+    parameters:
+      gain: -6.0
+      inverted: false
+
+  limiter:
+    type: Limiter
+    parameters:
+      soft_clip: true
+      clip_limit: -0.3
+
+mixers:
+  # Fan out stereo to 4 channels for true stereo convolution
+  stereo_to_quad:
+    channels:
+      in: 2
+      out: 4
+    mapping:
+      - dest: 0
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+      - dest: 1
+        sources:
+          - channel: 1
+            gain: 0
+            inverted: false
+      - dest: 2
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+      - dest: 3
+        sources:
+          - channel: 1
+            gain: 0
+            inverted: false
+
+  # Mix BRIR back to stereo
+  # Left ear  = FL→L (ch0) + FR→L (ch1)
+  # Right ear = FL→R (ch2) + FR→R (ch3)
+  quad_to_stereo:
+    channels:
+      in: 4
+      out: 2
+    mapping:
+      - dest: 0
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+          - channel: 1
+            gain: 0
+            inverted: false
+      - dest: 1
+        sources:
+          - channel: 2
+            gain: 0
+            inverted: false
+          - channel: 3
+            gain: 0
+            inverted: false
+
+pipeline:
+  # AutoEQ on stereo input
+  - type: Filter
+    channels: [0]
+    names:
+      - eq_l
+  - type: Filter
+    channels: [1]
+    names:
+      - eq_r
+
+  # Fan out to 4 channels
+  - type: Mixer
+    name: stereo_to_quad
+
+  # BRIR convolution: ch0=FL→L, ch1=FR→L, ch2=FL→R, ch3=FR→R
+  - type: Filter
+    channels: [0]
+    names:
+      - brir_fl_l
+  - type: Filter
+    channels: [1]
+    names:
+      - brir_fr_l
+  - type: Filter
+    channels: [2]
+    names:
+      - brir_fl_r
+  - type: Filter
+    channels: [3]
+    names:
+      - brir_fr_r
+
+  # Mix back to stereo
+  - type: Mixer
+    name: quad_to_stereo
+
+  # Gain + limiter
+  - type: Filter
+    channels: [0]
+    names:
+      - brir_gain
+      - limiter
+  - type: Filter
+    channels: [1]
+    names:
+      - brir_gain
+      - limiter

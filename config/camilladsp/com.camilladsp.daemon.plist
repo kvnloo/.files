@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.camilladsp.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/kvn/.local/bin/camilladsp</string>
+        <string>-p</string>
+        <string>1234</string>
+        <string>-l</string>
+        <string>info</string>
+        <string>-o</string>
+        <string>/Users/kvn/.local/share/camilladsp/camilladsp.log</string>
+        <string>-s</string>
+        <string>/Users/kvn/.local/share/camilladsp/statefile.yml</string>
+        <string>/Users/kvn/.config/camilladsp/configs/camilladsp-96000.yml</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>/Users/kvn/.config/camilladsp</string>
+    <key>StandardOutPath</key>
+    <string>/Users/kvn/.local/share/camilladsp/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kvn/.local/share/camilladsp/stderr.log</string>
+</dict>
+</plist>

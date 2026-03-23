@@ -1,0 +1,65 @@
+# CamillaDSP Main Configuration — Headphone DSP (Clean)
+#
+# macOS equivalent of PipeWire filter-chain DSP setup.
+# Signal chain: AutoEQ FIR Convolver → Limiter
+#
+# Profiles (swap via websocket SetConfig or headphone-switch.sh):
+#   camilladsp.yml            — Clean (EQ + limiter only)
+#   camilladsp-crossfeed.yml  — EQ + bs2b-style crossfeed + limiter
+#   camilladsp-room.yml       — EQ + BRIR true stereo room + limiter
+#
+# Usage:
+#   camilladsp -p 1234 ~/.config/camilladsp/camilladsp.yml
+#
+# Requires: BlackHole 2ch set as macOS system output
+
+devices:
+  samplerate: 96000
+  chunksize: 1024
+  enable_rate_adjust: true
+  capture:
+    type: CoreAudio
+    channels: 2
+    device: "BlackHole 2ch"
+    format: F32
+  playback:
+    type: CoreAudio
+    channels: 2
+    device: "Moonriver 2"
+    exclusive: true
+    format: S32
+
+filters:
+  # ── AutoEQ FIR Convolver (headphone frequency correction) ──
+  eq_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_96000Hz.wav"
+      channel: 0
+
+  eq_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_96000Hz.wav"
+      channel: 1
+
+  # ── Safety Limiter (replaces ZaMaximX2 @ -0.3 dBFS) ──
+  limiter:
+    type: Limiter
+    parameters:
+      soft_clip: true
+      clip_limit: -0.3
+
+pipeline:
+  - type: Filter
+    channels: [0]
+    names:
+      - eq_l
+      - limiter
+  - type: Filter
+    channels: [1]
+    names:
+      - eq_r
+      - limiter
