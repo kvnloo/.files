@@ -35,7 +35,9 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Wraps `eval "$(tool init zsh)"` so output is cached to file (~1-2ms vs ~20-50ms)
 # Run `_evalcache_clear` after updating tools to refresh cache
-[[ -f ~/.zsh/evalcache/evalcache.plugin.zsh ]] && source ~/.zsh/evalcache/evalcache.plugin.zsh
+if [[ -f ~/.zsh/evalcache/evalcache.plugin.zsh ]]; then
+  source ~/.zsh/evalcache/evalcache.plugin.zsh
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # fzf - Fuzzy Finder
@@ -62,8 +64,11 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Type partial command, then Up/Down to cycle through matching history
 # Install: pacman -S zsh-history-substring-search
-[[ -f /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh ]] && \
+if [[ -f ~/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh ]]; then
+  source ~/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh
+elif [[ -f /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh ]]; then
   source /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # You Should Use - alias reminder
@@ -72,8 +77,11 @@ fi
 # Install: paru -S zsh-you-should-use
 # Show after command output (P10k transient prompt eats preexec messages)
 export YSU_MESSAGE_POSITION="after"
-[[ -f /usr/share/zsh/plugins/zsh-you-should-use/you-should-use.plugin.zsh ]] && \
+if [[ -f ~/.zsh/zsh-you-should-use/you-should-use.plugin.zsh ]]; then
+  source ~/.zsh/zsh-you-should-use/you-should-use.plugin.zsh
+elif [[ -f /usr/share/zsh/plugins/zsh-you-should-use/you-should-use.plugin.zsh ]]; then
   source /usr/share/zsh/plugins/zsh-you-should-use/you-should-use.plugin.zsh
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # fnm - Fast Node Manager (replaces NVM)

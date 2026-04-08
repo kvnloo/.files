@@ -2,10 +2,6 @@
 	path = .oh-my-zsh
 	url = https://github.com/robbyrussell/oh-my-zsh.git
 
-[submodule "zsh-autosuggestions"]
-	path = .zsh/zsh-autosuggestions
-	url = https://github.com/zsh-users/zsh-autosuggestions.git
-
 [submodule "lightline.vim"]
   path = .vim/bundle/lightline.vim
   url = https://github.com/itchyny/lightline.vim
@@ -15,3 +11,27 @@
 [submodule "config/rofi-themes"]
 	path = config/rofi-themes
 	url = https://github.com/adi1090x/rofi.git
+[submodule ".zsh/zsh-autosuggestions"]
+	path = .zsh/zsh-autosuggestions
+	url = https://github.com/zsh-users/zsh-autosuggestions.git
+[submodule ".zsh/fzf-tab"]
+	path = .zsh/fzf-tab
+	url = https://github.com/Aloxaf/fzf-tab.git
+[submodule ".zsh/fast-syntax-highlighting"]
+	path = .zsh/fast-syntax-highlighting
+	url = https://github.com/zdharma-continuum/fast-syntax-highlighting.git
+[submodule ".zsh/zsh-autopair"]
+	path = .zsh/zsh-autopair
+	url = https://github.com/hlissner/zsh-autopair.git
+[submodule ".zsh/zsh-system-clipboard"]
+	path = .zsh/zsh-system-clipboard
+	url = https://github.com/kutsan/zsh-system-clipboard.git
+[submodule ".zsh/zsh-history-substring-search"]
+	path = .zsh/zsh-history-substring-search
+	url = https://github.com/zsh-users/zsh-history-substring-search.git
+[submodule ".zsh/zsh-you-should-use"]
+	path = .zsh/zsh-you-should-use
+	url = https://github.com/MichaelAquilina/zsh-you-should-use.git
+[submodule ".zsh/evalcache"]
+	path = .zsh/evalcache
+	url = https://github.com/mroth/evalcache.git
