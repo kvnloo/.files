@@ -1,6 +1,6 @@
 # CamillaDSP — Headphone DSP + Room (BRIR True Stereo)
 #
-# Signal chain: AutoEQ FIR → BRIR True Stereo Convolution → Limiter
+# Signal chain: AutoEQ FIR → BRIR True Stereo Convolution → Compressor → Limiter
 #
 # BRIR R02 = WDR Broadcast Control Room (RT60 0.235s)
 # True stereo uses 4 convolution paths:
@@ -8,7 +8,7 @@
 
 devices:
   samplerate: 48000
-  chunksize: 1024
+  chunksize: 4096
   enable_rate_adjust: true
   capture:
     type: CoreAudio
@@ -78,6 +78,18 @@ filters:
     parameters:
       soft_clip: true
       clip_limit: -0.3
+
+processors:
+  compressor:
+    type: Compressor
+    parameters:
+      channels: 2
+      attack: 0.05
+      release: 0.8
+      threshold: -20
+      factor: 3.0
+      makeup_gain: 0
+      soft_clip: true
 
 mixers:
   # Fan out stereo to 4 channels for true stereo convolution
@@ -169,14 +181,22 @@ pipeline:
   - type: Mixer
     name: quad_to_stereo
 
-  # Gain + limiter
+  # Gain + compressor + limiter
   - type: Filter
     channels: [0]
     names:
       - brir_gain
-      - limiter
   - type: Filter
     channels: [1]
     names:
       - brir_gain
+  - type: Processor
+    name: compressor
+  - type: Filter
+    channels: [0]
+    names:
+      - limiter
+  - type: Filter
+    channels: [1]
+    names:
       - limiter

@@ -15,12 +15,14 @@
         <string>/Users/kvn/.local/share/camilladsp/camilladsp.log</string>
         <string>-s</string>
         <string>/Users/kvn/.local/share/camilladsp/statefile.yml</string>
-        <string>/Users/kvn/.config/camilladsp/configs/camilladsp-96000.yml</string>
+        <string>/Users/kvn/.config/camilladsp/configs/camilladsp-crossfeed-44100.yml</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
     <key>WorkingDirectory</key>
     <string>/Users/kvn/.config/camilladsp</string>
     <key>StandardOutPath</key>

@@ -1,7 +1,7 @@
 # CamillaDSP Main Configuration — Headphone DSP (Clean)
 #
 # macOS equivalent of PipeWire filter-chain DSP setup.
-# Signal chain: AutoEQ FIR Convolver → Limiter
+# Signal chain: AutoEQ FIR Convolver → Compressor → Limiter
 #
 # Profiles (swap via websocket SetConfig or headphone-switch.sh):
 #   camilladsp.yml            — Clean (EQ + limiter only)
@@ -15,7 +15,7 @@
 
 devices:
   samplerate: 96000
-  chunksize: 1024
+  chunksize: 4096
   enable_rate_adjust: true
   capture:
     type: CoreAudio
@@ -52,14 +52,35 @@ filters:
       soft_clip: true
       clip_limit: -0.3
 
+# ── Gentle Compressor (fatigue reduction — tame peaks, lift quiet detail) ──
+processors:
+  compressor:
+    type: Compressor
+    parameters:
+      channels: 2
+      attack: 0.05
+      release: 0.8
+      threshold: -20
+      factor: 3.0
+      makeup_gain: 0
+      soft_clip: true
+
 pipeline:
   - type: Filter
     channels: [0]
     names:
       - eq_l
-      - limiter
   - type: Filter
     channels: [1]
     names:
       - eq_r
+  - type: Processor
+    name: compressor
+  - type: Filter
+    channels: [0]
+    names:
+      - limiter
+  - type: Filter
+    channels: [1]
+    names:
       - limiter

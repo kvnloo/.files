@@ -17,6 +17,7 @@ set -euo pipefail
 CDSP_PORT="${CDSP_PORT:-1234}"
 CDSP_ADDR="${CDSP_ADDR:-127.0.0.1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
 CONFIG_DIR="$SCRIPT_DIR/configs"
 COEFFS_DIR="$SCRIPT_DIR/coeffs"
 AUTOEQ_DIR="$SCRIPT_DIR/../autoeq"
@@ -61,31 +62,18 @@ cdsp_set_config() {
         return 1
     fi
 
-    # Use Python to send websocket command (CamillaDSP v4 API)
-    python3 -c "
-import json, socket, sys
+    "$VENV_PYTHON" -c "
+import sys
+from camilladsp import CamillaClient
 
-config_path = '$full_path'
-with open(config_path) as f:
-    config_content = f.read()
-
-msg = json.dumps({'SetConfig': config_content})
-header = f'GET /ws HTTP/1.1\r\nHost: ${CDSP_ADDR}:${CDSP_PORT}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n'
-
-# Simple approach: use curl to POST the config reload
-import subprocess
-result = subprocess.run(
-    ['curl', '-s', '-X', 'POST',
-     f'http://${CDSP_ADDR}:${CDSP_PORT}/api/setconfigfile',
-     '-H', 'Content-Type: text/plain',
-     '-d', config_path],
-    capture_output=True, text=True, timeout=5
-)
-if result.returncode == 0:
-    print(f'Loaded: {config_path}')
-else:
-    # Fallback: restart CamillaDSP with new config
-    print(f'Websocket unavailable, restart CamillaDSP with: camilladsp -p 1234 {config_path}', file=sys.stderr)
+try:
+    client = CamillaClient('${CDSP_ADDR}', ${CDSP_PORT})
+    client.connect()
+    client.config.set_file_path('$full_path')
+    client.general.reload()
+    print(f'Loaded: $full_path')
+except Exception as e:
+    print(f'Websocket unavailable ({e}), restart CamillaDSP with: camilladsp -p 1234 $full_path', file=sys.stderr)
     sys.exit(1)
 " 2>&1
 }

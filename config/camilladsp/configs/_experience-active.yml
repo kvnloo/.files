@@ -1,0 +1,83 @@
+devices:
+  samplerate: 44100
+  chunksize: 4096
+  enable_rate_adjust: true
+  capture:
+    type: CoreAudio
+    channels: 2
+    device: BlackHole 2ch
+    format: F32
+  playback:
+    type: CoreAudio
+    channels: 2
+    device: Moonriver 2
+    exclusive: true
+    format: S32
+filters:
+  eq_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: coeffs/active_44100Hz.wav
+      channel: 0
+  eq_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: coeffs/active_44100Hz.wav
+      channel: 1
+  limiter:
+    type: Limiter
+    parameters:
+      soft_clip: true
+      clip_limit: -0.3
+  loudness:
+    type: Loudness
+    parameters:
+      reference_level: -20.0
+      high_boost: 10.0
+      low_boost: 10.0
+processors:
+  compressor:
+    type: Compressor
+    parameters:
+      channels: 2
+      attack: 0.05
+      release: 0.8
+      threshold: -20
+      factor: 3.0
+      makeup_gain: 0
+      soft_clip: true
+pipeline:
+- type: Filter
+  channels:
+  - 0
+  names:
+  - eq_l
+- type: Filter
+  channels:
+  - 1
+  names:
+  - eq_r
+- type: Processor
+  name: compressor
+- type: Filter
+  channels:
+  - 0
+  names:
+  - loudness
+- type: Filter
+  channels:
+  - 1
+  names:
+  - loudness
+- type: Filter
+  channels:
+  - 0
+  names:
+  - limiter
+- type: Filter
+  channels:
+  - 1
+  names:
+  - limiter

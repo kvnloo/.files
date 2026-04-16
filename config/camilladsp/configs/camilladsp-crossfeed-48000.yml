@@ -1,6 +1,6 @@
 # CamillaDSP — Headphone DSP + Crossfeed
 #
-# Signal chain: AutoEQ FIR → bs2b-style crossfeed (IIR biquads) → Limiter
+# Signal chain: AutoEQ FIR → bs2b-style crossfeed (IIR biquads) → Compressor → Limiter
 #
 # Crossfeed approximates bs2b Jan Meier preset (700 Hz / 4.5 dB):
 #   - Lowpass filter bleeds opposite channel below 700 Hz
@@ -8,7 +8,7 @@
 
 devices:
   samplerate: 48000
-  chunksize: 1024
+  chunksize: 4096
   enable_rate_adjust: true
   capture:
     type: CoreAudio
@@ -55,6 +55,18 @@ filters:
     parameters:
       soft_clip: true
       clip_limit: -0.3
+
+processors:
+  compressor:
+    type: Compressor
+    parameters:
+      channels: 2
+      attack: 0.05
+      release: 0.8
+      threshold: -20
+      factor: 3.0
+      makeup_gain: 0
+      soft_clip: true
 
 mixers:
   split_for_crossfeed:
@@ -128,6 +140,8 @@ pipeline:
       - crossfeed_gain
   - type: Mixer
     name: crossfeed_mix
+  - type: Processor
+    name: compressor
   - type: Filter
     channels: [0]
     names:

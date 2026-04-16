@@ -1,2 +1,4 @@
 .DS_Store
 logs/
+codesign0
+config/camilladsp/venv/
