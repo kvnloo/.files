@@ -90,6 +90,7 @@ button {
 #pulseaudio,
 #custom-media,
 #custom-dac,
+#custom-codexbar,
 #tray {
     padding: 2px 12px;
     margin: 4px 2px;
@@ -182,7 +183,40 @@ button {
 #custom-gpu:hover,
 #memory:hover,
 #temperature:hover,
+#custom-codexbar:hover,
 #clock:hover {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.12);
 }
+
+/* codexbar-waybar — AI usage indicator. State classes (ok / warning /
+ * critical / stale) are emitted by codexbar.sh; only colors are
+ * overridden here, the box styling comes from the shared rule above. */
+
+#custom-codexbar.ok {
+    color: #16d3b4;
+    border-color: rgba(22, 211, 180, 0.12);
+}
+
+#custom-codexbar.warning {
+    color: #f5a623;
+    background: rgba(245, 166, 35, 0.18);
+    border-color: rgba(245, 166, 35, 0.25);
+}
+
+#custom-codexbar.critical {
+    color: #ff5470;
+    background: rgba(255, 84, 112, 0.22);
+    border-color: rgba(255, 84, 112, 0.3);
+    animation: codexbar-pulse 2s ease-in-out infinite alternate;
+}
+
+#custom-codexbar.stale {
+    color: #888;
+}
+
+@keyframes codexbar-pulse {
+    from { background: rgba(255, 84, 112, 0.22); }
+    to   { background: rgba(255, 84, 112, 0.4); }
+}
+

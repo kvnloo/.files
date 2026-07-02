@@ -1,0 +1,20 @@
+// Waybar custom-module definition for codexbar-waybar.
+//
+// install.sh drops this at ~/.config/waybar/modules/custom-codexbar.json.
+// You then reference "custom/codexbar" from a modules-right group in your
+// ~/.config/waybar/config.jsonc — see README.md for the snippet.
+//
+// To force a refresh from elsewhere:  pkill -RTMIN+8 waybar
+{
+    "custom/codexbar": {
+        "exec": "$HOME/.config/waybar/scripts/codexbar.sh",
+        "return-type": "json",
+        "format": "{}",
+        "interval": 30,
+        "signal": 8,
+        "on-click": "$HOME/.config/waybar/scripts/codexbar-popup.py",
+        "on-click-right": "bash -c 'notify-send -a CodexBar -t 8000 \"AI usage\" \"$($HOME/.config/waybar/scripts/codexbar.sh | jq -r .tooltip)\"'",
+        "tooltip": true,
+        "max-length": 24
+    }
+}

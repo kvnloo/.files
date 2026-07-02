@@ -1,0 +1,49 @@
+
+/* codexbar-waybar — appended by install.sh */
+/* CodexBar Waybar module — append to ~/.config/waybar/user-style.css
+ * or your theme's CSS. Tweak colors to taste; the four state classes
+ * (ok / warning / critical / stale) are emitted by codexbar.sh.
+ */
+
+#custom-codexbar {
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+#custom-codexbar:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+#custom-codexbar.ok {
+    color: #16d3b4;
+    border-color: rgba(22, 211, 180, 0.12);
+}
+
+#custom-codexbar.warning {
+    color: #f5a623;
+    background: rgba(245, 166, 35, 0.18);
+    border-color: rgba(245, 166, 35, 0.25);
+}
+
+#custom-codexbar.critical {
+    color: #ff5470;
+    background: rgba(255, 84, 112, 0.22);
+    border-color: rgba(255, 84, 112, 0.3);
+    animation: codexbar-pulse 2s ease-in-out infinite alternate;
+}
+
+#custom-codexbar.stale {
+    /* Latest fetch failed or the value came from the cache. */
+    color: #888;
+}
+
+@keyframes codexbar-pulse {
+    from { background: rgba(255, 84, 112, 0.22); }
+    to   { background: rgba(255, 84, 112, 0.4); }
+}

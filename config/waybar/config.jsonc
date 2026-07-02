@@ -5,6 +5,7 @@
 // See: https://github.com/Alexays/Waybar/wiki/Configuration
 // =====================================================
 {
+    "include": ["~/.config/waybar/modules/custom-codexbar.json"],
     "layer": "top",
     "position": "bottom",
     "height": 30,
@@ -28,6 +29,7 @@
         "custom/gpu",
         "memory",
         "temperature",
+        "custom/codexbar",
         "clock"
     ],
 
