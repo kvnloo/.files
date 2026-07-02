@@ -5,6 +5,7 @@
 #   headphone-switch.sh clean        # no spatial processing
 #   headphone-switch.sh crossfeed    # bs2b crossfeed
 #   headphone-switch.sh room         # BRIR room simulation
+#   headphone-switch.sh movie        # 7.1/5.1 movie fold-down + EQ
 #
 # EQ profile (requires PipeWire restart):
 #   headphone-switch.sh eq monarch   # Monarch MKII IRs
@@ -56,13 +57,16 @@ set_eq() {
 
 case "$1" in
     clean)
-        set_sink 'effect_input.headphone_dsp"' "Headphone DSP (clean)"
+        set_sink 'effect_input.headphone_dsp' "Headphone DSP (clean)"
         ;;
     crossfeed|xfeed|bs2b)
         set_sink 'effect_input.headphone_dsp_crossfeed' "Headphone DSP + Crossfeed (bs2b)"
         ;;
     room|brir)
         set_sink 'effect_input.headphone_dsp_room' "Headphone DSP + Room (BRIR)"
+        ;;
+    movie|film|cinema)
+        set_sink 'effect_input.headphone_dsp_movie' "Headphone DSP Movie (7.1/5.1 fold-down)"
         ;;
     eq)
         if [ -z "$2" ]; then
@@ -90,6 +94,7 @@ case "$1" in
         echo "  $0 clean      → EQ only (no spatial)"
         echo "  $0 crossfeed  → EQ + bs2b crossfeed"
         echo "  $0 room       → EQ + BRIR room sim"
+        echo "  $0 movie      → 7.1/5.1 fold-down + EQ for Plex/movies"
         echo "  $0 eq monarch → Switch to Monarch MKII EQ"
         echo "  $0 eq hd800s  → Switch to HD800S EQ"
         ;;
