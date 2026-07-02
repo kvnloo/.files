@@ -134,6 +134,7 @@ packages = [
     "btop",
     "htop",
     "lazygit",
+    "opencode",
     "stow",
     "unzip",
     "zip",
@@ -154,6 +155,7 @@ packages = [
     "firefox",
     "chromium",
     "google-chrome",
+    "zen-browser-bin",
     "thunderbird",
     "mpv",
     "gimp",
@@ -237,6 +239,7 @@ packages = [
 packages = [
     "com.mastermindzh.tidal-hifi",
     "io.github.nokse22.high-tide",
+    "tv.plex.PlexDesktop",
 ]
 
 # =========================================================
@@ -296,6 +299,11 @@ nix = "vscode"
 
 [overrides.cursor-bin]
 arch = { name = "cursor-bin", source = "aur" }
+
+[overrides.zen-browser-bin]
+arch = { name = "zen-browser-bin", source = "aur" }
+ubuntu = "zen-browser"
+nix = "zen-browser"
 
 [overrides.google-chrome]
 arch = { name = "google-chrome", source = "aur" }
