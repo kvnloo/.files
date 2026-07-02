@@ -1,5 +1,15 @@
 import { Hono } from 'hono';
-import type { DspState, ApiResponse, SpatialMode, EqProfile, BrirRoom, BypassableStageId, InstalledProfile, HeadphoneSearchResult } from '@aural/shared';
+import type {
+  DspState,
+  ApiResponse,
+  SpatialMode,
+  EqProfile,
+  BrirRoom,
+  BypassableStageId,
+  InstalledProfile,
+  HeadphoneSearchResult,
+  HardwareStage,
+} from '@aural/shared';
 import {
   getActiveSink,
   setSpatialMode,
@@ -12,6 +22,7 @@ import {
   getBypassed,
   toggleStageBypass,
   getAudioFormat,
+  getPipeWireSystem,
 } from '../pipewire/control';
 import { MBC_BAND_DEFAULTS } from '@aural/shared';
 import { searchHeadphones } from '../autoeq/index';
@@ -22,16 +33,49 @@ const BYPASSABLE: BypassableStageId[] = ['crossfeed', 'brir', 'loudness', 'mbc']
 
 const api = new Hono();
 
+function buildHardwareStages(
+  eqProfile: EqProfile,
+  profiles: InstalledProfile[],
+  audioFormat: DspState['audioFormat'],
+): HardwareStage[] {
+  const profile = profiles.find((p) => p.id === eqProfile);
+  const headphoneName = profile?.fullName ?? eqProfile;
+  const target = profile?.target ? `EQ target: ${profile.target}` : 'Active headphone correction profile';
+
+  return [
+    {
+      id: 'dx5',
+      role: 'dac',
+      name: 'Topping DX5',
+      description: 'USB DAC receiving the processed stereo PipeWire output',
+      format: audioFormat,
+    },
+    {
+      id: 'a90',
+      role: 'amp',
+      name: 'Topping A90 Discrete',
+      description: 'Analog headphone amplifier after the DX5 line output',
+    },
+    {
+      id: 'headphones',
+      role: 'headphones',
+      name: headphoneName,
+      description: target,
+    },
+  ];
+}
+
 // ─── GET /api/state — Full DSP state snapshot ────────────────────
 api.get('/state', async (c) => {
   try {
-    const [spatialMode, eqProfile, brirRoom, mbcEnabled, profiles, audioFormat] = await Promise.all([
+    const [spatialMode, eqProfile, brirRoom, mbcEnabled, profiles, audioFormat, pipewireSystem] = await Promise.all([
       getActiveSink(),
       getActiveEqProfile(),
       getActiveBrirRoom(),
       isMbcEnabled(),
       getProfiles(),
       getAudioFormat(),
+      getPipeWireSystem(),
     ]);
 
     const state: DspState = {
@@ -56,6 +100,10 @@ api.get('/state', async (c) => {
       },
       bypassed: getBypassed(),
       profiles,
+      system: {
+        ...pipewireSystem,
+        hardware: buildHardwareStages(eqProfile, profiles, audioFormat),
+      },
     };
 
     return c.json({ ok: true, data: state } satisfies ApiResponse<DspState>);

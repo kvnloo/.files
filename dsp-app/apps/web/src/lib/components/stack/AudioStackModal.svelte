@@ -17,6 +17,8 @@
   }
 
   let activeSink = $derived($dspState ? SPATIAL_SINK_NAMES[$spatialMode] : 'unknown');
+  let routedStreams = $derived($dspState?.system.streams ?? []);
+  let virtualSinks = $derived(($dspState?.system.sinks ?? []).filter((sink) => sink.role === 'music' || sink.role === 'movie'));
 
   const typeLabel: Record<string, string> = {
     lv2: 'LV2',
@@ -61,10 +63,25 @@
 
       <!-- Architecture -->
       <section>
-        <h3 class="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">Architecture: 3 Virtual Sinks</h3>
+        <h3 class="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">Architecture: Virtual Sinks + Hardware Route</h3>
         <p class="text-xs text-text-secondary leading-relaxed">{audioStack.sinkArchitecture}</p>
-        <div class="mt-2 text-[10px] font-mono text-text-tertiary bg-surface-1/50 rounded-lg px-3 py-2">
-          Active: <span class="text-amber-glow">{activeSink}</span>
+        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div class="text-[10px] font-mono text-text-tertiary bg-surface-1/50 rounded-lg px-3 py-2">
+            Default music sink: <span class="text-amber-glow">{activeSink}</span>
+          </div>
+          <div class="text-[10px] font-mono text-text-tertiary bg-surface-1/50 rounded-lg px-3 py-2">
+            Live app streams: <span class="text-amber-glow">{routedStreams.length}</span>
+          </div>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {#each virtualSinks as sink (sink.id)}
+            <span class="text-[10px] px-2 py-1 rounded-full border border-border bg-surface-1/60 text-text-secondary">
+              {sink.description}
+              {#if sink.activeStreams > 0}
+                <span class="text-green-400/80 ml-1">{sink.activeStreams}</span>
+              {/if}
+            </span>
+          {/each}
         </div>
       </section>
 

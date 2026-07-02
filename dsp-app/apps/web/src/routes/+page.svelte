@@ -1,5 +1,6 @@
 <script lang="ts">
   import Spectrum from '$lib/components/viz/Spectrum.svelte';
+  import FullSystemChain from '$lib/components/chain/FullSystemChain.svelte';
   import ChainFlow from '$lib/components/chain/ChainFlow.svelte';
   import SpatialSelector from '$lib/components/controls/SpatialSelector.svelte';
   import HeadphoneSelector from '$lib/components/controls/HeadphoneSelector.svelte';
@@ -51,11 +52,12 @@
       <!-- Audio Stack Badge — persistent status strip -->
       {#if $dspState}
         <AudioStackBadge onopen={() => stackModalOpen = true} />
+        <FullSystemChain />
       {/if}
 
-      <!-- Signal Chain Flow — Interactive node graph -->
+      <!-- DSP Chain Flow — Interactive stage graph -->
       <section class="relative">
-        <div class="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 px-1">Signal Chain</div>
+        <div class="text-[10px] text-text-tertiary uppercase tracking-wider mb-1 px-1">DSP Stages For Default Music Sink</div>
         <ChainFlow />
       </section>
     </div>

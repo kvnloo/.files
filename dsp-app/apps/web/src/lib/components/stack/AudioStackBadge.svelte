@@ -7,6 +7,7 @@
   let sinkName = $derived($dspState ? SPATIAL_SINK_NAMES[$spatialMode] : null);
   let filterCount = $derived($activeChain.length);
   let bypassedCount = $derived(($bypassed ?? []).length);
+  let streamCount = $derived($dspState?.system.streams.filter((stream) => stream.state === 'active').length ?? 0);
   let formatLabel = $derived.by(() => {
     const fmt = $audioFormat;
     if (!fmt) return null;
@@ -35,6 +36,8 @@
         <span class="text-text-tertiary/60">&middot;</span>
         <span class="text-amber-dim/80">{formatLabel}</span>
       {/if}
+      <span class="text-text-tertiary/60">&middot;</span>
+      {streamCount} app stream{streamCount === 1 ? '' : 's'}
       <span class="text-text-tertiary/60">&middot;</span>
       {filterCount} filter{filterCount !== 1 ? 's' : ''}
       {#if bypassedCount > 0}

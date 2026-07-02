@@ -7,6 +7,8 @@ export const SPATIAL_SINK_NAMES: Record<SpatialMode, string> = {
   room: 'effect_input.headphone_dsp_room',
 };
 
+export const MOVIE_SINK_NAME = 'effect_input.headphone_dsp_movie';
+
 // ─── EQ Profiles ─────────────────────────────────────────────────
 /** Profile ID — builtin string literals or any custom string */
 export type EqProfile = string;
@@ -148,6 +150,56 @@ export interface AudioFormat {
   format: string;       // "S32LE"
 }
 
+// ─── Live System Chain ───────────────────────────────────────────
+export type SinkRole = 'music' | 'movie' | 'hardware' | 'other';
+
+export interface PipeWireSink {
+  id: number;
+  name: string;
+  description: string;
+  role: SinkRole;
+  state: string;
+  sampleRate: number | null;
+  channels: number | null;
+  format: string | null;
+  isDefault: boolean;
+  activeStreams: number;
+}
+
+export type StreamState = 'active' | 'paused';
+
+export interface AppAudioStream {
+  id: number;
+  applicationName: string;
+  binary: string | null;
+  mediaName: string | null;
+  sinkId: number | null;
+  sinkName: string | null;
+  sinkDescription: string | null;
+  sampleRate: number | null;
+  channels: number | null;
+  format: string | null;
+  channelMap: string | null;
+  state: StreamState;
+}
+
+export type HardwareRole = 'dac' | 'amp' | 'headphones';
+
+export interface HardwareStage {
+  id: string;
+  role: HardwareRole;
+  name: string;
+  description: string;
+  format?: AudioFormat | null;
+}
+
+export interface SystemChain {
+  defaultSinkName: string | null;
+  sinks: PipeWireSink[];
+  streams: AppAudioStream[];
+  hardware: HardwareStage[];
+}
+
 // ─── Full DSP State ──────────────────────────────────────────────
 export interface DspState {
   spatialMode: SpatialMode;
@@ -163,6 +215,8 @@ export interface DspState {
   bypassed: BypassableStageId[];
   /** All installed headphone profiles (builtin + custom) */
   profiles: InstalledProfile[];
+  /** Live app routes, PipeWire sinks, and physical output chain */
+  system: SystemChain;
 }
 
 // ─── Stage Bypass ────────────────────────────────────────────────

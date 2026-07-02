@@ -2,6 +2,8 @@
   import { fullChain, activeChain, dspState, bypassed, toggleBypass } from '$lib/stores/dsp';
   import { dspStages } from '$lib/content/dsp-stages';
   import { audioStack } from '$lib/content/audio-stack';
+  import type { DspStageContent } from '$lib/content/dsp-stages';
+  import type { AudioPlugin } from '$lib/content/audio-stack';
   import type { DspStageId, BypassableStageId } from '@aural/shared';
 
   const BYPASSABLE: BypassableStageId[] = ['crossfeed', 'brir', 'loudness', 'mbc'];
@@ -50,8 +52,16 @@
     contextMenu = null;
   }
 
-  let expandedContent = $derived(expandedStage ? dspStages[expandedStage] : null);
-  let expandedPlugin = $derived(expandedStage ? audioStack.plugins[expandedStage] : null);
+  function getExpandedContent(stageId: DspStageId | null): DspStageContent | null {
+    return stageId ? dspStages[stageId] : null;
+  }
+
+  function getExpandedPlugin(stageId: DspStageId | null): AudioPlugin | null {
+    return stageId ? audioStack.plugins[stageId] : null;
+  }
+
+  let expandedContent: DspStageContent | null = $derived(getExpandedContent(expandedStage));
+  let expandedPlugin: AudioPlugin | null = $derived(getExpandedPlugin(expandedStage));
 </script>
 
 <svelte:window onclick={closeContextMenu} />

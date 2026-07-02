@@ -1,4 +1,17 @@
-import { type SpatialMode, type EqProfile, type BrirRoom, type BypassableStageId, type AudioFormat, SPATIAL_SINK_NAMES, SAMPLE_RATES, BRIR_ROOMS } from '@aural/shared';
+import {
+  type SpatialMode,
+  type EqProfile,
+  type BrirRoom,
+  type BypassableStageId,
+  type AudioFormat,
+  type AppAudioStream,
+  type PipeWireSink,
+  type SinkRole,
+  SPATIAL_SINK_NAMES,
+  MOVIE_SINK_NAME,
+  SAMPLE_RATES,
+  BRIR_ROOMS,
+} from '@aural/shared';
 import { buildLinks, rewriteConfigLinks } from './chain-builder';
 import { getProfileFilePattern } from '../autoeq/profiles';
 
@@ -23,6 +36,44 @@ const SINK_DESCRIPTIONS: Record<SpatialMode, string> = {
   crossfeed: 'Headphone DSP + Crossfeed',
   room: 'Headphone DSP + Room',
 };
+
+function parseSampleSpec(spec: string | null): Pick<PipeWireSink, 'format' | 'channels' | 'sampleRate'> {
+  if (!spec) return { format: null, channels: null, sampleRate: null };
+  const match = spec.match(/(\S+)\s+(\d+)ch\s+(\d+)Hz/);
+  if (!match) return { format: null, channels: null, sampleRate: null };
+  return {
+    format: match[1],
+    channels: parseInt(match[2], 10),
+    sampleRate: parseInt(match[3], 10),
+  };
+}
+
+function readField(block: string, label: string): string | null {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = block.match(new RegExp(`^\\s*${escaped}:\\s*(.+)$`, 'm'));
+  return match?.[1]?.trim() ?? null;
+}
+
+function readPulseProperty(block: string, key: string): string | null {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = block.match(new RegExp(`${escaped}\\s*=\\s*"([^"]*)"`));
+  return match?.[1] ?? null;
+}
+
+function sinkRole(name: string): SinkRole {
+  if (name === MOVIE_SINK_NAME) return 'movie';
+  if (Object.values(SPATIAL_SINK_NAMES).includes(name)) return 'music';
+  if (name.startsWith('alsa_output.')) return 'hardware';
+  return 'other';
+}
+
+function getDefaultSinkName(statusOutput: string): string | null {
+  const settingsMatch = statusOutput.match(/Audio\/Sink\s+(\S+)/);
+  if (settingsMatch) return settingsMatch[1];
+
+  const starredMatch = statusOutput.match(/\*\s+\d+\.\s+(\S+)\s+\[Audio\/Sink\]/);
+  return starredMatch?.[1] ?? null;
+}
 
 /** Toggle a stage bypass and rewrite the active sink's filter chain */
 export async function toggleStageBypass(
@@ -74,9 +125,8 @@ export async function getActiveSink(): Promise<SpatialMode> {
 
   // The Settings section at the bottom shows:
   //   0. Audio/Sink    effect_input.headphone_dsp_room
-  const settingsMatch = stdout.match(/Audio\/Sink\s+(\S+)/);
-  if (settingsMatch) {
-    const defaultName = settingsMatch[1];
+  const defaultName = getDefaultSinkName(stdout);
+  if (defaultName) {
     for (const [mode, sinkName] of Object.entries(SPATIAL_SINK_NAMES)) {
       if (defaultName === sinkName) return mode as SpatialMode;
     }
@@ -92,6 +142,81 @@ export async function getActiveSink(): Promise<SpatialMode> {
   }
 
   return 'clean';
+}
+
+/** Snapshot live app routes and PipeWire sinks. */
+export async function getPipeWireSystem(): Promise<{
+  defaultSinkName: string | null;
+  sinks: PipeWireSink[];
+  streams: AppAudioStream[];
+}> {
+  const [{ stdout: statusOut }, { stdout: sinksOut }, { stdout: inputsOut }] = await Promise.all([
+    run(['wpctl', 'status']),
+    run(['pactl', 'list', 'sinks']),
+    run(['pactl', 'list', 'sink-inputs']),
+  ]);
+
+  const defaultSinkName = getDefaultSinkName(statusOut);
+
+  const sinks: PipeWireSink[] = sinksOut
+    .split(/(?=Sink #\d+)/)
+    .filter((block) => block.trim().startsWith('Sink #'))
+    .map((block) => {
+      const id = parseInt(block.match(/^Sink #(\d+)/)?.[1] ?? '-1', 10);
+      const name = readField(block, 'Name') ?? 'unknown';
+      const sample = parseSampleSpec(readField(block, 'Sample Specification'));
+      return {
+        id,
+        name,
+        description: readField(block, 'Description') ?? name,
+        role: sinkRole(name),
+        state: readField(block, 'State') ?? 'UNKNOWN',
+        sampleRate: sample.sampleRate,
+        channels: sample.channels,
+        format: sample.format,
+        isDefault: name === defaultSinkName,
+        activeStreams: 0,
+      };
+    });
+
+  const sinkById = new Map(sinks.map((sink) => [sink.id, sink]));
+
+  const streams: AppAudioStream[] = inputsOut
+    .split(/(?=Sink Input #\d+)/)
+    .filter((block) => block.trim().startsWith('Sink Input #'))
+    .map((block) => {
+      const applicationName = readPulseProperty(block, 'application.name');
+      if (!applicationName) return null;
+
+      const id = parseInt(block.match(/^Sink Input #(\d+)/)?.[1] ?? '-1', 10);
+      const sinkIdText = readField(block, 'Sink');
+      const sinkId = sinkIdText ? parseInt(sinkIdText, 10) : null;
+      const sink = sinkId === null ? undefined : sinkById.get(sinkId);
+      const sample = parseSampleSpec(readField(block, 'Sample Specification'));
+      const corked = readField(block, 'Corked') === 'yes';
+
+      return {
+        id,
+        applicationName,
+        binary: readPulseProperty(block, 'application.process.binary'),
+        mediaName: readPulseProperty(block, 'media.name'),
+        sinkId,
+        sinkName: sink?.name ?? null,
+        sinkDescription: sink?.description ?? null,
+        sampleRate: sample.sampleRate,
+        channels: sample.channels,
+        format: sample.format,
+        channelMap: readField(block, 'Channel Map'),
+        state: corked ? 'paused' : 'active',
+      } satisfies AppAudioStream;
+    })
+    .filter((stream): stream is AppAudioStream => stream !== null);
+
+  for (const sink of sinks) {
+    sink.activeStreams = streams.filter((stream) => stream.sinkId === sink.id && stream.state === 'active').length;
+  }
+
+  return { defaultSinkName, sinks, streams };
 }
 
 /** Switch the active PipeWire sink to a spatial mode.

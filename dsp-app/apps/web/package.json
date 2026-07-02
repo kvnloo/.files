@@ -9,7 +9,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@aural/shared": "workspace:*"
+    "@aural/shared": "workspace:*",
+    "@xyflow/svelte": "^1.6.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^4.0.0",

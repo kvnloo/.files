@@ -30,7 +30,7 @@ export const audioStack: AudioStackInfo = {
     whyChosen: 'PipeWire\'s native filter-chain module runs DSP in-process with zero additional IPC latency. It sample-rate-matches automatically — the same config works at 44.1k, 48k, 96k, and 384k without resampling. No separate plugin host process, no extra buffering. The filter graph is part of the audio server itself.',
   },
 
-  sinkArchitecture: 'Three virtual sinks (clean / crossfeed / room) run as independent PipeWire filter chains. Switching spatial mode changes the default sink via wpctl — the transition is instantaneous because all three chains are always loaded and processing. This avoids the latency spike of tearing down and rebuilding a filter graph on every mode switch, enabling true real-time A/B/C comparison.',
+  sinkArchitecture: 'Four virtual sinks are always loaded: clean, crossfeed, room simulation, and movie. The first three are music listening profiles that switch the default sink via wpctl. The movie sink is a dedicated 7.1/5.1 capture path for Plex-style playback, so app routing and the active listening profile can be shown separately.',
 
   plugins: {
     autoeq: {
