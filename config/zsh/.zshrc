@@ -85,3 +85,7 @@ autoload -Uz compinit && compinit -C
 
 # bun completions
 [ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
+
+# >>> Codex installer >>>
+export PATH="/home/kvn/.local/bin:$PATH"
+# <<< Codex installer <<<
