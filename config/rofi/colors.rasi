@@ -1,9 +1,11 @@
-/* Tokyo Night color scheme */
+/* Keep the launcher layout intact; source only its colors from pywal. */
+@import "~/.cache/wal/colors-rofi-dark.rasi"
+
 * {
-    bg: #1a1b26;
-    fg: #c0caf5;
-    ac: #1a1b26;
-    se: #24283b;
-    br: #414868;
-    al: #1a1b26;
+    bg: @background;
+    fg: @foreground;
+    ac: @active-background;
+    se: @selected-normal-background;
+    br: @active-background;
+    al: @background;
 }

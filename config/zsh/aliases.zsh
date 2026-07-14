@@ -31,6 +31,7 @@ alias pip='pip3'                                  # Default to pip3
 alias zshconfig="vim ~/.zshrc"
 alias vimconfig="vim ~/.vimrc"
 alias gitconfig="vim ~/.gitconfig"
+alias tmuxconfig="vim ~/.tmux.conf"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Navigation
@@ -65,3 +66,9 @@ fi
 alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
 alias claude-home='CLAUDE_CONFIG_DIR=$HOME/.claude-home claude'
 alias claude-mem='bun "/Users/kvn/.claude-work/plugins/cache/thedotmack/claude-mem/10.5.6/scripts/worker-service.cjs"'
+
+# Hunyuan3D API server on demand (idle it eats ~8GB RAM + 7GB VRAM)
+alias hunyuan="/workspace/venv/hunyuan3d/hunyuan.sh"
+
+# Kokoro TTS server (OpenAI-compatible /v1/audio/speech on :8880, ~1.5GB RAM/VRAM)
+alias kokoro="/workspace/kokoro-tts/kokoro.sh"

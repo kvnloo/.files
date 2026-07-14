@@ -76,3 +76,12 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 
 # kimi-code
 export PATH="/home/kvn/.kimi-code/bin:$PATH"
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<
+
+# bun completions
+[ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"

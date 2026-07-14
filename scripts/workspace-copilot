@@ -1,0 +1,1119 @@
+#!/usr/bin/env python3
+"""Privacy-preserving workspace telemetry and permissioned organization suggestions."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import time
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Iterable
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import urlopen
+
+APP = "workspace-copilot"
+SCHEMA_VERSION = "2"
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+STATE_DIR = Path(os.environ.get("WORKSPACE_COPILOT_STATE_DIR", STATE_HOME / APP))
+DB_PATH = STATE_DIR / "workspace.db"
+HYPR_CONFIG = Path.home() / ".config/hypr/hyprland.conf"
+TMUX_CONFIG = Path.home() / ".tmux.conf"
+ZSH_KEYS = Path.home() / "workspace/.files/config/zsh/keybindings.zsh"
+RETENTION_DAYS = 30
+AGENT_COMMANDS = {"claude", "codex", "omp", "opencode", "gemini", "kimi", "grok"}
+ACTIVITYWATCH_API = os.environ.get("ACTIVITYWATCH_API", "http://127.0.0.1:5600/api/0").rstrip("/")
+ACTIVITYWATCH_REDACTED_TITLE = "[redacted]"
+HYPR_EVENTS = {
+    "activewindow",
+    "activewindowv2",
+    "workspace",
+    "workspacev2",
+    "movewindow",
+    "movewindowv2",
+    "openwindow",
+    "closewindow",
+    "fullscreen",
+    "changefloatingmode",
+    "monitoradded",
+    "monitoraddedv2",
+    "monitorremoved",
+    "focusedmon",
+}
+HARNESS_STATES = {"started", "working", "waiting", "blocked", "completed", "failed", "stopped"}
+SAFE_TOKEN = re.compile(r"[^A-Za-z0-9_.:@%/+ -]")
+URL = re.compile(r"(?:https?|ssh)://\S+", re.IGNORECASE)
+SECRET = re.compile(
+    r"(?i)(?:password|passwd|token|api[_-]?key|secret|authorization)\s*[:=]\s*\S+"
+)
+
+
+def now() -> float:
+    return time.time()
+
+
+def clean_token(value: Any, limit: int = 120) -> str:
+    text = SAFE_TOKEN.sub("", "" if value is None else str(value)).strip()
+    return text[:limit]
+
+
+def clean_label(value: Any, limit: int = 160) -> str:
+    text = ("" if value is None else str(value)).replace("\n", " ").replace("\r", " ")
+    text = URL.sub("[url]", text)
+    text = SECRET.sub("[secret]", text)
+    text = " ".join(text.split())
+    return text[:limit]
+
+
+def command_name(value: Any) -> str:
+    return clean_token(Path(str(value or "")).name, 48)
+
+
+def project_name(path: Any) -> str:
+    text = str(path or "").rstrip("/")
+    return clean_token(Path(text).name if text else "", 80)
+
+
+def json_text(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+def run(args: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=False)
+
+
+def tmux_args(*args: str) -> list[str]:
+    socket_name = clean_token(os.environ.get("WORKSPACE_COPILOT_TMUX_SOCKET", ""), 64)
+    return ["tmux", *(["-L", socket_name] if socket_name else []), *args]
+
+
+def connect() -> sqlite3.Connection:
+    old_umask = os.umask(0o077)
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        db = sqlite3.connect(DB_PATH, timeout=5)
+    finally:
+        os.umask(old_umask)
+    os.chmod(STATE_DIR, 0o700)
+    if DB_PATH.exists():
+        os.chmod(DB_PATH, 0o600)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA foreign_keys=ON")
+    db.execute("PRAGMA busy_timeout=5000")
+    initialize(db)
+    return db
+
+
+def initialize(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            ts REAL NOT NULL,
+            source TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            app TEXT NOT NULL DEFAULT '',
+            workspace TEXT NOT NULL DEFAULT '',
+            session TEXT NOT NULL DEFAULT '',
+            window TEXT NOT NULL DEFAULT '',
+            pane TEXT NOT NULL DEFAULT '',
+            project TEXT NOT NULL DEFAULT '',
+            label TEXT NOT NULL DEFAULT '',
+            details_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+        CREATE INDEX IF NOT EXISTS events_source_kind ON events(source, kind, ts);
+        CREATE TABLE IF NOT EXISTS hypr_windows (
+            address_hash TEXT PRIMARY KEY,
+            app TEXT NOT NULL,
+            process TEXT NOT NULL DEFAULT '',
+            workspace TEXT NOT NULL DEFAULT '',
+            monitor TEXT NOT NULL DEFAULT '',
+            floating INTEGER NOT NULL DEFAULT 0,
+            fullscreen INTEGER NOT NULL DEFAULT 0,
+            focused INTEGER NOT NULL DEFAULT 0,
+            first_seen REAL NOT NULL,
+            last_seen REAL NOT NULL,
+            focus_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS tmux_panes (
+            pane_id TEXT PRIMARY KEY,
+            session TEXT NOT NULL,
+            window_id TEXT NOT NULL,
+            window_index TEXT NOT NULL,
+            window_name TEXT NOT NULL,
+            pane_index TEXT NOT NULL,
+            command TEXT NOT NULL,
+            project TEXT NOT NULL DEFAULT '',
+            path_hash TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 0,
+            dead INTEGER NOT NULL DEFAULT 0,
+            layout_hash TEXT NOT NULL DEFAULT '',
+            first_seen REAL NOT NULL,
+            last_seen REAL NOT NULL,
+            observation_count INTEGER NOT NULL DEFAULT 1,
+            selection_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS harness_context (
+            pane_id TEXT PRIMARY KEY,
+            harness TEXT NOT NULL,
+            state TEXT NOT NULL,
+            session TEXT NOT NULL DEFAULT '',
+            window TEXT NOT NULL DEFAULT '',
+            project TEXT NOT NULL DEFAULT '',
+            label TEXT NOT NULL DEFAULT '',
+            updated_at REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS keybind_catalog (
+            source TEXT NOT NULL,
+            chord TEXT NOT NULL,
+            action TEXT NOT NULL,
+            first_seen REAL NOT NULL,
+            last_seen REAL NOT NULL,
+            PRIMARY KEY(source, chord, action)
+        );
+        CREATE TABLE IF NOT EXISTS suggestions (
+            id INTEGER PRIMARY KEY,
+            fingerprint TEXT NOT NULL UNIQUE,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            summary TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            proposal_json TEXT NOT NULL,
+            undo_json TEXT NOT NULL DEFAULT '{}',
+            decided_at REAL
+        );
+        CREATE INDEX IF NOT EXISTS suggestions_status ON suggestions(status, updated_at);
+        CREATE TABLE IF NOT EXISTS decisions (
+            id INTEGER PRIMARY KEY,
+            suggestion_id INTEGER NOT NULL REFERENCES suggestions(id),
+            ts REAL NOT NULL,
+            decision TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS preferences (
+            key TEXT PRIMARY KEY,
+            accepted INTEGER NOT NULL DEFAULT 0,
+            rejected INTEGER NOT NULL DEFAULT 0,
+            confidence REAL NOT NULL DEFAULT 0.5,
+            updated_at REAL NOT NULL
+        );
+        """
+    )
+    suggestion_columns = {row[1] for row in db.execute("PRAGMA table_info(suggestions)")}
+    if "undo_json" not in suggestion_columns:
+        db.execute("ALTER TABLE suggestions ADD COLUMN undo_json TEXT NOT NULL DEFAULT '{}'")
+    db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (SCHEMA_VERSION,))
+    if not db.execute("SELECT 1 FROM meta WHERE key='path_salt'").fetchone():
+        db.execute("INSERT INTO meta(key,value) VALUES('path_salt',?)", (os.urandom(24).hex(),))
+    db.execute(
+        "INSERT OR REPLACE INTO meta(key,value) VALUES('privacy_policy',?)",
+        (
+            "semantic-events-only;no-keystrokes;no-window-titles;no-pane-output;"
+            "no-clipboard;no-command-arguments;hashed-paths",
+        ),
+    )
+    db.commit()
+
+
+def path_hash(db: sqlite3.Connection, value: Any) -> str:
+    if not value:
+        return ""
+    salt = db.execute("SELECT value FROM meta WHERE key='path_salt'").fetchone()[0]
+    return hashlib.sha256(f"{salt}\0{value}".encode()).hexdigest()[:20]
+
+
+def record_event(
+    db: sqlite3.Connection,
+    source: str,
+    kind: str,
+    *,
+    app: str = "",
+    workspace: str = "",
+    session: str = "",
+    window: str = "",
+    pane: str = "",
+    project: str = "",
+    label: str = "",
+    details: dict[str, Any] | None = None,
+) -> None:
+    db.execute(
+        """INSERT INTO events(
+               ts,source,kind,app,workspace,session,window,pane,project,label,details_json
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            now(),
+            clean_token(source, 32),
+            clean_token(kind, 64),
+            clean_token(app, 96),
+            clean_token(workspace, 64),
+            clean_token(session, 80),
+            clean_token(window, 80),
+            clean_token(pane, 32),
+            clean_token(project, 80),
+            clean_label(label),
+            json_text(details or {}),
+        ),
+    )
+
+
+def process_for_pid(pid: Any) -> str:
+    try:
+        return command_name(Path(f"/proc/{int(pid)}/comm").read_text().strip())
+    except (OSError, ValueError):
+        return ""
+
+
+def hypr_json(command: str) -> Any:
+    result = run(["hyprctl", "-j", command])
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def snapshot_hypr_active(db: sqlite3.Connection, kind: str, emit: bool = True) -> None:
+    data = hypr_json("activewindow")
+    if not isinstance(data, dict) or not data.get("address"):
+        return
+    address = path_hash(db, data.get("address"))
+    app = clean_token(data.get("class") or data.get("initialClass"), 96)
+    workspace_data = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
+    workspace = clean_token(workspace_data.get("name") or workspace_data.get("id"), 64)
+    monitor = clean_token(data.get("monitor"), 32)
+    process = process_for_pid(data.get("pid"))
+    stamp = now()
+    focus_increment = 1 if kind.startswith("activewindow") else 0
+    db.execute("UPDATE hypr_windows SET focused=0")
+    db.execute(
+        """INSERT INTO hypr_windows(
+               address_hash,app,process,workspace,monitor,floating,fullscreen,focused,
+               first_seen,last_seen,focus_count
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(address_hash) DO UPDATE SET
+               app=excluded.app,process=excluded.process,workspace=excluded.workspace,
+               monitor=excluded.monitor,floating=excluded.floating,
+               fullscreen=excluded.fullscreen,focused=1,last_seen=excluded.last_seen,
+               focus_count=hypr_windows.focus_count+excluded.focus_count""",
+        (
+            address,
+            app,
+            process,
+            workspace,
+            monitor,
+            int(bool(data.get("floating"))),
+            int(bool(data.get("fullscreen"))),
+            1,
+            stamp,
+            stamp,
+            focus_increment,
+        ),
+    )
+    if emit:
+        record_event(
+            db,
+            "hypr",
+            kind,
+            app=app,
+            workspace=workspace,
+            details={
+                "monitor": monitor,
+                "process": process,
+                "floating": bool(data.get("floating")),
+                "fullscreen": bool(data.get("fullscreen")),
+            },
+        )
+    db.commit()
+
+
+def handle_hypr_event(db: sqlite3.Connection, raw: str) -> None:
+    event, separator, payload = raw.partition(">>")
+    event = clean_token(event, 64)
+    if not separator or event not in HYPR_EVENTS:
+        return
+    if event == "closewindow":
+        address = path_hash(db, payload.strip())
+        db.execute("DELETE FROM hypr_windows WHERE address_hash=?", (address,))
+        record_event(db, "hypr", event)
+        db.commit()
+        return
+    snapshot_hypr_active(db, event)
+
+
+def tmux_rows() -> list[list[str]]:
+    if shutil.which("tmux") is None:
+        return []
+    fmt = "\t".join(
+        [
+            "#{pane_id}",
+            "#{session_name}",
+            "#{window_id}",
+            "#{window_index}",
+            "#{window_name}",
+            "#{pane_index}",
+            "#{pane_current_command}",
+            "#{pane_current_path}",
+            "#{pane_active}",
+            "#{pane_dead}",
+            "#{window_layout}",
+        ]
+    )
+    result = run(tmux_args("list-panes", "-a", "-F", fmt))
+    if result.returncode != 0:
+        return []
+    return [line.split("\t", 10) for line in result.stdout.splitlines() if line.count("\t") >= 10]
+
+
+def snapshot_tmux(
+    db: sqlite3.Connection, kind: str = "snapshot", target_pane: str = "", emit: bool = False
+) -> None:
+    rows = tmux_rows()
+    stamp = now()
+    seen: set[str] = set()
+    target: list[str] | None = None
+    for row in rows:
+        pane_id, session, window_id, window_index, window_name, pane_index, command, cwd, active, dead, layout = row
+        seen.add(pane_id)
+        if pane_id == target_pane:
+            target = row
+        db.execute(
+            """INSERT INTO tmux_panes(
+                   pane_id,session,window_id,window_index,window_name,pane_index,command,
+                   project,path_hash,active,dead,layout_hash,first_seen,last_seen,
+                   observation_count,selection_count
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+               ON CONFLICT(pane_id) DO UPDATE SET
+                   session=excluded.session,window_id=excluded.window_id,
+                   window_index=excluded.window_index,window_name=excluded.window_name,
+                   pane_index=excluded.pane_index,command=excluded.command,
+                   project=excluded.project,path_hash=excluded.path_hash,
+                   active=excluded.active,dead=excluded.dead,layout_hash=excluded.layout_hash,
+                   last_seen=excluded.last_seen,
+                   observation_count=tmux_panes.observation_count+1,
+                   selection_count=tmux_panes.selection_count+excluded.selection_count""",
+            (
+                clean_token(pane_id, 32),
+                clean_token(session, 80),
+                clean_token(window_id, 32),
+                clean_token(window_index, 12),
+                clean_token(window_name, 80),
+                clean_token(pane_index, 12),
+                command_name(command),
+                project_name(cwd),
+                path_hash(db, cwd),
+                int(active == "1"),
+                int(dead == "1"),
+                hashlib.sha256(layout.encode()).hexdigest()[:16],
+                stamp,
+                stamp,
+                int(kind in {"after-select-pane", "after-select-window", "client-session-changed"} and pane_id == target_pane),
+            ),
+        )
+    if seen:
+        placeholders = ",".join("?" for _ in seen)
+        db.execute(f"DELETE FROM tmux_panes WHERE pane_id NOT IN ({placeholders})", tuple(seen))
+    else:
+        db.execute("DELETE FROM tmux_panes")
+    if emit:
+        target = target or next((row for row in rows if row[8] == "1"), None)
+        if target:
+            record_event(
+                db,
+                "tmux",
+                kind,
+                app=command_name(target[6]),
+                session=target[1],
+                window=f"{target[3]}:{target[4]}",
+                pane=target[0],
+                project=project_name(target[7]),
+            )
+        else:
+            record_event(db, "tmux", kind)
+    db.commit()
+
+
+def upsert_keybind(db: sqlite3.Connection, source: str, chord: str, action: str) -> None:
+    stamp = now()
+    db.execute(
+        """INSERT INTO keybind_catalog(source,chord,action,first_seen,last_seen)
+           VALUES(?,?,?,?,?) ON CONFLICT(source,chord,action)
+           DO UPDATE SET last_seen=excluded.last_seen""",
+        (clean_token(source, 32), clean_token(chord, 80), clean_token(action, 120), stamp, stamp),
+    )
+
+
+def catalog_keybinds(db: sqlite3.Connection) -> None:
+    if HYPR_CONFIG.exists():
+        variables: dict[str, str] = {}
+        for raw in HYPR_CONFIG.read_text(errors="replace").splitlines():
+            line = raw.strip()
+            if line.startswith("$") and "=" in line:
+                key, value = line.split("=", 1)
+                variables[key.strip()] = value.strip()
+                continue
+            if not line.startswith(("bind =", "binde =", "bindl =", "bindel =")):
+                continue
+            _, _, body = line.partition("=")
+            parts = [part.strip() for part in body.split(",", 3)]
+            if len(parts) < 3:
+                continue
+            modifiers = parts[0]
+            for key, value in variables.items():
+                modifiers = modifiers.replace(key, value)
+            chord = "+".join(part for part in [modifiers.replace(" ", "+"), parts[1]] if part)
+            dispatcher = command_name(parts[2])
+            argument = parts[3].strip() if len(parts) == 4 else ""
+            if dispatcher == "exec":
+                argument = command_name(argument.split()[0] if argument else "")
+            elif dispatcher not in {"workspace", "movetoworkspace", "movetoworkspacesilent", "submap"}:
+                argument = clean_token(argument.split()[0] if argument else "", 40)
+            upsert_keybind(db, "hypr", chord, f"{dispatcher}:{argument}".rstrip(":"))
+    result = run(["tmux", "list-keys"]) if shutil.which("tmux") else None
+    if result and result.returncode == 0:
+        pattern = re.compile(r"^bind-key(?:\s+-r)?\s+-T\s+(\S+)\s+(\S+)\s+(\S+)")
+        for line in result.stdout.splitlines():
+            match = pattern.match(line)
+            if match:
+                table, key, action = match.groups()
+                upsert_keybind(db, "tmux", f"{table}:{key}", command_name(action))
+    if ZSH_KEYS.exists():
+        pattern = re.compile(r"^bindkey(?:\s+-M\s+(\S+))?\s+(['\"]?\S+['\"]?)\s+(\S+)")
+        for raw in ZSH_KEYS.read_text(errors="replace").splitlines():
+            match = pattern.match(raw.strip())
+            if match:
+                mode, key, action = match.groups()
+                upsert_keybind(db, "zsh", f"{mode or 'main'}:{key.strip(chr(39) + chr(34))}", action)
+    db.commit()
+
+
+def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
+    state = clean_token(args.state, 24)
+    if state not in HARNESS_STATES:
+        raise SystemExit(f"state must be one of: {', '.join(sorted(HARNESS_STATES))}")
+    pane = clean_token(args.pane or os.environ.get("TMUX_PANE", ""), 32)
+    session = window = project = ""
+    if pane:
+        result = run(
+            [
+                "tmux",
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                "#{session_name}\t#{window_index}:#{window_name}\t#{pane_current_path}",
+            ]
+        )
+        if result.returncode == 0:
+            fields = result.stdout.strip().split("\t", 2)
+            if len(fields) == 3:
+                session, window, cwd = fields
+                project = project_name(cwd)
+    project = clean_token(args.project or project, 80)
+    harness = command_name(args.harness)
+    label = clean_label(args.label)
+    db.execute(
+        """INSERT INTO harness_context(pane_id,harness,state,session,window,project,label,updated_at)
+           VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(pane_id) DO UPDATE SET
+               harness=excluded.harness,state=excluded.state,session=excluded.session,
+               window=excluded.window,project=excluded.project,label=excluded.label,
+               updated_at=excluded.updated_at""",
+        (pane or f"external:{harness}", harness, state, session, window, project, label, now()),
+    )
+    record_event(
+        db,
+        "harness",
+        state,
+        app=harness,
+        session=session,
+        window=window,
+        pane=pane,
+        project=project,
+        label=label,
+    )
+    db.commit()
+
+
+def suggestion_fingerprint(kind: str, identity: str) -> str:
+    return hashlib.sha256(f"{kind}\0{identity}".encode()).hexdigest()[:24]
+
+
+def upsert_suggestion(
+    db: sqlite3.Connection,
+    kind: str,
+    identity: str,
+    summary: str,
+    rationale: str,
+    evidence: dict[str, Any],
+    proposal: dict[str, Any],
+) -> bool:
+    fingerprint = suggestion_fingerprint(kind, identity)
+    existing = db.execute("SELECT id,status FROM suggestions WHERE fingerprint=?", (fingerprint,)).fetchone()
+    if existing:
+        if existing["status"] == "pending":
+            db.execute(
+                """UPDATE suggestions SET updated_at=?,summary=?,rationale=?,evidence_json=?,proposal_json=?
+                   WHERE fingerprint=?""",
+                (now(), summary, rationale, json_text(evidence), json_text(proposal), fingerprint),
+            )
+        return False
+    stamp = now()
+    db.execute(
+        """INSERT INTO suggestions(
+               fingerprint,created_at,updated_at,kind,status,summary,rationale,evidence_json,proposal_json
+           ) VALUES(?,?,?,?,?,?,?,?,?)""",
+        (
+            fingerprint,
+            stamp,
+            stamp,
+            kind,
+            "pending",
+            clean_label(summary, 220),
+            clean_label(rationale, 500),
+            json_text(evidence),
+            json_text(proposal),
+        ),
+    )
+    return True
+
+
+def generate_suggestions(db: sqlite3.Connection) -> int:
+    snapshot_tmux(db)
+    created = 0
+    for row in db.execute(
+        """SELECT session,project,COUNT(*) AS panes
+           FROM tmux_panes WHERE project<>'' GROUP BY session,project"""
+    ):
+        if re.fullmatch(r"\d+", row["session"]) and row["panes"] >= 2:
+            name = re.sub(r"[^A-Za-z0-9_-]", "-", row["project"]) or "project"
+            created += upsert_suggestion(
+                db,
+                "rename-tmux-session",
+                row["session"],
+                f"Rename tmux session {row['session']} to {name}",
+                f"All {row['panes']} observed panes share project {row['project']}; a semantic session name reduces navigation ambiguity.",
+                {"session": row["session"], "project": row["project"], "panes": row["panes"]},
+                {"action": "rename_tmux_session", "target": row["session"], "name": name},
+            )
+    for row in db.execute(
+        """SELECT session,window_id,window_index,window_name,COUNT(*) AS panes,
+                  COUNT(DISTINCT command) AS commands
+           FROM tmux_panes GROUP BY session,window_id HAVING COUNT(*) >= 4"""
+    ):
+        agents = db.execute(
+            "SELECT COUNT(*) FROM tmux_panes WHERE window_id=? AND command IN (%s)"
+            % ",".join("?" for _ in AGENT_COMMANDS),
+            (row["window_id"], *sorted(AGENT_COMMANDS)),
+        ).fetchone()[0]
+        if agents >= 2:
+            identity = f"{row['session']}:{row['window_id']}"
+            created += upsert_suggestion(
+                db,
+                "split-agent-window",
+                identity,
+                f"Split agent-heavy tmux window {row['session']}:{row['window_index']}",
+                f"The window contains {row['panes']} panes and {agents} agent harnesses; one durable agent per window is easier to scan and restore.",
+                {"panes": row["panes"], "agent_panes": agents, "commands": row["commands"]},
+                {"action": "advisory", "session": row["session"], "window_id": row["window_id"]},
+            )
+    cutoff = now() - 14 * 86400
+    affinity = db.execute(
+        """SELECT app,workspace,COUNT(*) AS uses FROM events
+           WHERE source='hypr' AND kind IN ('activewindow','activewindowv2','openwindow','movewindow','movewindowv2')
+             AND ts>=? AND app<>'' AND workspace<>''
+           GROUP BY app,workspace ORDER BY app,uses DESC""",
+        (cutoff,),
+    ).fetchall()
+    by_app: dict[str, list[sqlite3.Row]] = defaultdict(list)
+    for row in affinity:
+        by_app[row["app"]].append(row)
+    for app, rows in by_app.items():
+        total = sum(int(row["uses"]) for row in rows)
+        dominant = max(rows, key=lambda row: int(row["uses"]))
+        ratio = int(dominant["uses"]) / total if total else 0
+        if total >= 8 and len(rows) >= 2 and ratio >= 0.8:
+            created += upsert_suggestion(
+                db,
+                "hypr-workspace-affinity",
+                app,
+                f"Prefer workspace {dominant['workspace']} for {app}",
+                f"{int(dominant['uses'])} of {total} observed placements used workspace {dominant['workspace']} ({ratio:.0%}).",
+                {
+                    "app": app,
+                    "workspace": dominant["workspace"],
+                    "uses": int(dominant["uses"]),
+                    "total": total,
+                },
+                {
+                    "action": "advisory",
+                    "hypr_rule": f"windowrule = match:class ^({app})$, workspace {dominant['workspace']}",
+                },
+            )
+    recent = db.execute(
+        """SELECT ts,app FROM events WHERE source='hypr' AND kind IN ('activewindow','activewindowv2')
+           AND ts>=? AND app<>'' ORDER BY ts""",
+        (now() - 3600,),
+    ).fetchall()
+    transitions: Counter[tuple[str, str]] = Counter()
+    previous = ""
+    for row in recent:
+        app = row["app"]
+        if previous and previous != app:
+            transitions[tuple(sorted((previous, app)))] += 1
+        previous = app
+    for pair, count in transitions.items():
+        if count >= 10:
+            identity = "|".join(pair)
+            created += upsert_suggestion(
+                db,
+                "reduce-context-switching",
+                identity,
+                f"Review repeated switching between {pair[0]} and {pair[1]}",
+                f"The active window moved between these applications {count} times in the last hour; colocating them or adding a direct binding may reduce friction.",
+                {"apps": list(pair), "transitions_last_hour": count},
+                {"action": "advisory"},
+            )
+    db.commit()
+    return created
+
+
+def decide(db: sqlite3.Connection, suggestion_id: int, decision: str, note: str) -> None:
+    if decision not in {"accept", "reject"}:
+        raise SystemExit("decision must be accept or reject")
+    row = db.execute("SELECT id,kind,status FROM suggestions WHERE id=?", (suggestion_id,)).fetchone()
+    if not row:
+        raise SystemExit(f"suggestion {suggestion_id} not found")
+    status = "accepted" if decision == "accept" else "rejected"
+    stamp = now()
+    db.execute("UPDATE suggestions SET status=?,decided_at=?,updated_at=? WHERE id=?", (status, stamp, stamp, suggestion_id))
+    db.execute(
+        "INSERT INTO decisions(suggestion_id,ts,decision,note) VALUES(?,?,?,?)",
+        (suggestion_id, stamp, decision, clean_label(note, 300)),
+    )
+    pref = db.execute("SELECT accepted,rejected FROM preferences WHERE key=?", (row["kind"],)).fetchone()
+    accepted = (pref["accepted"] if pref else 0) + int(decision == "accept")
+    rejected = (pref["rejected"] if pref else 0) + int(decision == "reject")
+    confidence = (accepted + 1) / (accepted + rejected + 2)
+    db.execute(
+        """INSERT INTO preferences(key,accepted,rejected,confidence,updated_at) VALUES(?,?,?,?,?)
+           ON CONFLICT(key) DO UPDATE SET accepted=excluded.accepted,rejected=excluded.rejected,
+               confidence=excluded.confidence,updated_at=excluded.updated_at""",
+        (row["kind"], accepted, rejected, confidence, stamp),
+    )
+    db.commit()
+
+
+def apply_suggestion(db: sqlite3.Connection, suggestion_id: int) -> str:
+    row = db.execute("SELECT * FROM suggestions WHERE id=?", (suggestion_id,)).fetchone()
+    if not row:
+        raise SystemExit(f"suggestion {suggestion_id} not found")
+    if row["status"] != "accepted":
+        raise SystemExit("suggestion must be explicitly accepted before apply")
+    proposal = json.loads(row["proposal_json"])
+    action = proposal.get("action")
+    undo: dict[str, Any]
+    if action == "rename_tmux_session":
+        target = clean_token(proposal.get("target"), 80)
+        name = re.sub(r"[^A-Za-z0-9_-]", "-", proposal.get("name", ""))[:80]
+        result = run(tmux_args("rename-session", "-t", f"={target}", name))
+        if result.returncode != 0:
+            raise SystemExit(result.stderr.strip() or "tmux rename failed")
+        message = f"renamed tmux session {target} to {name}"
+        undo = {"action": "rename_tmux_session", "target": name, "name": target}
+    else:
+        raise SystemExit("this suggestion is advisory; let the copilot propose an exact action")
+    db.execute(
+        "UPDATE suggestions SET status='applied',undo_json=?,updated_at=? WHERE id=?",
+        (json_text(undo), now(), suggestion_id),
+    )
+    record_event(db, "copilot", "applied", label=message, details={"suggestion_id": suggestion_id})
+    db.commit()
+    return message
+
+
+def undo_suggestion(db: sqlite3.Connection, suggestion_id: int) -> str:
+    row = db.execute("SELECT * FROM suggestions WHERE id=?", (suggestion_id,)).fetchone()
+    if not row:
+        raise SystemExit(f"suggestion {suggestion_id} not found")
+    if row["status"] != "applied":
+        raise SystemExit("only an applied suggestion can be undone")
+    undo = json.loads(row["undo_json"])
+    if undo.get("action") != "rename_tmux_session":
+        raise SystemExit("this suggestion has no allowlisted undo action")
+    target = clean_token(undo.get("target"), 80)
+    name = re.sub(r"[^A-Za-z0-9_-]", "-", undo.get("name", ""))[:80]
+    result = run(tmux_args("rename-session", "-t", f"={target}", name))
+    if result.returncode != 0:
+        raise SystemExit(result.stderr.strip() or "tmux rename undo failed")
+    message = f"renamed tmux session {target} back to {name}"
+    db.execute("UPDATE suggestions SET status='undone',updated_at=? WHERE id=?", (now(), suggestion_id))
+    record_event(db, "copilot", "undone", label=message, details={"suggestion_id": suggestion_id})
+    db.commit()
+    return message
+
+
+def suggestion_rows(db: sqlite3.Connection, status: str = "pending") -> list[dict[str, Any]]:
+    query = "SELECT * FROM suggestions"
+    params: tuple[Any, ...] = ()
+    if status != "all":
+        query += " WHERE status=?"
+        params = (status,)
+    query += " ORDER BY updated_at DESC"
+    rows = []
+    for row in db.execute(query, params):
+        rows.append(
+            {
+                "id": row["id"],
+                "kind": row["kind"],
+                "status": row["status"],
+                "summary": row["summary"],
+                "rationale": row["rationale"],
+                "evidence": json.loads(row["evidence_json"]),
+                "proposal": json.loads(row["proposal_json"]),
+            }
+        )
+    return rows
+
+
+def read_activitywatch(path: str) -> Any:
+    try:
+        with urlopen(f"{ACTIVITYWATCH_API}{path}", timeout=2) as response:
+            return json.load(response)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def activity_summary(hours: int = 24) -> dict[str, Any]:
+    buckets = read_activitywatch("/buckets")
+    if not isinstance(buckets, dict):
+        return {"available": False, "privacy_ok": False}
+    start = quote((datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat())
+    app_seconds: Counter[str] = Counter()
+    afk_seconds: Counter[str] = Counter()
+    titles_redacted = True
+    window_events = 0
+    for bucket_id, bucket in buckets.items():
+        if not isinstance(bucket, dict):
+            continue
+        bucket_type = bucket.get("type")
+        if bucket_type not in {"currentwindow", "afkstatus"}:
+            continue
+        events = read_activitywatch(f"/buckets/{quote(bucket_id, safe='')}/events?start={start}&limit=-1")
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            data = event.get("data") if isinstance(event, dict) else {}
+            if not isinstance(data, dict):
+                continue
+            duration = max(0.0, float(event.get("duration") or 0.0))
+            if bucket_type == "currentwindow":
+                window_events += 1
+                if data.get("title") != ACTIVITYWATCH_REDACTED_TITLE:
+                    titles_redacted = False
+                    continue
+                app = clean_token(data.get("app"), 96)
+                if app:
+                    app_seconds[app] += duration
+            else:
+                status = clean_token(data.get("status"), 24)
+                if status:
+                    afk_seconds[status] += duration
+    return {
+        "available": True,
+        "privacy_ok": titles_redacted and window_events > 0,
+        "period_hours": hours,
+        "window_events": window_events,
+        "apps": [
+            {"app": app, "seconds": round(seconds, 1)}
+            for app, seconds in app_seconds.most_common(12)
+        ],
+        "afk": {status: round(seconds, 1) for status, seconds in afk_seconds.items()},
+    }
+
+
+def agent_deck_summary() -> dict[str, Any]:
+    if shutil.which("agent-deck") is None:
+        return {"available": False, "sessions": []}
+    result = run(["agent-deck", "list", "--json"], timeout=5)
+    try:
+        rows = json.loads(result.stdout) if result.stdout.lstrip().startswith("[") else []
+    except json.JSONDecodeError:
+        rows = []
+    sessions = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        sessions.append(
+            {
+                "id": clean_token(row.get("id"), 80),
+                "title": clean_label(row.get("title"), 120),
+                "project": project_name(row.get("path")),
+                "group": clean_token(row.get("group"), 120),
+                "tool": clean_token(row.get("tool"), 48),
+                "status": clean_token(row.get("status"), 24),
+            }
+        )
+    return {"available": result.returncode == 0, "sessions": sessions}
+
+
+def context_report(db: sqlite3.Connection) -> dict[str, Any]:
+    snapshot_tmux(db)
+    snapshot_hypr_active(db, "context", emit=False)
+    sessions: dict[str, dict[str, Any]] = {}
+    for row in db.execute("SELECT * FROM tmux_panes ORDER BY session,CAST(window_index AS INTEGER),CAST(pane_index AS INTEGER)"):
+        session = sessions.setdefault(row["session"], {"session": row["session"], "projects": [], "windows": {}})
+        if row["project"] and row["project"] not in session["projects"]:
+            session["projects"].append(row["project"])
+        window = session["windows"].setdefault(
+            row["window_id"],
+            {"index": row["window_index"], "name": row["window_name"], "panes": []},
+        )
+        window["panes"].append(
+            {
+                "id": row["pane_id"],
+                "index": row["pane_index"],
+                "command": row["command"],
+                "project": row["project"],
+                "active": bool(row["active"]),
+                "dead": bool(row["dead"]),
+            }
+        )
+    normalized_sessions = []
+    for session in sessions.values():
+        session["windows"] = list(session["windows"].values())
+        normalized_sessions.append(session)
+    hypr = [dict(row) for row in db.execute("SELECT app,process,workspace,monitor,floating,fullscreen,focused,focus_count FROM hypr_windows ORDER BY focused DESC,last_seen DESC")]
+    harnesses = [dict(row) for row in db.execute("SELECT pane_id,harness,state,session,window,project,label,updated_at FROM harness_context ORDER BY updated_at DESC")]
+    preferences = [dict(row) for row in db.execute("SELECT key,accepted,rejected,confidence FROM preferences ORDER BY key")]
+    keybinds = {row["source"]: row["count"] for row in db.execute("SELECT source,COUNT(*) AS count FROM keybind_catalog GROUP BY source")}
+    activity = activity_summary()
+    fleet = agent_deck_summary()
+    return {
+        "privacy": db.execute("SELECT value FROM meta WHERE key='privacy_policy'").fetchone()[0],
+        "database": str(DB_PATH),
+        "hyprland": hypr,
+        "tmux": normalized_sessions,
+        "harnesses": harnesses,
+        "agent_deck": fleet,
+        "activitywatch": activity,
+        "keybind_catalog": keybinds,
+        "preferences": preferences,
+        "suggestions": suggestion_rows(db),
+    }
+
+
+def discover_hypr_socket() -> Path | None:
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "hypr"
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+    if signature:
+        candidate = runtime / signature / ".socket2.sock"
+        if candidate.exists():
+            return candidate
+    if runtime.exists():
+        candidates = sorted(runtime.glob("*/.socket2.sock"), key=lambda path: path.stat().st_mtime, reverse=True)
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def cleanup(db: sqlite3.Connection) -> None:
+    cutoff = now() - RETENTION_DAYS * 86400
+    db.execute("DELETE FROM events WHERE ts<?", (cutoff,))
+    db.execute("DELETE FROM harness_context WHERE updated_at<? AND state IN ('completed','failed','stopped')", (cutoff,))
+    db.commit()
+
+
+def notify_suggestions(count: int) -> None:
+    if count <= 0 or shutil.which("notify-send") is None:
+        return
+    run(["notify-send", "Workspace Copilot", f"{count} new organization suggestion{'s' if count != 1 else ''}"])
+
+
+def daemon() -> None:
+    db = connect()
+    catalog_keybinds(db)
+    snapshot_tmux(db)
+    snapshot_hypr_active(db, "daemon-start", emit=False)
+    cleanup(db)
+    notify_suggestions(generate_suggestions(db))
+    last_maintenance = now()
+    buffer = b""
+    while True:
+        path = discover_hypr_socket()
+        if path is None:
+            time.sleep(3)
+            continue
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+                stream.settimeout(5)
+                stream.connect(str(path))
+                while True:
+                    try:
+                        chunk = stream.recv(8192)
+                        if not chunk:
+                            break
+                        buffer += chunk
+                        while b"\n" in buffer:
+                            line, buffer = buffer.split(b"\n", 1)
+                            handle_hypr_event(db, line.decode(errors="replace"))
+                    except socket.timeout:
+                        pass
+                    if now() - last_maintenance >= 300:
+                        snapshot_tmux(db)
+                        cleanup(db)
+                        catalog_keybinds(db)
+                        notify_suggestions(generate_suggestions(db))
+                        last_maintenance = now()
+        except (ConnectionError, OSError):
+            time.sleep(2)
+
+
+def doctor(db: sqlite3.Connection) -> dict[str, Any]:
+    schema = [row["name"] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+    forbidden_columns = []
+    for table in schema:
+        for column in db.execute(f"PRAGMA table_info({table})"):
+            if column["name"] in {"keystroke", "window_title", "pane_output", "clipboard", "command_args", "raw_payload"}:
+                forbidden_columns.append(f"{table}.{column['name']}")
+    activity = activity_summary()
+    fleet = agent_deck_summary()
+    permissions_ok = DB_PATH.exists() and (DB_PATH.stat().st_mode & 0o077) == 0
+    return {
+        "ok": not forbidden_columns and permissions_ok and activity["privacy_ok"] and fleet["available"],
+        "database": str(DB_PATH),
+        "database_mode": oct(DB_PATH.stat().st_mode & 0o777),
+        "state_directory_mode": oct(STATE_DIR.stat().st_mode & 0o777),
+        "hypr_socket": str(discover_hypr_socket() or ""),
+        "tmux_available": bool(tmux_rows()),
+        "agent_deck_available": fleet["available"],
+        "activitywatch_available": activity["available"],
+        "activitywatch_privacy_ok": activity["privacy_ok"],
+        "forbidden_columns": forbidden_columns,
+        "privacy_policy": db.execute("SELECT value FROM meta WHERE key='privacy_policy'").fetchone()[0],
+        "tables": schema,
+    }
+
+
+def print_data(data: Any, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+        return
+    if isinstance(data, list):
+        if not data:
+            print("No matching records.")
+        for item in data:
+            print(f"[{item['id']}] {item['status']} · {item['summary']}")
+            print(f"    {item['rationale']}")
+        return
+    if isinstance(data, dict):
+        for key, value in data.items():
+            print(f"{key}: {value}")
+        return
+    print(data)
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(prog=APP, description=__doc__)
+    root.add_argument("--json", action="store_true", help="emit JSON")
+    commands = root.add_subparsers(dest="command", required=True)
+    commands.add_parser("daemon", help="listen to semantic Hyprland events")
+    commands.add_parser("init", help="initialize the private database and catalogs")
+    snapshot = commands.add_parser("snapshot", help="refresh safe live state")
+    snapshot.add_argument("--emit", action="store_true", help="also record snapshot events")
+    tmux = commands.add_parser("record-tmux", help="record a tmux semantic hook")
+    tmux.add_argument("kind")
+    tmux.add_argument("pane", nargs="?", default="")
+    keybind = commands.add_parser("record-keybind", help="record an explicit app-level binding action")
+    keybind.add_argument("source")
+    keybind.add_argument("chord")
+    keybind.add_argument("action")
+    harness = commands.add_parser("harness-event", help="publish a high-level harness state")
+    harness.add_argument("state")
+    harness.add_argument("--harness", required=True)
+    harness.add_argument("--label", default="")
+    harness.add_argument("--project", default="")
+    harness.add_argument("--pane", default="")
+    commands.add_parser("context", help="show sanitized workspace context")
+    commands.add_parser("suggest", help="generate organization suggestions")
+    suggestions = commands.add_parser("suggestions", help="list organization suggestions")
+    suggestions.add_argument("--status", choices=["pending", "accepted", "rejected", "applied", "undone", "all"], default="pending")
+    decision = commands.add_parser("decide", help="accept or reject a suggestion")
+    decision.add_argument("id", type=int)
+    decision.add_argument("decision", choices=["accept", "reject"])
+    decision.add_argument("--note", default="")
+    apply = commands.add_parser("apply", help="apply an accepted allowlisted suggestion")
+    apply.add_argument("id", type=int)
+    undo = commands.add_parser("undo", help="undo an applied allowlisted suggestion")
+    undo.add_argument("id", type=int)
+    commands.add_parser("doctor", help="verify privacy and integration boundaries")
+    commands.add_parser("purge", help="apply the retention policy now")
+    return root
+
+
+def main() -> None:
+    args = parser().parse_args()
+    if args.command == "daemon":
+        daemon()
+        return
+    db = connect()
+    if args.command == "init":
+        catalog_keybinds(db)
+        snapshot_tmux(db)
+        snapshot_hypr_active(db, "init", emit=False)
+        print_data({"database": str(DB_PATH), "privacy": doctor(db)["privacy_policy"]}, args.json)
+    elif args.command == "snapshot":
+        snapshot_tmux(db, emit=args.emit)
+        snapshot_hypr_active(db, "snapshot", emit=args.emit)
+        print_data(context_report(db), args.json)
+    elif args.command == "record-tmux":
+        snapshot_tmux(db, clean_token(args.kind, 64), clean_token(args.pane, 32), emit=True)
+    elif args.command == "record-keybind":
+        upsert_keybind(db, args.source, args.chord, args.action)
+        record_event(db, "keybind", "invoked", app=args.source, label=f"{args.chord} {args.action}")
+        db.commit()
+    elif args.command == "harness-event":
+        harness_event(db, args)
+    elif args.command == "context":
+        print_data(context_report(db), True if args.json else False)
+    elif args.command == "suggest":
+        created = generate_suggestions(db)
+        print_data({"created": created, "pending": len(suggestion_rows(db))}, args.json)
+    elif args.command == "suggestions":
+        print_data(suggestion_rows(db, args.status), args.json)
+    elif args.command == "decide":
+        decide(db, args.id, args.decision, args.note)
+        print_data({"id": args.id, "decision": args.decision}, args.json)
+    elif args.command == "apply":
+        print_data({"id": args.id, "result": apply_suggestion(db, args.id)}, args.json)
+    elif args.command == "undo":
+        print_data({"id": args.id, "result": undo_suggestion(db, args.id)}, args.json)
+    elif args.command == "doctor":
+        report = doctor(db)
+        print_data(report, args.json)
+        raise SystemExit(0 if report["ok"] else 1)
+    elif args.command == "purge":
+        cleanup(db)
+        print_data({"retention_days": RETENTION_DAYS}, args.json)
+
+
+if __name__ == "__main__":
+    main()

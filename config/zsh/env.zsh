@@ -64,3 +64,21 @@ export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 # ──────────────────────────────────────────────────────────────────────────────
 export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 export MANROFFOPT="-c"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Python / NumPy / OpenBLAS / MKL thread limits for i9-10900KF
+# Set to physical core count to avoid oversubscription in multi-agent builds.
+# ──────────────────────────────────────────────────────────────────────────────
+export OPENBLAS_NUM_THREADS=10
+export MKL_NUM_THREADS=10
+export NUMEXPR_NUM_THREADS=10
+export OMP_NUM_THREADS=10
+export VECLIB_MAXIMUM_THREADS=10
+
+# Increase Node.js heap for large AI agent processes
+export NODE_OPTIONS="--max-old-space-size=8192"
+
+# Keep big caches off the nearly-full root disk
+export PLAYWRIGHT_BROWSERS_PATH=/workspace/cache/ms-playwright
+export UV_CACHE_DIR=/workspace/cache/uv
+export npm_config_cache=/workspace/cache/npm

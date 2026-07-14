@@ -1,0 +1,18 @@
+[Unit]
+Description=Privacy-preserving semantic workspace copilot
+After=graphical-session.target tmux.service awatcher.service
+Wants=awatcher.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/workspace-copilot daemon
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+[Install]
+WantedBy=graphical-session.target

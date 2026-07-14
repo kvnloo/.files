@@ -159,7 +159,8 @@ install_aur_batch "AUR Wayland extras" \
     hypridle \
     swww \
     nwg-look \
-    wlogout
+    wlogout \
+    awatcher-bundle-bin
 
 # -------------------------------------------------------
 # 5. Audio stack
@@ -197,6 +198,7 @@ install_pacman_batch "Dev tools" \
     cmake meson ninja make pkg-config \
     python python-pip python-pipx \
     nodejs npm \
+    go \
     jdk21-openjdk \
     ruby \
     docker docker-compose docker-buildx \
@@ -218,6 +220,17 @@ install_aur_batch "AUR dev tools" \
     cursor-bin \
     pnpm \
     nvm
+
+# Pinned source build: the release tag is reviewed alongside the tracked
+# Agent Deck configuration instead of executing a remote installer script.
+mkdir -p "$HOME/.local/bin"
+if GOBIN="$HOME/.local/bin" go install github.com/asheshgoplani/agent-deck/cmd/agent-deck@v1.9.73 &>>"$LOG_FILE"; then
+    (( TOTAL_INSTALLED++ )) || true
+else
+    (( TOTAL_FAILED++ )) || true
+    log_warn "Agent Deck source install failed"
+    echo "agent-deck v1.9.73 (go install)" >> "$FAILED_LOG"
+fi
 
 # -------------------------------------------------------
 # 7. Applications
@@ -305,7 +318,7 @@ fi
 # Verify key tools
 log ""
 log "Verification:"
-for cmd in pacman paru node npm python3 docker git hyprctl waybar zsh; do
+for cmd in pacman paru node npm python3 docker git hyprctl waybar zsh agent-deck awatcher; do
     if command -v "$cmd" &>/dev/null; then
         log "  $cmd: installed"
     else

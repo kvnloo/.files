@@ -24,3 +24,23 @@ colors() {
 
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+# Attach to (or create) a tmux session named after the current project dir.
+# Continuum restores saved sessions at login; agent panes resume in their
+# original project directories.
+tm() {
+  local raw_name="${1:-${PWD:t}}"
+  local name="${raw_name//[^A-Za-z0-9_-]/-}"
+  [[ -n "$name" ]] || name="main"
+
+  if [[ -n "$TMUX" ]]; then
+    if tmux has-session -t "=$name" 2>/dev/null; then
+      tmux switch-client -t "=$name"
+    else
+      tmux new-session -d -s "$name" -c "$PWD"
+      tmux switch-client -t "=$name"
+    fi
+  else
+    tmux new-session -A -s "$name" -c "$PWD"
+  fi
+}

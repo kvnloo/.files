@@ -1,6 +1,7 @@
 /* =====================================================
  * WAYBAR STYLESHEET — Glassmorphism
  * ===================================================== */
+@import url("../../.cache/wal/colors-waybar-semantic.css");
 
 * {
     font-family: "JetBrainsMono Nerd Font", FontAwesome, Roboto, sans-serif;
@@ -9,8 +10,8 @@
 }
 
 window#waybar {
-    background: rgba(10, 10, 18, 0.45);
-    color: #e0e0ef;
+    background: alpha(@wb_background, 0.72);
+    color: @wb_foreground;
 }
 
 window#waybar.hidden {
@@ -18,13 +19,13 @@ window#waybar.hidden {
 }
 
 tooltip {
-    background: rgba(20, 20, 35, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: alpha(@wb_background, 0.94);
+    border: 1px solid alpha(@wb_foreground, 0.12);
     border-radius: 12px;
 }
 
 tooltip label {
-    color: #e0e0ef;
+    color: @wb_foreground;
     padding: 4px;
 }
 
@@ -40,37 +41,37 @@ button {
 #workspaces button {
     padding: 2px 8px;
     margin: 0 2px;
-    color: rgba(255, 255, 255, 0.6);
-    background: rgba(255, 255, 255, 0.04);
+    color: alpha(@wb_foreground, 0.62);
+    background: alpha(@wb_foreground, 0.04);
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid alpha(@wb_foreground, 0.05);
     transition: all 0.3s ease;
 }
 
 #workspaces button:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
+    background: alpha(@wb_grad1, 0.12);
+    border-color: alpha(@wb_grad1, 0.2);
+    color: @wb_grad1;
 }
 
 #workspaces button.active {
-    background: rgba(120, 160, 255, 0.18);
-    border-color: rgba(120, 160, 255, 0.25);
-    color: #a0c4ff;
+    background: alpha(@wb_grad1, 0.16);
+    border-color: alpha(@wb_grad1, 0.26);
+    color: @wb_grad1;
 }
 
 #workspaces button.urgent {
-    background: rgba(255, 100, 120, 0.2);
-    border-color: rgba(255, 100, 120, 0.3);
-    color: #ff8a9e;
+    background: alpha(@wb_critical, 0.2);
+    border-color: alpha(@wb_critical, 0.3);
+    color: @wb_critical;
 }
 
 #submap {
     padding: 2px 10px;
     margin: 4px 4px;
-    background: rgba(255, 100, 120, 0.15);
-    border: 1px solid rgba(255, 100, 120, 0.2);
-    color: #ff8a9e;
+    background: alpha(@wb_critical, 0.15);
+    border: 1px solid alpha(@wb_critical, 0.24);
+    color: @wb_critical;
     border-radius: 8px;
     font-weight: bold;
 }
@@ -78,7 +79,7 @@ button {
 #window {
     padding: 2px 12px;
     margin: 4px 0;
-    color: rgba(255, 255, 255, 0.45);
+    color: alpha(@wb_grad3, 0.78);
 }
 
 #clock,
@@ -95,75 +96,57 @@ button {
     padding: 2px 12px;
     margin: 4px 2px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: alpha(@wb_foreground, 0.06);
+    border: 1px solid alpha(@wb_foreground, 0.07);
     transition: all 0.3s ease;
 }
 
+/* A stepped pywal gradient runs left-to-right across module order. */
+#tray,
 #custom-media {
-    color: #8be9a0;
-    border-color: rgba(139, 233, 160, 0.12);
+    color: @wb_grad2;
+    border-color: alpha(@wb_grad2, 0.18);
 }
 
-#pulseaudio {
-    color: #7eb8f7;
-    border-color: rgba(126, 184, 247, 0.12);
-}
-
-#pulseaudio.muted {
-    color: #f07080;
-    border-color: rgba(240, 112, 128, 0.12);
-}
-
+#pulseaudio,
 #custom-dac {
-    color: #f0b060;
-    border-color: rgba(240, 176, 96, 0.12);
+    color: @wb_grad3;
+    border-color: alpha(@wb_grad3, 0.18);
 }
 
-#network {
-    color: #c4a0f0;
-    border-color: rgba(196, 160, 240, 0.12);
-}
-
-#network.disconnected {
-    color: #f07080;
-    border-color: rgba(240, 112, 128, 0.12);
-}
-
+#network,
 #custom-cpu {
-    color: #70dcd0;
-    border-color: rgba(112, 220, 208, 0.12);
+    color: @wb_grad4;
+    border-color: alpha(@wb_grad4, 0.18);
 }
 
-#custom-gpu {
-    color: #f0c870;
-    border-color: rgba(240, 200, 112, 0.12);
-}
-
+#custom-gpu,
 #memory {
-    color: #a8b0f0;
-    border-color: rgba(168, 176, 240, 0.12);
+    color: @wb_grad5;
+    border-color: alpha(@wb_grad5, 0.18);
 }
 
-#temperature {
-    color: #f0a870;
-    border-color: rgba(240, 168, 112, 0.12);
-}
-
-#temperature.critical {
-    color: #f07080;
-    background: rgba(240, 112, 128, 0.1);
-    border-color: rgba(240, 112, 128, 0.2);
+#temperature,
+#custom-codexbar,
+#clock {
+    color: @wb_grad6;
+    border-color: alpha(@wb_grad6, 0.18);
 }
 
 #clock {
-    color: #7eb8f7;
-    border-color: rgba(126, 184, 247, 0.12);
     font-weight: bold;
 }
 
-#tray {
-    border-color: rgba(255, 255, 255, 0.04);
+#pulseaudio.muted,
+#network.disconnected {
+    color: @wb_critical;
+    border-color: alpha(@wb_critical, 0.2);
+}
+
+#temperature.critical {
+    color: @wb_critical;
+    background: alpha(@wb_critical, 0.12);
+    border-color: alpha(@wb_critical, 0.24);
 }
 
 #tray > .passive {
@@ -172,7 +155,7 @@ button {
 
 #tray > .needs-attention {
     -gtk-icon-effect: highlight;
-    background: rgba(240, 112, 128, 0.12);
+    background: alpha(@wb_critical, 0.14);
 }
 
 #custom-media:hover,
@@ -185,8 +168,8 @@ button {
 #temperature:hover,
 #custom-codexbar:hover,
 #clock:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: alpha(@wb_foreground, 0.1);
+    border-color: alpha(@wb_foreground, 0.14);
 }
 
 /* codexbar-waybar — AI usage indicator. State classes (ok / warning /
@@ -194,29 +177,29 @@ button {
  * overridden here, the box styling comes from the shared rule above. */
 
 #custom-codexbar.ok {
-    color: #16d3b4;
-    border-color: rgba(22, 211, 180, 0.12);
+    color: @wb_grad6;
+    border-color: alpha(@wb_grad6, 0.18);
 }
 
 #custom-codexbar.warning {
-    color: #f5a623;
-    background: rgba(245, 166, 35, 0.18);
-    border-color: rgba(245, 166, 35, 0.25);
+    color: @wb_warning;
+    background: alpha(@wb_warning, 0.18);
+    border-color: alpha(@wb_warning, 0.28);
 }
 
 #custom-codexbar.critical {
-    color: #ff5470;
-    background: rgba(255, 84, 112, 0.22);
-    border-color: rgba(255, 84, 112, 0.3);
+    color: @wb_critical;
+    background: alpha(@wb_critical, 0.22);
+    border-color: alpha(@wb_critical, 0.32);
     animation: codexbar-pulse 2s ease-in-out infinite alternate;
 }
 
 #custom-codexbar.stale {
-    color: #888;
+    color: @wb_muted;
 }
 
 @keyframes codexbar-pulse {
-    from { background: rgba(255, 84, 112, 0.22); }
-    to   { background: rgba(255, 84, 112, 0.4); }
+    from { background: alpha(@wb_critical, 0.22); }
+    to   { background: alpha(@wb_critical, 0.4); }
 }
 

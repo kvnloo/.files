@@ -106,7 +106,7 @@
     "pulseaudio": {
         "format": "{icon} {volume}%",
         "format-bluetooth": "\uf294 {volume}%",
-        "format-muted": "\uf6a9 Muted",
+        "format-muted": "\udb81\udf5f Muted",
         "format-icons": {
             "headphone": "\uf025",
             "default": ["\uf026", "\uf027", "\uf028"]
@@ -117,13 +117,14 @@
     },
 
     "network": {
-        "format-wifi": "\uf1eb {essid}",
-        "format-ethernet": "\udb80\ude00 {ipaddr}/{cidr}",
-        "format-linked": "\udb80\ude00 {ifname}",
-        "format-disconnected": "\udb80\ude01 Offline",
+        "format-wifi": "\udb82\udd28 {essid}",
+        "format-ethernet": "\udb82\udd28 {ipaddr}/{cidr}",
+        "format-linked": "\udb82\udd28 {ifname}",
+        "format-disconnected": "\uf071 Offline",
         "format-alt": "\uf093 {bandwidthUpBytes} \uf019 {bandwidthDownBytes}",
         "tooltip-format": "{ifname}: {ipaddr}/{cidr}\n\uf093 {bandwidthUpBits} \uf019 {bandwidthDownBits}",
         "interval": 5,
+        "on-click": "$HOME/workspace/.files/scripts/rofi-wifi.sh",
         "on-click-right": "nm-connection-editor"
     },
 
@@ -148,7 +149,7 @@
     },
 
     "memory": {
-        "format": "\uf538 {used:0.1f}G",
+        "format": "\udb80\udf5b {used:0.1f}G",
         "interval": 5,
         "tooltip-format": "RAM: {used:0.1f}G / {total:0.1f}G ({percentage}%)\nSwap: {swapUsed:0.1f}G / {swapTotal:0.1f}G",
         "on-click": "btop"

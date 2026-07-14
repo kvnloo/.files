@@ -56,6 +56,8 @@ link "$DOTFILES/config/waybar" "$HOME/.config/waybar"
 link "$DOTFILES/config/rofi" "$HOME/.config/rofi"
 link "$DOTFILES/config/dunst" "$HOME/.config/dunst"
 
+link "$DOTFILES/config/agent-deck/config.toml" "$HOME/.config/agent-deck/config.toml"
+link "$DOTFILES/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
 mkdir -p "$HOME/.config/zed"
 link "$DOTFILES/config/zed/settings.json" "$HOME/.config/zed/settings.json"
 
@@ -89,6 +91,16 @@ chmod +x "$DOTFILES/scripts/"*.sh 2>/dev/null || true
 
 # Add headphone-switch to PATH
 link "$DOTFILES/config/pipewire/headphone-switch.sh" "$HOME/.local/bin/headphone-switch"
+link "$DOTFILES/scripts/workspace-copilot" "$HOME/.local/bin/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.agents/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.claude/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.config/opencode/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.gemini/skills/workspace-copilot"
+
+if command -v agent-deck &>/dev/null; then
+    agent-deck codex-hooks install >/dev/null 2>&1 || true
+    agent-deck gemini-hooks install >/dev/null 2>&1 || true
+fi
 
 # -------------------------------------------------------
 # 5. Systemd user services
@@ -98,8 +110,13 @@ mkdir -p "$HOME/.config/systemd/user"
 
 # browser-bypass-dsp.service is created by 03-setup-audio.sh
 # (uses dynamic $DOTFILES path instead of hardcoded %h/workspace/.files)
+link "$DOTFILES/config/systemd/user/awatcher.service" \
+     "$HOME/.config/systemd/user/awatcher.service"
+link "$DOTFILES/config/systemd/user/workspace-copilot.service" \
+     "$HOME/.config/systemd/user/workspace-copilot.service"
 
 systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable --now awatcher.service workspace-copilot.service 2>/dev/null || true
 
 # -------------------------------------------------------
 # 6. Font configuration

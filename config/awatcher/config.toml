@@ -1,0 +1,15 @@
+[server]
+host = "127.0.0.1"
+port = 5600
+
+[awatcher]
+idle-timeout-seconds = 180
+poll-time-idle-seconds = 4
+poll-time-window-seconds = 1
+
+# Privacy boundary: retain the application identity and activity duration, but
+# never persist raw window titles. Task semantics come from explicit fleet
+# session metadata rather than browser, editor, or conversation titles.
+[[awatcher.filters]]
+match-title = ".*"
+replace-title = "[redacted]"

@@ -2,3 +2,10 @@
 logs/
 codesign0
 config/camilladsp/venv/
+
+# Local history, generated caches, binaries, and installer backups
+config/fish/fish_history
+**/__pycache__/
+.cast-tools/
+config/waybar/*.codexbar-backup-*
+config/waybar/scripts/*.so

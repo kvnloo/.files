@@ -77,6 +77,8 @@ PROVIDER_NAMES = {
     "antigravity": "Antigravity",
 }
 
+REFERENCE_PROVIDER_ORDER = ("codex", "claude", "cursor", "factory", "gemini", "copilot")
+
 WINDOW_LABELS = {
     "primary": "Session",
     "secondary": "Weekly",
@@ -101,6 +103,12 @@ PROVIDER_ICON_ALIAS = {
     "droid": "factory",
     "moonshot": "kimi",
     "kimik2": "kimi",
+}
+
+MENU_GLYPHS = {
+    "add-account": "\uf084",       # nf-fa-key
+    "dashboard": "\uf080",         # nf-fa-bar_chart
+    "status": "\uf21e",            # nf-fa-heartbeat
 }
 
 # Providers that have at least one non-web Linux path (OAuth, API key, CLI,
@@ -171,8 +179,9 @@ POPUP_RIGHT_MARGIN = _env_int("CODEXBAR_POPUP_RIGHT_MARGIN", sx(52), min_value=0
 POPUP_TOP_MARGIN = _env_int("CODEXBAR_POPUP_TOP_MARGIN", sx(63), min_value=0)
 POPUP_BOTTOM_MARGIN = _env_int("CODEXBAR_POPUP_BOTTOM_MARGIN", 38, min_value=0)
 
-# CSS mirrors the macOS menu popover reference: a lavender translucent panel,
-# large icon tabs, chunky text, thin section dividers, and orange usage fill.
+# CSS mirrors the macOS menu popover reference at 2x screenshot pixels.
+# The panel is painted as an averaged lavender material so desktop text does
+# not bleed through when the compositor cannot provide macOS-style vibrancy.
 BASE_CSS = """
 /* The window itself stays transparent so the root box can paint rounded corners. */
 window.codexbar-popup {
@@ -181,9 +190,10 @@ window.codexbar-popup {
 }
 
 .codexbar-root {
-    background-color: rgba(203,202,247,0.94);
-    background-image: none;
+    background-color: #c9ccff;
+    background-image: linear-gradient(145deg, #d1cfff 0%, #d5d0fb 25%, #c5c9ff 62%, #c2c6ff 100%);
     color: #1f1c2d;
+    font-family: "SFNS Display", "Noto Sans", sans-serif;
     border-radius: 21px;
     border: 1px solid rgba(255,255,255,0.62);
     padding: 0;
@@ -198,8 +208,8 @@ window.codexbar-popup {
 /* --- Tab strip --- */
 .codexbar-tabbar {
     background-color: transparent;
-    padding: 8px 31px 12px 31px;
-    border-bottom: 1px solid rgba(126,122,171,0.27);
+    padding: 8px 31px 4px 31px;
+    border-bottom: 1px solid #ccbbe6;
     border-top-left-radius: 21px;
     border-top-right-radius: 21px;
 }
@@ -241,7 +251,7 @@ window.codexbar-popup {
 }
 .codexbar-provider-tab label {
     color: inherit;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 500;
 }
 
@@ -261,7 +271,7 @@ window.codexbar-popup {
 /* --- Body --- */
 .codexbar-body {
     background-color: transparent;
-    padding: 22px 31px 14px 31px;
+    padding: 30px 31px 0 31px;
 }
 
 .codexbar-provider-title {
@@ -279,15 +289,27 @@ window.codexbar-popup {
     color: #6d687d;
 }
 .codexbar-divider {
-    background-color: rgba(126,122,171,0.30);
+    background-color: #b4b6e5;
     min-height: 1px;
     margin: 17px 0 26px 0;
+}
+.codexbar-divider.codexbar-header-divider {
+    margin: 11px 0 32px 0;
+}
+.codexbar-divider.codexbar-after-cost-divider {
+    margin-bottom: 8px;
+}
+.codexbar-divider.codexbar-before-footer-divider {
+    margin-bottom: 20px;
 }
 .codexbar-section-title {
     font-size: 26px;
     font-weight: 700;
     color: #242130;
     margin-bottom: 11px;
+}
+.codexbar-extra-title {
+    margin-bottom: 23px;
 }
 .codexbar-usage-section {
     margin-bottom: 26px;
@@ -337,6 +359,9 @@ window.codexbar-popup {
 }
 .codexbar-menu-icon {
     color: #201e2d;
+    font-family: "JetBrainsMono Nerd Font", "Iosevka Nerd Font", "Noto Sans Symbols", monospace;
+    font-size: 21px;
+    min-width: 32px;
     margin: 0 14px 0 2px;
 }
 .codexbar-chevron {
@@ -344,7 +369,11 @@ window.codexbar-popup {
     font-size: 31px;
 }
 .codexbar-cost-row {
-    margin-top: 7px;
+    margin-top: 3px;
+}
+.codexbar-cost-last-row {
+    margin-top: 12px;
+    margin-bottom: 30px;
 }
 .codexbar-extra-row {
     margin-top: 12px;
@@ -424,20 +453,20 @@ levelbar.codex-tab-meter trough {
     background-color: transparent;
     background-image: none;
     padding: 0;
-    min-height: 7px;
+    min-height: 6px;
     border: none;
 }
 levelbar.codex-tab-meter block.filled {
     background-color: #6abcb5;
     background-image: none;
-    min-height: 7px;
+    min-height: 6px;
     border-radius: 4px;
     border: none;
 }
 levelbar.codex-tab-meter block.empty {
     background-color: rgba(135,131,170,0.48);
     background-image: none;
-    min-height: 7px;
+    min-height: 6px;
     border-radius: 4px;
     border: none;
 }
@@ -454,27 +483,35 @@ def build_css() -> bytes:
         "border-top-left-radius: 21px;": f"border-top-left-radius: {sx(21)}px;",
         "border-top-right-radius: 21px;": f"border-top-right-radius: {sx(21)}px;",
         "min-width: 620px;": f"min-width: {POPUP_WIDTH}px;",
-        "padding: 8px 31px 12px 31px;": f"padding: {sx(8)}px {sx(31)}px {sx(12)}px {sx(31)}px;",
+        "padding: 8px 31px 4px 31px;": f"padding: {sx(8)}px {sx(31)}px {sx(4)}px {sx(31)}px;",
         "padding: 7px 13px;": f"padding: {sx(7)}px {sx(13)}px;",
         "border-radius: 10px;": f"border-radius: {sx(10)}px;",
         "font-size: 20px;": f"font-size: {sx(20)}px;",
+        "font-size: 18px;": f"font-size: {sx(18)}px;",
         "padding: 8px 5px 6px 5px;": f"padding: {sx(8)}px {sx(5)}px {sx(6)}px {sx(5)}px;",
         "min-width: 64px;": f"min-width: {sx(64)}px;",
         "min-height: 57px;": f"min-height: {sx(57)}px;",
         "padding: 5px 9px;": f"padding: {sx(5)}px {sx(9)}px;",
         "border-radius: 8px;": f"border-radius: {sx(8)}px;",
         "font-size: 13px;": f"font-size: {sx(13)}px;",
-        "padding: 22px 31px 14px 31px;": f"padding: {sx(22)}px {sx(31)}px {sx(14)}px {sx(31)}px;",
+        "padding: 30px 31px 0 31px;": f"padding: {sx(30)}px {sx(31)}px 0 {sx(31)}px;",
         "font-size: 26px;": f"font-size: {sx(26)}px;",
+        "font-size: 21px;": f"font-size: {sx(21)}px;",
+        "min-width: 32px;": f"min-width: {sx(32)}px;",
         "margin: 17px 0 26px 0;": f"margin: {sx(17)}px 0 {sx(26)}px 0;",
+        "margin: 11px 0 32px 0;": f"margin: {sx(11)}px 0 {sx(32)}px 0;",
         "margin-bottom: 11px;": f"margin-bottom: {sx(11)}px;",
+        "margin-bottom: 23px;": f"margin-bottom: {sx(23)}px;",
         "margin-bottom: 26px;": f"margin-bottom: {sx(26)}px;",
         "margin-top: 10px;": f"margin-top: {sx(10)}px;",
         "min-height: 49px;": f"min-height: {sx(49)}px;",
         "margin: 0 14px 0 2px;": f"margin: 0 {sx(14)}px 0 {sx(2)}px;",
         "font-size: 31px;": f"font-size: {sx(31)}px;",
-        "margin-top: 7px;": f"margin-top: {sx(7)}px;",
+        "margin-top: 3px;": f"margin-top: {sx(3)}px;",
         "margin-top: 12px;": f"margin-top: {sx(12)}px;",
+        "margin-bottom: 30px;": f"margin-bottom: {sx(30)}px;",
+        "margin-bottom: 8px;": f"margin-bottom: {sx(8)}px;",
+        "margin-bottom: 20px;": f"margin-bottom: {sx(20)}px;",
         "font-size: 22px;": f"font-size: {sx(22)}px;",
         "padding: 4px 0 8px 0;": f"padding: {sx(4)}px 0 {sx(8)}px 0;",
         "margin: 0 2px;": f"margin: 0 {sx(2)}px;",
@@ -482,8 +519,8 @@ def build_css() -> bytes:
         "font-size: 16px;": f"font-size: {sx(16)}px;",
         "padding: 14px 0 4px 0;": f"padding: {sx(14)}px 0 {sx(4)}px 0;",
         "min-height: 12px;": f"min-height: {sx(12)}px;",
+        "min-height: 6px;": f"min-height: {sx(6)}px;",
         "border-radius: 6px;": f"border-radius: {sx(6)}px;",
-        "min-height: 7px;": f"min-height: {sx(7)}px;",
         "border-radius: 4px;": f"border-radius: {sx(4)}px;",
     }
     for old, new in replacements.items():
@@ -765,6 +802,34 @@ class CodexBarPopup(Gtk.Application):
             self.window = self.build_window()
         self.window.present()
 
+    def _reference_tabs_enabled(self) -> bool:
+        return os.environ.get("CODEXBAR_POPUP_REFERENCE_TABS", "1") not in {"0", "false", "False"}
+
+    def _tab_entries(self) -> list[dict]:
+        by_provider = {entry.get("provider"): entry for entry in self.data}
+        ordered: list[dict] = []
+        seen: set[str] = set()
+
+        if self._reference_tabs_enabled():
+            for pid in REFERENCE_PROVIDER_ORDER:
+                entry = by_provider.get(pid)
+                if entry is None and pid == "factory":
+                    entry = by_provider.get("droid")
+                if entry is None:
+                    entry = {"provider": pid, "usage": {}, "_placeholder": True}
+                ordered.append(entry)
+                seen.add(entry.get("provider", pid))
+                seen.add(pid)
+                if pid == "factory":
+                    seen.add("droid")
+
+        for entry in self.data:
+            pid = entry.get("provider", "")
+            if pid and pid not in seen:
+                ordered.append(entry)
+                seen.add(pid)
+        return ordered
+
     def _make_pill(self, label: str, css_classes: list[str], on_click,
                    *, icon_pid: str | None = None) -> Gtk.Widget:
         """A clickable pill made from Gtk.Box + Gtk.Label so we bypass
@@ -793,7 +858,7 @@ class CodexBarPopup(Gtk.Application):
         tab.set_size_request(sx(80), sx(57))
         tab.set_halign(Gtk.Align.CENTER)
 
-        icon = make_icon(pid, size=sx(29), color="#ffffff" if active else "#6e6a82")
+        icon = make_icon(pid, size=sx(28), color="#ffffff" if active else "#6e6a82")
         if icon is not None:
             icon.set_halign(Gtk.Align.CENTER)
             tab.append(icon)
@@ -803,12 +868,13 @@ class CodexBarPopup(Gtk.Application):
         tab.append(label)
 
         meter = self._meter(max_pct(entry), ["codex-tab-meter"])
-        meter.set_size_request(sx(70), sx(7))
+        meter.set_size_request(sx(70), sx(6))
         tab.append(meter)
 
-        gesture = Gtk.GestureClick()
-        gesture.connect("released", lambda _g, _n, _x, _y, p=pid: self._select(p))
-        tab.add_controller(gesture)
+        if not entry.get("_placeholder"):
+            gesture = Gtk.GestureClick()
+            gesture.connect("released", lambda _g, _n, _x, _y, p=pid: self._select(p))
+            tab.add_controller(gesture)
         return tab
 
     def _meter(self, pct: int | float | None, css_classes: list[str]) -> Gtk.LevelBar:
@@ -821,21 +887,20 @@ class CodexBarPopup(Gtk.Application):
         bar.set_value(float(pct) if isinstance(pct, (int, float)) else 0)
         return bar
 
-    def _menu_icon(self, icon_name: str) -> Gtk.Widget:
-        icon = Gtk.Image.new_from_icon_name(icon_name)
-        icon.set_pixel_size(sx(25))
+    def _menu_icon(self, glyph: str) -> Gtk.Widget:
+        icon = Gtk.Label(label=glyph, xalign=0.5)
         icon.add_css_class("codexbar-menu-icon")
         return icon
 
     def _menu_row(self, label: str, on_click, *,
-                  icon_name: str | None = None,
+                  glyph: str | None = None,
                   chevron: bool = False) -> Gtk.Widget:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         row.add_css_class("codexbar-menu-row")
         row.set_size_request(-1, sx(49))
         row.set_valign(Gtk.Align.CENTER)
-        if icon_name:
-            row.append(self._menu_icon(icon_name))
+        if glyph:
+            row.append(self._menu_icon(glyph))
         text = Gtk.Label(label=label, xalign=0.0, hexpand=True)
         row.append(text)
         if chevron:
@@ -863,6 +928,7 @@ class CodexBarPopup(Gtk.Application):
         win.set_default_size(POPUP_WIDTH, 1)
 
         Gtk4LayerShell.init_for_window(win)
+        Gtk4LayerShell.set_namespace(win, "codexbar-popup")
         Gtk4LayerShell.set_layer(win, Gtk4LayerShell.Layer.OVERLAY)
         Gtk4LayerShell.set_anchor(win, Gtk4LayerShell.Edge.TOP, POPUP_EDGE == "top")
         Gtk4LayerShell.set_anchor(win, Gtk4LayerShell.Edge.BOTTOM, POPUP_EDGE == "bottom")
@@ -891,11 +957,16 @@ class CodexBarPopup(Gtk.Application):
         root.append(self.body)
 
         self.data = load_cached()
-        self.active_pid = default_provider(self.data)
+        requested_pid = os.environ.get("CODEXBAR_INITIAL_PROVIDER")
+        if requested_pid and any(e.get("provider") == requested_pid for e in self.data):
+            self.active_pid = requested_pid
+        else:
+            self.active_pid = default_provider(self.data)
         if os.environ.get("CODEXBAR_INITIAL_VIEW") == "settings":
             self.view = "settings"
         self.render()
-        self.refresh(background=True)
+        if os.environ.get("CODEXBAR_DISABLE_REFRESH") != "1":
+            self.refresh(background=True)
         return win
 
     def _on_key(self, _ctl, keyval, _kc, _state):
@@ -958,7 +1029,7 @@ class CodexBarPopup(Gtk.Application):
             self.tabbar.append(loading)
             return
         self.tab_buttons.clear()
-        for entry in self.data:
+        for entry in self._tab_entries():
             pid = entry.get("provider", "")
             tab = self._make_provider_tab(entry)
             self.tabbar.append(tab)
@@ -1317,7 +1388,7 @@ class CodexBarPopup(Gtk.Application):
         sub = Gtk.Label(label=sub_text, xalign=0.0)
         sub.add_css_class("codexbar-subtitle")
         self.body.append(sub)
-        self.body.append(self._divider())
+        self.body.append(self._divider("codexbar-header-divider"))
 
         if entry.get("error"):
             err = Gtk.Label(
@@ -1341,12 +1412,14 @@ class CodexBarPopup(Gtk.Application):
         self.body.append(self._divider())
         self._render_cost(entry)
 
-        self.body.append(self._divider())
+        self.body.append(self._divider("codexbar-after-cost-divider"))
         self._render_actions()
 
-    def _divider(self) -> Gtk.Widget:
+    def _divider(self, *classes: str) -> Gtk.Widget:
         d = Gtk.Box()
         d.add_css_class("codexbar-divider")
+        for class_name in classes:
+            d.add_css_class(class_name)
         return d
 
     def _section(self, title: str, window: dict, *, key: str = "") -> Gtk.Widget:
@@ -1415,11 +1488,14 @@ class CodexBarPopup(Gtk.Application):
         used, limit, pct = self._extra_usage(entry)
         title = Gtk.Label(label="Extra usage", xalign=0.0)
         title.add_css_class("codexbar-section-title")
+        title.add_css_class("codexbar-extra-title")
+        title.set_margin_bottom(sx(5))
         self.body.append(title)
         self.body.append(self._meter(pct, ["codex-usage"]))
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         row.add_css_class("codexbar-extra-row")
+        row.set_margin_bottom(sx(26))
         left = Gtk.Label(
             label=f"This month: {self._format_money(used)} / {self._format_money(limit)}",
             xalign=0.0,
@@ -1454,22 +1530,23 @@ class CodexBarPopup(Gtk.Application):
             label=f"Last 30 days: {self._format_money(last30_cost)} · {self._format_tokens(last30_tokens)}",
             xalign=0.0)
         last.add_css_class("codexbar-section-detail-left")
+        last.add_css_class("codexbar-cost-last-row")
         self.body.append(last)
 
     def _render_actions(self) -> None:
         self.body.append(self._menu_row(
             "Add Account...",
             self._on_add_account,
-            icon_name="dialog-password-symbolic"))
+            glyph=MENU_GLYPHS["add-account"]))
         self.body.append(self._menu_row(
             "Usage Dashboard",
             self._on_usage_dashboard,
-            icon_name="view-statistics-symbolic"))
+            glyph=MENU_GLYPHS["dashboard"]))
         self.body.append(self._menu_row(
             "Status Page",
             self._on_status_page,
-            icon_name="utilities-system-monitor-symbolic"))
-        self.body.append(self._divider())
+            glyph=MENU_GLYPHS["status"]))
+        self.body.append(self._divider("codexbar-before-footer-divider"))
         self.body.append(self._menu_row("Settings...", self._on_settings_call))
         self.body.append(self._menu_row("About CodexBar", self._on_about_call))
         self.body.append(self._menu_row("Quit", self.quit))

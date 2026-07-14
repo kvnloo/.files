@@ -406,14 +406,14 @@ echo "$merged" | jq -c \
     # When the user has pinned a provider for the bar text, surface session
     # and weekly inline ("3% • 12%"). Otherwise emit the global max%.
     def bar_text(entry):
-        if entry == null or entry.error then "🤖 ⚠"
+        if entry == null or entry.error then "󰚩 ⚠"
         else
             [pct_or_null(entry.usage.primary),
              pct_or_null(entry.usage.secondary)]
             | map(select(. != null))
-            | if length == 0 then "🤖 —"
-              elif length == 1 then "🤖 \(.[0])%"
-              else "🤖 \(.[0])% • \(.[1])%" end
+            | if length == 0 then "󰚩 —"
+              elif length == 1 then "󰚩 \(.[0])%"
+              else "󰚩 \(.[0])% • \(.[1])%" end
         end;
 
     . as $all
@@ -425,8 +425,8 @@ echo "$merged" | jq -c \
        else ($all | map(select(.provider == $bar_provider)) | .[0]) end) as $pinned
     | {
         text: (if $pinned != null then bar_text($pinned)
-               elif $all_errored then "🤖 ⚠"
-               else "🤖 \($pct)%" end),
+               elif $all_errored then "󰚩 ⚠"
+               else "󰚩 \($pct)%" end),
         tooltip: ($lines | join("\n")),
         class: (if $all_errored then "stale"
                 elif $pct >= 90 then "critical"
