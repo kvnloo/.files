@@ -51,6 +51,16 @@ HYPR_EVENTS = {
     "focusedmon",
 }
 HARNESS_STATES = {"started", "working", "waiting", "blocked", "completed", "failed", "stopped"}
+UI_FLOW_CONTRACT = {
+    "palette": "pywal-semantic",
+    "material": "subtle-liquid-glass",
+    "minimum_contrast": 5.0,
+    "interaction": "explicit-invocation",
+    "focus_policy": "never-steal-focus",
+    "duplicate_controls": "forbidden",
+    "open_budget_ms": 150,
+    "labels": "icon-and-readable-name",
+}
 SAFE_TOKEN = re.compile(r"[^A-Za-z0-9_.:@%/+ -]")
 URL = re.compile(r"(?:https?|ssh)://\S+", re.IGNORECASE)
 SECRET = re.compile(
@@ -596,6 +606,54 @@ def upsert_suggestion(
     return True
 
 
+def generate_ui_flow_suggestions(
+    db: sqlite3.Connection, transitions: Counter[tuple[str, str]]
+) -> int:
+    """Recommend one low-interruption UI surface for the dominant context loop."""
+    if not transitions:
+        return 0
+    pair, count = transitions.most_common(1)[0]
+    if count < 20:
+        return 0
+    focused = db.execute(
+        "SELECT app FROM hypr_windows WHERE focused=1 ORDER BY last_seen DESC LIMIT 1"
+    ).fetchone()
+    keybinds = db.execute("SELECT COUNT(*) FROM keybind_catalog").fetchone()[0]
+    label = " ↔ ".join(pair)
+    return int(
+        upsert_suggestion(
+            db,
+            "ui-flow-optimization",
+            "|".join(pair),
+            f"Add a contextual flow bridge for {label}",
+            (
+                f"{count} transitions between these applications in the last hour "
+                "indicate a repeated context loop. A single explicit, non-focus-stealing "
+                "surface can preserve task continuity without adding ambient UI noise."
+            ),
+            {
+                "apps": list(pair),
+                "transitions_last_hour": count,
+                "focused_app": focused["app"] if focused else "",
+                "cataloged_keybinds": keybinds,
+            },
+            {
+                "action": "advisory",
+                "component": "contextual-flow-bridge",
+                "surface": "waybar-indicator+rofi-overlay",
+                "primary_actions": [
+                    "focus-next-context",
+                    "return-to-previous-context",
+                    "show-next-action",
+                ],
+                "design_contract": UI_FLOW_CONTRACT,
+                "dismissal": "one-keystroke-and-no-reminder-until-evidence-changes",
+                "undo": "remove-the-surface-and-binding",
+            },
+        )
+    )
+
+
 def generate_suggestions(db: sqlite3.Connection) -> int:
     snapshot_tmux(db)
     created = 0
@@ -692,6 +750,7 @@ def generate_suggestions(db: sqlite3.Connection) -> int:
                 {"apps": list(pair), "transitions_last_hour": count},
                 {"action": "advisory"},
             )
+    created += generate_ui_flow_suggestions(db, transitions)
     db.commit()
     return created
 
