@@ -149,7 +149,7 @@ def main() -> None:
     # Using color1–6 therefore covers the complete chromatic palette once.
     active = [colors[f"color{index}"] for index in range(1, 7)]
     active_gradient = " ".join(hypr(value) for value in active) + " 90deg"
-    tab_gradient = " ".join(hypr(value, "cc") for value in active) + " 90deg"
+    tab_background = f"{hypr(background, 'b8')} {hypr(colors['color4'], '78')} 90deg"
     HYPRLAND.write_text(
         "\n".join(
             [
@@ -160,12 +160,15 @@ def main() -> None:
                 f"group:col.border_inactive = {hypr(muted, '66')}",
                 f"group:col.border_locked_active = {active_gradient}",
                 f"group:col.border_locked_inactive = {hypr(muted, '55')}",
-                f"group:groupbar:col.active = {tab_gradient}",
-                f"group:groupbar:col.inactive = {hypr(background, 'cc')}",
-                f"group:groupbar:col.locked_active = {tab_gradient}",
-                f"group:groupbar:col.locked_inactive = {hypr(background, 'bb')}",
+                f"group:groupbar:col.active = {tab_background}",
+                f"group:groupbar:col.inactive = {hypr(background, 'a8')}",
+                f"group:groupbar:col.locked_active = {tab_background}",
+                f"group:groupbar:col.locked_inactive = {hypr(background, '98')}",
                 f"plugin:hyprglass:tint_color = 0x{background.lstrip('#')}38",
                 f"group:groupbar:text_color = {hypr(foreground)}",
+                f"group:groupbar:text_color_inactive = {hypr(foreground, 'e6')}",
+                f"group:groupbar:text_color_locked_active = {hypr(foreground)}",
+                f"group:groupbar:text_color_locked_inactive = {hypr(foreground, 'e6')}",
                 "",
             ]
         )
