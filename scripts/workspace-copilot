@@ -294,6 +294,28 @@ def process_for_pid(pid: Any) -> str:
 
 def hypr_json(command: str) -> Any:
     result = run(["hyprctl", "-j", command])
+    if result.returncode != 0 and command != "instances":
+        instances_result = run(["hyprctl", "-j", "instances"])
+        try:
+            instances = json.loads(instances_result.stdout)
+        except json.JSONDecodeError:
+            instances = []
+        for instance in instances if isinstance(instances, list) else []:
+            signature = clean_token(instance.get("instance"), 160)
+            if not signature:
+                continue
+            child_env = os.environ.copy()
+            child_env["HYPRLAND_INSTANCE_SIGNATURE"] = signature
+            result = subprocess.run(
+                ["hyprctl", "-j", command],
+                text=True,
+                capture_output=True,
+                timeout=3,
+                check=False,
+                env=child_env,
+            )
+            if result.returncode == 0:
+                break
     if result.returncode != 0 or not result.stdout.strip():
         return None
     try:
@@ -934,6 +956,91 @@ def agent_deck_summary() -> dict[str, Any]:
     return {"available": result.returncode == 0, "sessions": sessions}
 
 
+def hypr_client_summary() -> list[dict[str, Any]]:
+    clients = hypr_json("clients")
+    if not isinstance(clients, list):
+        return []
+    summary = []
+    for client in clients:
+        if not isinstance(client, dict):
+            continue
+        workspace = client.get("workspace")
+        size = client.get("size")
+        grouped = client.get("grouped")
+        summary.append(
+            {
+                "app": clean_token(client.get("class") or client.get("initialClass"), 96),
+                "monitor": client.get("monitor"),
+                "workspace": clean_token(
+                    workspace.get("name") if isinstance(workspace, dict) else "", 64
+                ),
+                "width": size[0] if isinstance(size, list) and len(size) == 2 else None,
+                "height": size[1] if isinstance(size, list) and len(size) == 2 else None,
+                "floating": bool(client.get("floating")),
+                "fullscreen": bool(client.get("fullscreen")),
+                "group_size": len(grouped) if isinstance(grouped, list) else 0,
+                "hidden": bool(client.get("hidden")),
+                "xwayland": bool(client.get("xwayland")),
+                "pseudo": bool(client.get("pseudo")),
+            }
+        )
+    return summary
+
+
+def hypr_layer_summary() -> list[dict[str, Any]]:
+    layers = hypr_json("layers")
+    if not isinstance(layers, dict):
+        return []
+    summary = []
+    for monitor, monitor_data in layers.items():
+        levels = monitor_data.get("levels") if isinstance(monitor_data, dict) else {}
+        for level, surfaces in levels.items() if isinstance(levels, dict) else []:
+            for surface in surfaces if isinstance(surfaces, list) else []:
+                namespace = clean_token(surface.get("namespace"), 96)
+                geometry = surface.get("geometry")
+                summary.append(
+                    {
+                        "monitor": clean_token(monitor, 32),
+                        "namespace": namespace,
+                        "level": clean_token(level, 16),
+                        "x": surface.get("x"),
+                        "y": surface.get("y"),
+                        "width": surface.get("w"),
+                        "height": surface.get("h"),
+                    }
+                )
+    return summary
+
+
+def hypr_monitor_summary() -> list[dict[str, Any]]:
+    monitors = hypr_json("monitors")
+    if not isinstance(monitors, list):
+        return [{"available": False}]
+    summary = []
+    for monitor in monitors:
+        if not isinstance(monitor, dict):
+            continue
+        workspace = monitor.get("activeWorkspace")
+        summary.append(
+            {
+                "id": monitor.get("id"),
+                "name": clean_token(monitor.get("name"), 32),
+                "width": monitor.get("width"),
+                "height": monitor.get("height"),
+                "refresh_hz": monitor.get("refreshRate"),
+                "x": monitor.get("x"),
+                "y": monitor.get("y"),
+                "scale": monitor.get("scale"),
+                "transform": monitor.get("transform"),
+                "focused": bool(monitor.get("focused")),
+                "workspace": clean_token(
+                    workspace.get("name") if isinstance(workspace, dict) else "", 64
+                ),
+            }
+        )
+    return summary
+
+
 def context_report(db: sqlite3.Connection) -> dict[str, Any]:
     snapshot_tmux(db)
     snapshot_hypr_active(db, "context", emit=False)
@@ -970,6 +1077,9 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
         "privacy": db.execute("SELECT value FROM meta WHERE key='privacy_policy'").fetchone()[0],
         "database": str(DB_PATH),
         "hyprland": hypr,
+        "monitors": hypr_monitor_summary(),
+        "clients": hypr_client_summary(),
+        "layers": hypr_layer_summary(),
         "tmux": normalized_sessions,
         "harnesses": harnesses,
         "agent_deck": fleet,
