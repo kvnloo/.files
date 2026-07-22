@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+kind="${1:-}"
+direction="${2:-}"
+
+case "$kind" in
+  display)
+    device=""
+    for candidate in /sys/class/backlight/amdgpu_bl* /sys/class/backlight/intel_backlight /sys/class/backlight/gmux_backlight; do
+      if [[ -e "$candidate" ]]; then
+        device="${candidate##*/}"
+        break
+      fi
+    done
+    step=5
+    ;;
+  keyboard)
+    device="smc::kbd_backlight"
+    step=10
+    ;;
+  *)
+    echo "usage: ${0##*/} {display|keyboard} {up|down}" >&2
+    exit 2
+    ;;
+esac
+
+if [[ -z "$device" ]]; then
+  echo "No display backlight device found" >&2
+  exit 1
+fi
+
+case "$direction" in
+  up)   brightnessctl --device="$device" set "+${step}%" >/dev/null ;;
+  down) brightnessctl --device="$device" set "${step}%-" >/dev/null ;;
+  *)
+    echo "usage: ${0##*/} {display|keyboard} {up|down}" >&2
+    exit 2
+    ;;
+esac
+
+# Noctalia does not currently expose a keyboard-specific brightness OSD, so
+# both kinds use its brightness slider while still controlling separate LEDs.
+percent="$(brightnessctl --machine-readable --device="$device" | awk -F, '{ gsub(/%/, "", $4); print $4; exit }')"
+if [[ -n "$percent" ]]; then
+  noctalia msg brightness-osd "$percent" >/dev/null 2>&1 || true
+fi

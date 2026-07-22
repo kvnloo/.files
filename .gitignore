@@ -5,7 +5,12 @@ config/camilladsp/venv/
 
 # Local history, generated caches, binaries, and installer backups
 config/fish/fish_history
+config/fish/fish_variables
+config/fish/config.fish.bak.*
+config/pulse/cookie
 **/__pycache__/
 .cast-tools/
+.venv/
+.local/
 config/waybar/*.codexbar-backup-*
 config/waybar/scripts/*.so

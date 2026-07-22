@@ -54,3 +54,5 @@ gridview > child:selected,
 listview > row:selected {
   background-color: rgba(117, 164, 205, 0.20) !important;
 }
+
+@import url("noctalia.css");

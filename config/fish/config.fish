@@ -32,3 +32,7 @@ alias '`kwm`'='brew services restart kwm'
 alias '`cdresume`'='cd ~/GoogleDrive/Jobs/resume'
 alias '`cdrepos`'='cd ~/Desktop/repos'
 alias '`cdprojects`'='cd ~/GoogleDrive/Projects'
+
+# >>> grok installer >>>
+fish_add_path $HOME/.grok/bin
+# <<< grok installer <<<

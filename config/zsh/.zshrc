@@ -72,7 +72,7 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-. "$HOME/.local/share/../bin/env"
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
 
 # kimi-code
 export PATH="/home/kvn/.kimi-code/bin:$PATH"

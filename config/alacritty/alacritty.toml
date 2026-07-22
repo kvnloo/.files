@@ -133,6 +133,9 @@ mods = "Control"
 action = "ResetFontSize"
 
 [general]
-import = ["~/.cache/wal/colors-alacritty.toml"]
+import = [
+  "~/.cache/wal/colors-alacritty.toml",
+  "~/.config/alacritty/themes/noctalia.toml",
+]
 live_config_reload = true
 working_directory = "None"

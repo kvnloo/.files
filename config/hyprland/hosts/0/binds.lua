@@ -1,0 +1,2 @@
+-- Desktop 0 intentionally has no raw F-key aliases. Standard XF86 media
+-- controls remain available from the shared config/hyprland/config/binds.lua.
