@@ -38,3 +38,15 @@ nix run github:nix-community/home-manager -- \
   switch --flake "path:${nix_dir}#${profile}" --backup-extension hm-backup
 
 printf 'Activated Home Manager profile %s\n' "${profile}"
+
+printf '\n'
+read -r -p "Set up Tailscale + SSH remote access on this computer? [Y/n]: " setup_remote
+if [[ "${setup_remote}" != "n" && "${setup_remote}" != "N" ]]; then
+  "${repo_root}/scripts/setup-tailnet-ssh.sh"
+fi
+
+printf '\n'
+read -r -p "Install shared research tools for all agent harnesses? [Y/n]: " setup_agents
+if [[ "${setup_agents}" != "n" && "${setup_agents}" != "N" ]]; then
+  "${repo_root}/scripts/setup-agent-tools.sh"
+fi

@@ -209,6 +209,32 @@ setup_symlinks() {
     echo "Symlinking completed."
 }
 
+setup_tailnet_ssh() {
+    if [[ "$OS" != "Linux" ]]; then
+        return
+    fi
+
+    echo
+    read -r -p "Set up Tailscale + SSH remote access on this computer? [Y/n]: " confirm
+    if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
+        echo "Skipped Tailscale + SSH setup."
+        return
+    fi
+
+    "$SCRIPT_DIR/scripts/setup-tailnet-ssh.sh"
+}
+
+setup_agent_tools() {
+    echo
+    read -r -p "Install shared research tools for all agent harnesses? [Y/n]: " confirm
+    if [[ "$confirm" == "n" || "$confirm" == "N" ]]; then
+        echo "Skipped shared agent tools."
+        return
+    fi
+
+    "$SCRIPT_DIR/scripts/setup-agent-tools.sh"
+}
+
 #######################################
 # Intro Menu
 #######################################
@@ -233,6 +259,8 @@ case $choice in
         clone_dotfiles
         install_packages
         setup_symlinks
+        setup_tailnet_ssh
+        setup_agent_tools
         ;;
     2)
         # Install packages only
@@ -261,4 +289,3 @@ echo "Make sure to configure git user name and email in .gitconfig."
 if [[ "$OS" == "Darwin" ]]; then
     echo "For macOS: Remember to configure macOS Terminal settings as needed."
 fi
-
