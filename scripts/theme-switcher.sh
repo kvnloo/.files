@@ -9,8 +9,7 @@ WALLPAPER_MODE="$ROOT/scripts/wallpaper-mode.sh"
 STATE_FILE="$HOME/.cache/wallpaper-mode/state"
 
 wallpapers() {
-  find "$WALLPAPER_DIR" -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' \) -print0 \
-    | sort -z
+  "$ROOT/scripts/wallpaper-catalog.py" "$WALLPAPER_DIR"
 }
 
 apply_theme() {
@@ -20,27 +19,27 @@ apply_theme() {
 }
 
 show_wallpaper_selector() {
-  local -a files=()
-  mapfile -d '' -t files < <(wallpapers)
-  ((${#files[@]})) || { notify-send -u critical "Theme Switcher" "No wallpapers found"; return 1; }
-
   local selected
   selected=$(
-    for file in "${files[@]}"; do
-      printf '%s\t%s\n' "$(basename "$file")" "$file"
-    done | rofi -dmenu -i -p 'Static theme' -display-columns 1
+    wallpapers | rofi -dmenu -i -p 'Static theme · highest-resolution variants' -display-columns 1
   ) || return 0
   [[ -n $selected ]] && apply_theme "${selected#*$'\t'}"
 }
 
 cycle_wallpaper() {
   local -a files=()
-  mapfile -d '' -t files < <(wallpapers)
+  local _label file
+  while IFS=$'\t' read -r _label file; do
+    [[ -n $file ]] && files+=("$file")
+  done < <(wallpapers)
   ((${#files[@]})) || return 1
 
   local state current='' index next=0
   state=$(cat "$STATE_FILE" 2>/dev/null || true)
-  [[ $state == static\|* ]] && current=${state#static|}
+  case "$state" in
+    static\|*\|*) current=${state#static|}; current=${current#*|} ;;
+    static\|*)    current=${state#static|} ;;
+  esac
   for index in "${!files[@]}"; do
     if [[ ${files[$index]} == "$current" ]]; then
       next=$(( (index + 1) % ${#files[@]} ))

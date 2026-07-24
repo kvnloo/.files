@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""Offline response, diversity, headroom, and live-capture checks for Aural."""
+
+import argparse
+import json
+import math
+import os
+import sqlite3
+import struct
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DB = Path(os.getenv(
+    "AURAL_EVOLUTION_DB",
+    Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local/share"))
+    / "aural-evolution/preferences.db",
+))
+DEFAULT_FIR = ROOT / "config/autoeq/active_48000Hz.wav"
+DEFAULT_BRIR = ROOT / "config/brir/BRIR_R02_C1_True_Stereo.wav"
+FREQ = np.geomspace(20, 20_000, 768)
+
+
+def controller():
+    loader = SourceFileLoader("aural_controller", str(ROOT / "scripts/audio-evolve"))
+    spec = spec_from_loader(loader.name, loader)
+    module = module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def wav(path):
+    """Read integer, IEEE-float, or extensible little-endian WAV."""
+    raw = Path(path).read_bytes()
+    if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+        raise ValueError(f"{path}: not a little-endian WAV")
+    chunks, offset = {}, 12
+    while offset + 8 <= len(raw):
+        kind, size = raw[offset:offset + 4], struct.unpack_from("<I", raw, offset + 4)[0]
+        chunks.setdefault(kind, raw[offset + 8:offset + 8 + size])
+        offset += 8 + size + (size & 1)
+    fmt, data = chunks[b"fmt "], chunks[b"data"]
+    code, channels, rate, _, _, bits = struct.unpack_from("<HHIIHH", fmt)
+    if code == 0xFFFE and len(fmt) >= 26:
+        code = struct.unpack_from("<H", fmt, 24)[0]
+    if code == 3 and bits in (32, 64):
+        samples = np.frombuffer(data, dtype="<f4" if bits == 32 else "<f8").astype(float)
+    elif code == 1 and bits == 8:
+        samples = (np.frombuffer(data, dtype=np.uint8).astype(float) - 128) / 128
+    elif code == 1 and bits in (16, 32):
+        samples = np.frombuffer(data, dtype=f"<i{bits // 8}").astype(float) / 2 ** (bits - 1)
+    elif code == 1 and bits == 24:
+        octets = np.frombuffer(data, dtype=np.uint8).reshape(-1, 3)
+        values = (octets[:, 0].astype(np.int32)
+                  | octets[:, 1].astype(np.int32) << 8
+                  | octets[:, 2].astype(np.int32) << 16)
+        samples = ((values ^ 0x800000) - 0x800000) / 2 ** 23
+    else:
+        raise ValueError(f"{path}: unsupported WAV format {code}/{bits}")
+    return rate, samples.reshape(-1, channels)
+
+
+def rbj(kind, frequency, q, gain, sample_rate=48_000):
+    """PipeWire-compatible Audio EQ Cookbook magnitude on FREQ."""
+    if not frequency:
+        return np.full_like(FREQ, 10 ** (gain / 20))
+    a = 10 ** (gain / 40)
+    w0 = 2 * np.pi * frequency / sample_rate
+    alpha, c = math.sin(w0) / (2 * q), math.cos(w0)
+    if kind == "bq_peaking":
+        b = (1 + alpha * a, -2 * c, 1 - alpha * a)
+        d = (1 + alpha / a, -2 * c, 1 - alpha / a)
+    elif kind == "bq_lowshelf":
+        root = 2 * math.sqrt(a) * alpha
+        b = (a * ((a + 1) - (a - 1) * c + root),
+             2 * a * ((a - 1) - (a + 1) * c),
+             a * ((a + 1) - (a - 1) * c - root))
+        d = ((a + 1) + (a - 1) * c + root,
+             -2 * ((a - 1) + (a + 1) * c),
+             (a + 1) + (a - 1) * c - root)
+    else:
+        raise ValueError(kind)
+    z = np.exp(-2j * np.pi * FREQ / sample_rate)
+    return np.abs((b[0] + b[1] * z + b[2] * z * z)
+                  / (d[0] + d[1] * z + d[2] * z * z))
+
+
+def fir_curve(samples, rate):
+    size = 1 << max(17, (len(samples) - 1).bit_length())
+    response = np.fft.rfft(samples, size)
+    bins = np.fft.rfftfreq(size, 1 / rate)
+    return 20 * np.log10(np.maximum(np.interp(FREQ, bins, np.abs(response)), 1e-12))
+
+
+def tone_curve(aural, params, trim=None):
+    response = np.ones_like(FREQ)
+    for kind, frequency, q, gain in aural.tone_spec(params, trim):
+        response *= rbj(kind, frequency, q, gain)
+    # Static preamp/tone precede this runtime cancellation/application graph.
+    static = np.full_like(FREQ, 10 ** (-8 / 20))
+    for kind, frequency, q, gain in (
+        ("bq_lowshelf", 105, .7, aural.STATIC_TONE[0]),
+        ("bq_peaking", 250, .7, aural.STATIC_TONE[1]),
+        ("bq_peaking", 2800, .7, aural.STATIC_TONE[2]),
+    ):
+        static *= rbj(kind, frequency, q, gain)
+    return 20 * np.log10(np.maximum(static * response, 1e-12))
+
+
+def shape_distance(left, right):
+    delta = left - right
+    delta -= np.mean(delta)
+    return float(np.sqrt(np.mean(delta * delta))), float(np.max(np.abs(delta)))
+
+
+def analyze_round(aural, db_path, fir_db):
+    db = sqlite3.connect(db_path)
+    device, lane = aural.device(), aural.mode(db)
+    row = db.execute(
+        "SELECT generation,variants,active,favorite FROM round "
+        "WHERE device=? AND mode=? ORDER BY generation DESC LIMIT 1",
+        (device, lane),
+    ).fetchone()
+    if not row:
+        raise ValueError(f"no {device}/{lane} round in {db_path}")
+    generation, variants, active, favorite = row[0], json.loads(row[1]), row[2], row[3]
+    curves = [fir_db + tone_curve(aural, variant["p"], variant.get("g"))
+              for variant in variants]
+    levels = [
+        10 * math.log10(aural.level_energy(variant["p"]))
+        + variant.get("g", aural.legacy_trim(variant["p"]))
+        for variant in variants
+    ]
+    pairs = []
+    for left in range(len(curves)):
+        for right in range(left + 1, len(curves)):
+            rms, peak = shape_distance(curves[left], curves[right])
+            pairs.append((rms, peak, left, right))
+    closest = min(pairs)
+    return {
+        "device": device,
+        "mode": lane,
+        "generation": generation,
+        "active": active + 1,
+        "favorite": favorite + 1 if favorite is not None else None,
+        "variants": len(variants),
+        "unique_responses": len({np.round(curve, 4).tobytes() for curve in curves}),
+        "closest_pair": [closest[2] + 1, closest[3] + 1],
+        "closest_shape_rms_db": round(closest[0], 4),
+        "closest_shape_peak_db": round(closest[1], 4),
+        "pairs_below_0_5_db_rms": sum(pair[0] < .5 for pair in pairs),
+        "level_match_spread_db": round(max(levels) - min(levels), 4),
+        "peak_dbfs": round(max(float(np.max(curve)) for curve in curves), 3),
+        "curves": curves,
+    }
+
+
+def analyze_fir(path):
+    rate, samples = wav(path)
+    curves = [fir_curve(samples[:, channel], rate) for channel in range(samples.shape[1])]
+    return {
+        "path": str(Path(path).resolve()),
+        "rate": rate,
+        "channels": samples.shape[1],
+        "frames": len(samples),
+        "duration_ms": round(1000 * len(samples) / rate, 3),
+        "channel_delta": float(np.max(np.abs(samples[:, 0] - samples[:, -1]))),
+        "peak_db": round(float(max(np.max(curve) for curve in curves)), 3),
+        "curve": curves[0],
+    }
+
+
+def analyze_brir(path):
+    rate, samples = wav(path)
+    channels = []
+    for signal in samples.T:
+        energy = signal * signal
+        total = float(np.sum(energy)) or 1
+        peak = int(np.argmax(np.abs(signal)))
+        channels.append({
+            "peak_ms": round(1000 * peak / rate, 3),
+            "energy_first_5ms_pct": round(
+                100 * float(np.sum(energy[:round(.005 * rate)])) / total, 2),
+            "energy_first_90ms_pct": round(
+                100 * float(np.sum(energy[:round(.09 * rate)])) / total, 2),
+        })
+    return {"path": str(Path(path).resolve()), "rate": rate,
+            "channels": samples.shape[1], "frames": len(samples), "analysis": channels}
+
+
+def capture_curve(stimulus, capture):
+    input_rate, source = wav(stimulus)
+    output_rate, result = wav(capture)
+    if input_rate != output_rate:
+        raise ValueError("stimulus and capture rates differ")
+    source, result = source[:, 0], result[:, 0]
+    size = 1 << (len(source) + len(result) - 2).bit_length()
+    correlation = np.fft.irfft(
+        np.fft.rfft(result, size) * np.conj(np.fft.rfft(source, size)), size)
+    lag = int(np.argmax(np.abs(correlation[:len(result)])))
+    segment = result[lag:lag + len(source)]
+    segment = np.pad(segment, (0, len(source) - len(segment)))
+    fft_size = 1 << max(19, (len(source) - 1).bit_length())
+    source_fft = np.fft.rfft(source, fft_size)
+    result_fft = np.fft.rfft(segment, fft_size)
+    bins = np.fft.rfftfreq(fft_size, 1 / input_rate)
+    magnitude = np.abs(result_fft) / np.maximum(np.abs(source_fft), 1e-12)
+    curve = 20 * np.log10(np.maximum(np.interp(FREQ, bins, magnitude), 1e-12))
+    return curve, lag, float(np.max(np.abs(result))), float(np.sqrt(np.mean(result * result)))
+
+
+def analyze_captures(stimulus, captures):
+    rows = []
+    for capture in captures:
+        curve, lag, peak, rms = capture_curve(stimulus, capture)
+        rows.append({"name": Path(capture).stem, "lag": lag, "peak": peak,
+                     "rms": rms, "curve": curve})
+    reference = rows[0]["curve"]
+    for row in rows:
+        delta = row["curve"] - reference
+        row["gain_vs_first_db"] = round(float(np.mean(delta)), 3)
+        row["shape_rms_vs_first_db"], row["shape_peak_vs_first_db"] = (
+            round(value, 3) for value in shape_distance(row["curve"], reference))
+        row.pop("curve")
+    return rows
+
+
+def clean(value):
+    if isinstance(value, dict):
+        return {key: clean(item) for key, item in value.items() if key != "curve" and key != "curves"}
+    if isinstance(value, list):
+        return [clean(item) for item in value]
+    if isinstance(value, (np.floating, np.integer)):
+        return value.item()
+    return value
+
+
+def render(report):
+    fir, round_, brir = report["fir"], report["round"], report["brir"]
+    print(f"FIR  {fir['rate']} Hz · {fir['channels']} ch · {fir['frames']} taps · "
+          f"peak {fir['peak_db']:+.2f} dB · channel Δ {fir['channel_delta']:.3g}")
+    print(f"ROUND  {round_['device']}/{round_['mode']} gen {round_['generation']} · "
+          f"active {round_['active']} · {round_['unique_responses']}/{round_['variants']} unique")
+    print(f"DIVERSITY  closest {round_['closest_pair'][0]}↔{round_['closest_pair'][1]} "
+          f"{round_['closest_shape_rms_db']:.3f} dB RMS · "
+          f"{round_['pairs_below_0_5_db_rms']} pairs <0.5 dB")
+    print(f"LEVEL MATCH  K-weighted spread {round_['level_match_spread_db']:.3f} dB")
+    print(f"HEADROOM  worst response peak {round_['peak_dbfs']:+.2f} dBFS")
+    peaks = ", ".join(f"{item['peak_ms']:.2f}" for item in brir["analysis"])
+    print(f"BRIR  {brir['channels']} ch · direct peaks {peaks} ms")
+    for capture in report.get("captures", []):
+        print(f"CAPTURE  {capture['name']} · lag {capture['lag']} · "
+              f"gain {capture['gain_vs_first_db']:+.2f} dB · "
+              f"shape {capture['shape_rms_vs_first_db']:.3f} dB RMS")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--fir", type=Path, default=DEFAULT_FIR)
+    parser.add_argument("--brir", type=Path, default=DEFAULT_BRIR)
+    parser.add_argument("--stimulus", type=Path)
+    parser.add_argument("--capture", type=Path, action="append", default=[])
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    aural = controller()
+    fir = analyze_fir(args.fir)
+    report = {
+        "fir": fir,
+        "round": analyze_round(aural, args.db, fir["curve"]),
+        "brir": analyze_brir(args.brir),
+    }
+    if args.capture:
+        if not args.stimulus:
+            parser.error("--capture requires --stimulus")
+        report["captures"] = analyze_captures(args.stimulus, args.capture)
+    report = clean(report)
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        render(report)
+
+
+if __name__ == "__main__":
+    main()

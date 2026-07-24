@@ -1,0 +1,30 @@
+{
+  "env": {
+    "PATH": "$(PATH):$(HOME)/.local/bin"
+  },
+  "apps": [
+    {
+      "name": "Phone Desktop",
+      "image-path": "desktop.png",
+      "prep-cmd": [
+        {
+          "do": "phone-display start",
+          "undo": ""
+        }
+      ]
+    },
+    {
+      "name": "tldraw · S Pen canvas",
+      "image-path": "desktop-alt.png",
+      "detached": [
+        "phone-display canvas"
+      ],
+      "prep-cmd": [
+        {
+          "do": "phone-display start",
+          "undo": ""
+        }
+      ]
+    }
+  ]
+}

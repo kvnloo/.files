@@ -22,7 +22,7 @@ printf '%s\n' \
   "" \
   "Tailnet remote access" \
   "---------------------" \
-  "This enables Tailscale, Tailscale SSH, and OpenSSH now and at every boot." \
+  "This enables Tailscale networking and OpenSSH now and at every boot." \
   "SSH will use your normal Linux account; run sudo after login when needed."
 
 sudo systemctl enable --now tailscaled.service sshd.service
@@ -34,12 +34,6 @@ else
   printf '%s\n' "Tailscale is already connected."
 fi
 
-sudo tailscale set --ssh
-if ! tailscale debug prefs 2>/dev/null | grep -q '"RunSSH": true'; then
-  printf '%s\n' "Tailscale SSH did not report as enabled." >&2
-  exit 1
-fi
-
 tailnet_ip="$(tailscale ip -4 | head -n 1)"
 tailnet_name="$(tailscale status --self --json 2>/dev/null | sed -n 's/.*"DNSName":"\([^"]*\)".*/\1/p' | sed 's/\.$//' || true)"
 
@@ -49,7 +43,6 @@ printf '%s\n' \
   "From another device signed into the same tailnet, connect with:"
 
 if [[ -n "$tailnet_name" ]]; then
-  printf '  tailscale ssh %s@%s\n' "$USER" "${tailnet_name%%.*}"
   printf '  ssh %s@%s\n' "$USER" "$tailnet_name"
 fi
 printf '  ssh %s@%s\n' "$USER" "$tailnet_ip"

@@ -26,7 +26,7 @@ thickness = 35
 [shell]
 clipboard_image_action_command = "satty -f -"
 launch_apps_as_systemd_services = true
-polkit_agent = true
+polkit_agent = false
 settings_show_advanced = true
 
     [shell.panel]

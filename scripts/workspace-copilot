@@ -23,7 +23,7 @@ from urllib.parse import quote
 from urllib.request import urlopen
 
 APP = "workspace-copilot"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 STATE_DIR = Path(os.environ.get("WORKSPACE_COPILOT_STATE_DIR", STATE_HOME / APP))
 DB_PATH = STATE_DIR / "workspace.db"
@@ -51,6 +51,7 @@ HYPR_EVENTS = {
     "focusedmon",
 }
 HARNESS_STATES = {"started", "working", "waiting", "blocked", "completed", "failed", "stopped"}
+TASK_STATES = {"pending", "in_progress", "completed", "abandoned"}
 UI_FLOW_CONTRACT = {
     "palette": "pywal-semantic",
     "material": "subtle-liquid-glass",
@@ -187,6 +188,26 @@ def initialize(db: sqlite3.Connection) -> None:
             window TEXT NOT NULL DEFAULT '',
             project TEXT NOT NULL DEFAULT '',
             label TEXT NOT NULL DEFAULT '',
+            updated_at REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS task_context (
+            session TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            task TEXT NOT NULL,
+            status TEXT NOT NULL,
+            phase_order INTEGER NOT NULL,
+            task_order INTEGER NOT NULL,
+            project TEXT NOT NULL DEFAULT '',
+            updated_at REAL NOT NULL,
+            PRIMARY KEY(session, phase, task)
+        );
+        CREATE INDEX IF NOT EXISTS task_context_order
+            ON task_context(session, phase_order, task_order);
+        CREATE TABLE IF NOT EXISTS task_session_context (
+            session TEXT PRIMARY KEY,
+            project TEXT NOT NULL DEFAULT '',
+            objective TEXT NOT NULL DEFAULT '',
+            decisions_json TEXT NOT NULL DEFAULT '[]',
             updated_at REAL NOT NULL
         );
         CREATE TABLE IF NOT EXISTS keybind_catalog (
@@ -583,6 +604,108 @@ def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
         label=label,
     )
     db.commit()
+def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
+    session = clean_token(args.session, 80)
+    project = clean_token(args.project, 80)
+    if not session:
+        raise SystemExit("task-sync requires a non-empty session")
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"task-sync requires JSON input: {error}") from error
+
+    if isinstance(payload, list):
+        phases = payload
+        objective = ""
+        decisions: list[str] = []
+    elif isinstance(payload, dict):
+        phases = payload.get("phases")
+        objective = clean_label(payload.get("objective"), 360)
+        raw_decisions = payload.get("decisions")
+        decisions = (
+            [clean_label(value, 280) for value in raw_decisions if clean_label(value, 280)]
+            if isinstance(raw_decisions, list)
+            else []
+        )[:5]
+    else:
+        raise SystemExit("task-sync input must be an array of phases or a task snapshot object")
+    if not isinstance(phases, list):
+        raise SystemExit("task-sync phases must be an array")
+
+    rows: list[tuple[str, str, str, str, int, int, str, float]] = []
+    stamp = now()
+    active = ""
+    for phase_order, raw_phase in enumerate(phases):
+        if not isinstance(raw_phase, dict):
+            continue
+        phase = clean_label(raw_phase.get("name"), 120)
+        tasks = raw_phase.get("tasks")
+        if not phase or not isinstance(tasks, list):
+            continue
+        for task_order, raw_task in enumerate(tasks):
+            if not isinstance(raw_task, dict):
+                continue
+            task = clean_label(raw_task.get("content"), 240)
+            status = clean_token(raw_task.get("status"), 24)
+            if not task or status not in TASK_STATES:
+                continue
+            rows.append((session, phase, task, status, phase_order, task_order, project, stamp))
+            if not active and status == "in_progress":
+                active = task
+            elif not active and status == "pending":
+                active = task
+
+    db.execute("DELETE FROM task_context WHERE session=?", (session,))
+    db.executemany(
+        """INSERT INTO task_context(
+               session,phase,task,status,phase_order,task_order,project,updated_at
+           ) VALUES(?,?,?,?,?,?,?,?)""",
+        rows,
+    )
+    db.execute(
+        """INSERT INTO task_session_context(session,project,objective,decisions_json,updated_at)
+           VALUES(?,?,?,?,?)
+           ON CONFLICT(session) DO UPDATE SET
+               project=excluded.project,
+               objective=CASE
+                   WHEN task_session_context.objective='' THEN excluded.objective
+                   ELSE task_session_context.objective
+               END,
+               decisions_json=CASE
+                   WHEN excluded.decisions_json='[]' THEN task_session_context.decisions_json
+                   ELSE excluded.decisions_json
+               END,
+               updated_at=excluded.updated_at""",
+        (session, project, objective, json_text(decisions), stamp),
+    )
+    record_event(
+        db,
+        "tasks",
+        "synced",
+        app="omp",
+        session=session,
+        project=project,
+        label=active or "all tasks complete",
+        details={"total": len(rows)},
+    )
+    db.commit()
+def task_update(db: sqlite3.Connection, args: argparse.Namespace) -> None:
+    session = clean_token(args.session, 80)
+    task = clean_label(args.task, 240)
+    status = clean_token(args.status, 24)
+    if status not in TASK_STATES:
+        raise SystemExit(f"status must be one of: {', '.join(sorted(TASK_STATES))}")
+    cursor = db.execute(
+        "UPDATE task_context SET status=?,updated_at=? WHERE session=? AND task=?",
+        (status, now(), session, task),
+    )
+    if cursor.rowcount == 0:
+        raise SystemExit("task-update did not match a published task")
+    db.commit()
+
+
+
+
 
 
 def suggestion_fingerprint(kind: str, identity: str) -> str:
@@ -1069,6 +1192,26 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
         normalized_sessions.append(session)
     hypr = [dict(row) for row in db.execute("SELECT app,process,workspace,monitor,floating,fullscreen,focused,focus_count FROM hypr_windows ORDER BY focused DESC,last_seen DESC")]
     harnesses = [dict(row) for row in db.execute("SELECT pane_id,harness,state,session,window,project,label,updated_at FROM harness_context ORDER BY updated_at DESC")]
+    tasks = [
+        dict(row)
+        for row in db.execute(
+            """SELECT session,phase,task,status,phase_order,task_order,project,updated_at
+               FROM task_context ORDER BY updated_at DESC,phase_order,task_order"""
+        )
+    ]
+    task_sessions = [
+        {
+            "session": row["session"],
+            "project": row["project"],
+            "objective": row["objective"],
+            "decisions": json.loads(row["decisions_json"]),
+            "updated_at": row["updated_at"],
+        }
+        for row in db.execute(
+            """SELECT session,project,objective,decisions_json,updated_at
+               FROM task_session_context ORDER BY updated_at DESC"""
+        )
+    ]
     preferences = [dict(row) for row in db.execute("SELECT key,accepted,rejected,confidence FROM preferences ORDER BY key")]
     keybinds = {row["source"]: row["count"] for row in db.execute("SELECT source,COUNT(*) AS count FROM keybind_catalog GROUP BY source")}
     activity = activity_summary()
@@ -1082,6 +1225,8 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
         "layers": hypr_layer_summary(),
         "tmux": normalized_sessions,
         "harnesses": harnesses,
+        "tasks": tasks,
+        "task_sessions": task_sessions,
         "agent_deck": fleet,
         "activitywatch": activity,
         "keybind_catalog": keybinds,
@@ -1221,6 +1366,13 @@ def parser() -> argparse.ArgumentParser:
     harness.add_argument("--label", default="")
     harness.add_argument("--project", default="")
     harness.add_argument("--pane", default="")
+    task_sync_parser = commands.add_parser("task-sync", help="replace one session's semantic task snapshot")
+    task_sync_parser.add_argument("--session", required=True)
+    task_sync_parser.add_argument("--project", default="")
+    task_update_parser = commands.add_parser("task-update", help="update one published semantic task")
+    task_update_parser.add_argument("--session", required=True)
+    task_update_parser.add_argument("--task", required=True)
+    task_update_parser.add_argument("--status", choices=sorted(TASK_STATES), required=True)
     commands.add_parser("context", help="show sanitized workspace context")
     commands.add_parser("suggest", help="generate organization suggestions")
     suggestions = commands.add_parser("suggestions", help="list organization suggestions")
@@ -1261,6 +1413,10 @@ def main() -> None:
         db.commit()
     elif args.command == "harness-event":
         harness_event(db, args)
+    elif args.command == "task-sync":
+        task_sync(db, args)
+    elif args.command == "task-update":
+        task_update(db, args)
     elif args.command == "context":
         print_data(context_report(db), True if args.json else False)
     elif args.command == "suggest":

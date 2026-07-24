@@ -70,6 +70,17 @@ hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd(noctCall .. "volume-down"), { lo
 hl.bind("XF86AudioMute",        hl.dsp.exec_cmd(noctCall .. "volume-mute"), { locked = true })
 hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd(noctCall .. "mic-mute"),    { locked = true })
 
+-- Ten in-place Aural Evolution variants (0 selects variant 10).
+local evolve = os.getenv("HOME") .. "/.local/bin/audio-evolve select "
+for i = 1, 10 do
+    hl.bind("ALT + " .. (i % 10), hl.dsp.exec_cmd(evolve .. (i % 10) .. " --notify"))
+end
+local sink = os.getenv("HOME") .. "/.local/bin/audio-sink "
+hl.bind("ALT + F12", hl.dsp.exec_cmd(sink .. "bitperfect"))
+hl.bind("ALT + F11", hl.dsp.exec_cmd(sink .. "bs2b"))
+hl.bind("ALT + F10", hl.dsp.exec_cmd(sink .. "room"))
+hl.bind("ALT + F9",  hl.dsp.exec_cmd(sink .. "aural"))
+
 -- Media
 hl.bind("XF86AudioPlay",  hl.dsp.exec_cmd(noctCall .. "media toggle"),   { locked = true })
 hl.bind("XF86AudioPause", hl.dsp.exec_cmd(noctCall .. "media toggle"),   { locked = true })

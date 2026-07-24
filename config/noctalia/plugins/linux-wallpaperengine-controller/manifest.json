@@ -1,0 +1,71 @@
+{
+  "id": "linux-wallpaperengine-controller",
+  "name": "Linux WallpaperEngine Controller",
+  "version": "1.3.1",
+  "minNoctaliaVersion": "4.6.6",
+  "author": "PaloMiku",
+  "license": "MIT",
+  "repository": "https://github.com/noctalia-dev/noctalia-plugins",
+  "description": "Control linux-wallpaperengine from Noctalia with per-screen wallpaper selection.",
+  "tags": [
+    "Bar",
+    "Panel",
+    "Theming"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "wallpapersFolder": "~/.local/share/Steam/steamapps/workshop/content/431960",
+      "iconColor": "none",
+      "enableExtraPropertiesEditor": true,
+      "defaultScaling": "fill",
+      "defaultClamp": "clamp",
+      "defaultFps": 30,
+      "defaultVolume": 100,
+      "defaultMuted": true,
+      "defaultAudioReactiveEffects": true,
+      "defaultNoAutomute": false,
+      "defaultDisableMouse": false,
+      "defaultDisableParallax": false,
+      "applyWallpaperColorsOnApply": false,
+      "wallpaperColorScreenshots": {},
+      "defaultNoFullscreenPause": false,
+      "defaultFullscreenPauseOnlyActive": false,
+      "showSidebarDescription": false,
+      "badgeOrder": [
+        "type",
+        "dynamic",
+        "music",
+        "reactive",
+        "approved",
+        "resolution",
+        "compatibility"
+      ],
+      "badgeEnabled": {
+        "type": true,
+        "dynamic": true,
+        "music": true,
+        "reactive": true,
+        "approved": true,
+        "resolution": true,
+        "compatibility": true
+      },
+      "autoApplyOnStartup": true,
+      "panelPageSize": 24,
+      "wallpaperScanCacheMinutes": 10,
+      "panelLastSelectedPath": "",
+      "screens": {},
+      "wallpaperProperties": {},
+      "lastKnownGoodScreens": {},
+      "runtimeRecoveryPending": false
+    }
+  }
+}

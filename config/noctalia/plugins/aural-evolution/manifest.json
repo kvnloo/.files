@@ -1,0 +1,16 @@
+{
+  "id": "aural-evolution",
+  "name": "Aural Evolution",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Native panel for auditioning PipeWire preference variants.",
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml"
+  },
+  "metadata": {
+    "icon": "wave-sine"
+  }
+}

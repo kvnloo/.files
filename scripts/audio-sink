@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  bitperfect) sink=alsa_output.usb-Topping_DX5-00.HiFi__Headphones__sink; label=Bit-Perfect ;;
+  bs2b)       sink=effect_input.headphone_dsp_crossfeed; label=BS2B ;;
+  room)       sink=effect_input.headphone_dsp_room; label=Room ;;
+  aural)      sink=effect_input.aural_evolution; label=Aural ;;
+  *) echo "usage: audio-sink bitperfect|bs2b|room|aural" >&2; exit 2 ;;
+esac
+
+pactl set-default-sink "$sink"
+while read -r id; do pactl move-sink-input "$id" "$sink"; done < <(
+  pactl -f json list sink-inputs |
+    jq -r '.[] | select(((.properties["node.name"] // "") | startswith("effect_output.")) | not) | .index'
+)
+notify-send -t 1200 "Audio · $label" "Default set; active streams moved"
