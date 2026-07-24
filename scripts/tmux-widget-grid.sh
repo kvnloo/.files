@@ -180,8 +180,9 @@ auto_layout() {
 }
 
 dock_grid() {
-  local target=${1:-${TMUX_PANE:-}} old_window window pane agent_pane dedicated
+  local target=${1:-${TMUX_PANE:-}} old_window window pane agent_pane dedicated original_count window_height dashboard_height
   [[ -n $target ]] || target=$(tmux display-message -p '#{pane_id}')
+  original_count=$(tmux display-message -p -t "$target" '#{window_panes}')
   if pane=$(stored_pane); then
     auto_layout force
     tmux select-window -t "$pane"
@@ -199,7 +200,7 @@ dock_grid() {
     fi
   fi
   command=$(pane_command tasks)
-  pane=$(tmux split-window -b -v -p 35 -d -P -F '#{pane_id}' -t "$target" -c "$HOME" "$command")
+  pane=$(tmux split-window -b -v -p 50 -d -P -F '#{pane_id}' -t "$target" -c "$HOME" "$command")
   window=$(tmux display-message -p -t "$target" '#{window_id}')
   tmux set-option -wq -t "$window" @widget_grid 1
   tmux set-option -wq -t "$window" @widget_grid_dedicated 0
@@ -207,6 +208,14 @@ dock_grid() {
   tmux set-option -gq @widget_grid_window "$window"
   tmux set-option -gq @widget_grid_pane "$pane"
   agent_pane=$(create_agent_pane "$pane" horizontal)
+  if ((original_count > 1)); then
+    # Normalize mixed work windows into full-width rows. Without this, splitting
+    # one existing column leaves both dashboard widgets trapped at quarter width.
+    tmux select-layout -t "$window" tiled >/dev/null 2>&1 || true
+    window_height=$(tmux display-message -p -t "$window" '#{window_height}')
+    dashboard_height=$((window_height / 2))
+    tmux resize-pane -t "$pane" -y "$dashboard_height" >/dev/null 2>&1 || true
+  fi
   auto_layout force
   tmux select-pane -t "$target"
   tmux display-message 'live task dashboard docked above current pane · Alt-d focuses it'

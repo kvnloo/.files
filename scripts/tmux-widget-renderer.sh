@@ -64,7 +64,7 @@ label_for() {
 interval_for() {
   case ${1:-} in
     system) printf 2 ;;
-    tasks|agents) printf 0.5 ;;
+    tasks|agents) printf 2 ;;
     overview|topology) printf 5 ;;
     displays) printf 8 ;;
     network) printf 10 ;;
@@ -135,10 +135,35 @@ progress_bar() {
   printf '%s' "$reset"
 }
 
+terminal_columns() {
+  local columns
+  columns=$(tput cols 2>/dev/null || printf 80)
+  [[ $columns =~ ^[0-9]+$ ]] || columns=80
+  ((columns > 0)) || columns=80
+  printf '%s' "$columns"
+}
+
+clip_text() {
+  local value=${1//$'\n'/ } width=${2:-0}
+  if ((width <= 0)); then
+    return
+  elif ((${#value} > width)); then
+    ((width == 1)) && printf '…' || printf '%s…' "${value:0:width-1}"
+  else
+    printf '%s' "$value"
+  fi
+}
+
+print_clipped() {
+  local tone=$1 value=$2 width=$3
+  printf '%s%s%s\n' "$tone" "$(clip_text "$value" "$width")" "$reset"
+}
+
 render_agents() {
-  local data=$1
+  local data=$1 columns detail continuation available summary
+  columns=$(terminal_columns)
   if [[ -z $data ]]; then
-    printf '%sworkspace-copilot context unavailable%s\n' "$yellow" "$reset"
+    print_clipped "$yellow" 'workspace-copilot context unavailable' "$columns"
     return
   fi
   jq -r '
@@ -169,11 +194,12 @@ render_agents() {
     while IFS=$'\t' read -r kind a b c d e f g h; do
       case $kind in
         SUMMARY)
-          printf '%s%s%s active  ·  %s%s%s waiting  ·  %s%s%s attention  ·  %s tracked\n\n' \
-            "$accent" "$a" "$reset" "$yellow" "$b" "$reset" "$red" "$c" "$reset" "$e"
+          summary="$a active · $b wait · $c alert · $e tracked"
+          print_clipped "$text" "$summary" "$columns"
+          printf '\n'
           ;;
         GROUP)
-          printf '%s%s%s  %s%s%s\n' "$text" "$a" "$reset" "$muted" "$b" "$reset"
+          print_clipped "$text" "$a  $b" "$columns"
           ;;
         ROW)
           local indicator indicator_color badge badge_color
@@ -191,22 +217,23 @@ render_agents() {
             badge='OMP'
             badge_color=$cyan
           fi
-          printf '  %s%s%s %s%s%s  %s%-4s%s  %s%s%s  %s%s%s\n' \
+          available=$((columns - 14))
+          detail=$(clip_text "${c^^}  ${d:--}" "$available")
+          printf '  %s%s%s %s%s%s  %s%-4s%s  %s%s%s\n' \
             "$muted" "$a" "$reset" "$indicator_color" "$indicator" "$reset" \
-            "$badge_color" "$badge" "$reset" "$text" "${c^^}" "$reset" "$muted" "$d" "$reset"
-          printf '  %s%s└─%s %s%s%s %s·%s %s\n' \
-            "$muted" "$b" "$reset" "$cyan" "${e:--}" "$reset" "$muted" "$reset" "${f:--}"
+            "$badge_color" "$badge" "$reset" "$text" "$detail" "$reset"
+          available=$((columns - 7))
+          continuation=$(clip_text "${e:--} · ${f:--}" "$available")
+          printf '  %s%s└─%s %s%s%s\n' "$muted" "$b" "$reset" "$cyan" "$continuation" "$reset"
           ;;
       esac
     done
-  printf '\n%sSTATUS%s  %s%s%s active   %s◌%s waiting   %s!%s blocked   %s✓%s done   %s·%s stopped\n' \
-    "$muted" "$reset" "$accent" "${orb_frames[0]}" "$reset" "$yellow" "$reset" \
-    "$red" "$reset" "$green" "$reset" "$muted" "$reset"
-  printf '%sSOURCE%s  %sOMP%s live harness   %sDECK%s managed agent   %ss%s inspect / steer\n' \
-    "$muted" "$reset" "$cyan" "$reset" "$magenta" "$reset" "$cyan" "$reset"
+  printf '\n'
+  print_clipped "$muted" 'STATUS  ● active  ◌ waiting  ! blocked  ✓ done  · stopped' "$columns"
+  print_clipped "$muted" 'SOURCE  OMP live harness  DECK managed agent  s inspect / steer' "$columns"
 }
 render_tasks() {
-  local data=$1 session rows columns overall_width phase_width max_text
+  local data=$1 session rows columns overall_width phase_width max_text available
   local objective decisions runtime map_file map_tmp row phase_name name_width glyph summary_text
   if [[ -z $data ]]; then
     printf '%sworkspace-copilot context unavailable%s\n' "$yellow" "$reset"
@@ -222,8 +249,7 @@ render_tasks() {
   columns=$(tput cols 2>/dev/null || printf 80)
   ((columns >= 80)) && overall_width=20 || { ((columns >= 55)) && overall_width=12 || overall_width=8; }
   ((columns >= 70)) && phase_width=10 || phase_width=6
-  max_text=$((columns - 6))
-  ((max_text < 18)) && max_text=18
+  max_text=$((columns > 6 ? columns - 6 : 1))
 
   objective=$(jq -r --arg session "$session" '
     first(.task_sessions[]? | select(.session == $session) | .objective) // "Objective summary has not been published yet."
@@ -262,15 +288,15 @@ render_tasks() {
         SUMMARY)
           progress_bar "$first" "$fourth" "$second" "$overall_width"
           summary_text="  ${first}/${fourth} complete · ${second} active · ${third} open"
-          ((${#summary_text} > columns - overall_width)) && summary_text="  ${first}/${fourth} · ${third} open"
-          printf '%s\n' "$summary_text"
+          available=$((columns - overall_width))
+          ((available > 0)) && printf '%s\n' "$(clip_text "$summary_text" "$available")" || printf '\n'
           printf '%sTASK GROUPS%s  %sclick a row for subtasks%s\n' "$cyan" "$reset" "$muted" "$reset"
           row=6
           ;;
         PHASE)
           phase_name=$first
           name_width=$((columns - phase_width - 13))
-          ((name_width < 10)) && name_width=10
+          ((name_width < 1)) && name_width=1
           ((${#phase_name} > name_width)) && phase_name="${phase_name:0:name_width-1}…"
           if ((fourth > 0)); then
             glyph='▶'
@@ -422,13 +448,17 @@ render_overview() {
 }
 
 render() {
-  local animation_clock animation_index data=''
+  local animation_clock animation_index data='' columns separator footer
   animation_clock=${EPOCHREALTIME/./}
   animation_index=$((10#$animation_clock / 120000))
   orb_frame=${orb_frames[$((animation_index % ${#orb_frames[@]}))]}
   pulse_frame=${pulse_frames[$((animation_index % ${#pulse_frames[@]}))]}
+  columns=$(terminal_columns)
   printf '%s▰ %s%s\n' "$accent" "$(label_for "$widget")" "$reset"
-  [[ $widget == tasks ]] || printf '%s%s%s\n\n' "$muted" '────────────────────────────────────────────────────────────' "$reset"
+  if [[ $widget != tasks ]]; then
+    separator=$(clip_text '────────────────────────────────────────────────────────────' "$columns")
+    printf '%s%s%s\n\n' "$muted" "$separator" "$reset"
+  fi
   case $widget in
     tasks|overview|agents|topology|displays)
       data=$(context_json)
@@ -439,12 +469,14 @@ render() {
     *) printf '%sUnknown widget: %s%s\n' "$yellow" "$widget" "$reset" ;;
   esac
   if [[ $widget == tasks ]]; then
-    printf '\n%s%s%s\n' "$muted" 'R restart · r replace · a add · x remove · s agents · m menu' "$reset"
+    footer='R restart · r replace · a add · x remove · s agents · m menu'
   elif [[ $widget == overview ]]; then
-    printf '\n%s%s%s\n' "$muted" 'R restart · x close · Alt-d focus dashboard' "$reset"
+    footer='R restart · x close · Alt-d focus dashboard'
   else
-    printf '\n%s%s%s\n' "$muted" 'R restart · r replace · a add · x remove · s agents · space layout · H/J/K/L swap · m menu' "$reset"
+    footer='R restart · r replace · a add · x remove · s agents · space layout · H/J/K/L swap · m menu'
   fi
+  printf '\n'
+  print_clipped "$muted" "$footer" "$columns"
 }
 
 handle_key() {

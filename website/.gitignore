@@ -25,6 +25,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local wallpaper capture scratch (never commit workshop/scene.pkg)
+.capture-work/
+
 # Vercel
 .vercel
 

@@ -1,54 +1,56 @@
 # .files
-Welcome to my dot files! If you have any sugguestions or cool configurations feel free to contact me at dev@ek.vin
 
-This repo has my configuration for the following programs:
-  * [tmux](https://tmux.github.io/)
-  * [zsh](zsh.org)
-  * [oh-my-zsh](https://github.com/robbyrussell/oh-my-zsh)
-  * [fish](https://fishshell.com/)
-  * [oh-my-fish](https://github.com/oh-my-fish/oh-my-fish)
-  * [vim](http://www.vim.org/) (I don't emacs)
-  * [gitconfig](https://git-scm.com/docs/git-config)
-  * [Hyper](hyper.is)
-  
-Then for MacOS I've got a custom config for the following:
-  * [chunkwm](https://github.com/koekeishiya/chunkwm)
-      
-Then on Android I've got the following config files:
-  * [Nova](http://novalauncher.com/) (nova master race)
-  * [Zooper widget](https://play.google.com/store/apps/details?id=org.zooper.zwfree&hl=en)
+Personal Linux/macOS dotfiles for Hyprland, tmux, shells, audio DSP, agent tooling, and related desktop helpers.
 
-On MacOS script.sh can be run to automatically install all my favorite programs and link my dotfiles (**be careful as this will destroy your existing dotfiles**).
+Contact: [dev@ek.vin](mailto:dev@ek.vin)
 
-Otherwise clone the repository, initialize the submodules, then create symlinks!
+## Setup (two methods)
 
+Both paths use the same modules. Full details: **[docs/SETUP.md](docs/SETUP.md)**.
 
-# Clone the repo
-    git clone https://github.com/lesseradmin/.files 
+### 1. LLM harness (interactive through chat)
 
-# Install all the submodules
-    
-    cd .files
-    git submodule update --recursive --init
+Open this repo in Cursor, Claude Code, Codex, OpenCode, or similar. Agents read
+[`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md), run
+`./scripts/onboard status --json`, and ask:
 
-# Create symlinks
-    
-    # zsh
-    ln -s /pathTo/.files/.zsh/.zshrc ~/.zshrc
-    ln -s /pathTo/.files/.oh-my-zsh ~/.oh-my-zsh
-    # fish
-    ln -s /pathTo/.files/.fish/ ~/.config/fish
-    ln -s /pathTo/.files/.omf/ ~/.config/omf
-    # vim
-    ln -s /pathTo/.files/.vim/ ~/.vim
-    ln -s /pathTo/.files/.vim/.vimrc ~/.vimrc
-    # window managers (choose either chunkwm or kwm) -> MacOS only
-    # chunkwm
-    ln -s /pathTo/.files/.chunkwm/.chunkwmrc ~/.chunkwmrc
-    ln -s /pathTo/.files/.chunkwm/.chunkwm_plugins ~/.chunkwm_plugins
-    ln -s /pathTo/.files/.khd/.khdrc-chunkwm ~/.config/.khdrc
-    # kwm
-    ln -s /pathTo/.files/.kwm ~/.config/.kwm
-    ln -s /pathTo/.files/.khd/.khdrc-kwm ~/.config/.khdrc
-    # git
-    ln -s /pathTo/.files/.gitconfig ~/.gitconfig
+> Want to run onboarding setup?
+
+Say yes and walk the modules in chat, or ask the agent to launch the TTY installer.
+
+### 2. Interactive installer (terminal)
+
+```sh
+git clone https://github.com/kvnloo/.files.git ~/workspace/.files
+cd ~/workspace/.files
+./install
+```
+
+Useful commands:
+
+```sh
+./scripts/onboard status --json
+./scripts/onboard doctor
+./scripts/onboard list-modules
+./scripts/onboard install --module core-links --module agent-skills --yes
+```
+
+## What this repo configures
+
+- **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
+- **Shell / editors**: zsh, fish, tmux, nvim
+- **Audio**: PipeWire headphone DSP + optional Aural Evolution chain
+- **Agents**: shared skills, Agent Reach, mcporter MCP config, workspace-copilot
+- **Optional**: Tailscale SSH, Nix Home Manager on CachyOS (`config/nix/`)
+
+## Safety notes (public repo)
+
+- Sunshine **credentials / state / logs** stay in `~/.config/sunshine` and are not tracked.
+- Agent Reach state lives in `~/.agent-reach` (not tracked).
+- Onboarding state lives in `~/.local/state/dotfiles/onboard.json` (not tracked).
+
+## Legacy / deep migration
+
+- Day-to-day onboarding: `./install` or harness flow above
+- One-shot CachyOS rebuild scripts: [`migration/`](migration/)
+- Older `script.sh` now forwards to `./install`

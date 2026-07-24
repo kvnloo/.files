@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Install shared research tools for every agent harness (Agent Reach, yt-dlp, mcporter).
+# Prefer: ./scripts/onboard run agent-tools   or   ./install
+# Docs: docs/SETUP.md
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

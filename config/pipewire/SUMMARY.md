@@ -2,7 +2,7 @@
 
 ## What This Setup Does
 
-PipeWire native filter-chain DSP replaces EasyEffects entirely, providing 3 simultaneous virtual sinks for instant A/B/C spatial mode switching — all processing happens inside PipeWire with zero external dependencies beyond LV2/LADSPA plugins.
+PipeWire native filter-chain DSP replaces EasyEffects entirely, providing **4** simultaneous virtual sinks (clean / crossfeed / room / movie) for spatial and content-mode switching — all processing happens inside PipeWire with zero external dependencies beyond LV2/LADSPA plugins. Optional Aural Evolution is documented in [AURAL_EVOLUTION.md](AURAL_EVOLUTION.md).
 
 ## What's Working
 
@@ -207,7 +207,7 @@ See `SETUP-UBUNTU.md` for complete step-by-step setup instructions.
 ## What You Get
 
 - Native PipeWire filter-chain DSP (no EasyEffects dependency)
-- 3 virtual sinks for instant spatial mode A/B/C switching
+- 4 virtual sinks (clean / crossfeed / room / movie) plus optional Aural Evolution
 - Per-headphone AutoEQ with one-command profile switching
 - S32LE output with quality-14 resampling
 - RT scheduling for dropout-free playback under load

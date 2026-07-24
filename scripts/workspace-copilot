@@ -668,8 +668,8 @@ def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
            ON CONFLICT(session) DO UPDATE SET
                project=excluded.project,
                objective=CASE
-                   WHEN task_session_context.objective='' THEN excluded.objective
-                   ELSE task_session_context.objective
+                   WHEN excluded.objective='' THEN task_session_context.objective
+                   ELSE excluded.objective
                END,
                decisions_json=CASE
                    WHEN excluded.decisions_json='[]' THEN task_session_context.decisions_json

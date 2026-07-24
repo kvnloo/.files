@@ -1,0 +1,78 @@
+#!/bin/sh
+set -eu
+
+rule_name=70-wooting.rules
+source_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+source_rule="$source_dir/config/udev/$rule_name"
+target_rule="/etc/udev/rules.d/$rule_name"
+
+usage() {
+    echo "usage: $(basename "$0") {status|install|uninstall}" >&2
+    exit 2
+}
+
+devices() {
+    found=0
+    for node in /dev/hidraw*; do
+        [ -e "$node" ] || continue
+        if udevadm info -q property -n "$node" 2>/dev/null |
+            grep -q '^ID_VENDOR_ID=31e3$'; then
+            stat -c '%n mode=%a owner=%U group=%G' "$node"
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ] || echo "No Wooting hidraw node detected."
+}
+
+reload_rules() {
+    udevadm control --reload-rules
+    udevadm trigger --subsystem-match=hidraw --action=change
+    udevadm settle
+}
+
+case "${1:-}" in
+    status)
+        if [ -f "$target_rule" ]; then
+            echo "Installed: $target_rule"
+            cmp -s "$source_rule" "$target_rule" &&
+                echo "Rule matches dotfiles." ||
+                echo "Warning: installed rule differs from dotfiles."
+        else
+            echo "Not installed: $target_rule"
+        fi
+        devices
+        ;;
+    install)
+        [ -f "$source_rule" ] || {
+            echo "Missing source rule: $source_rule" >&2
+            exit 1
+        }
+        if command -v udevadm >/dev/null 2>&1 &&
+            udevadm verify --help >/dev/null 2>&1; then
+            udevadm verify "$source_rule"
+        fi
+        if [ -e "$target_rule" ] && ! cmp -s "$source_rule" "$target_rule"; then
+            backup="${target_rule}.backup-$(date -u +%Y%m%dT%H%M%SZ)"
+            cp -a -- "$target_rule" "$backup"
+            echo "Backed up existing rule to $backup"
+        fi
+        install -Dm644 -- "$source_rule" "$target_rule"
+        reload_rules
+        echo "Installed $target_rule"
+        devices
+        ;;
+    uninstall)
+        if [ -e "$target_rule" ]; then
+            backup="${target_rule}.removed-$(date -u +%Y%m%dT%H%M%SZ)"
+            mv -- "$target_rule" "$backup"
+            reload_rules
+            echo "Moved installed rule to $backup"
+        else
+            echo "Nothing to uninstall."
+        fi
+        devices
+        ;;
+    *)
+        usage
+        ;;
+esac

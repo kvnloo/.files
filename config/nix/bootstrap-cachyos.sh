@@ -39,6 +39,17 @@ nix run github:nix-community/home-manager -- \
 
 printf 'Activated Home Manager profile %s\n' "${profile}"
 
+# When launched from ./scripts/onboard, skip nested prompts — the parent menu owns them.
+if [[ "${ONBOARD_NESTED:-0}" == "1" ]]; then
+  exit 0
+fi
+
+printf '\n'
+printf 'Next (optional): continue with dual-path onboarding docs/SETUP.md\n'
+printf '  ./scripts/onboard run tailnet-ssh\n'
+printf '  ./scripts/onboard run agent-tools\n'
+printf '  ./install\n'
+
 printf '\n'
 read -r -p "Set up Tailscale + SSH remote access on this computer? [Y/n]: " setup_remote
 if [[ "${setup_remote}" != "n" && "${setup_remote}" != "N" ]]; then

@@ -5,18 +5,20 @@ interface GlassCardProps {
   children: ReactNode
   className?: string
   hover?: boolean
+  strong?: boolean
 }
 
-export function GlassCard({ children, className, hover = true }: GlassCardProps) {
+export function GlassCard({ children, className, hover = true, strong = false }: GlassCardProps) {
   return (
     <div
       className={clsx(
-        'glass rounded-lg p-6',
+        strong ? 'glass-strong' : 'glass',
+        'rounded-[var(--radius-lg)] p-6',
         hover && 'card-hover cursor-pointer',
         className
       )}
     >
-      {children}
+      <div className="relative z-10">{children}</div>
     </div>
   )
 }

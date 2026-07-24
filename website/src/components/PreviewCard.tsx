@@ -21,14 +21,14 @@ export function PreviewCard({
   return (
     <div
       className={clsx(
-        'rounded-lg overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-muted)] card-hover',
+        'rounded-[var(--radius-lg)] overflow-hidden glass card-hover',
         onClick && 'cursor-pointer',
         className
       )}
       onClick={onClick}
     >
       {image && (
-        <div className="aspect-video overflow-hidden bg-[var(--bg-tertiary)]">
+        <div className="aspect-video overflow-hidden bg-[rgba(0,0,0,0.25)] relative z-10">
           <img
             src={image}
             alt={title}
@@ -36,8 +36,8 @@ export function PreviewCard({
           />
         </div>
       )}
-      <div className="p-5">
-        <h3 className="font-mono text-base font-semibold text-[var(--text-secondary)] mb-2">
+      <div className="p-5 relative z-10">
+        <h3 className="font-mono text-base font-semibold text-[var(--text-primary)] mb-2">
           {title}
         </h3>
         {description && (

@@ -5,9 +5,10 @@ This directory contains PipeWire, WirePlumber, and filter-chain DSP configuratio
 ## Overview
 
 This setup enables:
-- **Bit-perfect audio transport** with automatic sample rate matching (44.1kHz-384kHz)
+- **Bit-perfect audio transport** on the raw DX5 sink, with automatic sample rate matching (44.1kHz-384kHz)
 - **Native PipeWire filter-chain DSP** — no EasyEffects, no external DSP host
-- **3 simultaneous virtual sinks** for instant A/B/C spatial mode switching
+- **4 simultaneous virtual sinks** — clean / crossfeed / room / movie fold-down
+- **Optional Aural Evolution** sink (`11-aural-evolution.conf`) for level-matched listening — see [AURAL_EVOLUTION.md](AURAL_EVOLUTION.md)
 - **Per-headphone AutoEQ** with symlink-based profile switching
 - **Multi-application support** (High Tide, Spotify, YouTube, system sounds)
 - **RT scheduling** via `pipewire` group (SCHED_FIFO priority 88)
@@ -36,8 +37,13 @@ PipeWire (32-bit float internal)
 │  ┌─── Sink 3: "Headphone DSP + Room" ────────────┐ │
 │  │ AutoEQ → BRIR True Stereo → Loud → MBC → Limit│ │
 │  └─────────────────────────────────────────────────┘ │
+│                                                     │
+│  ┌─── Sink 4: "Headphone DSP Movie" ─────────────┐ │
+│  │ 7.1/5.1 fold-down → AutoEQ → Limiter          │ │
+│  └─────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────┘
     |
+    (+ optional Aural Evolution sink — see AURAL_EVOLUTION.md)
     v
 ALSA → USB → Topping DX5 (S32LE) → Headphones
 ```
@@ -86,7 +92,11 @@ Core PipeWire daemon configuration:
 - **default.clock.allowed-rates**: All standard rates from 44100 to 384000 Hz
 
 ### `pipewire/pipewire.conf.d/10-headphone-dsp.conf`
-The filter-chain DSP configuration defining all 3 virtual sinks and their processing chains.
+The filter-chain DSP configuration defining the 4 virtual headphone sinks and their processing chains.
+
+### `pipewire/pipewire.conf.d/11-aural-evolution.conf`
+Optional Aural Evolution audition sink. Installed via `./scripts/onboard run audio-evolution` /
+`scripts/install-audio-evolution.sh`. Details: [AURAL_EVOLUTION.md](AURAL_EVOLUTION.md).
 
 ### `wireplumber/main.lua.d/51-topping-dx5-bitperfect.lua`
 Topping DX5 specific ALSA node properties:
@@ -117,7 +127,12 @@ ln -sf ~/workspace/.files/config/pipewire/pipewire.conf \
 mkdir -p ~/.config/pipewire/pipewire.conf.d
 ln -sf ~/workspace/.files/config/pipewire/pipewire.conf.d/10-headphone-dsp.conf \
        ~/.config/pipewire/pipewire.conf.d/10-headphone-dsp.conf
+# Optional Aural Evolution (or: ./scripts/onboard run audio-evolution)
+# ln -sf ~/workspace/.files/config/pipewire/pipewire.conf.d/11-aural-evolution.conf \
+#        ~/.config/pipewire/pipewire.conf.d/11-aural-evolution.conf
 ```
+
+Prefer day-to-day install via `./install` / `./scripts/onboard` (see [docs/SETUP.md](../../docs/SETUP.md)), which links PipeWire fragments for you.
 
 ### 2. Restart PipeWire Services
 

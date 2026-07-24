@@ -1,0 +1,19 @@
+[Unit]
+Description=Receive Taildrop files into Downloads
+Documentation=https://tailscale.com/docs/features/taildrop
+After=graphical-session.target tailscaled.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/mkdir -p %h/Downloads/Taildrop
+ExecStart=/usr/bin/tailscale file get --loop --conflict=rename %h/Downloads/Taildrop
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=graphical-session.target

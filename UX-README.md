@@ -1,23 +1,25 @@
 # 🎨 UX Collection
 
-> A curated collection of stunning wallpapers and custom macOS icons
+> A curated collection of wallpapers and custom macOS icons
 
-This repository contains my personal collection of high-quality wallpapers and beautifully designed icons for macOS. All wallpapers are organized by resolution for easy browsing, and icons follow a consistent design language.
+> **Paths:** assets live at repo-root `background/` and `icons/` (not under a `UX/` folder).
+> Day-to-day Linux desktop setup is documented in [docs/SETUP.md](docs/SETUP.md) and [README.md](README.md).
+
+This repository contains a personal collection of high-quality wallpapers and icons. Wallpapers are organized by resolution; icons follow a consistent design language.
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-UX/
-├── background/
-│   ├── 2560x1440/     # QHD wallpapers
-│   ├── 2800x1800/     # MacBook Pro Retina wallpapers
-│   ├── 3440x1440/     # Ultrawide wallpapers
-│   ├── 3840x2160/     # 4K UHD wallpapers
-│   ├── 7680×4320/     # 8K wallpapers
-│   └── other/         # Various resolutions
-└── icons/             # Custom macOS application icons
+background/            # wallpapers by resolution
+├── 2560x1440/
+├── 2800x1800/
+├── 3440x1440/
+├── 3840x2160/
+├── 7680×4320/
+└── other/
+icons/                 # custom macOS application icons
 ```
 
 ---

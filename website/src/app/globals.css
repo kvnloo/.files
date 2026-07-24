@@ -1,36 +1,38 @@
 @import "tailwindcss";
 
-/* Design Tokens from pencil.dev */
+/* Liquid glass over Forgotten Ruins — teal water / moss, not purple-on-white */
 :root {
-  /* Background Colors */
-  --bg-primary: #0D1117;
-  --bg-secondary: #161B22;
-  --bg-tertiary: #21262D;
-  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-primary: #071018;
+  --bg-secondary: rgba(10, 18, 26, 0.55);
+  --bg-tertiary: rgba(18, 28, 38, 0.45);
+  --bg-glass: rgba(255, 255, 255, 0.06);
 
-  /* Text Colors */
-  --text-primary: #E6EDF3;
-  --text-secondary: #C9D1D9;
-  --text-muted: #8B949E;
-  --text-dim: #484F58;
+  --text-primary: #f2f6f8;
+  --text-secondary: #d5dee4;
+  --text-muted: #9aadb8;
+  --text-dim: #5f7380;
 
-  /* Accent Colors */
-  --accent-blue: #58A6FF;
-  --accent-purple: #A371F7;
-  --accent-green: #3FB950;
-  --accent-yellow: #D29922;
-  --accent-red: #F85149;
+  /* Scheme accent from Forgotten Ruins project.json schemecolor ≈ teal */
+  --accent-blue: #6ec8c4;
+  --accent-teal: #4aa8a4;
+  --accent-moss: #8fbf6a;
+  --accent-purple: #7eb8c9;
+  --accent-green: #6fbf7a;
+  --accent-yellow: #d4b45a;
+  --accent-red: #e06a5c;
 
-  /* Border Colors */
-  --border-default: #30363D;
-  --border-muted: #21262D;
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-muted: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.22);
 
-  /* Glassmorphism */
-  --glass-blur: 16px;
-  --glass-bg: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 22px;
+  --glass-saturate: 1.35;
+  --glass-bg: rgba(12, 20, 28, 0.42);
+  --glass-bg-strong: rgba(8, 14, 20, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-highlight: rgba(255, 255, 255, 0.28);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 
-  /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -39,20 +41,20 @@
   --spacing-2xl: 48px;
   --spacing-3xl: 64px;
 
-  /* Border Radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
-  --shadow-glow: 0 0 20px rgba(88, 166, 255, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 32px rgba(110, 200, 196, 0.18);
+
+  --font-sans: "Outfit", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
 }
 
-/* Reset & Base */
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -62,57 +64,97 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-  background-attachment: fixed;
+  font-family: var(--font-sans);
+  background: #05080c;
   color: var(--text-secondary);
   line-height: 1.6;
   min-height: 100vh;
+  position: relative;
+  isolation: isolate;
 }
 
-/* Typography */
+/* ---------- Wallpaper layer ---------- */
+.wallpaper-root {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.wallpaper-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: translateZ(0);
+}
+
+.wallpaper-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(4, 8, 12, 0.55) 0%, rgba(4, 10, 14, 0.42) 40%, rgba(3, 8, 12, 0.72) 100%),
+    radial-gradient(120% 80% at 50% 0%, rgba(110, 200, 196, 0.08), transparent 55%);
+}
+
+.wallpaper-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.wallpaper-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Typography ---------- */
 h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
   font-weight: 600;
   line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 code, pre, .font-mono {
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
-/* Selection */
 ::selection {
-  background: var(--accent-blue);
-  color: var(--bg-primary);
+  background: rgba(110, 200, 196, 0.35);
+  color: var(--text-primary);
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(255, 255, 255, 0.28);
 }
 
-/* Focus Styles */
 :focus-visible {
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
 }
 
-/* Link Styles */
 a {
   color: var(--accent-blue);
   text-decoration: none;
@@ -120,26 +162,67 @@ a {
 }
 
 a:hover {
-  color: var(--accent-purple);
+  color: #9ad9d5;
 }
 
-/* Glass Effect Utility */
+/* ---------- Liquid glass surfaces ---------- */
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-inset), var(--shadow-md);
+  position: relative;
 }
 
-/* Gradient Text */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.03) 28%,
+    transparent 52%
+  );
+  opacity: 0.9;
+}
+
+/* Header chrome — slightly denser than content cards */
+.glass-strong {
+  background: rgba(8, 14, 20, 0.72);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--glass-inset), var(--shadow-lg);
+}
+
+/* Footer — quieter / lower contrast than header */
+.glass-footer {
+  background: rgba(5, 10, 14, 0.55);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-top: 1px solid var(--border-muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.glass-hairline {
+  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: var(--glass-inset);
+}
+
 .gradient-text {
-  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+  background: linear-gradient(135deg, #b8efe9 0%, var(--accent-blue) 45%, var(--accent-moss) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Container */
 .container {
   width: 100%;
   max-width: 1280px;
@@ -153,17 +236,16 @@ a:hover {
   }
 }
 
-/* Card Hover Effect */
 .card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  transform: translateY(-3px);
+  box-shadow: var(--glass-inset), var(--shadow-lg), var(--shadow-glow);
+  border-color: rgba(110, 200, 196, 0.35);
 }
 
-/* Animation Keyframes */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -189,4 +271,22 @@ a:hover {
 
 .animate-slide-in {
   animation: slideIn 0.3s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .card-hover,
+  .card-hover:hover {
+    transition: none;
+    transform: none;
+  }
+
+  .animate-fade-in,
+  .animate-pulse,
+  .animate-slide-in {
+    animation: none;
+  }
 }

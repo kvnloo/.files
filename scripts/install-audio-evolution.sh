@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Install PipeWire Aural Evolution headphone DSP helpers.
+# Prefer: ./scripts/onboard run audio-evolution   or   ./install
+# Docs: docs/SETUP.md
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)

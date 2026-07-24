@@ -1,5 +1,9 @@
 # CachyOS Installation Walkthrough - Prompt for Claude
 
+> After the machine is up, prefer ongoing setup via `./install` or the harness
+> onboarding in `AGENTS.md` / `docs/SETUP.md`. The steps below are the original
+> migration walkthrough.
+
 Copy everything below this line and paste it into Claude on your phone.
 
 ---

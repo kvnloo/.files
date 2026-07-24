@@ -40,7 +40,10 @@ apply_palette() {
   [ -n "$image" ] && [ -s "$image" ] && "$APPLY_PALETTE" "$image" >/dev/null
 }
 
-notify() { command -v notify-send >/dev/null && notify-send -a wallpaper-mode -h string:x-dunst-stack-tag:wpmode "Wallpaper" "$1"; }
+notify() {
+  [[ ${WALLPAPER_MODE_SILENT:-0} == 1 ]] && return 0
+  command -v notify-send >/dev/null && notify-send -a wallpaper-mode -h string:x-dunst-stack-tag:wpmode "Wallpaper" "$1"
+}
 
 # comm is kernel-truncated to 15 chars; -x on the name avoids matching
 # unrelated processes (e.g. shells) whose cmdline mentions the engine
@@ -151,25 +154,9 @@ start_engine() {  # $1 = fps field index: 3 for chill, 4 for native
   done
 }
 
-# Render one frame of each wallpaper to a cached PNG (first performance switch only)
-ensure_screenshots() {
-  local screen id shot
-  for entry in "${SCREENS[@]}"; do
-    IFS='|' read -r screen id _ _ <<< "$entry"
-    shot="$CACHE_DIR/$screen.png"
-    [ -s "$shot" ] || [ -e "$shot.failed" ] && continue
-    ( "${WPE[@]}" --fps 30 --screen-root "$screen" --bg "$WP_DIR/$id" \
-        --screenshot "$shot" --screenshot-delay 30 >/dev/null 2>&1 & ) 2>/dev/null
-    for _ in $(seq 1 60); do [ -s "$shot" ] && break; sleep 0.5; done
-    pkill -x linux-wallpaper 2>/dev/null
-    # mark wallpapers that can't render (e.g. segfaulting scene) to skip retries
-    [ -s "$shot" ] || touch "$shot.failed"
-  done
-}
 
 mode_performance() {
   kill_engine; kill_swaybg
-  ensure_screenshots
   local screen shot
   for entry in "${SCREENS[@]}"; do
     IFS='|' read -r screen _ _ _ <<< "$entry"

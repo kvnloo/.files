@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Entry point for interactive .files setup.
+# Dual paths are documented in docs/SETUP.md and AGENTS.md.
+set -euo pipefail
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec "$root/scripts/onboard" install --interactive "$@"

@@ -39,9 +39,8 @@ export function TerminalBlock({ lines, title }: TerminalBlockProps) {
   }
 
   return (
-    <div className="rounded-lg overflow-hidden border border-[var(--border-default)]">
-      {/* Terminal Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-secondary)]">
+    <div className="rounded-[var(--radius-lg)] overflow-hidden glass">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-muted)] relative z-10">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-[var(--accent-red)]" />
           <div className="w-3 h-3 rounded-full bg-[var(--accent-yellow)]" />
@@ -71,8 +70,7 @@ export function TerminalBlock({ lines, title }: TerminalBlockProps) {
         </button>
       </div>
 
-      {/* Terminal Body */}
-      <div className="p-6 bg-[var(--bg-primary)]">
+      <div className="p-6 relative z-10">
         <div className="flex flex-col gap-2">
           {lines.map((line, index) => (
             <code

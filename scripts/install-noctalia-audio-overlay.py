@@ -8,11 +8,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIGHTNESS_PANEL_SOURCE = ROOT / "config/noctalia/overlays/BrightnessPanel.qml"
+SYSTEM_MONITOR_SOURCE = ROOT / "config/noctalia/overlays/SystemMonitorCard.qml"
 SOURCE = Path("/etc/xdg/quickshell/noctalia-shell")
 TARGET = Path.home() / ".config/quickshell/noctalia-shell"
 AUDIO_OVERRIDE = Path("Modules/Panels/Audio/AudioPanel.qml")
 DISPLAY_OVERRIDE = Path("Modules/Panels/Settings/Tabs/Display/DisplayTab.qml")
 BRIGHTNESS_PANEL_OVERRIDE = Path("Modules/Panels/Brightness/BrightnessPanel.qml")
+SYSTEM_MONITOR_OVERRIDE = Path("Modules/Cards/SystemMonitorCard.qml")
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -674,10 +676,15 @@ def customize_brightness_panel(_: str) -> str:
     return BRIGHTNESS_PANEL_SOURCE.read_text()
 
 
+def customize_system_monitor(_: str) -> str:
+    return SYSTEM_MONITOR_SOURCE.read_text()
+
+
 CUSTOMIZERS = {
     AUDIO_OVERRIDE: customize_audio_panel,
     DISPLAY_OVERRIDE: customize_display_tab,
     BRIGHTNESS_PANEL_OVERRIDE: customize_brightness_panel,
+    SYSTEM_MONITOR_OVERRIDE: customize_system_monitor,
 }
 
 

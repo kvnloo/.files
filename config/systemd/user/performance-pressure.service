@@ -1,0 +1,14 @@
+[Unit]
+Description=Suggest unified desktop performance mode under sustained pressure
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/performance-pressure
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

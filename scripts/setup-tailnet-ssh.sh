@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Enable Tailscale + OpenSSH for private remote access (Linux).
+# Prefer: ./scripts/onboard run tailnet-ssh   or   ./install
+# Docs: docs/SETUP.md
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]]; then

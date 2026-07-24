@@ -1,5 +1,9 @@
 # Ubuntu 24.04 -> CachyOS Migration Plan
 
+> **Day-to-day setup** (new machines or re-link after clone) uses the dual onboarding
+> paths in [docs/SETUP.md](../docs/SETUP.md): `./install` or the LLM harness flow in
+> [AGENTS.md](../AGENTS.md). This document is the one-shot **rebuild / migration** plan.
+
 ## System Profile
 - **Machine**: groot | RTX 3080 Ti | Triple 1080p (75/240/540Hz)
 - **Current**: Ubuntu 24.04 LTS, i3/X11, ZFS root (encrypted), NVIDIA 580 open
