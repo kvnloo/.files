@@ -62,7 +62,7 @@ export function Header() {
           <span className="text-xl font-medium font-mono text-[var(--text-primary)]">.files</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8 relative z-10">
+        <nav className="hidden lg:flex items-center gap-8 relative z-10">
           {navItems.map((item) => (
             <Link
               key={item.label}
@@ -89,7 +89,7 @@ export function Header() {
         </nav>
 
         <button
-          className="md:hidden p-2 text-[var(--text-muted)] relative z-10"
+          className="lg:hidden p-2 text-[var(--text-muted)] relative z-10"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           aria-label="Toggle menu"
         >
@@ -98,7 +98,7 @@ export function Header() {
       </div>
 
       {mobileMenuOpen && (
-        <div className="md:hidden glass-strong border-t border-[var(--border-default)]">
+        <div className="lg:hidden glass-strong border-t border-[var(--border-default)]">
           <nav className="flex flex-col p-6 gap-4 relative z-10">
             {navItems.map((item) => (
               <Link

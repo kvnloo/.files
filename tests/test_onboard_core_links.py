@@ -28,7 +28,15 @@ def test_core_links_install_service_executable_aliases(tmp_path: Path) -> None:
     )
 
     assert completed.returncode == 0, completed.stderr
-    for name in ("performance-pressure", "taildrop-portal"):
+    assert (home / "Downloads" / "Taildrop").is_dir()
+    for name in (
+        "performance-pressure",
+        "taildrop-portal",
+        "tmux-agent-launcher",
+        "tmux-fleet-switcher",
+        "tmux-task-menu",
+        "tmux-widget-grid",
+    ):
         installed = home / ".local" / "bin" / name
         assert installed.is_symlink(), f"missing service executable alias: {installed}"
         assert installed.resolve().is_file()

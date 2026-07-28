@@ -170,7 +170,9 @@ run_core_links() {
   for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
              desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
-             taildrop-portal.py theme-switcher.sh reload-desktop.sh keybind-cheatsheet.py; do
+             taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
+             tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh \
+             reload-desktop.sh keybind-cheatsheet.py; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"
       command_name="${command_name%.py}"
@@ -181,6 +183,10 @@ run_core_links() {
       fi
     fi
   done
+
+  # The hardened Taildrop unit requires its writable bind path to exist before
+  # systemd creates the service mount namespace.
+  mkdir -p "$HOME/Downloads/Taildrop"
 
   mkdir -p "$HOME/.config/systemd/user"
   for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service; do

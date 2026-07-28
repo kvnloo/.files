@@ -110,7 +110,7 @@ body {
 .wallpaper-poster {
   object-fit: cover;
   object-position: center;
-  transform: translateY(var(--wallpaper-parallax)) scale(1.035);
+  transform: translateY(var(--wallpaper-parallax)) scale(1.08);
   transition: opacity 480ms ease, transform 180ms linear;
 }
 
@@ -126,7 +126,7 @@ body {
   width: max(100vw, 177.7778vh);
   height: max(100vh, 56.25vw);
   opacity: 0;
-  transform: translate(-50%, calc(-50% + var(--wallpaper-parallax)));
+  transform: translate(-50%, calc(-50% + var(--wallpaper-parallax))) scale(1.08);
   transition: opacity 560ms ease, transform 180ms linear;
 }
 
@@ -141,7 +141,7 @@ body {
   height: 100%;
   object-fit: cover;
   object-position: center;
-  transform: translateY(var(--wallpaper-parallax)) scale(1.035);
+  transform: translateY(var(--wallpaper-parallax)) scale(1.08);
   transition: transform 180ms linear;
 }
 
@@ -348,11 +348,11 @@ a:hover {
 
   .wallpaper-poster,
   .wallpaper-video {
-    transform: scale(1.035);
+    transform: scale(1.08);
   }
 
   .wallpaper-webgl {
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) scale(1.08);
   }
 
   .motion-card,
