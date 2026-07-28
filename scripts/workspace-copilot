@@ -175,6 +175,10 @@ def initialize(db: sqlite3.Connection) -> None:
             active INTEGER NOT NULL DEFAULT 0,
             dead INTEGER NOT NULL DEFAULT 0,
             layout_hash TEXT NOT NULL DEFAULT '',
+            width INTEGER NOT NULL DEFAULT 0,
+            height INTEGER NOT NULL DEFAULT 0,
+            left INTEGER NOT NULL DEFAULT 0,
+            top INTEGER NOT NULL DEFAULT 0,
             first_seen REAL NOT NULL,
             last_seen REAL NOT NULL,
             observation_count INTEGER NOT NULL DEFAULT 1,
@@ -252,6 +256,10 @@ def initialize(db: sqlite3.Connection) -> None:
     suggestion_columns = {row[1] for row in db.execute("PRAGMA table_info(suggestions)")}
     if "undo_json" not in suggestion_columns:
         db.execute("ALTER TABLE suggestions ADD COLUMN undo_json TEXT NOT NULL DEFAULT '{}'")
+    tmux_columns = {row[1] for row in db.execute("PRAGMA table_info(tmux_panes)")}
+    for column in ("width", "height", "left", "top"):
+        if column not in tmux_columns:
+            db.execute(f"ALTER TABLE tmux_panes ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
     db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)", (SCHEMA_VERSION,))
     if not db.execute("SELECT 1 FROM meta WHERE key='path_salt'").fetchone():
         db.execute("INSERT INTO meta(key,value) VALUES('path_salt',?)", (os.urandom(24).hex(),))
@@ -429,12 +437,77 @@ def tmux_rows() -> list[list[str]]:
             "#{pane_active}",
             "#{pane_dead}",
             "#{window_layout}",
+            "#{pane_width}",
+            "#{pane_height}",
+            "#{pane_left}",
+            "#{pane_top}",
         ]
     )
     result = run(tmux_args("list-panes", "-a", "-F", fmt))
     if result.returncode != 0:
         return []
-    return [line.split("\t", 10) for line in result.stdout.splitlines() if line.count("\t") >= 10]
+    return [line.split("\t", 14) for line in result.stdout.splitlines() if line.count("\t") >= 14]
+
+
+def tmux_active_windows() -> set[tuple[str, str]]:
+    """(session, window_index) of the current window in each attached session."""
+    if shutil.which("tmux") is None:
+        return set()
+    result = run(
+        tmux_args(
+            "list-windows",
+            "-a",
+            "-F",
+            "#{session_name}\t#{window_index}\t#{window_active}\t#{session_attached}",
+        )
+    )
+    if result.returncode != 0:
+        return set()
+    active: set[tuple[str, str]] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 4 and parts[2] == "1" and parts[3] not in {"", "0"}:
+            active.add((clean_token(parts[0], 80), clean_token(parts[1], 12)))
+    return active
+
+
+def tmux_focus() -> dict[str, str]:
+    """Focused pane metadata from the most recently active attached client.
+
+    Emits only identifiers already recorded by the tmux hooks: pane id,
+    session name, and window index. Never pane contents or titles.
+    """
+    if shutil.which("tmux") is None:
+        return {}
+    clients = run(tmux_args("list-clients", "-F", "#{client_activity}\t#{client_session}"))
+    if clients.returncode != 0:
+        return {}
+    best_session, best_stamp = "", -1
+    for line in clients.stdout.splitlines():
+        stamp, _, session = line.partition("\t")
+        if session and stamp.isdigit() and int(stamp) > best_stamp:
+            best_stamp, best_session = int(stamp), session
+    if not best_session:
+        return {}
+    result = run(
+        tmux_args(
+            "display-message",
+            "-p",
+            "-t",
+            f"={best_session}:",
+            "#{pane_id}\t#{window_index}",
+        )
+    )
+    if result.returncode != 0 or "\t" not in result.stdout:
+        return {}
+    pane_id, _, window_index = result.stdout.strip().partition("\t")
+    if not pane_id.startswith("%"):
+        return {}
+    return {
+        "pane_id": clean_token(pane_id, 32),
+        "session": clean_token(best_session, 80),
+        "window": clean_token(window_index, 12),
+    }
 
 
 def snapshot_tmux(
@@ -445,23 +518,24 @@ def snapshot_tmux(
     seen: set[str] = set()
     target: list[str] | None = None
     for row in rows:
-        pane_id, session, window_id, window_index, window_name, pane_index, command, cwd, active, dead, layout = row
+        pane_id, session, window_id, window_index, window_name, pane_index, command, cwd, active, dead, layout, width, height, left, top = row
         seen.add(pane_id)
         if pane_id == target_pane:
             target = row
         db.execute(
             """INSERT INTO tmux_panes(
                    pane_id,session,window_id,window_index,window_name,pane_index,command,
-                   project,path_hash,active,dead,layout_hash,first_seen,last_seen,
-                   observation_count,selection_count
-               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+                   project,path_hash,active,dead,layout_hash,width,height,left,top,
+                   first_seen,last_seen,observation_count,selection_count
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
                ON CONFLICT(pane_id) DO UPDATE SET
                    session=excluded.session,window_id=excluded.window_id,
                    window_index=excluded.window_index,window_name=excluded.window_name,
                    pane_index=excluded.pane_index,command=excluded.command,
                    project=excluded.project,path_hash=excluded.path_hash,
                    active=excluded.active,dead=excluded.dead,layout_hash=excluded.layout_hash,
-                   last_seen=excluded.last_seen,
+                   width=excluded.width,height=excluded.height,
+                   left=excluded.left,top=excluded.top,last_seen=excluded.last_seen,
                    observation_count=tmux_panes.observation_count+1,
                    selection_count=tmux_panes.selection_count+excluded.selection_count""",
             (
@@ -477,6 +551,10 @@ def snapshot_tmux(
                 int(active == "1"),
                 int(dead == "1"),
                 hashlib.sha256(layout.encode()).hexdigest()[:16],
+                int(width or 0),
+                int(height or 0),
+                int(left or 0),
+                int(top or 0),
                 stamp,
                 stamp,
                 int(kind in {"after-select-pane", "after-select-window", "client-session-changed"} and pane_id == target_pane),
@@ -1167,6 +1245,8 @@ def hypr_monitor_summary() -> list[dict[str, Any]]:
 def context_report(db: sqlite3.Connection) -> dict[str, Any]:
     snapshot_tmux(db)
     snapshot_hypr_active(db, "context", emit=False)
+    active_windows = tmux_active_windows()
+    focus = tmux_focus()
     sessions: dict[str, dict[str, Any]] = {}
     for row in db.execute("SELECT * FROM tmux_panes ORDER BY session,CAST(window_index AS INTEGER),CAST(pane_index AS INTEGER)"):
         session = sessions.setdefault(row["session"], {"session": row["session"], "projects": [], "windows": {}})
@@ -1174,7 +1254,12 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
             session["projects"].append(row["project"])
         window = session["windows"].setdefault(
             row["window_id"],
-            {"index": row["window_index"], "name": row["window_name"], "panes": []},
+            {
+                "index": row["window_index"],
+                "name": row["window_name"],
+                "active": (row["session"], row["window_index"]) in active_windows,
+                "panes": [],
+            },
         )
         window["panes"].append(
             {
@@ -1184,6 +1269,10 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
                 "project": row["project"],
                 "active": bool(row["active"]),
                 "dead": bool(row["dead"]),
+                "width": row["width"],
+                "height": row["height"],
+                "left": row["left"],
+                "top": row["top"],
             }
         )
     normalized_sessions = []
@@ -1224,6 +1313,7 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
         "clients": hypr_client_summary(),
         "layers": hypr_layer_summary(),
         "tmux": normalized_sessions,
+        "tmux_focus": focus or None,
         "harnesses": harnesses,
         "tasks": tasks,
         "task_sessions": task_sessions,

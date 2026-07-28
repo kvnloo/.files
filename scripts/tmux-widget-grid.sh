@@ -221,6 +221,49 @@ dock_grid() {
   tmux display-message 'live task dashboard docked above current pane · Alt-d focuses it'
 }
 
+adopt_grid() {
+  local task=${1:-} agent=${2:-} task_window agent_window window_width
+  local task_top agent_top task_width agent_width window_height dashboard_height
+  [[ $task == %* && $agent == %* && $task != "$agent" ]] || {
+    tmux display-message 'adopt requires two distinct pane IDs'
+    return 1
+  }
+  task_window=$(tmux display-message -p -t "$task" '#{window_id}') || return 1
+  agent_window=$(tmux display-message -p -t "$agent" '#{window_id}') || return 1
+  [[ $task_window == "$agent_window" ]] || {
+    tmux display-message 'dashboard panes must share one window'
+    return 1
+  }
+  task_top=$(tmux display-message -p -t "$task" '#{pane_top}')
+  agent_top=$(tmux display-message -p -t "$agent" '#{pane_top}')
+  task_width=$(tmux display-message -p -t "$task" '#{pane_width}')
+  agent_width=$(tmux display-message -p -t "$agent" '#{pane_width}')
+  window_width=$(tmux display-message -p -t "$task_window" '#{window_width}')
+  if [[ $task_top != "$agent_top" ]] || ((task_width + agent_width + 1 != window_width)); then
+    tmux display-message 'dashboard panes must form one full-width row'
+    return 1
+  fi
+
+  tmux set-option -wq -t "$task_window" @widget_grid 1
+  tmux set-option -wq -t "$task_window" @widget_grid_dedicated 0
+  tmux set-option -wq -t "$task_window" @widget_layout_mode manual
+  tmux set-option -wq -t "$task_window" @widget_layout "$(tmux display-message -p -t "$task_window" '#{window_layout}')"
+  set_widget "$task" tasks
+  set_widget "$agent" agents
+  tmux set-option -gq @widget_grid_window "$task_window"
+  tmux set-option -gq @widget_grid_pane "$task"
+  tmux set-option -gq @widget_grid_agent_pane "$agent"
+
+  window_height=$(tmux display-message -p -t "$task_window" '#{window_height}')
+  dashboard_height=$((window_height * 38 / 100))
+  ((dashboard_height < 16)) && dashboard_height=16
+  ((dashboard_height > 24)) && dashboard_height=24
+  ((window_height - dashboard_height < 12)) && dashboard_height=$((window_height - 12))
+  ((dashboard_height > 0)) && tmux resize-pane -t "$task" -y "$dashboard_height"
+  tmux select-pane -t "$task"
+  tmux display-message "dashboard restored in existing row · ${window_width}×${dashboard_height} cells"
+}
+
 open_grid() {
   local window pane id command first=1
   if window=$(stored_window); then
@@ -484,6 +527,7 @@ popup_menu() {
 
 case ${1:-open} in
   dock) dock_grid "${2:-}" ;;
+  adopt) adopt_grid "${2:-}" "${3:-}" ;;
   open|focus) open_grid ;;
   list) registry ;;
   autolayout) auto_layout "${2:-}" ;;
@@ -500,7 +544,7 @@ case ${1:-open} in
   library) choose_widget replace ;;
   popup) popup_menu ;;
   *)
-    printf 'usage: %s {dock [pane]|open|refresh|list|choose [replace|add] [widget]|library|agents|popup-agents|remove|layout|autolayout [force]|swap {left|down|up|right}|popup}\n' "${0##*/}" >&2
+    printf 'usage: %s {dock [pane]|adopt TASK_PANE AGENT_PANE|open|refresh|list|choose [replace|add] [widget]|library|agents|popup-agents|remove|layout|autolayout [force]|swap {left|down|up|right}|popup}\n' "${0##*/}" >&2
     exit 2
     ;;
 esac

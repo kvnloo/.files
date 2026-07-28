@@ -105,13 +105,46 @@ context_json() {
   [[ -r $cache ]] && cat "$cache"
 }
 
-orb_frames=('● · ·' '◉ • ·' '• ● •' '· • ◉' '· · ●' '· • ◉' '• ● •' '◉ • ·')
+# Terminal adaptations of thinking-orbs' six canvas states. Each frame stays
+# five cells wide so harness rows never jitter while the animation advances.
+working_orb_frames=('● · ·' '◉ • ·' '• ● •' '· • ◉' '· · ●' '· • ◉' '• ● •' '◉ • ·')
+searching_orb_frames=('◜ · ◝' '◟ • ◞' '◝ ● ◜' '◞ • ◟')
+solving_orb_frames=('◫ ┊ ◧' '◩ ╋ ◪' '◨ ┊ ◫' '◪ ╋ ◩')
+listening_orb_frames=('· ∿ ·' '• ≈ •' '● ∿ ●' '• ≈ •')
+composing_orb_frames=('╱ · ╲' '─ • ─' '╲ ● ╱' '─ • ─')
+shaping_orb_frames=('· ○ ·' '· △ ·' '· ◇ ·' '· □ ·' '· ◇ ·' '· △ ·')
 pulse_frames=('·' '◦' '●' '◦')
-orb_frame=${orb_frames[0]}
+orb_frame=${working_orb_frames[0]}
 pulse_frame=${pulse_frames[0]}
+
+orb_state_for() {
+  local label=${1,,}
+  case $label in
+    *search*|*research*|*survey*|*inspect*|*investigat*|*look\ up*|*find*) printf searching ;;
+    *solv*|*fix*|*debug*|*repair*|*diagnos*|*resolve*) printf solving ;;
+    *listen*|*wait*|*await*|*monitor*|*watch*) printf listening ;;
+    *compos*|*write*|*draft*|*document*|*summar*|*report*) printf composing ;;
+    *shap*|*design*|*build*|*implement*|*refactor*|*create*|*port*) printf shaping ;;
+    *) printf working ;;
+  esac
+}
+
+orb_frame_for() {
+  local state=${1:-working} index=${2:-0}
+  case $state in
+    searching) printf '%s' "${searching_orb_frames[$((index % ${#searching_orb_frames[@]}))]}" ;;
+    solving) printf '%s' "${solving_orb_frames[$((index % ${#solving_orb_frames[@]}))]}" ;;
+    listening) printf '%s' "${listening_orb_frames[$((index % ${#listening_orb_frames[@]}))]}" ;;
+    composing) printf '%s' "${composing_orb_frames[$((index % ${#composing_orb_frames[@]}))]}" ;;
+    shaping) printf '%s' "${shaping_orb_frames[$((index % ${#shaping_orb_frames[@]}))]}" ;;
+    *) printf '%s' "${working_orb_frames[$((index % ${#working_orb_frames[@]}))]}" ;;
+  esac
+}
 
 progress_bar() {
   local done=${1:-0} total=${2:-0} active=${3:-0} width=${4:-16}
+  local fill_tone=${5:-$glass_fill} soft_tone=${6:-$glass_soft}
+  local glint_tone=${7:-$glass_glint} track_tone=${8:-$glass_track}
   local filled=0 index sweep=-10 distance glyph tone
   ((total > 0)) && filled=$(((done * width + total / 2) / total))
   ((active > 0 && filled > 0)) && sweep=$((animation_index % filled))
@@ -120,16 +153,16 @@ progress_bar() {
       glyph='━'
       ((index == 0)) && glyph='╺'
       ((index == filled - 1)) && glyph='╸'
-      tone=$glass_fill
+      tone=$fill_tone
       distance=$((index - sweep))
       ((distance < 0)) && distance=$((-distance))
-      ((active > 0 && distance == 1)) && tone=$glass_soft
-      ((active > 0 && distance == 0)) && tone=$glass_glint
+      ((active > 0 && distance == 1)) && tone=$soft_tone
+      ((active > 0 && distance == 0)) && tone=$glint_tone
       printf '%s%s' "$tone" "$glyph"
     else
       glyph='┄'
       ((index == width - 1)) && glyph='╴'
-      printf '%s%s' "$glass_track" "$glyph"
+      printf '%s%s' "$track_tone" "$glyph"
     fi
   done
   printf '%s' "$reset"
@@ -202,10 +235,17 @@ render_agents() {
           print_clipped "$text" "$a  $b" "$columns"
           ;;
         ROW)
-          local indicator indicator_color badge badge_color
+          local indicator indicator_color badge badge_color orb_state
           case $c in
-            working|running|started) indicator=$orb_frame; indicator_color=$accent ;;
-            waiting|parked|idle) indicator='◌'; indicator_color=$yellow ;;
+            working|running|started)
+              orb_state=$(orb_state_for "$f")
+              indicator=$(orb_frame_for "$orb_state" "$animation_index")
+              indicator_color=$accent
+              ;;
+            waiting|parked|idle)
+              indicator=$(orb_frame_for listening "$animation_index")
+              indicator_color=$yellow
+              ;;
             blocked|failed) indicator='!'; indicator_color=$red ;;
             completed) indicator='✓'; indicator_color=$green ;;
             *) indicator='·'; indicator_color=$muted ;;
@@ -229,12 +269,16 @@ render_agents() {
       esac
     done
   printf '\n'
-  print_clipped "$muted" 'STATUS  ● active  ◌ waiting  ! blocked  ✓ done  · stopped' "$columns"
+  print_clipped "$muted" 'ORB  working · searching · solving · listening · composing · shaping' "$columns"
   print_clipped "$muted" 'SOURCE  OMP live harness  DECK managed agent  s inspect / steer' "$columns"
 }
 render_tasks() {
   local data=$1 session rows columns overall_width phase_width max_text available
-  local objective decisions runtime map_file map_tmp row phase_name name_width glyph summary_text
+  local objective decisions runtime map_file map_tmp scroll_tmp row phase_name name_width
+  local glyph summary_text summary done_count active_count pending_count total_count
+  local total_rows available_rows max_scroll offset end index record kind first second third fourth fifth sixth
+  local section_tone row_tone header_text
+  local -a display_records
   if [[ -z $data ]]; then
     printf '%sworkspace-copilot context unavailable%s\n' "$yellow" "$reset"
     return
@@ -247,6 +291,8 @@ render_tasks() {
   fi
   rows=$(tput lines 2>/dev/null || printf 24)
   columns=$(tput cols 2>/dev/null || printf 80)
+  [[ $rows =~ ^[0-9]+$ ]] || rows=24
+  [[ $columns =~ ^[0-9]+$ ]] || columns=80
   ((columns >= 80)) && overall_width=20 || { ((columns >= 55)) && overall_width=12 || overall_width=8; }
   ((columns >= 70)) && phase_width=10 || phase_width=6
   max_text=$((columns > 6 ? columns - 6 : 1))
@@ -266,53 +312,124 @@ render_tasks() {
   printf '%sOBJ%s  %s\n' "$accent" "$reset" "$objective"
   printf '%sDEC%s  %s\n' "$magenta" "$reset" "$decisions"
 
+  summary=$(jq -r --arg session "$session" '
+    [.tasks[]? | select(.session == $session)] as $tasks
+    | [
+        ($tasks | map(select(.status == "completed")) | length),
+        ($tasks | map(select(.status == "in_progress")) | length),
+        ($tasks | map(select(.status == "pending")) | length),
+        ($tasks | length)
+      ] | @tsv
+  ' <<<"$data")
+  IFS=$'\t' read -r done_count active_count pending_count total_count <<<"$summary"
+  progress_bar "$done_count" "$total_count" "$active_count" "$overall_width"
+  summary_text="  ${done_count}/${total_count} complete · ${active_count} active · ${pending_count} queued"
+  available=$((columns - overall_width))
+  ((available > 0)) && printf '%s\n' "$(clip_text "$summary_text" "$available")" || printf '\n'
+
+  mapfile -t display_records < <(jq -r --arg session "$session" '
+    [.tasks[]? | select(.session == $session)]
+    | sort_by(.phase_order, .task_order)
+    | group_by(.phase_order)
+    | map({
+        phase: .[0].phase,
+        order: (.[0].phase_order // 0),
+        done: (map(select(.status == "completed")) | length),
+        active: (map(select(.status == "in_progress")) | length),
+        pending: (map(select(.status == "pending")) | length),
+        total: length
+      })
+    | map(. + {
+        bucket: (
+          if .active > 0 then "active"
+          elif .pending > 0 then "queued"
+          else "done"
+          end
+        )
+      }) as $phases
+    | [["NOW", "active"], ["UP NEXT", "queued"], ["DONE", "done"]][] as $section
+    | ($phases
+       | map(select(.bucket == $section[1]))
+       | sort_by(if .bucket == "done" then -.order else .order end)) as $items
+    | select(($items | length) > 0)
+    | (["SECTION", $section[0], ($items | length), $section[1]] | @tsv),
+      ($items[]
+       | ["PHASE", .phase, .done, .total, .active, .pending, .bucket]
+       | @tsv)
+  ' <<<"$data" 2>/dev/null)
+
+  total_rows=${#display_records[@]}
+  available_rows=$((rows - 7))
+  ((available_rows < 1)) && available_rows=1
+  max_scroll=$((total_rows > available_rows ? total_rows - available_rows : 0))
+  offset=$task_scroll
+  ((offset < 0)) && offset=0
+  ((offset > max_scroll)) && offset=$max_scroll
+  end=$((offset + available_rows))
+  ((end > total_rows)) && end=$total_rows
+
   runtime=${XDG_RUNTIME_DIR:-/tmp}/tmux-widget-grid-$UID
   mkdir -p "$runtime"
   map_file=$runtime/task-map-${TMUX_PANE#%}.tsv
   map_tmp=$map_file.$$
+  scroll_tmp=$task_scroll_max_file.$$
   : >"$map_tmp"
   chmod 600 "$map_tmp"
+  printf '%s\n' "$max_scroll" >"$scroll_tmp"
+  chmod 600 "$scroll_tmp"
+  mv -f "$scroll_tmp" "$task_scroll_max_file"
+
+  if ((max_scroll > 0)); then
+    header_text="TASK GROUPS · click row · wheel/j/k scroll · $((offset + 1))-${end}/${total_rows}"
+  else
+    header_text='TASK GROUPS · click a row for subtasks'
+  fi
+  print_clipped "$cyan" "$header_text" "$columns"
   row=6
 
-  jq -r --arg session "$session" '
-    [.tasks[]? | select(.session == $session)] as $tasks
-    | ($tasks | map(select(.status == "completed")) | length) as $done
-    | ($tasks | map(select(.status == "in_progress")) | length) as $active
-    | ($tasks | map(select(.status == "pending")) | length) as $pending
-    | "SUMMARY\t\($done)\t\($active)\t\($pending)\t\($tasks | length)",
-      ($tasks | sort_by(.phase_order, .task_order) | group_by(.phase_order)[] as $phase |
-        "PHASE\t\($phase[0].phase)\t\($phase | map(select(.status == "completed")) | length)\t\($phase | length)\t\($phase | map(select(.status == "in_progress")) | length)")
-  ' <<<"$data" 2>/dev/null |
-    while IFS=$'\t' read -r kind first second third fourth; do
-      case $kind in
-        SUMMARY)
-          progress_bar "$first" "$fourth" "$second" "$overall_width"
-          summary_text="  ${first}/${fourth} complete · ${second} active · ${third} open"
-          available=$((columns - overall_width))
-          ((available > 0)) && printf '%s\n' "$(clip_text "$summary_text" "$available")" || printf '\n'
-          printf '%sTASK GROUPS%s  %sclick a row for subtasks%s\n' "$cyan" "$reset" "$muted" "$reset"
-          row=6
-          ;;
-        PHASE)
-          phase_name=$first
-          name_width=$((columns - phase_width - 13))
-          ((name_width < 1)) && name_width=1
-          ((${#phase_name} > name_width)) && phase_name="${phase_name:0:name_width-1}…"
-          if ((fourth > 0)); then
+  for ((index = offset; index < end; index++)); do
+    record=${display_records[index]}
+    IFS=$'\t' read -r kind first second third fourth fifth sixth <<<"$record"
+    case $kind in
+      SECTION)
+        case $third in
+          active) section_tone=$accent ;;
+          done) section_tone=$muted ;;
+          *) section_tone=$text ;;
+        esac
+        printf '%s%s · %s%s\n' "$section_tone" "$first" "$second" "$reset"
+        ;;
+      PHASE)
+        phase_name=$first
+        name_width=$((columns - phase_width - 13))
+        ((name_width < 1)) && name_width=1
+        ((${#phase_name} > name_width)) && phase_name="${phase_name:0:name_width-1}…"
+        case $sixth in
+          active)
             glyph='▶'
-          elif ((second == third)); then
-            glyph='✓'
-          else
+            row_tone=$glass_glint
+            ;;
+          done)
+            ((second == third)) && glyph='✓' || glyph='–'
+            row_tone=$muted
+            ;;
+          *)
             glyph='○'
-          fi
-          printf '%s%s%s %-*s ' "$glass_glint" "$glyph" "$reset" "$name_width" "$phase_name"
+            row_tone=$text
+            ;;
+        esac
+        printf '%s%s%s %-*s ' "$row_tone" "$glyph" "$reset" "$name_width" "$phase_name"
+        if [[ $sixth == done ]]; then
+          progress_bar "$second" "$third" 0 "$phase_width" "$muted" "$muted" "$muted" "$glass_track"
+        else
           progress_bar "$second" "$third" "$fourth" "$phase_width"
-          printf ' %s/%s\n' "$second" "$third"
-          printf '%s\t%s\t%s\n' "$row" "$session" "$first" >>"$map_tmp"
-          row=$((row + 1))
-          ;;
-      esac
-    done
+        fi
+        printf ' %s%s/%s%s\n' "$row_tone" "$second" "$third" "$reset"
+        printf '%s\t%s\t%s\n' "$row" "$session" "$first" >>"$map_tmp"
+        ;;
+    esac
+    row=$((row + 1))
+  done
   mv -f "$map_tmp" "$map_file"
 }
 
@@ -451,7 +568,7 @@ render() {
   local animation_clock animation_index data='' columns separator footer
   animation_clock=${EPOCHREALTIME/./}
   animation_index=$((10#$animation_clock / 120000))
-  orb_frame=${orb_frames[$((animation_index % ${#orb_frames[@]}))]}
+  orb_frame=${working_orb_frames[$((animation_index % ${#working_orb_frames[@]}))]}
   pulse_frame=${pulse_frames[$((animation_index % ${#pulse_frames[@]}))]}
   columns=$(terminal_columns)
   printf '%s▰ %s%s\n' "$accent" "$(label_for "$widget")" "$reset"
@@ -469,7 +586,7 @@ render() {
     *) printf '%sUnknown widget: %s%s\n' "$yellow" "$widget" "$reset" ;;
   esac
   if [[ $widget == tasks ]]; then
-    footer='R restart · r replace · a add · x remove · s agents · m menu'
+    footer='wheel/j/k scroll · g/G top/bottom · R restart · r replace · s agents · m menu'
   elif [[ $widget == overview ]]; then
     footer='R restart · x close · Alt-d focus dashboard'
   else
@@ -479,8 +596,24 @@ render() {
   print_clipped "$muted" "$footer" "$columns"
 }
 
+task_scroll=0
+task_scroll_runtime=${XDG_RUNTIME_DIR:-/tmp}/tmux-widget-grid-$UID
+task_scroll_max_file=$task_scroll_runtime/task-scroll-max-${TMUX_PANE#%}
+
 handle_key() {
-  local key=$1
+  local key=$1 max=0
+  if [[ $widget == tasks ]]; then
+    [[ -r $task_scroll_max_file ]] && max=$(<"$task_scroll_max_file")
+    [[ $max =~ ^[0-9]+$ ]] || max=0
+    case $key in
+      j) ((task_scroll < max)) && task_scroll=$((task_scroll + 1)); return ;;
+      k) ((task_scroll > 0)) && task_scroll=$((task_scroll - 1)); return ;;
+      d) task_scroll=$((task_scroll + 5)); ((task_scroll > max)) && task_scroll=$max; return ;;
+      u) task_scroll=$((task_scroll - 5)); ((task_scroll < 0)) && task_scroll=0; return ;;
+      g) task_scroll=0; return ;;
+      G) task_scroll=$max; return ;;
+    esac
+  fi
   if [[ $widget == overview ]]; then
     case $key in
       R) "$manager" refresh ;;
@@ -509,7 +642,7 @@ trap 'exit 0' TERM INT HUP
 while :; do
   frame=$(render)
   if [[ $frame != "$last_frame" ]]; then
-    printf '\033[H%s\n\033[J' "$frame"
+    printf '\033[2J\033[H%s' "$frame"
     last_frame=$frame
   fi
   [[ ${TMUX_WIDGET_ONCE:-0} == 1 ]] && exit 0

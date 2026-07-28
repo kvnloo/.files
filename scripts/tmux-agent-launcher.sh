@@ -41,4 +41,11 @@ selection="$(
 
 [[ -n "$selection" ]] || exit 0
 IFS=$'\t' read -r command _label _description executable <<< "$selection"
-tmux new-window -c "$PWD" -n "$command" "$executable"
+if command -v systemd-run >/dev/null 2>&1; then
+    printf -v launch_command \
+        'exec systemd-run --user --scope --collect --quiet --slice=agent.slice -- %q' \
+        "$executable"
+else
+    printf -v launch_command 'exec %q' "$executable"
+fi
+tmux new-window -c "$PWD" -n "$command" "$launch_command"

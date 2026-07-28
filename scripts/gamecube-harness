@@ -1,0 +1,847 @@
+#!/usr/bin/env python3
+"""Route an official GameCube adapter to privacy-safe tmux harness controls."""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import ctypes.util
+import json
+import math
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+VID = 0x057E
+PID = 0x0337
+REPORT_SIZE = 37
+REPORT_INPUT = 0x21
+COMMAND_INIT = 0x13
+COMMAND_RUMBLE = 0x11
+ENDPOINT_IN = 0x81
+ENDPOINT_OUT = 0x02
+LIBUSB_TIMEOUT = -7
+CONTROLLER_TYPES = 0x30
+
+BUTTON_MASKS = {
+    "start": 1 << 0,
+    "z": 1 << 1,
+    "r": 1 << 2,
+    "l": 1 << 3,
+    "a": 1 << 8,
+    "b": 1 << 9,
+    "x": 1 << 10,
+    "y": 1 << 11,
+    "dpad_left": 1 << 12,
+    "dpad_right": 1 << 13,
+    "dpad_down": 1 << 14,
+    "dpad_up": 1 << 15,
+}
+
+KEY_BINDINGS = {
+    "a": ("Enter", "Confirm / submit", 4),
+    "b": ("Escape", "Back / dismiss", 2),
+    "x": ("C-c", "Interrupt", 5),
+    "y": ("Tab", "Cycle mode / complete", 2),
+    "dpad_up": ("Up", "Navigate up", 1),
+    "dpad_down": ("Down", "Navigate down", 1),
+    "dpad_left": ("Left", "Navigate left", 1),
+    "dpad_right": ("Right", "Navigate right", 1),
+}
+
+WORKFLOWS = {
+    "up": "Review the current changes. Prioritize correctness, regressions, and missing verification.",
+    "down": "Run the narrowest relevant verification and fix any failures at the source.",
+    "left": "Debug the current blocker from first principles. Reproduce it, identify the root cause, and fix it.",
+    "right": "Refactor the current implementation for clarity and maintainability without changing behavior.",
+}
+
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+STATE_DIR = STATE_HOME / "gamecube-harness"
+STATS_PATH = STATE_DIR / "stats.json"
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+RUNTIME_PATH = RUNTIME_DIR / "gamecube-harness.json"
+ALLOWED_HARNESS_COMMANDS = {"bun", "claude", "codex", "node", "omp"}
+
+
+class AdapterError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ControllerFrame:
+    port: int
+    connected: bool
+    flags: int
+    buttons: frozenset[str]
+    stick_x: int
+    stick_y: int
+    cstick_x: int
+    cstick_y: int
+    trigger_l: int
+    trigger_r: int
+
+
+@dataclass(frozen=True)
+class HarnessTarget:
+    pane: str
+    session: str
+    window: str
+    project: str
+    command: str
+    active: bool
+
+    @property
+    def label(self) -> str:
+        project = self.project or "unknown"
+        return f"{project} · {self.command} · {self.pane}"
+
+
+def atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(payload, sort_keys=True) + "\n")
+    os.chmod(temp, 0o600)
+    temp.replace(path)
+
+
+def notify(title: str, body: str, urgency: str = "normal") -> None:
+    if not shutil.which("notify-send"):
+        return
+    try:
+        subprocess.Popen(
+            [
+                "notify-send",
+                "-a",
+                "GameCube Harness",
+                "-u",
+                urgency,
+                "-h",
+                "string:x-dunst-stack-tag:gamecube-harness",
+                title,
+                body,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
+
+
+def parse_report(data: bytes) -> list[ControllerFrame]:
+    if len(data) != REPORT_SIZE or data[0] != REPORT_INPUT:
+        return []
+    frames: list[ControllerFrame] = []
+    for port in range(4):
+        offset = 1 + port * 9
+        flags = data[offset]
+        bitfield = (data[offset + 1] << 8) | data[offset + 2]
+        frames.append(
+            ControllerFrame(
+                port=port + 1,
+                connected=bool(flags & CONTROLLER_TYPES),
+                flags=flags,
+                buttons=frozenset(name for name, mask in BUTTON_MASKS.items() if bitfield & mask),
+                stick_x=data[offset + 3],
+                stick_y=data[offset + 4],
+                cstick_x=data[offset + 5],
+                cstick_y=data[offset + 6],
+                trigger_l=data[offset + 7],
+                trigger_r=data[offset + 8],
+            )
+        )
+    return frames
+
+
+class LibUsbAdapter:
+    def __init__(self) -> None:
+        library = ctypes.util.find_library("usb-1.0")
+        if not library:
+            raise AdapterError("libusb-1.0 is not installed")
+        self.lib = ctypes.CDLL(library)
+        self._configure_api()
+        self.context = ctypes.c_void_p()
+        self.handle = ctypes.c_void_p()
+        self.claimed = False
+        self.buffer = (ctypes.c_ubyte * REPORT_SIZE)()
+        result = self.lib.libusb_init(ctypes.byref(self.context))
+        if result != 0:
+            raise AdapterError(f"libusb initialization failed: {self.error_name(result)}")
+        raw_handle = self.lib.libusb_open_device_with_vid_pid(self.context, VID, PID)
+        if not raw_handle:
+            self.close()
+            raise AdapterError("adapter unavailable; reconnect it or install the udev access rule")
+        self.handle = ctypes.c_void_p(raw_handle)
+        self.lib.libusb_set_auto_detach_kernel_driver(self.handle, 1)
+        result = self.lib.libusb_claim_interface(self.handle, 0)
+        if result != 0:
+            self.close()
+            raise AdapterError(f"cannot claim adapter: {self.error_name(result)}")
+        self.claimed = True
+        self._write(bytes([COMMAND_INIT]))
+
+    def _configure_api(self) -> None:
+        self.lib.libusb_init.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        self.lib.libusb_init.restype = ctypes.c_int
+        self.lib.libusb_exit.argtypes = [ctypes.c_void_p]
+        self.lib.libusb_open_device_with_vid_pid.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_uint16]
+        self.lib.libusb_open_device_with_vid_pid.restype = ctypes.c_void_p
+        self.lib.libusb_set_auto_detach_kernel_driver.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.lib.libusb_set_auto_detach_kernel_driver.restype = ctypes.c_int
+        self.lib.libusb_claim_interface.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.lib.libusb_claim_interface.restype = ctypes.c_int
+        self.lib.libusb_release_interface.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.lib.libusb_release_interface.restype = ctypes.c_int
+        self.lib.libusb_close.argtypes = [ctypes.c_void_p]
+        self.lib.libusb_interrupt_transfer.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ubyte,
+            ctypes.POINTER(ctypes.c_ubyte),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.c_uint,
+        ]
+        self.lib.libusb_interrupt_transfer.restype = ctypes.c_int
+        self.lib.libusb_error_name.argtypes = [ctypes.c_int]
+        self.lib.libusb_error_name.restype = ctypes.c_char_p
+
+    def error_name(self, code: int) -> str:
+        value = self.lib.libusb_error_name(code)
+        return value.decode(errors="replace") if value else str(code)
+
+    def _write(self, payload: bytes) -> None:
+        packet = (ctypes.c_ubyte * len(payload)).from_buffer_copy(payload)
+        actual = ctypes.c_int()
+        result = self.lib.libusb_interrupt_transfer(
+            self.handle, ENDPOINT_OUT, packet, len(payload), ctypes.byref(actual), 500
+        )
+        if result != 0 or actual.value != len(payload):
+            raise AdapterError(f"adapter write failed: {self.error_name(result)}")
+
+    def read(self, timeout_ms: int = 250) -> bytes | None:
+        actual = ctypes.c_int()
+        result = self.lib.libusb_interrupt_transfer(
+            self.handle,
+            ENDPOINT_IN,
+            self.buffer,
+            REPORT_SIZE,
+            ctypes.byref(actual),
+            timeout_ms,
+        )
+        if result == LIBUSB_TIMEOUT:
+            return None
+        if result != 0:
+            raise AdapterError(f"adapter read failed: {self.error_name(result)}")
+        return bytes(self.buffer[: actual.value])
+
+    def rumble(self, port: int, enabled: bool) -> None:
+        states = [0, 0, 0, 0]
+        if 1 <= port <= 4:
+            states[port - 1] = int(enabled)
+        self._write(bytes([COMMAND_RUMBLE, *states]))
+
+    def close(self) -> None:
+        if getattr(self, "handle", None) and self.handle.value:
+            if self.claimed:
+                try:
+                    self.lib.libusb_release_interface(self.handle, 0)
+                except Exception:
+                    pass
+            self.lib.libusb_close(self.handle)
+            self.handle = ctypes.c_void_p()
+        if getattr(self, "context", None) and self.context.value:
+            self.lib.libusb_exit(self.context)
+            self.context = ctypes.c_void_p()
+
+    def __enter__(self) -> "LibUsbAdapter":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+
+class Progress:
+    def __init__(self) -> None:
+        self.data: dict[str, Any] = {
+            "xp": 0,
+            "level": 1,
+            "streak": 0,
+            "lastActionAt": 0.0,
+            "actions": {},
+        }
+        if STATS_PATH.is_file():
+            try:
+                saved = json.loads(STATS_PATH.read_text())
+                if isinstance(saved, dict):
+                    self.data.update(saved)
+            except (OSError, json.JSONDecodeError):
+                pass
+        self.data["level"] = self.level_for(int(self.data.get("xp", 0)))
+
+    @staticmethod
+    def level_for(xp: int) -> int:
+        return max(1, xp // 100 + 1)
+
+    def award(self, action: str, base_points: int) -> tuple[int, bool]:
+        now = time.time()
+        previous = float(self.data.get("lastActionAt", 0.0))
+        streak = int(self.data.get("streak", 0)) + 1 if now - previous <= 30 else 1
+        multiplier = min(3, 1 + (streak - 1) // 5)
+        points = base_points * multiplier
+        old_level = int(self.data.get("level", 1))
+        xp = int(self.data.get("xp", 0)) + points
+        actions = dict(self.data.get("actions", {}))
+        actions[action] = int(actions.get(action, 0)) + 1
+        self.data.update(
+            {
+                "xp": xp,
+                "level": self.level_for(xp),
+                "streak": streak,
+                "lastAction": action,
+                "lastActionAt": now,
+                "actions": actions,
+            }
+        )
+        atomic_json(STATS_PATH, self.data)
+        return points, int(self.data["level"]) > old_level
+
+
+class HarnessRouter:
+    def __init__(self) -> None:
+        self.candidates: list[HarnessTarget] = []
+        self.target: HarnessTarget | None = None
+        self.last_refresh = 0.0
+
+    def refresh(self, force: bool = False) -> None:
+        if not force and time.monotonic() - self.last_refresh < 5:
+            return
+        self.last_refresh = time.monotonic()
+        if not shutil.which("workspace-copilot"):
+            self.candidates = []
+            self.target = None
+            return
+        try:
+            result = subprocess.run(
+                ["workspace-copilot", "--json", "context"],
+                capture_output=True,
+                text=True,
+                timeout=6,
+                check=False,
+            )
+            context = json.loads(result.stdout) if result.returncode == 0 else {}
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+            context = {}
+        candidates: list[HarnessTarget] = []
+        for session in context.get("tmux", []):
+            session_name = str(session.get("session", ""))
+            for window in session.get("windows", []):
+                window_index = str(window.get("index", ""))
+                for pane in window.get("panes", []):
+                    command = str(pane.get("command", ""))
+                    if pane.get("dead") or command not in ALLOWED_HARNESS_COMMANDS:
+                        continue
+                    candidates.append(
+                        HarnessTarget(
+                            pane=str(pane.get("id", "")),
+                            session=session_name,
+                            window=window_index,
+                            project=str(pane.get("project", "")),
+                            command=command,
+                            active=bool(pane.get("active")),
+                        )
+                    )
+        candidates.sort(key=lambda row: (row.session, int(row.window or 0), row.pane))
+        previous = self.target.pane if self.target else ""
+        self.candidates = candidates
+        self.target = next((row for row in candidates if row.pane == previous), None)
+        if self.target is not None or not candidates:
+            return
+        harnesses = context.get("harnesses", [])
+        real_pane = next(
+            (str(row.get("pane_id")) for row in harnesses if str(row.get("pane_id", "")).startswith("%")),
+            "",
+        )
+        self.target = next((row for row in candidates if row.pane == real_pane), None)
+        if self.target is not None:
+            return
+        recent_project = str(harnesses[0].get("project", "")) if harnesses else ""
+        self.target = next(
+            (row for row in candidates if row.project == recent_project and row.active),
+            None,
+        )
+        if self.target is None:
+            self.target = next((row for row in candidates if row.active and row.command in {"codex", "claude"}), None)
+        if self.target is None:
+            self.target = candidates[0]
+
+    def cycle(self, delta: int) -> HarnessTarget | None:
+        self.refresh(force=True)
+        if not self.candidates:
+            self.target = None
+            return None
+        try:
+            index = self.candidates.index(self.target) if self.target else -1
+        except ValueError:
+            index = -1
+        self.target = self.candidates[(index + delta) % len(self.candidates)]
+        self.focus()
+        return self.target
+
+    def focus(self) -> bool:
+        if self.target is None or not shutil.which("tmux"):
+            return False
+        first = subprocess.run(
+            ["tmux", "select-window", "-t", self.target.pane],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        second = subprocess.run(
+            ["tmux", "select-pane", "-t", self.target.pane],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return first.returncode == 0 and second.returncode == 0
+
+    def send_key(self, key: str) -> bool:
+        self.refresh()
+        if self.target is None:
+            return False
+        result = subprocess.run(
+            ["tmux", "send-keys", "-t", self.target.pane, "--", key],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def send_prompt(self, text: str) -> bool:
+        self.refresh()
+        if self.target is None:
+            return False
+        literal = subprocess.run(
+            ["tmux", "send-keys", "-t", self.target.pane, "-l", "--", text],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if literal.returncode != 0:
+            return False
+        return self.send_key("Enter")
+
+
+class SteeringDaemon:
+    def __init__(self, *, dry_run: bool = False) -> None:
+        self.dry_run = dry_run
+        self.running = True
+        self.armed = False
+        self.adapter: LibUsbAdapter | None = None
+        self.router = HarnessRouter()
+        self.progress = Progress()
+        self.port = 0
+        self.previous_buttons: frozenset[str] | None = None
+        self.repeat_at: dict[str, float] = {}
+        self.workflow_latched = False
+        self.cstick_latched = False
+        self.rumble_until = 0.0
+        self.rumble_on = False
+        self.last_error = ""
+        signal.signal(signal.SIGTERM, self.stop)
+        signal.signal(signal.SIGINT, self.stop)
+
+    def stop(self, *_: object) -> None:
+        self.running = False
+
+    def write_runtime(self, connected: bool) -> None:
+        target = self.router.target
+        payload = {
+            "connected": connected,
+            "controllerPort": self.port or None,
+            "armed": self.armed,
+            "target": target.pane if target else "",
+            "targetLabel": target.label if target else "",
+            "error": self.last_error,
+            "xp": int(self.progress.data.get("xp", 0)),
+            "level": int(self.progress.data.get("level", 1)),
+            "streak": int(self.progress.data.get("streak", 0)),
+            "lastAction": str(self.progress.data.get("lastAction", "")),
+            "voiceBridge": bool(os.environ.get("GAMECUBE_HARNESS_VOICE_START")),
+            "updatedAt": time.time(),
+        }
+        atomic_json(RUNTIME_PATH, payload)
+
+    def pulse(self, duration: float = 0.08) -> None:
+        if self.adapter is None or self.port == 0:
+            return
+        try:
+            self.adapter.rumble(self.port, True)
+            self.rumble_on = True
+            self.rumble_until = time.monotonic() + duration
+        except AdapterError:
+            self.rumble_on = False
+
+    def update_rumble(self) -> None:
+        if not self.rumble_on or time.monotonic() < self.rumble_until:
+            return
+        try:
+            if self.adapter is not None:
+                self.adapter.rumble(self.port, False)
+        except AdapterError:
+            pass
+        self.rumble_on = False
+
+    def award(self, action: str, points: int) -> None:
+        awarded, leveled = self.progress.award(action, points)
+        if leveled:
+            level = int(self.progress.data["level"])
+            notify("Level up", f"Harness level {level} · +{awarded} XP")
+            self.pulse(0.3)
+        self.write_runtime(True)
+
+    def toggle_arm(self) -> None:
+        self.armed = not self.armed
+        self.router.refresh(force=True)
+        state = "ARMED" if self.armed else "PAUSED"
+        target = self.router.target.label if self.router.target else "No harness target"
+        level = int(self.progress.data.get("level", 1))
+        xp = int(self.progress.data.get("xp", 0))
+        notify(f"Controller {state}", f"{target}\nLevel {level} · {xp} XP")
+        self.pulse(0.16 if self.armed else 0.06)
+        self.write_runtime(True)
+
+    def execute_key(self, button: str) -> None:
+        key, label, points = KEY_BINDINGS[button]
+        ok = True if self.dry_run else self.router.send_key(key)
+        if ok:
+            self.award(label, points)
+            self.pulse()
+        else:
+            notify("No harness target", "Cycle targets with L/R, then try again", "critical")
+
+    def execute_workflow(self, direction: str) -> None:
+        prompt = WORKFLOWS[direction]
+        ok = True if self.dry_run else self.router.send_prompt(prompt)
+        if ok:
+            self.award(f"Workflow: {direction}", 10)
+            notify("Workflow launched", f"{direction.title()} · {self.router.target.label if self.router.target else 'dry run'}")
+            self.pulse(0.14)
+
+    def cycle_target(self, delta: int) -> None:
+        target = self.router.cycle(delta)
+        if target is None:
+            notify("No harnesses detected", "Start a Codex, Claude, or OMP tmux pane", "critical")
+            return
+        self.award("Focus harness", 2)
+        notify("Harness focused", target.label)
+        self.pulse(0.1)
+
+    def voice(self, pressed: bool) -> None:
+        variable = "GAMECUBE_HARNESS_VOICE_START" if pressed else "GAMECUBE_HARNESS_VOICE_STOP"
+        command = os.environ.get(variable, "").strip()
+        if not command:
+            if pressed:
+                notify("Voice bridge not connected", "Z is reserved for push-to-talk; Codex CLI has no verified voice action yet")
+            return
+        try:
+            import shlex
+
+            subprocess.Popen(shlex.split(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if pressed:
+                self.award("Push to talk", 2)
+        except (OSError, ValueError) as error:
+            notify("Voice bridge failed", str(error), "critical")
+
+    def handle_button(self, button: str, pressed: bool) -> None:
+        if button == "start" and pressed:
+            self.toggle_arm()
+            return
+        if not self.armed:
+            return
+        if button == "z":
+            self.voice(pressed)
+            return
+        if not pressed:
+            self.repeat_at.pop(button, None)
+            return
+        if button in KEY_BINDINGS:
+            self.execute_key(button)
+            if button.startswith("dpad_"):
+                self.repeat_at[button] = time.monotonic() + 0.38
+        elif button == "l":
+            self.cycle_target(-1)
+        elif button == "r":
+            self.cycle_target(1)
+
+    def handle_repeats(self, held: frozenset[str]) -> None:
+        now = time.monotonic()
+        for button in list(self.repeat_at):
+            if button not in held:
+                self.repeat_at.pop(button, None)
+                continue
+            if now >= self.repeat_at[button]:
+                self.execute_key(button)
+                self.repeat_at[button] = now + 0.11
+
+    def handle_sticks(self, frame: ControllerFrame) -> None:
+        if not self.armed:
+            return
+        x = max(-1.0, min(1.0, (frame.stick_x - 128) / 100.0))
+        y = max(-1.0, min(1.0, (128 - frame.stick_y) / 100.0))
+        magnitude = math.hypot(x, y)
+        if magnitude < 0.35:
+            self.workflow_latched = False
+        elif not self.workflow_latched and magnitude >= 0.72:
+            self.workflow_latched = True
+            direction = "right" if abs(x) >= abs(y) and x > 0 else "left" if abs(x) >= abs(y) else "up" if y > 0 else "down"
+            self.execute_workflow(direction)
+
+        cx = max(-1.0, min(1.0, (frame.cstick_x - 128) / 100.0))
+        if abs(cx) < 0.35:
+            self.cstick_latched = False
+        elif not self.cstick_latched and abs(cx) >= 0.75:
+            self.cstick_latched = True
+            self.cycle_target(1 if cx > 0 else -1)
+
+    def process_frame(self, frame: ControllerFrame) -> None:
+        if not frame.connected:
+            if self.port == frame.port:
+                self.armed = False
+                self.port = 0
+                self.previous_buttons = None
+                self.write_runtime(True)
+                notify("Controller disconnected", "Harness steering paused", "critical")
+            return
+        if self.port == 0:
+            self.port = frame.port
+            self.previous_buttons = frame.buttons
+            self.router.refresh(force=True)
+            self.last_error = ""
+            self.write_runtime(True)
+            notify("GameCube controller connected", f"Port {self.port} · press Start to arm")
+            self.pulse(0.1)
+            return
+        if frame.port != self.port:
+            return
+        previous = self.previous_buttons or frozenset()
+        for button in sorted(previous ^ frame.buttons):
+            self.handle_button(button, button in frame.buttons)
+        self.previous_buttons = frame.buttons
+        self.handle_repeats(frame.buttons)
+        self.handle_sticks(frame)
+
+    def run(self) -> int:
+        self.router.refresh(force=True)
+        self.write_runtime(False)
+        while self.running:
+            if self.adapter is None:
+                try:
+                    self.adapter = LibUsbAdapter()
+                    self.last_error = ""
+                except AdapterError as error:
+                    message = str(error)
+                    if message != self.last_error:
+                        self.last_error = message
+                        self.write_runtime(False)
+                    time.sleep(2)
+                    continue
+            try:
+                report = self.adapter.read()
+                if report is not None:
+                    for frame in parse_report(report):
+                        self.process_frame(frame)
+                self.update_rumble()
+            except AdapterError as error:
+                self.last_error = str(error)
+                self.armed = False
+                self.port = 0
+                self.previous_buttons = None
+                self.adapter.close()
+                self.adapter = None
+                self.write_runtime(False)
+                time.sleep(1)
+        if self.adapter is not None:
+            if self.rumble_on and self.port:
+                try:
+                    self.adapter.rumble(self.port, False)
+                except AdapterError:
+                    pass
+            self.adapter.close()
+        self.armed = False
+        self.write_runtime(False)
+        return 0
+
+
+def locate_usb_device() -> tuple[Path | None, Path | None]:
+    for entry in Path("/sys/bus/usb/devices").iterdir():
+        try:
+            vendor = (entry / "idVendor").read_text().strip().lower()
+            product = (entry / "idProduct").read_text().strip().lower()
+            if vendor != f"{VID:04x}" or product != f"{PID:04x}":
+                continue
+            bus = int((entry / "busnum").read_text())
+            device = int((entry / "devnum").read_text())
+            return entry, Path(f"/dev/bus/usb/{bus:03d}/{device:03d}")
+        except (OSError, ValueError):
+            continue
+    return None, None
+
+
+def doctor() -> int:
+    sysfs, device = locate_usb_device()
+    payload = {
+        "adapterPresent": sysfs is not None,
+        "adapter": str(sysfs or ""),
+        "device": str(device or ""),
+        "deviceAccessible": bool(device and os.access(device, os.R_OK | os.W_OK)),
+        "libusb": ctypes.util.find_library("usb-1.0") or "",
+        "tmux": shutil.which("tmux") or "",
+        "workspaceCopilot": shutil.which("workspace-copilot") or "",
+        "privacyBoundary": "dedicated USB adapter only; no /dev/input, pane output, clipboard, or global input hooks",
+    }
+    print(json.dumps(payload, indent=2))
+    return 0 if all((payload["adapterPresent"], payload["deviceAccessible"], payload["libusb"], payload["tmux"], payload["workspaceCopilot"])) else 1
+
+
+def status() -> int:
+    runtime: dict[str, Any] = {}
+    if RUNTIME_PATH.is_file():
+        try:
+            runtime = json.loads(RUNTIME_PATH.read_text())
+        except (OSError, json.JSONDecodeError):
+            runtime = {}
+    progress = Progress().data
+    print(json.dumps({"runtime": runtime, "progress": progress}, indent=2, sort_keys=True))
+    return 0
+
+
+def bindings() -> int:
+    payload = {
+        "Start": "Arm / pause steering",
+        "A": "Confirm / submit",
+        "B": "Back / dismiss",
+        "X": "Interrupt",
+        "Y": "Tab / cycle mode",
+        "D-pad": "TUI navigation with hold-to-repeat",
+        "L / R": "Previous / next harness",
+        "C-stick left / right": "Previous / next harness",
+        "Main-stick flick up": "Review workflow",
+        "Main-stick flick down": "Verify workflow",
+        "Main-stick flick left": "Debug workflow",
+        "Main-stick flick right": "Refactor workflow",
+        "Z": "Reserved push-to-talk bridge",
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def monitor(seconds: float) -> int:
+    deadline = time.monotonic() + seconds
+    previous: dict[int, ControllerFrame] = {}
+    with LibUsbAdapter() as adapter:
+        while time.monotonic() < deadline:
+            report = adapter.read()
+            if report is None:
+                continue
+            for frame in parse_report(report):
+                old = previous.get(frame.port)
+                if old != frame and (frame.connected or (old and old.connected)):
+                    print(
+                        json.dumps(
+                            {
+                                "port": frame.port,
+                                "connected": frame.connected,
+                                "buttons": sorted(frame.buttons),
+                                "stick": [frame.stick_x, frame.stick_y],
+                                "cstick": [frame.cstick_x, frame.cstick_y],
+                                "triggers": [frame.trigger_l, frame.trigger_r],
+                            }
+                        ),
+                        flush=True,
+                    )
+                previous[frame.port] = frame
+    return 0
+
+
+def self_test() -> int:
+    report = bytearray(REPORT_SIZE)
+    report[0] = REPORT_INPUT
+    report[1] = 0x10
+    buttons = BUTTON_MASKS["a"] | BUTTON_MASKS["dpad_up"] | BUTTON_MASKS["z"]
+    report[2] = buttons >> 8
+    report[3] = buttons & 0xFF
+    report[4:10] = bytes([200, 60, 128, 128, 0, 255])
+    frames = parse_report(bytes(report))
+    assert len(frames) == 4
+    assert frames[0].connected
+    assert frames[0].buttons == frozenset({"a", "dpad_up", "z"})
+    assert frames[0].stick_x == 200 and frames[0].stick_y == 60
+    assert not frames[1].connected
+    assert Progress.level_for(0) == 1
+    assert Progress.level_for(99) == 1
+    assert Progress.level_for(100) == 2
+    print("gamecube-harness self-test: ok")
+    return 0
+
+
+def simulate(events: list[str]) -> int:
+    valid = set(BUTTON_MASKS) | {"stick_up", "stick_down", "stick_left", "stick_right"}
+    unknown = [event for event in events if event not in valid]
+    if unknown:
+        print(f"unknown simulated inputs: {', '.join(unknown)}", file=sys.stderr)
+        return 2
+    for event in events:
+        if event in KEY_BINDINGS:
+            key, label, points = KEY_BINDINGS[event]
+            print(json.dumps({"input": event, "action": label, "tmuxKey": key, "baseXp": points}))
+        elif event in {"l", "r"}:
+            print(json.dumps({"input": event, "action": "Cycle harness", "delta": -1 if event == "l" else 1, "baseXp": 2}))
+        elif event == "start":
+            print(json.dumps({"input": event, "action": "Toggle arm", "baseXp": 0}))
+        elif event == "z":
+            print(json.dumps({"input": event, "action": "Push to talk", "supported": bool(os.environ.get("GAMECUBE_HARNESS_VOICE_START"))}))
+        else:
+            direction = event.removeprefix("stick_")
+            print(json.dumps({"input": event, "action": "Workflow", "direction": direction, "prompt": WORKFLOWS[direction], "baseXp": 10}))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("daemon", help="run the reconnecting steering service")
+    subparsers.add_parser("doctor", help="check adapter, permissions, and harness dependencies")
+    subparsers.add_parser("status", help="show runtime and progression state")
+    subparsers.add_parser("bindings", help="show the default Melee-style control map")
+    monitor_parser = subparsers.add_parser("monitor", help="read physical controller state without steering")
+    monitor_parser.add_argument("--seconds", type=float, default=10.0)
+    subparsers.add_parser("self-test", help="verify report parsing and progression boundaries")
+    simulate_parser = subparsers.add_parser("simulate", help="show planned actions without sending input")
+    simulate_parser.add_argument("events", nargs="+")
+    args = parser.parse_args()
+
+    if args.command == "daemon":
+        return SteeringDaemon().run()
+    if args.command == "doctor":
+        return doctor()
+    if args.command == "status":
+        return status()
+    if args.command == "bindings":
+        return bindings()
+    if args.command == "monitor":
+        return monitor(args.seconds)
+    if args.command == "self-test":
+        return self_test()
+    if args.command == "simulate":
+        return simulate(args.events)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
