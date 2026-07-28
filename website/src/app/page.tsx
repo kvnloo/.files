@@ -121,14 +121,15 @@ export default function HomePage() {
             </p>
 
             {/* Clone Command */}
-            <div className="flex items-center justify-between gap-4 px-6 py-4 glass rounded-[var(--radius-lg)] w-full max-w-[600px]">
-              <div className="flex items-center gap-3 relative z-10">
-                <span className="text-[var(--accent-blue)] font-mono text-sm">$</span>
-                <span className="text-[var(--text-primary)] font-mono text-sm">git clone https://github.com/kvnloo/.files.git ~/workspace/.files</span>
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 glass rounded-[var(--radius-lg)] w-full max-w-[600px]">
+              <div className="flex min-w-0 items-start gap-3 relative z-10">
+                <span className="shrink-0 text-[var(--accent-blue)] font-mono text-sm">$</span>
+                <span className="min-w-0 break-all text-[var(--text-primary)] font-mono text-sm">git clone https://github.com/kvnloo/.files.git ~/workspace/.files</span>
               </div>
               <button
                 onClick={copyClone}
-                className="relative z-10 flex items-center gap-2 px-3 py-2 glass-hairline rounded-[var(--radius-md)] hover:border-[var(--accent-blue)] transition-colors"
+                aria-label={copied ? 'Clone command copied' : 'Copy clone command'}
+                className="relative z-10 shrink-0 flex items-center gap-2 px-3 py-2 glass-hairline rounded-[var(--radius-md)] hover:border-[var(--accent-blue)] transition-colors"
               >
                 {copied ? (
                   <Check size={16} className="text-[var(--accent-green)]" />

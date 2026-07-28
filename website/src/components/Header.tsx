@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { Github, Menu, X } from 'lucide-react'
+import { Crop, Github, Menu, PanelsTopLeft, X } from 'lucide-react'
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { useWallpaperLab } from '@/components/wallpaper/WallpaperShell'
+import type { WallpaperViewMode } from '@/lib/wallpaper/types'
 
 const navItems = [
   { label: 'home', href: '/' },
@@ -12,6 +14,36 @@ const navItems = [
   { label: 'wallpapers', href: '/wallpapers' },
   { label: 'icons', href: '/icons' },
 ]
+
+function ViewModeControl({ compact = false }: { compact?: boolean }) {
+  const { viewMode, setViewMode } = useWallpaperLab()
+  const options: Array<{ mode: WallpaperViewMode; label: string; icon: typeof Crop }> = [
+    { mode: 'crop', label: 'Crop', icon: Crop },
+    { mode: 'cinema', label: 'Cinema', icon: PanelsTopLeft },
+  ]
+
+  return (
+    <div className="flex items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border-default)] bg-black/20 p-1" aria-label="Wallpaper viewing mode">
+      {options.map(({ mode, label, icon: Icon }) => (
+        <button
+          key={mode}
+          type="button"
+          aria-pressed={viewMode === mode}
+          title={`${label} wallpaper mode`}
+          onClick={() => setViewMode(mode)}
+          className={`flex min-h-9 items-center justify-center gap-1.5 rounded-[8px] px-2.5 font-mono text-xs transition-colors ${
+            viewMode === mode
+              ? 'bg-white/12 text-[var(--text-primary)] shadow-sm'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Icon size={14} />
+          {!compact && <span>{label}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -44,6 +76,7 @@ export function Header() {
               {item.label}
             </Link>
           ))}
+          <ViewModeControl compact />
           <a
             href="https://github.com/kvnloo/.files"
             target="_blank"
@@ -79,6 +112,7 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
+            <ViewModeControl />
             <a
               href="https://github.com/kvnloo/.files"
               target="_blank"

@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import { assetPath } from '@/lib/utils'
 import { detectWallpaperTier } from '@/lib/wallpaper/capability'
-import type { WallpaperTier } from '@/lib/wallpaper/types'
+import type { WallpaperTier, WallpaperViewMode } from '@/lib/wallpaper/types'
 
 const RuinsWebGL = dynamic(
   () => import('@/components/wallpaper/RuinsWebGL').then((m) => m.RuinsWebGL),
@@ -21,6 +21,7 @@ type Props = {
   /** Prefer video over poster when WebGL is skipped (default: false — static until capable). */
   allowVideoFallback?: boolean
   showDebug?: boolean
+  viewMode?: WallpaperViewMode
   onTier?: (tier: WallpaperTier) => void
   onFps?: (fps: number) => void
 }
@@ -33,6 +34,7 @@ export function WallpaperBackground({
   forceTier = null,
   allowVideoFallback = false,
   showDebug = false,
+  viewMode = 'crop',
   onTier,
   onFps,
 }: Props = {}) {
@@ -81,7 +83,11 @@ export function WallpaperBackground({
   const showVideo = tier === 'video' && (allowVideoFallback || forceTier === 'video')
 
   return (
-    <div className="wallpaper-root" aria-hidden="true">
+    <div className={`wallpaper-root wallpaper-mode-${viewMode}`} aria-hidden="true">
+      <picture className="wallpaper-backdrop">
+        <source srcSet={POSTER_WEBP} type="image/webp" />
+        <img src={POSTER_SRC} alt="" decoding="async" />
+      </picture>
       <picture className={`wallpaper-poster-wrap${webglReady ? ' is-dimmed' : ''}`}>
         <source srcSet={POSTER_WEBP} type="image/webp" />
         <img

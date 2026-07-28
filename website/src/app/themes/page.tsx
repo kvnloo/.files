@@ -45,9 +45,9 @@ export default function ThemesPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex flex-col items-center gap-6 py-16 px-[120px]">
+        <section className="flex flex-col items-center gap-6 px-4 py-12 sm:px-8 sm:py-16 lg:px-[120px]">
           <Palette size={48} className="text-[var(--accent-purple)]" />
-          <h1 className="text-5xl font-bold font-mono text-[var(--text-primary)]">polybar_themes/</h1>
+          <h1 className="break-all text-center text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">polybar_themes/</h1>
           <p className="text-lg text-[var(--text-muted)]  text-center max-w-2xl">
             Legacy Polybar themes (still in-repo). Current desktop shell is Noctalia or Waybar via{' '}
             <span className="font-mono text-[var(--text-primary)]">bar-mode</span>.
@@ -55,6 +55,7 @@ export default function ThemesPage() {
 
           {/* Filter Row */}
           <Filter
+            className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
             accent="purple"
             value={activeFilter}
             onChange={setActiveFilter}
@@ -63,9 +64,9 @@ export default function ThemesPage() {
         </section>
 
         {/* Theme Grid */}
-        <section className="py-16 px-[120px]">
+        <section className="px-4 py-12 sm:px-8 sm:py-16 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// available_themes</p>
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {filteredThemes.map((theme) => (
               <div
                 key={theme.name}
@@ -101,8 +102,9 @@ export default function ThemesPage() {
 
                 {/* Apply Button */}
                 <button
+                  type="button"
                   onClick={() => copyCommand(theme.name)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] text-sm font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  className="flex min-h-11 items-center justify-center gap-2 px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] text-sm font-mono text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors lg:min-h-0"
                 >
                   {copiedTheme === theme.name ? (
                     <>
@@ -122,9 +124,9 @@ export default function ThemesPage() {
         </section>
 
         {/* Pywal Integration */}
-        <section className="py-12 px-[120px] flex flex-col items-center">
+        <section className="flex flex-col items-center px-4 py-12 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6 self-start">// pywal_integration</p>
-          <div className="w-[600px] glass overflow-hidden rounded-[var(--radius-lg)]">
+          <div className="w-full max-w-[600px] glass overflow-hidden rounded-[var(--radius-lg)]">
             {/* Terminal Header */}
             <div className="flex items-center gap-2 px-4 py-3 bg-[rgba(10,18,26,0.35)]">
               <div className="w-3 h-3 rounded-full bg-[#F85149]" />
@@ -133,22 +135,22 @@ export default function ThemesPage() {
               <span className="ml-2 text-xs font-mono text-[var(--text-muted)]">pywal</span>
             </div>
             {/* Terminal Body */}
-            <div className="flex flex-col gap-2 p-5 bg-[rgba(5,10,14,0.35)]">
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--text-dim)] font-mono text-sm">#</span>
-                <span className="text-[var(--text-muted)] font-mono text-sm">Generate colors from wallpaper</span>
+            <div className="flex flex-col gap-2 p-4 bg-[rgba(5,10,14,0.35)] sm:p-5">
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="shrink-0 text-[var(--text-dim)] font-mono text-sm">#</span>
+                <span className="min-w-0 break-words text-[var(--text-muted)] font-mono text-sm">Generate colors from wallpaper</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--accent-blue)] font-mono text-sm">$</span>
-                <span className="text-[var(--text-primary)] font-mono text-sm">wal -i ~/wallpaper.png</span>
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="shrink-0 text-[var(--accent-blue)] font-mono text-sm">$</span>
+                <span className="min-w-0 break-all text-[var(--text-primary)] font-mono text-sm">wal -i ~/wallpaper.png</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--text-dim)] font-mono text-sm">#</span>
-                <span className="text-[var(--text-muted)] font-mono text-sm">Current desktop: switch bar mode</span>
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="shrink-0 text-[var(--text-dim)] font-mono text-sm">#</span>
+                <span className="min-w-0 break-words text-[var(--text-muted)] font-mono text-sm">Current desktop: switch bar mode</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--accent-blue)] font-mono text-sm">$</span>
-                <span className="text-[var(--text-primary)] font-mono text-sm">bar-mode noctalia   # or: bar-mode waybar</span>
+              <div className="flex min-w-0 items-start gap-2">
+                <span className="shrink-0 text-[var(--accent-blue)] font-mono text-sm">$</span>
+                <span className="min-w-0 break-all text-[var(--text-primary)] font-mono text-sm">bar-mode noctalia   # or: bar-mode waybar</span>
               </div>
             </div>
           </div>

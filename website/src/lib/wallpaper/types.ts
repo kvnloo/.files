@@ -1,6 +1,7 @@
 /** Forgotten Ruins web player — shared types (no Steam assets). */
 
 export type WallpaperTier = 'webgl' | 'video' | 'poster'
+export type WallpaperViewMode = 'crop' | 'cinema'
 
 export type WaterRipplePass = {
   type: 'waterripple'

@@ -88,26 +88,27 @@ export default function IconsPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
-          <div className="flex flex-col gap-6">
+        <section className="flex flex-col items-start justify-between gap-8 px-4 py-12 sm:px-8 sm:py-16 lg:flex-row lg:gap-16 lg:px-[120px]">
+          <div className="flex min-w-0 flex-col gap-6">
             <Box size={48} className="text-[var(--accent-green)]" />
-            <h1 className="text-5xl font-bold font-mono text-[var(--text-primary)]">icon_collection/</h1>
+            <h1 className="break-all text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">icon_collection/</h1>
             <p className="text-lg text-[var(--text-muted)] leading-relaxed max-w-xl">
               {icons.length}+ custom macOS application icons with consistent design language. Categories: system, productivity, media, and communication.
             </p>
           </div>
 
           {/* Count Badge */}
-          <div className="flex flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(111,191,122,0.35)]">
+          <div className="flex w-full flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(111,191,122,0.35)] sm:w-auto">
             <span className="text-4xl font-bold font-mono text-[var(--accent-green)]">{icons.length}+</span>
             <span className="text-xs text-[var(--text-muted)] font-mono">icons</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="py-8 px-[120px]">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-4">// filter_by_category</p>
           <Filter
+            className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
             accent="green"
             value={activeCategory}
             onChange={setActiveCategory}
@@ -119,9 +120,9 @@ export default function IconsPage() {
         </section>
 
         {/* Icons Grid */}
-        <section className="py-8 px-[120px]">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// showing {filtered.length} icons</p>
-          <div className="grid grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-6">
             {filtered.map((icon) => (
               <div
                 key={icon.name}
@@ -144,9 +145,9 @@ export default function IconsPage() {
         </section>
 
         {/* Quick Install */}
-        <section className="py-12 px-[120px]">
+        <section className="px-4 py-12 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// quick_install</p>
-          <div className="flex items-center justify-between p-6 glass rounded-[var(--radius-lg)]">
+          <div className="flex flex-col items-start justify-between gap-5 p-5 glass rounded-[var(--radius-lg)] sm:flex-row sm:items-center sm:p-6">
             <div>
               <h3 className="text-lg font-semibold font-mono text-[var(--text-primary)] mb-2">Download all icons</h3>
               <p className="text-sm text-[var(--text-muted)] font-mono">git clone to get all {icons.length}+ icons</p>
@@ -155,7 +156,7 @@ export default function IconsPage() {
               href="https://github.com/kvnloo/.files/tree/master/icons"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-6 py-3 bg-[var(--accent-green)] text-[#0D1117] text-sm font-semibold font-mono rounded-[var(--radius-md)] hover:bg-[#2ea043] transition-colors"
+              className="flex w-full items-center justify-center gap-2 px-6 py-3 bg-[var(--accent-green)] text-[#0D1117] text-sm font-semibold font-mono rounded-[var(--radius-md)] hover:bg-[#2ea043] transition-colors sm:w-auto"
             >
               <Download size={16} />
               <span>Download All</span>
@@ -164,9 +165,9 @@ export default function IconsPage() {
         </section>
 
         {/* Installation */}
-        <section className="py-12 px-[120px]">
+        <section className="px-4 py-12 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// how_to_use</p>
-          <div className="w-[600px] glass rounded-[var(--radius-lg)] overflow-hidden">
+          <div className="w-full max-w-[600px] glass rounded-[var(--radius-lg)] overflow-hidden">
             {/* Terminal Header */}
             <div className="flex items-center gap-2 px-4 py-3 bg-[rgba(10,18,26,0.35)]">
               <div className="w-3 h-3 rounded-full bg-[#F85149]" />

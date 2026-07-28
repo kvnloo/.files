@@ -125,38 +125,40 @@ export default function WallpapersPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
-          <div className="flex flex-col gap-6">
+        <section className="flex flex-col items-start justify-between gap-8 px-4 py-12 sm:px-8 sm:py-16 lg:flex-row lg:gap-16 lg:px-[120px]">
+          <div className="flex min-w-0 flex-col gap-6">
             <ImageIcon size={48} className="text-[var(--accent-blue)]" />
-            <h1 className="text-5xl font-bold font-mono text-[var(--text-primary)]">wallpaper_gallery/</h1>
+            <h1 className="break-all text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">wallpaper_gallery/</h1>
             <p className="text-lg text-[var(--text-muted)] leading-relaxed max-w-xl">
               {wallpapers.length} curated wallpapers across 6 resolutions. From 2K to 8K, space to urban, minimal to vibrant.
             </p>
           </div>
 
           {/* Count Badge */}
-          <div className="flex flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(110,200,196,0.35)]">
+          <div className="flex w-full flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(110,200,196,0.35)] sm:w-auto">
             <span className="text-4xl font-bold font-mono text-[var(--accent-blue)]">{wallpapers.length}</span>
             <span className="text-xs text-[var(--text-muted)] font-mono">wallpapers</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="py-8 px-[120px]">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
           <div className="flex flex-col gap-4">
             {/* Category Filter */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
               <span className="text-sm font-mono text-[var(--text-dim)] w-20">category:</span>
               <Filter
+                className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
                 value={activeCategory}
                 onChange={setActiveCategory}
                 options={categories.map((cat) => ({ label: cat, value: cat }))}
               />
             </div>
             {/* Resolution Filter */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
               <span className="text-sm font-mono text-[var(--text-dim)] w-20">resolution:</span>
               <Filter
+                className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
                 value={activeResolution}
                 onChange={setActiveResolution}
                 options={resolutions.map((res) => ({
@@ -169,13 +171,15 @@ export default function WallpapersPage() {
         </section>
 
         {/* Gallery Grid */}
-        <section className="py-8 px-[120px]">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-secondary)] mb-6">// showing {filtered.length} wallpapers</p>
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
             {filtered.map((wallpaper, index) => (
-              <div
+              <button
                 key={`${wallpaper.name}-${index}`}
-                className="group relative aspect-video glass rounded-[var(--radius-lg)] overflow-hidden cursor-pointer hover:border-[rgba(110,200,196,0.45)] transition-colors"
+                type="button"
+                aria-label={`View ${wallpaper.name}`}
+                className="group relative block aspect-video w-full glass rounded-[var(--radius-lg)] overflow-hidden cursor-pointer text-left hover:border-[rgba(110,200,196,0.45)] transition-colors"
                 onClick={() => setSelectedWallpaper(wallpaper)}
               >
                 <Image
@@ -186,7 +190,7 @@ export default function WallpapersPage() {
                   sizes="(max-width: 768px) 100vw, 33vw"
                 />
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-visible:opacity-100">
                   <div className="absolute bottom-0 left-0 right-0 p-4">
                     <p className="text-sm font-mono text-white truncate">{wallpaper.name}</p>
                     <p className="text-xs font-mono text-white/60">{wallpaper.resolution} • {wallpaper.category}</p>
@@ -196,7 +200,7 @@ export default function WallpapersPage() {
                 <div className="absolute top-3 right-3 px-2 py-1 rounded-[var(--radius-sm)] bg-[rgba(3,8,12,0.78)] border border-white/20 backdrop-blur-md shadow-sm text-[10px] font-mono tabular-nums text-white/90">
                   {wallpaper.resolution}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -224,7 +228,7 @@ export default function WallpapersPage() {
                 </div>
                 <button
                   onClick={() => setSelectedWallpaper(null)}
-                  className="px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] rounded-[var(--radius-md)] text-sm font-mono text-[var(--text-primary)] hover:bg-[#30363D]"
+                  className="min-h-11 px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] rounded-[var(--radius-md)] text-sm font-mono text-[var(--text-primary)] hover:bg-[#30363D] lg:min-h-0"
                 >
                   Close
                 </button>

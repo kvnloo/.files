@@ -29,10 +29,10 @@ export default function AudioPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
-          <div className="flex flex-col gap-6 flex-1">
+        <section className="flex flex-col items-start justify-between gap-8 px-4 py-12 sm:px-8 sm:py-16 lg:flex-row lg:gap-16 lg:px-[120px]">
+          <div className="flex min-w-0 flex-col gap-6">
             <Headphones size={48} className="text-[#F59E0B]" />
-            <h1 className="text-5xl font-bold font-mono text-[var(--text-primary)]">audiophile_setup/</h1>
+            <h1 className="break-all text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">audiophile_setup/</h1>
             <p className="text-lg text-[var(--text-muted)] leading-relaxed">
               Native PipeWire filter-chain DSP with AutoEQ, crossfeed, BRIR room, and a Movie fold-down sink —
               plus optional Aural Evolution for blind, level-matched listening experiments.
@@ -40,7 +40,7 @@ export default function AudioPage() {
           </div>
 
           {/* Score Badge */}
-          <div className="flex flex-col items-center gap-4 p-8 glass rounded-[var(--radius-lg)] border-[rgba(212,180,90,0.35)]">
+          <div className="flex w-full flex-col items-center gap-4 p-6 glass rounded-[var(--radius-lg)] border-[rgba(212,180,90,0.35)] sm:w-auto sm:p-8">
             <span className="text-xs font-mono text-[var(--text-muted)]">stack</span>
             <span className="text-4xl font-bold font-mono text-[var(--accent-green)]">PipeWire</span>
             <span className="text-sm text-[var(--accent-green)] ">native filter-chain</span>
@@ -48,11 +48,16 @@ export default function AudioPage() {
         </section>
 
         {/* Current Setup */}
-        <section className="py-16 px-[120px]">
+        <section className="px-4 py-12 sm:px-8 sm:py-16 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// current_setup</p>
-          <div className="glass rounded-[var(--radius-lg)] overflow-hidden">
+          <div
+            className="max-w-full overflow-x-auto glass rounded-[var(--radius-lg)]"
+            role="region"
+            aria-label="Current audio setup"
+            tabIndex={0}
+          >
             {/* Table Header */}
-            <div className="flex items-center gap-6 px-6 py-4 bg-[rgba(18,28,38,0.45)]">
+            <div className="flex min-w-[680px] items-center gap-6 px-6 py-4 bg-[rgba(18,28,38,0.45)]">
               <span className="flex-1 text-sm font-mono text-[var(--text-muted)]">component</span>
               <span className="flex-[2] text-sm font-mono text-[var(--text-muted)]">value</span>
               <span className="w-24 text-sm font-mono text-[var(--text-muted)] text-right">status</span>
@@ -61,7 +66,7 @@ export default function AudioPage() {
             {setupRows.map((row, index) => (
               <div
                 key={row.component}
-                className={`flex items-center gap-6 px-6 py-4 bg-[rgba(10,18,26,0.35)] ${
+                className={`flex min-w-[680px] items-center gap-6 px-6 py-4 bg-[rgba(10,18,26,0.35)] ${
                   index < setupRows.length - 1 ? 'border-b border-[#30363D]' : ''
                 }`}
               >
@@ -78,9 +83,9 @@ export default function AudioPage() {
         </section>
 
         {/* Iceberg */}
-        <section className="py-16 px-[120px] flex flex-col items-center">
+        <section className="flex flex-col items-center px-4 py-12 sm:px-8 sm:py-16 lg:px-[120px]">
           <p className="text-sm font-mono text-[var(--text-dim)] mb-8 self-start">// the_audiophile_iceberg</p>
-          <div className="w-[900px] glass rounded-[var(--radius-lg)] overflow-hidden">
+          <div className="w-full max-w-[900px] glass rounded-[var(--radius-lg)] overflow-hidden">
             {/* Waterline */}
             <div className="flex items-center justify-center h-10 bg-[rgba(110,200,196,0.15)]">
               <span className="text-xs font-mono text-[var(--accent-blue)]">═══ WATERLINE ═══</span>
@@ -90,13 +95,13 @@ export default function AudioPage() {
             {icebergLayers.map((layer) => (
               <div
                 key={layer.level}
-                className="flex items-center justify-between px-6 py-4"
+                className="flex flex-col items-start justify-between gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-6"
                 style={{
                   backgroundColor: `${layer.color}08`,
                   borderLeft: `4px solid ${layer.color}`,
                 }}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                   {layer.active ? (
                     <Check size={16} className="text-[var(--accent-green)]" />
                   ) : (
