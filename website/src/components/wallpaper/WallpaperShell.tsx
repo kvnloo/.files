@@ -78,13 +78,17 @@ export function WallpaperShell({ children }: { children: ReactNode }) {
       const offset = reducedMotion.matches ? 0 : Math.max(-maxOffset, -window.scrollY * 0.035)
       root.style.setProperty('--wallpaper-parallax', `${offset}px`)
     }
-    const onScroll = () => {
+    const scheduleUpdate = () => {
       if (!frame) frame = window.requestAnimationFrame(updateParallax)
     }
     updateParallax()
-    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate, { passive: true })
+    reducedMotion.addEventListener('change', scheduleUpdate)
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+      reducedMotion.removeEventListener('change', scheduleUpdate)
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [])
