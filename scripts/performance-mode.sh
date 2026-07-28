@@ -47,6 +47,18 @@ set_hypr_performance() {
   hyprctl keyword decoration:blur:enabled false >/dev/null 2>&1 || true
   hyprctl keyword decoration:shadow:enabled false >/dev/null 2>&1 || true
 }
+set_agent_pressure_limits() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl --user set-property --runtime agent.slice \
+    CPUWeight=50 IOWeight=25 MemoryHigh=8G MemorySwapMax=16G >/dev/null 2>&1 || true
+}
+
+restore_agent_pressure_limits() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl --user set-property --runtime agent.slice \
+    CPUWeight=80 IOWeight=50 MemoryHigh=10G MemorySwapMax=24G >/dev/null 2>&1 || true
+}
+
 
 restore_hypr_options() {
   [[ -r $HYPR_FILE ]] || return 0
@@ -85,6 +97,7 @@ sync_on() {
   save_hypr_options
   reduce_wallpaper_load
   set_hypr_performance
+  set_agent_pressure_limits
   printf '%s\n' "$origin" > "$ACTIVE_FILE"
 }
 
@@ -94,6 +107,7 @@ sync_off() {
   local active_origin
   active_origin=$(cat "$ACTIVE_FILE" 2>/dev/null || printf manual)
   [[ $requested_origin != auto || $active_origin == auto ]] || return 0
+  restore_agent_pressure_limits
   restore_hypr_options
   restore_wallpaper_load
   rm -f "$ACTIVE_FILE" "$HYPR_FILE" "$WALLPAPER_FILE" "$WALLPAPER_CHANGED"

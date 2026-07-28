@@ -55,16 +55,12 @@ vm.swappiness = 150
 vm.vfs_cache_pressure = 50
 vm.watermark_scale_factor = 125
 vm.page-cluster = 0
-vm.dirty_ratio = 20
-vm.dirty_background_ratio = 10
-vm.overcommit_memory = 1
+vm.dirty_bytes = 268435456
+vm.dirty_background_bytes = 67108864
+vm.overcommit_memory = 0
 vm.overcommit_ratio = 100
 
-# Scheduler latency tuning
-kernel.sched_latency_ns = 24000000
-kernel.sched_min_granularity_ns = 3000000
-kernel.sched_wakeup_granularity_ns = 4000000
-kernel.sched_migration_cost_ns = 5000000
+# scx_flow owns task placement; stale CFS latency sysctls no longer exist on EEVDF kernels.
 kernel.sched_autogroup_enabled = 0
 
 # Network throughput and low latency

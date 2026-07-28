@@ -15,11 +15,11 @@ MODE = ROOT / "scripts" / "performance-mode.sh"
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / f"performance-pressure-{os.getuid()}"
 COOLDOWN_FILE = RUNTIME / "cancelled-until"
 INTERVAL = float(os.environ.get("PERFORMANCE_SAMPLE_SECONDS", "5"))
-TRIGGER = float(os.environ.get("PERFORMANCE_TRIGGER_PERCENT", "90"))
-TRIGGER_SAMPLES = int(os.environ.get("PERFORMANCE_TRIGGER_SAMPLES", "3"))
-RECOVERY = float(os.environ.get("PERFORMANCE_RECOVERY_PERCENT", "85"))
-RECOVERY_SAMPLES = int(os.environ.get("PERFORMANCE_RECOVERY_SAMPLES", "60"))
-ALERT_SECONDS = int(os.environ.get("PERFORMANCE_ALERT_SECONDS", "15"))
+TRIGGER = float(os.environ.get("PERFORMANCE_TRIGGER_PERCENT", "85"))
+TRIGGER_SAMPLES = int(os.environ.get("PERFORMANCE_TRIGGER_SAMPLES", "2"))
+RECOVERY = float(os.environ.get("PERFORMANCE_RECOVERY_PERCENT", "55"))
+RECOVERY_SAMPLES = int(os.environ.get("PERFORMANCE_RECOVERY_SAMPLES", "24"))
+ALERT_SECONDS = int(os.environ.get("PERFORMANCE_ALERT_SECONDS", "10"))
 CANCEL_SECONDS = int(os.environ.get("PERFORMANCE_CANCEL_SECONDS", "600"))
 SWAP_FULL_SCALE_MIB_S = 64.0
 
@@ -44,12 +44,18 @@ def cpu_counters() -> tuple[int, int]:
     return sum(values), idle
 
 
-def pressure_average(resource: str) -> float:
+def pressure_average(resource: str, level: str = "full") -> float:
     try:
-        first = Path(f"/proc/pressure/{resource}").read_text().splitlines()[0]
-        return float(next(field[6:] for field in first.split() if field.startswith("avg10=")))
+        lines = Path(f"/proc/pressure/{resource}").read_text().splitlines()
+        selected = next(line for line in lines if line.startswith(f"{level} "))
+        return float(next(field[6:] for field in selected.split() if field.startswith("avg10=")))
     except (OSError, ValueError, StopIteration, IndexError):
         return 0.0
+def saturation_score(value: float, start: float, full: float) -> float:
+    if value <= start:
+        return 0.0
+    return max(0.0, min((value - start) / (full - start) * 100.0, 100.0))
+
 
 
 def gpu_percent() -> float:
@@ -99,17 +105,16 @@ def cancel_for_cooldown() -> None:
 def alert(score: float, cause: str) -> str:
     sustained = round(INTERVAL * TRIGGER_SAMPLES)
     body = (
-        f"System pressure held at {score:.0f}% ({cause}) for {sustained}s. "
-        f"Performance mode starts in {ALERT_SECONDS}s. Click this notification to switch now."
+        f"Performance mode activated at {score:.0f}% pressure ({cause}) after {sustained}s. "
+        "Cancel only if you need full desktop effects during this workload."
     )
     command = [
         "notify-send",
         "--app-name=performance-pressure",
         "--urgency=critical",
         f"--expire-time={ALERT_SECONDS * 1000}",
-        "--action=default=Switch now",
-        "--action=cancel=Cancel (risk freezing)",
-        "Performance pressure detected",
+        "--action=cancel=Restore effects for 10 min",
+        "Performance mode enabled",
         body,
     ]
     try:
@@ -124,6 +129,7 @@ class Sampler:
         self.previous_cpu = cpu_counters()
         vmstat = read_fields("/proc/vmstat")
         self.previous_swap_pages = vmstat.get("pswpin", 0) + vmstat.get("pswpout", 0)
+        self.previous_major_faults = vmstat.get("pgmajfault", 0)
         self.previous_time = time.monotonic()
         self.page_mib = os.sysconf("SC_PAGE_SIZE") / 1024 / 1024
 
@@ -144,16 +150,20 @@ class Sampler:
         vmstat = read_fields("/proc/vmstat")
         swap_pages = vmstat.get("pswpin", 0) + vmstat.get("pswpout", 0)
         swap_mib_s = max(0, swap_pages - self.previous_swap_pages) * self.page_mib / elapsed
+        major_faults = vmstat.get("pgmajfault", 0)
+        major_faults_s = max(0, major_faults - self.previous_major_faults) / elapsed
         self.previous_swap_pages = swap_pages
+        self.previous_major_faults = major_faults
         self.previous_time = now
 
         metrics = {
             "CPU": max(0.0, min(cpu, 100.0)),
-            "memory": max(0.0, min(memory_used, 100.0)),
+            "memory headroom": saturation_score(memory_used, 80.0, 98.0),
             "GPU": max(0.0, min(gpu_percent(), 100.0)),
-            "I/O stall": max(0.0, min(pressure_average("io"), 100.0)),
-            "memory stall": max(0.0, min(pressure_average("memory"), 100.0)),
+            "I/O stall": saturation_score(pressure_average("io"), 0.0, 20.0),
+            "memory stall": saturation_score(pressure_average("memory"), 0.0, 10.0),
             "swap churn": max(0.0, min(swap_mib_s / SWAP_FULL_SCALE_MIB_S * 100.0, 100.0)),
+            "major faults": saturation_score(major_faults_s, 20.0, 500.0),
         }
         cause, score = max(metrics.items(), key=lambda item: item[1])
         return {"score": round(score, 1), "cause": cause, **{key: round(value, 1) for key, value in metrics.items()}}
@@ -195,12 +205,12 @@ def monitor(simulated_score: float | None = None, simulated_cause: str = "test")
         if high_samples < TRIGGER_SAMPLES:
             continue
 
+        set_mode(True)
         action = alert(score, cause)
         high_samples = 0
         if action == "cancel":
+            set_mode(False)
             cancel_for_cooldown()
-        else:
-            set_mode(True)
         simulated_score = None
 
 

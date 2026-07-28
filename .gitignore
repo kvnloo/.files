@@ -8,6 +8,11 @@ config/fish/fish_history
 config/fish/fish_variables
 config/fish/config.fish.bak.*
 config/pulse/cookie
+
+# dotenvx: encrypted payloads may be tracked; private decryption keys may not.
+secrets/.env
+secrets/.env.keys
+secrets/.env.*.keys
 **/__pycache__/
 .cast-tools/
 .venv/

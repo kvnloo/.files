@@ -1,8 +1,24 @@
 #!/usr/bin/env bash
+# Stage files in the tailnet portal by default; native Taildrop remains opt-in.
 set -euo pipefail
 
+mode=portal
+case ${1:-} in
+  --native) mode=native; shift ;;
+  --portal) shift ;;
+  --clear)
+    outbox=$HOME/Downloads/Taildrop/To\ Phone
+    mkdir -p "$outbox"
+    find "$outbox" -mindepth 1 -maxdepth 1 -type f -delete
+    find "$outbox" -mindepth 1 -maxdepth 1 -type l -delete
+    printf 'Cleared PC-to-phone staging area.\n'
+    exit 0
+    ;;
+esac
+
 if (($# == 0)); then
-  printf 'usage: %s FILE [FILE ...]\n' "${0##*/}" >&2
+  printf 'usage: %s [--portal|--native] FILE [FILE ...]\n' "${0##*/}" >&2
+  printf '       %s --clear\n' "${0##*/}" >&2
   exit 2
 fi
 command -v tailscale >/dev/null 2>&1 || { printf 'tailscale is required\n' >&2; exit 1; }
@@ -38,6 +54,36 @@ case ${#phones[@]} in
     ;;
 esac
 
+phone_name=${selection%%$'\t'*}
 target=${selection#*$'\t'}
-printf 'Sending to %s…\n' "${selection%%$'\t'*}"
-tailscale file cp -- "$@" "$target:"
+if [[ $mode == native ]]; then
+  printf 'Sending natively to %s…\n' "$phone_name"
+  exec tailscale file cp -- "$@" "$target:"
+fi
+
+outbox=$HOME/Downloads/Taildrop/To\ Phone
+mkdir -p "$outbox"
+for source in "$@"; do
+  source=$(realpath -- "$source")
+  name=${source##*/}
+  stem=${name%.*}
+  suffix=
+  [[ $name == *.* ]] && suffix=.${name##*.}
+  [[ -n $suffix ]] || stem=$name
+  destination=$outbox/$name
+  index=1
+  while [[ -e $destination || -L $destination ]]; do
+    destination=$outbox/$stem\ \($index\)$suffix
+    ((index++))
+  done
+  ln -- "$source" "$destination" 2>/dev/null || cp --reflink=auto --preserve=timestamps -- "$source" "$destination"
+  printf 'Staged %s\n' "${destination##*/}"
+done
+
+dns_name=$(tailscale status --json | jq -r '.Self.DNSName // empty | rtrimstr(".")')
+[[ -n $dns_name ]] || { printf 'this device has no Tailscale DNS name\n' >&2; exit 1; }
+url=https://$dns_name/drop/
+printf '\nOpen on %s:\n%s\n' "$phone_name" "$url"
+if command -v notify-send >/dev/null 2>&1; then
+  notify-send -a taildrop-phone "Files ready for $phone_name" "$url"
+fi

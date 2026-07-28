@@ -166,18 +166,26 @@ run_core_links() {
   fi
 
   # CLI helpers on PATH
-  local bin
+  local bin command_name
   for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
              desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
-             performance-mode.sh performance-pressure.py theme-switcher.sh \
-             reload-desktop.sh keybind-cheatsheet.py; do
+             performance-mode.sh performance-pressure.py taildrop-phone.sh \
+             taildrop-portal.py theme-switcher.sh reload-desktop.sh keybind-cheatsheet.py; do
     if [[ -e "$repo/scripts/$bin" ]]; then
-      onboard_link "$repo/scripts/$bin" "$HOME/.local/bin/${bin%.sh}"
+      command_name="${bin%.sh}"
+      command_name="${command_name%.py}"
+      onboard_link "$repo/scripts/$bin" "$HOME/.local/bin/$command_name"
       # keep .sh name too when helpful
       if [[ "$bin" == *.sh || "$bin" == *.py ]]; then
         onboard_link "$repo/scripts/$bin" "$HOME/.local/bin/$bin"
       fi
     fi
+  done
+
+  mkdir -p "$HOME/.config/systemd/user"
+  for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service; do
+    [[ -e "$repo/config/systemd/user/$unit" ]] && \
+      onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done
 
   chmod +x "$repo"/scripts/* 2>/dev/null || true

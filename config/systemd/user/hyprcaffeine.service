@@ -1,0 +1,12 @@
+[Unit]
+Description=Restore HyprCaffeine display inhibition
+After=graphical-session.target
+ConditionPathExists=%h/.local/bin/hyprcaffeine
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hyprcaffeine restore
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
