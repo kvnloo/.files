@@ -74,7 +74,8 @@ export function WallpaperShell({ children }: { children: ReactNode }) {
     let frame = 0
     const updateParallax = () => {
       frame = 0
-      const offset = reducedMotion.matches ? 0 : Math.max(-32, -window.scrollY * 0.035)
+      const maxOffset = Math.min(32, window.innerHeight * 0.04)
+      const offset = reducedMotion.matches ? 0 : Math.max(-maxOffset, -window.scrollY * 0.035)
       root.style.setProperty('--wallpaper-parallax', `${offset}px`)
     }
     const onScroll = () => {

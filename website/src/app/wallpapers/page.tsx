@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Header, Footer, Filter } from '@/components'
 import { Image as ImageIcon } from 'lucide-react'
 import Image from 'next/image'
@@ -107,6 +107,46 @@ export default function WallpapersPage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [activeResolution, setActiveResolution] = useState('all')
   const [selectedWallpaper, setSelectedWallpaper] = useState<typeof wallpapers[0] | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null)
+  const lightboxWasOpenRef = useRef(false)
+
+  const openLightbox = (wallpaper: typeof wallpapers[0], trigger: HTMLButtonElement) => {
+    triggerButtonRef.current = trigger
+    setSelectedWallpaper(wallpaper)
+  }
+
+  const closeLightbox = useCallback(() => {
+    setSelectedWallpaper(null)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedWallpaper) {
+      if (lightboxWasOpenRef.current) {
+        lightboxWasOpenRef.current = false
+        window.setTimeout(() => triggerButtonRef.current?.focus(), 0)
+      }
+      return
+    }
+    lightboxWasOpenRef.current = true
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeLightbox()
+      } else if (event.key === 'Tab') {
+        event.preventDefault()
+        closeButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [selectedWallpaper, closeLightbox])
 
   const filtered = wallpapers.filter((w) => {
     const matchCat = activeCategory === 'all' || w.category === activeCategory
@@ -180,7 +220,7 @@ export default function WallpapersPage() {
                 type="button"
                 aria-label={`View ${wallpaper.name}`}
                 className="group relative block aspect-video w-full glass rounded-[var(--radius-lg)] overflow-hidden cursor-pointer text-left hover:border-[rgba(110,200,196,0.45)] transition-colors"
-                onClick={() => setSelectedWallpaper(wallpaper)}
+                onClick={(event) => openLightbox(wallpaper, event.currentTarget)}
               >
                 <Image
                   src={assetPath(`/wallpapers/${getResolutionFolder(wallpaper.resolution)}/${wallpaper.file}`)}
@@ -208,8 +248,11 @@ export default function WallpapersPage() {
         {/* Lightbox */}
         {selectedWallpaper && (
           <div
-            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-8"
-            onClick={() => setSelectedWallpaper(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wallpaper-dialog-title"
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 sm:p-8"
+            onClick={closeLightbox}
           >
             <div className="relative max-w-6xl w-full" onClick={(e) => e.stopPropagation()}>
               <div className="relative aspect-video">
@@ -223,11 +266,13 @@ export default function WallpapersPage() {
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <div>
-                  <p className="text-lg font-mono text-white">{selectedWallpaper.name}</p>
+                  <p id="wallpaper-dialog-title" className="text-lg font-mono text-white">{selectedWallpaper.name}</p>
                   <p className="text-sm font-mono text-white/60">{selectedWallpaper.resolution} • {selectedWallpaper.category}</p>
                 </div>
                 <button
-                  onClick={() => setSelectedWallpaper(null)}
+                  ref={closeButtonRef}
+                  type="button"
+                  onClick={closeLightbox}
                   className="min-h-11 px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] rounded-[var(--radius-md)] text-sm font-mono text-[var(--text-primary)] hover:bg-[#30363D] lg:min-h-0"
                 >
                   Close
