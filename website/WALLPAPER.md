@@ -1,15 +1,34 @@
 # Site wallpaper: Forgotten Ruins
 
-Public pages use a **static poster** of Wallpaper Engine Scene `2133182232` (Forgotten Ruins) under liquid-glass UI.
+Public pages use an **adaptive** Forgotten Ruins backdrop (Wallpaper Engine Scene
+`2133182232`):
 
-Video/WebM playback is **off** for now. A native Wallpaper Engine ↔ website bridge is being researched separately; until that lands, keep the clean still image.
+| Tier | When | What |
+|------|------|------|
+| **A – Reactive** | WebGL OK, motion allowed | Thin WebGL1 player (base + water passes + light particles) |
+| **B – Video** | Opt-in / lab only (`allowVideoFallback`) | `forgotten-ruins.webm` loop |
+| **C – Static** | reduced-motion, Save-Data, weak device, no WebGL | Poster WebP/JPG (LCP) |
 
-## Desktop vs web
+Poster always paints first. WebGL mounts after idle and crossfades in.
 
-| Context | How it renders |
-|--------|----------------|
-| Linux desktop | `linux-wallpaperengine` OpenGL Scene runtime parses `scene.pkg` |
-| This website | Static poster (`public/media/forgotten-ruins-poster.jpg|.webp`) |
+Architecture: [`docs/WALLPAPER_ARCHITECTURE.md`](docs/WALLPAPER_ARCHITECTURE.md).
+Debug: `/lab/wallpaper`.
+
+## Local reactive textures
+
+Workshop-derived WebPs are **gitignored**. For a local spike:
+
+```sh
+python3 website/scripts/unpack-wallpaper.py \
+  --src /path/to/unpacked/forgotten-ruins \
+  --out website/public/media/ruins
+```
+
+Without those files the player still runs using the shipped poster as the base plate
+and white/procedural masks (motion demo only).
+
+**Do not commit** `scene.pkg`, `.tex`, or extracted workshop art. Public shipping needs
+owned / re-authored / licensed base art.
 
 ## Refresh poster
 
@@ -17,8 +36,4 @@ Video/WebM playback is **off** for now. A native Wallpaper Engine ↔ website br
 ./scripts/export-website-wallpaper.sh --poster-only
 ```
 
-Requires Hyprland + grim + ImageMagick. Uses an empty workspace so windows are not recorded.
-
-A full WebM bake still exists in the export script for archival, but the site does not play it.
-
-Do **not** commit Steam workshop trees or `scene.pkg`.
+Requires Hyprland + grim + ImageMagick.

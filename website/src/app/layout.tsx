@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { WallpaperBackground } from '@/components/WallpaperBackground'
+import { WallpaperShell } from '@/components/wallpaper/WallpaperShell'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -30,8 +30,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <WallpaperBackground />
-        {children}
+        <WallpaperShell>{children}</WallpaperShell>
       </body>
     </html>
   )

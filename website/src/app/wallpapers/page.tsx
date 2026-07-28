@@ -170,7 +170,7 @@ export default function WallpapersPage() {
 
         {/* Gallery Grid */}
         <section className="py-8 px-[120px]">
-          <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// showing {filtered.length} wallpapers</p>
+          <p className="text-sm font-mono text-[var(--text-secondary)] mb-6">// showing {filtered.length} wallpapers</p>
           <div className="grid grid-cols-3 gap-6">
             {filtered.map((wallpaper, index) => (
               <div
@@ -193,7 +193,7 @@ export default function WallpapersPage() {
                   </div>
                 </div>
                 {/* Resolution Badge */}
-                <div className="absolute top-3 right-3 px-2 py-1 glass-hairline rounded-[var(--radius-sm)] text-[10px] font-mono text-[var(--text-muted)]">
+                <div className="absolute top-3 right-3 px-2 py-1 rounded-[var(--radius-sm)] bg-[rgba(3,8,12,0.78)] border border-white/20 backdrop-blur-md shadow-sm text-[10px] font-mono tabular-nums text-white/90">
                   {wallpaper.resolution}
                 </div>
               </div>
