@@ -23,7 +23,7 @@ export function Badge({ children, variant = 'info', className }: BadgeProps) {
   return (
     <span
       className={clsx(
-        'inline-flex items-center justify-center px-2 py-1 rounded font-mono text-[10px] font-semibold',
+        'inline-flex items-center justify-center px-2 py-1 rounded-[var(--radius-sm)] font-mono text-[10px] font-semibold',
         variantStyles[variant],
         className
       )}
@@ -43,14 +43,14 @@ export function CountBadge({ count, label, className }: CountBadgeProps) {
   return (
     <div
       className={clsx(
-        'flex flex-col items-center justify-center gap-1 px-6 py-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-default)]',
+        'flex flex-col items-center justify-center gap-1 px-6 py-3 rounded-[var(--radius-lg)] glass',
         className
       )}
     >
-      <span className="font-mono text-3xl font-bold text-[var(--accent-blue)]">
+      <span className="font-mono text-3xl font-bold text-[var(--accent-blue)] relative z-10">
         {count}
       </span>
-      <span className="font-mono text-sm font-medium text-[var(--text-muted)]">
+      <span className="font-mono text-sm font-medium text-[var(--text-muted)] relative z-10">
         {label}
       </span>
     </div>

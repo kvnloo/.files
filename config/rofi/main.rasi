@@ -20,7 +20,6 @@ configuration {
 @import "colors.rasi"
 
 window {
-    transparency:                   "real";
     background-color:               @bg;
     text-color:                     @fg;
 	border:							2px;
@@ -104,7 +103,7 @@ element-icon {
 }
 
 element-text {
-    background-color: 				@al;
+    background-color: 				inherit;
     text-color:       				inherit;
     expand:                         true;
     horizontal-align:               0;
@@ -116,6 +115,6 @@ element selected {
     background-color:               @se;
     text-color:                     @fg;
 	border:							0% 0% 0% 0%;
-    border-radius:                  0px;
+    border-radius:                  10px;
     border-color:                  	@bg;
 }

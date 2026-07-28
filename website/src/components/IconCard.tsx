@@ -12,7 +12,7 @@ export function IconCard({ icon: Icon, label, className, onClick }: IconCardProp
   return (
     <div
       className={clsx(
-        'flex flex-col items-center gap-3 p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-muted)] card-hover',
+        'flex flex-col items-center gap-3 p-4 rounded-[var(--radius-lg)] bg-[var(--bg-secondary)] border border-[var(--border-muted)] card-hover',
         onClick && 'cursor-pointer',
         className
       )}

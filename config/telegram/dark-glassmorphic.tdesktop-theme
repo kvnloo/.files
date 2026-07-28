@@ -1,0 +1,872 @@
+///////////////////////////////////////////////////////////////////////////////////////////
+//                                                                                       //
+//                    Dark Glassmorphic — A Telegram Desktop Theme                        //
+//                                                                                       //
+//        Palette: Deep navy with blue (#75A4CD) and purple (#BE78D1) accents            //
+//        Style:   Clean, modern, glassmorphic dark aesthetic                             //
+//                                                                                       //
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// =====================================================================
+// CUSTOM COLOR CONSTANTS
+// =====================================================================
+
+// --- Base backgrounds ---
+BASE_BG:               #000000;        // Primary background (pure black)
+WINDOW_BG:             #0A0A0A;        // Secondary / window background
+CARD_BG:               #050505;        // Elevated surfaces / cards
+HOVER_BG:              #141414;        // Hover state background
+
+// --- Accent colors ---
+ACCENT:                #75A4CD;        // Primary accent (blue)
+ACCENT_PURPLE:         #BE78D1;        // Secondary accent (purple)
+ACCENT_DIM:            #75A4CD80;      // Accent at 50% opacity
+ACCENT_SELECTION:      #75A4CD40;      // Accent at 25% for selections
+ACCENT_RIPPLE:         #75A4CD30;      // Accent ripple effect
+ACCENT_FAINT:          #75A4CD18;      // Accent very faint (borders etc)
+PURPLE_DIM:            #BE78D180;      // Purple at 50%
+PURPLE_SELECTION:      #BE78D140;      // Purple at 25%
+PURPLE_RIPPLE:         #BE78D130;      // Purple ripple
+
+// --- Message bubble backgrounds ---
+MSG_IN_BG:             #0A0A0A;        // Incoming message bubble
+MSG_IN_BG_SEL:         #141414;        // Incoming selected
+MSG_OUT_BG:            #0D0D10;        // Outgoing bubble (very slight tint)
+MSG_OUT_BG_SEL:        #161618;        // Outgoing selected
+
+// --- Text colors ---
+TEXT_PRIMARY:           #E0E0E8;        // Primary text (light gray)
+TEXT_SECONDARY:         #606070;        // Muted / secondary text
+TEXT_TERTIARY:          #454558;        // Even more muted
+TEXT_ON_ACCENT:         #FFFFFF;        // White text on accent backgrounds
+TEXT_LINK:              ACCENT;         // Link text color
+
+// --- Borders / dividers ---
+BORDER:                #FFFFFF10;       // Subtle border (white 6%)
+BORDER_LIGHT:          #FFFFFF08;       // Even subtler
+SHADOW:                #00000060;       // General shadow
+
+// --- Status colors ---
+COLOR_GREEN:           #5DC47E;        // Online, success
+COLOR_RED:             #E05656;        // Error, attention, missed calls
+COLOR_ORANGE:          #E0A050;        // Sending, warning
+COLOR_YELLOW:          #D6C060;        // Highlights
+
+// --- Transparent helpers ---
+TRANSPARENT:           #00000000;
+OVERLAY_LIGHT:         #FFFFFF12;       // White overlay 7%
+OVERLAY_DARK:          #00000080;       // Dark overlay 50%
+RIPPLE_LIGHT:          #FFFFFF15;       // General light ripple
+RIPPLE_DARK:           #00000030;       // General dark ripple
+
+
+// =====================================================================
+// WINDOW / GLOBAL
+// =====================================================================
+
+windowBg:                          WINDOW_BG;
+windowFg:                          TEXT_PRIMARY;
+windowBgOver:                      HOVER_BG;
+windowBgRipple:                    RIPPLE_LIGHT;
+windowFgOver:                      TEXT_PRIMARY;
+windowSubTextFg:                   TEXT_SECONDARY;
+windowSubTextFgOver:               #808098;
+windowBoldFg:                      #F0F0F8;
+windowBoldFgOver:                  ACCENT;
+windowBgActive:                    ACCENT;
+windowFgActive:                    TEXT_ON_ACCENT;
+windowActiveTextFg:                ACCENT;
+windowShadowFg:                    #000000F0;
+windowShadowFgFallback:           #000000;
+shadowFg:                          TRANSPARENT;
+slideFadeOutBg:                    #0C0C1280;
+slideFadeOutShadowFg:             TRANSPARENT;
+imageBg:                           #000000;
+imageBgTransparent:                #1A1A24;
+
+
+// =====================================================================
+// TITLE BAR (Windows / macOS)
+// =====================================================================
+
+titleBg:                           BASE_BG;
+titleBgActive:                     BASE_BG;
+titleShadow:                       TRANSPARENT;
+titleFg:                           TEXT_SECONDARY;
+titleFgActive:                     TEXT_PRIMARY;
+titleButtonBg:                     TRANSPARENT;
+titleButtonBgOver:                 HOVER_BG;
+titleButtonBgActive:               TRANSPARENT;
+titleButtonBgActiveOver:           HOVER_BG;
+titleButtonFg:                     TEXT_SECONDARY;
+titleButtonFgOver:                 TEXT_PRIMARY;
+titleButtonFgActive:               TEXT_SECONDARY;
+titleButtonFgActiveOver:           TEXT_PRIMARY;
+titleButtonCloseBg:                TRANSPARENT;
+titleButtonCloseBgOver:            #E0565630;
+titleButtonCloseBgActive:          TRANSPARENT;
+titleButtonCloseBgActiveOver:      #E0565640;
+titleButtonCloseFg:                TEXT_SECONDARY;
+titleButtonCloseFgOver:            COLOR_RED;
+titleButtonCloseFgActive:          TEXT_SECONDARY;
+titleButtonCloseFgActiveOver:      COLOR_RED;
+
+
+// =====================================================================
+// TRAY ICON
+// =====================================================================
+
+trayCounterBg:                     COLOR_RED;
+trayCounterBgMute:                 TEXT_SECONDARY;
+trayCounterFg:                     TEXT_ON_ACCENT;
+trayCounterBgMacInvert:            TEXT_ON_ACCENT;
+trayCounterFgMacInvert:            TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// LAYERS / OVERLAYS
+// =====================================================================
+
+layerBg:                           #0C0C1299;
+
+
+// =====================================================================
+// BUTTONS — ACTIVE (Primary)
+// =====================================================================
+
+activeButtonBg:                    ACCENT;
+activeButtonBgOver:                #85B4DD;
+activeButtonBgRipple:              ACCENT_RIPPLE;
+activeButtonFg:                    #0C0C12;
+activeButtonFgOver:                #0C0C12;
+activeButtonSecondaryFg:           TEXT_PRIMARY;
+activeButtonSecondaryFgOver:       TEXT_PRIMARY;
+activeLineFg:                      ACCENT;
+activeLineFgError:                 COLOR_RED;
+
+
+// =====================================================================
+// BUTTONS — LIGHT (Secondary)
+// =====================================================================
+
+lightButtonBg:                     CARD_BG;
+lightButtonBgOver:                 HOVER_BG;
+lightButtonBgRipple:               RIPPLE_LIGHT;
+lightButtonFg:                     TEXT_PRIMARY;
+lightButtonFgOver:                 ACCENT;
+
+
+// =====================================================================
+// BUTTONS — ATTENTION
+// =====================================================================
+
+attentionButtonFg:                 COLOR_RED;
+attentionButtonFgOver:             TEXT_ON_ACCENT;
+attentionButtonBgOver:             #E0565630;
+attentionButtonBgRipple:           #E0565620;
+
+
+// =====================================================================
+// BUTTONS — OUTLINE
+// =====================================================================
+
+outlineButtonBg:                   WINDOW_BG;
+outlineButtonBgOver:               HOVER_BG;
+outlineButtonOutlineFg:            ACCENT;
+outlineButtonBgRipple:             RIPPLE_LIGHT;
+
+
+// =====================================================================
+// MENUS / CONTEXT MENUS
+// =====================================================================
+
+menuBg:                            CARD_BG;
+menuBgOver:                        HOVER_BG;
+menuBgRipple:                      RIPPLE_LIGHT;
+menuIconFg:                        TEXT_SECONDARY;
+menuIconFgOver:                    ACCENT;
+menuSubmenuArrowFg:                TEXT_SECONDARY;
+menuFgDisabled:                    TEXT_TERTIARY;
+menuSeparatorFg:                   BORDER;
+
+
+// =====================================================================
+// SCROLLBARS
+// =====================================================================
+
+scrollBarBg:                       #75A4CD50;
+scrollBarBgOver:                   #75A4CD80;
+scrollBg:                          #FFFFFF08;
+scrollBgOver:                      #FFFFFF14;
+
+
+// =====================================================================
+// MISC CONTROLS
+// =====================================================================
+
+smallCloseIconFg:                  TEXT_SECONDARY;
+smallCloseIconFgOver:              COLOR_RED;
+cancelIconFg:                      TEXT_SECONDARY;
+cancelIconFgOver:                  COLOR_RED;
+radialFg:                          TEXT_ON_ACCENT;
+radialBg:                          #00000056;
+placeholderFg:                     TEXT_TERTIARY;
+placeholderFgActive:               TEXT_SECONDARY;
+inputBorderFg:                     TEXT_TERTIARY;
+filterInputBorderFg:               ACCENT;
+filterInputInactiveBg:             #1E1E2880;
+checkboxFg:                        TEXT_SECONDARY;
+sliderBgInactive:                  #2A2A3A;
+sliderBgActive:                    ACCENT;
+
+
+// =====================================================================
+// TOOLTIPS
+// =====================================================================
+
+tooltipBg:                         #1E1E28E0;
+tooltipFg:                         TEXT_PRIMARY;
+tooltipBorderFg:                   BORDER;
+
+
+// =====================================================================
+// BOXES / DIALOGS / POPUPS
+// =====================================================================
+
+boxBg:                             CARD_BG;
+boxTextFg:                         TEXT_PRIMARY;
+boxTextFgGood:                     COLOR_GREEN;
+boxTextFgError:                    COLOR_RED;
+boxTitleFg:                        #F0F0F8;
+boxSearchBg:                       CARD_BG;
+boxSearchCancelIconFg:             TEXT_SECONDARY;
+boxSearchCancelIconFgOver:         COLOR_RED;
+boxTitleAdditionalFg:              TEXT_SECONDARY;
+boxTitleCloseFg:                   TEXT_SECONDARY;
+boxTitleCloseFgOver:               COLOR_RED;
+membersAboutLimitFg:               COLOR_RED;
+
+
+// =====================================================================
+// CONTACTS LIST
+// =====================================================================
+
+contactsBg:                        WINDOW_BG;
+contactsBgOver:                    HOVER_BG;
+contactsNameFg:                    TEXT_PRIMARY;
+contactsStatusFg:                  TEXT_SECONDARY;
+contactsStatusFgOver:              #808098;
+contactsStatusFgOnline:            COLOR_GREEN;
+
+
+// =====================================================================
+// PHOTO CROP
+// =====================================================================
+
+photoCropFadeBg:                   layerBg;
+photoCropPointFg:                  TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// INTRO / LOGIN SCREEN
+// =====================================================================
+
+introBg:                           BASE_BG;
+introTitleFg:                      TEXT_PRIMARY;
+introDescriptionFg:                TEXT_SECONDARY;
+introErrorFg:                      COLOR_RED;
+introCoverTopBg:                   BASE_BG;
+introCoverBottomBg:                BASE_BG;
+introCoverIconsFg:                 ACCENT_DIM;
+introCoverPlaneTrace:              #75A4CD40;
+introCoverPlaneInner:              #B0C4DE;
+introCoverPlaneOuter:              #8AACCC;
+introCoverPlaneTop:                TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// SIDEBAR (Chat Folders / Filters bar)
+// =====================================================================
+
+sideBarBg:                         BASE_BG;
+sideBarBgActive:                   ACCENT_FAINT;
+sideBarBgRipple:                   ACCENT_RIPPLE;
+sideBarTextFg:                     TEXT_SECONDARY;
+sideBarTextFgActive:               ACCENT;
+sideBarIconFg:                     TEXT_SECONDARY;
+sideBarIconFgActive:               ACCENT;
+sideBarBadgeBg:                    ACCENT_PURPLE;
+sideBarBadgeBgMuted:               TEXT_TERTIARY;
+sideBarBadgeFg:                    TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// CHAT LIST (Dialogs)
+// =====================================================================
+
+dialogsMenuIconFg:                 TEXT_SECONDARY;
+dialogsMenuIconFgOver:             ACCENT;
+
+dialogsBg:                         WINDOW_BG;
+dialogsNameFg:                     TEXT_PRIMARY;
+dialogsChatIconFg:                 TEXT_SECONDARY;
+dialogsDateFg:                     TEXT_SECONDARY;
+dialogsTextFg:                     TEXT_SECONDARY;
+dialogsTextFgService:              ACCENT;
+dialogsDraftFg:                    COLOR_RED;
+dialogsVerifiedIconBg:             ACCENT;
+dialogsVerifiedIconFg:             BASE_BG;
+dialogsSendingIconFg:              COLOR_ORANGE;
+dialogsSentIconFg:                 COLOR_GREEN;
+dialogsUnreadBg:                   ACCENT;
+dialogsUnreadBgMuted:              TEXT_TERTIARY;
+dialogsUnreadFg:                   TEXT_ON_ACCENT;
+dialogsOnlineBadgeFg:              COLOR_GREEN;
+
+// Hover states
+dialogsBgOver:                     HOVER_BG;
+dialogsNameFgOver:                 TEXT_PRIMARY;
+dialogsChatIconFgOver:             TEXT_SECONDARY;
+dialogsDateFgOver:                 #808098;
+dialogsTextFgOver:                 #808098;
+dialogsTextFgServiceOver:          ACCENT;
+dialogsDraftFgOver:                COLOR_RED;
+dialogsVerifiedIconBgOver:         ACCENT;
+dialogsVerifiedIconFgOver:         BASE_BG;
+dialogsSendingIconFgOver:          COLOR_ORANGE;
+dialogsSentIconFgOver:             COLOR_GREEN;
+dialogsUnreadBgOver:               ACCENT;
+dialogsUnreadBgMutedOver:          TEXT_TERTIARY;
+dialogsUnreadFgOver:               TEXT_ON_ACCENT;
+
+// Active (selected) chat
+dialogsBgActive:                   #75A4CD20;
+dialogsNameFgActive:               ACCENT;
+dialogsChatIconFgActive:           ACCENT_DIM;
+dialogsDateFgActive:               ACCENT_DIM;
+dialogsTextFgActive:               #A0A0B0;
+dialogsTextFgServiceActive:        ACCENT;
+dialogsDraftFgActive:              COLOR_RED;
+dialogsVerifiedIconBgActive:       ACCENT;
+dialogsVerifiedIconFgActive:       BASE_BG;
+dialogsSendingIconFgActive:        COLOR_ORANGE;
+dialogsSentIconFgActive:           COLOR_GREEN;
+dialogsUnreadBgActive:             ACCENT;
+dialogsUnreadBgMutedActive:        TEXT_TERTIARY;
+dialogsUnreadFgActive:             TEXT_ON_ACCENT;
+
+dialogsRippleBg:                   RIPPLE_LIGHT;
+dialogsRippleBgActive:             ACCENT_RIPPLE;
+
+dialogsForwardBg:                  dialogsBgActive;
+dialogsForwardFg:                  ACCENT;
+
+
+// =====================================================================
+// SEARCH RESULTS
+// =====================================================================
+
+searchedBarBg:                     BASE_BG;
+searchedBarFg:                     ACCENT;
+
+
+// =====================================================================
+// TOP BAR
+// =====================================================================
+
+topBarBg:                          WINDOW_BG;
+
+
+// =====================================================================
+// EMOJI / STICKER PANEL
+// =====================================================================
+
+emojiPanBg:                        CARD_BG;
+emojiPanCategories:                CARD_BG;
+emojiPanHeaderFg:                  TEXT_SECONDARY;
+emojiPanHeaderBg:                  CARD_BG;
+stickerPanDeleteBg:                #E0565640;
+stickerPanDeleteFg:                COLOR_RED;
+stickerPreviewBg:                  #0C0C12DD;
+
+
+// =====================================================================
+// MESSAGE HISTORY — TEXT COLORS
+// =====================================================================
+
+historyTextInFg:                   #C8C8D0;
+historyTextInFgSelected:           TEXT_PRIMARY;
+historyTextOutFg:                  TEXT_PRIMARY;
+historyTextOutFgSelected:          TEXT_PRIMARY;
+historyLinkInFg:                   ACCENT;
+historyLinkInFgSelected:           ACCENT;
+historyLinkOutFg:                  ACCENT;
+historyLinkOutFgSelected:          ACCENT;
+historyCaptionInFg:                #C8C8D0;
+historyCaptionOutFg:               TEXT_PRIMARY;
+historyFileNameInFg:               #C8C8D0;
+historyFileNameInFgSelected:       TEXT_PRIMARY;
+historyFileNameOutFg:              TEXT_PRIMARY;
+historyFileNameOutFgSelected:      TEXT_PRIMARY;
+
+
+// =====================================================================
+// MESSAGE HISTORY — STATUS ICONS
+// =====================================================================
+
+historyOutIconFg:                  COLOR_GREEN;
+historyOutIconFgSelected:          COLOR_GREEN;
+historyIconFgInverted:             TEXT_ON_ACCENT;
+historySendingOutIconFg:           COLOR_ORANGE;
+historySendingInIconFg:            COLOR_ORANGE;
+historySendingInvertedIconFg:      TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE HISTORY — CALL ARROWS
+// =====================================================================
+
+historyCallArrowInFg:              COLOR_GREEN;
+historyCallArrowInFgSelected:      COLOR_GREEN;
+historyCallArrowMissedInFg:        COLOR_RED;
+historyCallArrowMissedInFgSelected: COLOR_RED;
+historyCallArrowOutFg:             COLOR_GREEN;
+historyCallArrowOutFgSelected:     COLOR_GREEN;
+
+
+// =====================================================================
+// MESSAGE HISTORY — SERVICE / SYSTEM MESSAGES
+// =====================================================================
+
+historySystemBg:                   #75A4CD30;
+historySystemBgSelected:           #75A4CD50;
+historySystemFg:                   TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE HISTORY — UNREAD BAR
+// =====================================================================
+
+historyUnreadBarBg:                #1E1E28;
+historyUnreadBarBorder:            BORDER;
+historyUnreadBarFg:                TEXT_PRIMARY;
+
+
+// =====================================================================
+// MESSAGE HISTORY — FORWARDING CHOOSER
+// =====================================================================
+
+historyForwardChooseBg:            #0C0C1280;
+historyForwardChooseFg:            TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE HISTORY — PEER NAME COLORS (Group chats)
+// =====================================================================
+
+historyPeer1NameFg:                #E06060;     // Red
+historyPeer1NameFgSelected:        #E06060;
+historyPeer1UserpicBg:             #C04848;
+historyPeer2NameFg:                #5DC47E;     // Green
+historyPeer2NameFgSelected:        #5DC47E;
+historyPeer2UserpicBg:             #48A868;
+historyPeer3NameFg:                #D6C060;     // Yellow
+historyPeer3NameFgSelected:        #D6C060;
+historyPeer3UserpicBg:             #C0A848;
+historyPeer4NameFg:                #75A4CD;     // Blue (accent)
+historyPeer4NameFgSelected:        #75A4CD;
+historyPeer4UserpicBg:             #5888B0;
+historyPeer5NameFg:                #BE78D1;     // Purple (secondary accent)
+historyPeer5NameFgSelected:        #BE78D1;
+historyPeer5UserpicBg:             #A060B8;
+historyPeer6NameFg:                #D07090;     // Pink
+historyPeer6NameFgSelected:        #D07090;
+historyPeer6UserpicBg:             #B85878;
+historyPeer7NameFg:                #50B0C0;     // Teal
+historyPeer7NameFgSelected:        #50B0C0;
+historyPeer7UserpicBg:             #3898A8;
+historyPeer8NameFg:                #E0A050;     // Orange
+historyPeer8NameFgSelected:        #E0A050;
+historyPeer8UserpicBg:             #C08838;
+historyPeerUserpicFg:              TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE HISTORY — SCROLLBAR
+// =====================================================================
+
+historyScrollBarBg:                #75A4CD50;
+historyScrollBarBgOver:            #75A4CD80;
+historyScrollBg:                   #FFFFFF08;
+historyScrollBgOver:               #FFFFFF14;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — BACKGROUNDS
+// =====================================================================
+
+msgInBg:                           MSG_IN_BG;
+msgInBgSelected:                   MSG_IN_BG_SEL;
+msgOutBg:                          MSG_OUT_BG;
+msgOutBgSelected:                  MSG_OUT_BG_SEL;
+msgSelectOverlay:                  ACCENT_SELECTION;
+msgStickerOverlay:                 ACCENT_SELECTION;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — SERVICE TEXT
+// =====================================================================
+
+msgInServiceFg:                    ACCENT;
+msgInServiceFgSelected:            ACCENT;
+msgOutServiceFg:                   ACCENT;
+msgOutServiceFgSelected:           ACCENT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — SHADOWS
+// =====================================================================
+
+msgInShadow:                       #00000020;
+msgInShadowSelected:               #00000028;
+msgOutShadow:                      #00000020;
+msgOutShadowSelected:              #00000028;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — DATE TEXT
+// =====================================================================
+
+msgInDateFg:                       #606078;
+msgInDateFgSelected:               #808098;
+msgOutDateFg:                      #606078;
+msgOutDateFgSelected:              #808098;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — SERVICE MESSAGES (join, left, date headers)
+// =====================================================================
+
+msgServiceFg:                      TEXT_PRIMARY;
+msgServiceBg:                      #75A4CD20;
+msgServiceBgSelected:              #75A4CD38;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — REPLY BAR
+// =====================================================================
+
+msgInReplyBarColor:                ACCENT;
+msgInReplyBarSelColor:             ACCENT;
+msgOutReplyBarColor:               ACCENT;
+msgOutReplyBarSelColor:            ACCENT;
+msgImgReplyBarColor:               TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — MONOSPACE
+// =====================================================================
+
+msgInMonoFg:                       ACCENT_PURPLE;
+msgOutMonoFg:                      ACCENT_PURPLE;
+msgInMonoFgSelected:               ACCENT_PURPLE;
+msgOutMonoFgSelected:              ACCENT_PURPLE;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — MEDIA DATES (overlaid on images)
+// =====================================================================
+
+msgDateImgFg:                      TEXT_ON_ACCENT;
+msgDateImgBg:                      #00000060;
+msgDateImgBgOver:                  #00000080;
+msgDateImgBgSelected:              ACCENT_SELECTION;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — FILE LINKS
+// =====================================================================
+
+msgFileThumbLinkInFg:              ACCENT;
+msgFileThumbLinkInFgSelected:      ACCENT;
+msgFileThumbLinkOutFg:             ACCENT;
+msgFileThumbLinkOutFgSelected:     ACCENT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — FILE DOWNLOAD CIRCLES
+// =====================================================================
+
+msgFileInBg:                       ACCENT;
+msgFileInBgOver:                   #85B4DD;
+msgFileInBgSelected:               ACCENT_DIM;
+msgFileOutBg:                      ACCENT_PURPLE;
+msgFileOutBgOver:                  #CE88E1;
+msgFileOutBgSelected:              PURPLE_DIM;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — FILE TYPE COLORS (shared media)
+// =====================================================================
+
+msgFile1Bg:                        #72B1DF;
+msgFile1BgDark:                    #5C9ECE;
+msgFile1BgOver:                    #5294C4;
+msgFile1BgSelected:                #5099D0;
+msgFile2Bg:                        #5DC47E;
+msgFile2BgDark:                    #4DA859;
+msgFile2BgOver:                    #44A050;
+msgFile2BgSelected:                #46A07E;
+msgFile3Bg:                        #E06060;
+msgFile3BgDark:                    #C05050;
+msgFile3BgOver:                    #B84848;
+msgFile3BgSelected:                #9F6A82;
+msgFile4Bg:                        #E0C060;
+msgFile4BgDark:                    #C8A848;
+msgFile4BgOver:                    #C0A040;
+msgFile4BgSelected:                #B09D84;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — FILE ICONS (download arrows / radial loaders)
+// =====================================================================
+
+historyFileInIconFg:               TEXT_ON_ACCENT;
+historyFileInIconFgSelected:       TEXT_ON_ACCENT;
+historyFileInRadialFg:             TEXT_ON_ACCENT;
+historyFileInRadialFgSelected:     TEXT_ON_ACCENT;
+historyFileOutIconFg:              TEXT_ON_ACCENT;
+historyFileOutIconFgSelected:      TEXT_ON_ACCENT;
+historyFileOutRadialFg:            TEXT_ON_ACCENT;
+historyFileOutRadialFgSelected:    TEXT_ON_ACCENT;
+historyFileThumbIconFg:            TEXT_ON_ACCENT;
+historyFileThumbIconFgSelected:    TEXT_ON_ACCENT;
+historyFileThumbRadialFg:          TEXT_ON_ACCENT;
+historyFileThumbRadialFgSelected:  TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — VOICE WAVEFORMS
+// =====================================================================
+
+msgWaveformInActive:               ACCENT;
+msgWaveformInActiveSelected:       ACCENT;
+msgWaveformInInactive:             #2A2A3A;
+msgWaveformInInactiveSelected:     #3A3A4A;
+msgWaveformOutActive:              ACCENT;
+msgWaveformOutActiveSelected:      ACCENT;
+msgWaveformOutInactive:            #2A2A3A;
+msgWaveformOutInactiveSelected:    #3A3A4A;
+
+historyVideoMessageProgressFg:     TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — BOT KEYBOARD
+// =====================================================================
+
+msgBotKbOverBgAdd:                 HOVER_BG;
+msgBotKbIconFg:                    TEXT_ON_ACCENT;
+msgBotKbRippleBg:                  RIPPLE_LIGHT;
+
+
+// =====================================================================
+// MESSAGE BUBBLES — MEDIA STATUS
+// =====================================================================
+
+mediaInFg:                         msgInDateFg;
+mediaInFgSelected:                 msgInDateFgSelected;
+mediaOutFg:                        msgOutDateFg;
+mediaOutFgSelected:                msgOutDateFgSelected;
+
+
+// =====================================================================
+// VIDEO / YOUTUBE PLAY ICONS
+// =====================================================================
+
+youtubePlayIconBg:                 #E05656C8;
+youtubePlayIconFg:                 TEXT_ON_ACCENT;
+videoPlayIconBg:                   #0000007F;
+videoPlayIconFg:                   TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// TOAST NOTIFICATIONS
+// =====================================================================
+
+toastBg:                           #1E1E28E0;
+toastFg:                           TEXT_ON_ACCENT;
+
+
+// =====================================================================
+// REPORT SPAM BAR
+// =====================================================================
+
+reportSpamBg:                      CARD_BG;
+reportSpamFg:                      TEXT_PRIMARY;
+
+
+// =====================================================================
+// SCROLL-TO-BOTTOM BUTTON
+// =====================================================================
+
+historyToDownBg:                   #12121AE0;
+historyToDownBgOver:               HOVER_BG;
+historyToDownBgRipple:             RIPPLE_LIGHT;
+historyToDownFg:                   TEXT_SECONDARY;
+historyToDownFgOver:               ACCENT;
+historyToDownShadow:               #00000040;
+
+
+// =====================================================================
+// COMPOSE AREA
+// =====================================================================
+
+historyComposeAreaBg:              BASE_BG;
+historyComposeAreaFg:              TEXT_PRIMARY;
+historyComposeAreaFgService:       TEXT_SECONDARY;
+historyComposeIconFg:              TEXT_SECONDARY;
+historyComposeIconFgOver:          ACCENT;
+historySendIconFg:                 ACCENT;
+historySendIconFgOver:             #85B4DD;
+historyPinnedBg:                   BASE_BG;
+historyReplyBg:                    BASE_BG;
+historyReplyIconFg:                ACCENT;
+historyReplyCancelFg:              TEXT_SECONDARY;
+historyReplyCancelFgOver:          COLOR_RED;
+historyComposeButtonBg:            BASE_BG;
+historyComposeButtonBgOver:        HOVER_BG;
+historyComposeButtonBgRipple:      RIPPLE_LIGHT;
+
+
+// =====================================================================
+// OVERVIEW (Shared media, files, links)
+// =====================================================================
+
+overviewCheckBg:                   #00000040;
+overviewCheckFg:                   WINDOW_BG;
+overviewCheckFgActive:             WINDOW_BG;
+overviewPhotoSelectOverlay:        ACCENT_SELECTION;
+
+
+// =====================================================================
+// PROFILE
+// =====================================================================
+
+profileStatusFgOver:               ACCENT_DIM;
+profileVerifiedCheckBg:            ACCENT;
+profileVerifiedCheckFg:            TEXT_ON_ACCENT;
+profileAdminStartFg:               ACCENT;
+
+
+// =====================================================================
+// NOTIFICATIONS SETTINGS
+// =====================================================================
+
+notificationsBoxMonitorFg:         TEXT_PRIMARY;
+notificationsBoxScreenBg:          ACCENT;
+notificationSampleUserpicFg:       ACCENT;
+notificationSampleCloseFg:        TEXT_SECONDARY;
+notificationSampleTextFg:         TEXT_SECONDARY;
+notificationSampleNameFg:         TEXT_PRIMARY;
+
+changePhoneSimcardFrom:            TEXT_SECONDARY;
+changePhoneSimcardTo:              TEXT_PRIMARY;
+
+
+// =====================================================================
+// MAIN MENU (Hamburger menu)
+// =====================================================================
+
+mainMenuBg:                        BASE_BG;
+mainMenuCoverBg:                   #75A4CD20;
+mainMenuCoverFg:                   TEXT_ON_ACCENT;
+mainMenuCloudFg:                   TEXT_ON_ACCENT;
+mainMenuCloudBg:                   ACCENT_RIPPLE;
+
+
+// =====================================================================
+// MEDIA PLAYER
+// =====================================================================
+
+mediaPlayerBg:                     BASE_BG;
+mediaPlayerActiveFg:               ACCENT;
+mediaPlayerInactiveFg:             TEXT_TERTIARY;
+mediaPlayerDisabledFg:             #2A2A3A;
+
+
+// =====================================================================
+// MEDIA VIEWER
+// =====================================================================
+
+mediaviewFileBg:                   CARD_BG;
+mediaviewFileNameFg:               TEXT_PRIMARY;
+mediaviewFileSizeFg:               TEXT_SECONDARY;
+mediaviewFileRedCornerFg:          #E05656;
+mediaviewFileYellowCornerFg:       #D6C060;
+mediaviewFileGreenCornerFg:        #5DC47E;
+mediaviewFileBlueCornerFg:         #75A4CD;
+mediaviewFileExtFg:                TEXT_ON_ACCENT;
+
+mediaviewMenuBg:                   CARD_BG;
+mediaviewMenuBgOver:               HOVER_BG;
+mediaviewMenuBgRipple:             RIPPLE_LIGHT;
+mediaviewMenuFg:                   TEXT_PRIMARY;
+
+mediaviewBg:                       #0C0C12F0;
+mediaviewVideoBg:                  #000000;
+mediaviewControlBg:                #0000003C;
+mediaviewControlFg:                TEXT_ON_ACCENT;
+mediaviewCaptionBg:                #0C0C12C0;
+mediaviewCaptionFg:                TEXT_ON_ACCENT;
+mediaviewTextLinkFg:               ACCENT;
+mediaviewSaveMsgBg:                #1E1E28E0;
+mediaviewSaveMsgFg:                TEXT_ON_ACCENT;
+
+mediaviewPlaybackActive:           ACCENT;
+mediaviewPlaybackInactive:         #2A2A3A;
+mediaviewPlaybackActiveOver:       #85B4DD;
+mediaviewPlaybackInactiveOver:     #3A3A4A;
+mediaviewPlaybackProgressFg:       TEXT_ON_ACCENT;
+mediaviewPlaybackIconFg:           ACCENT;
+mediaviewPlaybackIconFgOver:       #85B4DD;
+mediaviewPipControlsFg:            ACCENT;
+mediaviewPipControlsFgOver:        ACCENT_PURPLE;
+mediaviewPipFade:                  BASE_BG;
+mediaviewPipPlaybackActive:        ACCENT;
+mediaviewPipPlaybackInactive:      #2A2A3A;
+mediaviewTransparentBg:            #1A1A24;
+mediaviewTransparentFg:            #2A2A3A;
+
+
+// =====================================================================
+// NOTIFICATION (Desktop popups)
+// =====================================================================
+
+notificationBg:                    CARD_BG;
+
+
+// =====================================================================
+// CALLS
+// =====================================================================
+
+callBg:                            #0C0C12F2;
+callNameFg:                        TEXT_ON_ACCENT;
+callFingerprintBg:                 #00000066;
+callStatusFg:                      TEXT_SECONDARY;
+callIconFg:                        TEXT_ON_ACCENT;
+callAnswerBg:                      #5DC47E;
+callAnswerRipple:                  #48A868;
+callAnswerBgOuter:                 #5DC47E26;
+callHangupBg:                      #E05656;
+callHangupRipple:                  #C04848;
+callCancelBg:                      TEXT_ON_ACCENT;
+callCancelFg:                      TEXT_SECONDARY;
+callCancelRipple:                  #F0F0F0;
+callMuteRipple:                    #FFFFFF12;
+
+callBarBg:                         ACCENT;
+callBarMuteRipple:                 ACCENT_RIPPLE;
+callBarBgMuted:                    TEXT_TERTIARY;
+callBarUnmuteRipple:               RIPPLE_LIGHT;
+callBarFg:                         TEXT_ON_ACCENT;

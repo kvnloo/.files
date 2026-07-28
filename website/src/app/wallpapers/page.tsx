@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Header, Footer } from '@/components'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Header, Footer, Filter } from '@/components'
 import { Image as ImageIcon } from 'lucide-react'
 import Image from 'next/image'
 import { assetPath } from '@/lib/utils'
@@ -107,6 +107,46 @@ export default function WallpapersPage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [activeResolution, setActiveResolution] = useState('all')
   const [selectedWallpaper, setSelectedWallpaper] = useState<typeof wallpapers[0] | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null)
+  const lightboxWasOpenRef = useRef(false)
+
+  const openLightbox = (wallpaper: typeof wallpapers[0], trigger: HTMLButtonElement) => {
+    triggerButtonRef.current = trigger
+    setSelectedWallpaper(wallpaper)
+  }
+
+  const closeLightbox = useCallback(() => {
+    setSelectedWallpaper(null)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedWallpaper) {
+      if (lightboxWasOpenRef.current) {
+        lightboxWasOpenRef.current = false
+        window.setTimeout(() => triggerButtonRef.current?.focus(), 0)
+      }
+      return
+    }
+    lightboxWasOpenRef.current = true
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeLightbox()
+      } else if (event.key === 'Tab') {
+        event.preventDefault()
+        closeButtonRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [selectedWallpaper, closeLightbox])
 
   const filtered = wallpapers.filter((w) => {
     const matchCat = activeCategory === 'all' || w.category === activeCategory
@@ -125,75 +165,62 @@ export default function WallpapersPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
-          <div className="flex flex-col gap-6">
-            <ImageIcon size={48} className="text-[#58A6FF]" />
-            <h1 className="text-5xl font-bold font-mono text-[#E6EDF3]">wallpaper_gallery/</h1>
-            <p className="text-lg text-[#8B949E] font-[Inter] leading-relaxed max-w-xl">
+        <section className="flex flex-col items-start justify-between gap-8 px-4 py-12 sm:px-8 sm:py-16 lg:flex-row lg:gap-16 lg:px-[120px]">
+          <div className="flex min-w-0 flex-col gap-6">
+            <ImageIcon size={48} className="text-[var(--accent-blue)]" />
+            <h1 className="break-all text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">wallpaper_gallery/</h1>
+            <p className="text-lg text-[var(--text-muted)] leading-relaxed max-w-xl">
               {wallpapers.length} curated wallpapers across 6 resolutions. From 2K to 8K, space to urban, minimal to vibrant.
             </p>
           </div>
 
           {/* Count Badge */}
-          <div className="flex flex-col items-center gap-2 p-6 bg-[#ffffff08] border border-[#58A6FF40] rounded-lg">
-            <span className="text-4xl font-bold font-mono text-[#58A6FF]">{wallpapers.length}</span>
-            <span className="text-xs text-[#8B949E] font-mono">wallpapers</span>
+          <div className="flex w-full flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(110,200,196,0.35)] sm:w-auto">
+            <span className="text-4xl font-bold font-mono text-[var(--accent-blue)]">{wallpapers.length}</span>
+            <span className="text-xs text-[var(--text-muted)] font-mono">wallpapers</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="py-8 px-[120px]">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
           <div className="flex flex-col gap-4">
             {/* Category Filter */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-mono text-[#6E7681] w-20">category:</span>
-              <div className="flex gap-2 flex-wrap">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={`px-3 py-1.5 text-xs font-mono transition-colors ${
-                      activeCategory === cat
-                        ? 'bg-[#58A6FF20] text-[#58A6FF] border border-[#58A6FF]'
-                        : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <span className="text-sm font-mono text-[var(--text-dim)] w-20">category:</span>
+              <Filter
+                className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
+                value={activeCategory}
+                onChange={setActiveCategory}
+                options={categories.map((cat) => ({ label: cat, value: cat }))}
+              />
             </div>
             {/* Resolution Filter */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-mono text-[#6E7681] w-20">resolution:</span>
-              <div className="flex gap-2 flex-wrap">
-                {resolutions.map((res) => (
-                  <button
-                    key={res}
-                    onClick={() => setActiveResolution(res)}
-                    className={`px-3 py-1.5 text-xs font-mono transition-colors ${
-                      activeResolution === res
-                        ? 'bg-[#58A6FF20] text-[#58A6FF] border border-[#58A6FF]'
-                        : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
-                    }`}
-                  >
-                    {res === 'all' ? 'all' : res} ({resCounts[res]})
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <span className="text-sm font-mono text-[var(--text-dim)] w-20">resolution:</span>
+              <Filter
+                className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
+                value={activeResolution}
+                onChange={setActiveResolution}
+                options={resolutions.map((res) => ({
+                  label: `${res === 'all' ? 'all' : res} (${resCounts[res]})`,
+                  value: res,
+                }))}
+              />
             </div>
           </div>
         </section>
 
         {/* Gallery Grid */}
-        <section className="py-8 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-6">// showing {filtered.length} wallpapers</p>
-          <div className="grid grid-cols-3 gap-6">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
+          <p className="text-sm font-mono text-[var(--text-secondary)] mb-6">// showing {filtered.length} wallpapers</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
             {filtered.map((wallpaper, index) => (
-              <div
+              <button
                 key={`${wallpaper.name}-${index}`}
-                className="group relative aspect-video bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden cursor-pointer hover:border-[#58A6FF50] transition-colors"
-                onClick={() => setSelectedWallpaper(wallpaper)}
+                type="button"
+                aria-label={`View ${wallpaper.name}`}
+                className="group relative block aspect-video w-full glass rounded-[var(--radius-lg)] overflow-hidden cursor-pointer text-left hover:border-[rgba(110,200,196,0.45)] transition-colors"
+                onClick={(event) => openLightbox(wallpaper, event.currentTarget)}
               >
                 <Image
                   src={assetPath(`/wallpapers/${getResolutionFolder(wallpaper.resolution)}/${wallpaper.file}`)}
@@ -203,17 +230,17 @@ export default function WallpapersPage() {
                   sizes="(max-width: 768px) 100vw, 33vw"
                 />
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-visible:opacity-100">
                   <div className="absolute bottom-0 left-0 right-0 p-4">
                     <p className="text-sm font-mono text-white truncate">{wallpaper.name}</p>
                     <p className="text-xs font-mono text-white/60">{wallpaper.resolution} • {wallpaper.category}</p>
                   </div>
                 </div>
                 {/* Resolution Badge */}
-                <div className="absolute top-3 right-3 px-2 py-1 bg-[#0D1117CC] rounded text-[10px] font-mono text-[#8B949E]">
+                <div className="absolute top-3 right-3 px-2 py-1 rounded-[var(--radius-sm)] bg-[rgba(3,8,12,0.78)] border border-white/20 backdrop-blur-md shadow-sm text-[10px] font-mono tabular-nums text-white/90">
                   {wallpaper.resolution}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -221,8 +248,11 @@ export default function WallpapersPage() {
         {/* Lightbox */}
         {selectedWallpaper && (
           <div
-            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-8"
-            onClick={() => setSelectedWallpaper(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wallpaper-dialog-title"
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 sm:p-8"
+            onClick={closeLightbox}
           >
             <div className="relative max-w-6xl w-full" onClick={(e) => e.stopPropagation()}>
               <div className="relative aspect-video">
@@ -236,12 +266,14 @@ export default function WallpapersPage() {
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <div>
-                  <p className="text-lg font-mono text-white">{selectedWallpaper.name}</p>
+                  <p id="wallpaper-dialog-title" className="text-lg font-mono text-white">{selectedWallpaper.name}</p>
                   <p className="text-sm font-mono text-white/60">{selectedWallpaper.resolution} • {selectedWallpaper.category}</p>
                 </div>
                 <button
-                  onClick={() => setSelectedWallpaper(null)}
-                  className="px-4 py-2 bg-[#21262D] border border-[#30363D] rounded text-sm font-mono text-[#E6EDF3] hover:bg-[#30363D]"
+                  ref={closeButtonRef}
+                  type="button"
+                  onClick={closeLightbox}
+                  className="min-h-11 px-4 py-2 bg-[rgba(18,28,38,0.45)] border border-[var(--border-default)] rounded-[var(--radius-md)] text-sm font-mono text-[var(--text-primary)] hover:bg-[#30363D] lg:min-h-0"
                 >
                   Close
                 </button>

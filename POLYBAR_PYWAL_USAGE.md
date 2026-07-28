@@ -1,5 +1,9 @@
 # Polybar + Pywal Usage Guide
 
+> **Legacy (i3/X11 era).** Current desktop uses Hyprland with Noctalia or Waybar
+> (`bar-mode noctalia|waybar`). Prefer [docs/SETUP.md](docs/SETUP.md). Keep this
+> only if you still run Polybar.
+
 ## How It Works Now ✅
 
 Your theme selector now **automatically applies pywal colors** when switching themes!

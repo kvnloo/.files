@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# CachyOS Dotfiles Deployment
+# Creates all symlinks from the dotfiles repo to their proper locations
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+DOTFILES="$(dirname "$SCRIPT_DIR")"
+
+# Ensure ~/workspace exists (CachyOS mounts workspace at /workspace)
+if [[ -d "/workspace" && ! -e "$HOME/workspace" ]]; then
+    ln -s /workspace "$HOME/workspace"
+    echo "  Created symlink: ~/workspace -> /workspace"
+fi
+
+echo "=== Dotfiles Deployment ==="
+echo "Source: $DOTFILES"
+echo ""
+
+# Helper: create symlink with backup
+link() {
+    local src="$1"
+    local dst="$2"
+    local dst_dir
+    dst_dir=$(dirname "$dst")
+
+    mkdir -p "$dst_dir"
+
+    if [[ -L "$dst" ]]; then
+        rm "$dst"
+    elif [[ -e "$dst" ]]; then
+        echo "  Backing up existing: $dst -> ${dst}.bak"
+        mv "$dst" "${dst}.bak"
+    fi
+
+    ln -sf "$src" "$dst"
+    echo "  $dst -> $src"
+}
+
+# -------------------------------------------------------
+# 1. Shell configs
+# -------------------------------------------------------
+echo "[1/8] Shell configuration..."
+link "$DOTFILES/config/zsh/.zshrc" "$HOME/.zshrc"
+link "$DOTFILES/.gitconfig" "$HOME/.gitconfig"
+link "$DOTFILES/config/.tmux.conf" "$HOME/.tmux.conf"
+
+# -------------------------------------------------------
+# 2. Hyprland + Wayland desktop
+# -------------------------------------------------------
+echo "[2/8] Hyprland and desktop..."
+link "$DOTFILES/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
+link "$DOTFILES/config/hyprland/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"
+link "$DOTFILES/config/hyprland/hypridle.conf" "$HOME/.config/hypr/hypridle.conf"
+link "$DOTFILES/config/waybar" "$HOME/.config/waybar"
+link "$DOTFILES/config/rofi" "$HOME/.config/rofi"
+link "$DOTFILES/config/dunst" "$HOME/.config/dunst"
+
+link "$DOTFILES/config/agent-deck/config.toml" "$HOME/.config/agent-deck/config.toml"
+link "$DOTFILES/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
+mkdir -p "$HOME/.config/zed"
+link "$DOTFILES/config/zed/settings.json" "$HOME/.config/zed/settings.json"
+
+# Keep i3/picom for X11 fallback
+link "$DOTFILES/config/i3" "$HOME/.config/i3"
+link "$DOTFILES/config/picom" "$HOME/.config/picom"
+link "$DOTFILES/config/polybar" "$HOME/.config/polybar"
+
+# -------------------------------------------------------
+# 3. PipeWire audio stack
+# -------------------------------------------------------
+echo "[3/8] PipeWire audio configuration..."
+mkdir -p "$HOME/.config/pipewire/pipewire.conf.d"
+mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
+
+link "$DOTFILES/config/pipewire/pipewire.conf" "$HOME/.config/pipewire/pipewire.conf"
+link "$DOTFILES/config/pipewire/pipewire.conf.d/10-headphone-dsp.conf" \
+     "$HOME/.config/pipewire/pipewire.conf.d/10-headphone-dsp.conf"
+
+# WirePlumber 0.5 config (SPA-JSON format, deployed by setup-audio.sh)
+link "$DOTFILES/config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf" \
+     "$HOME/.config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf"
+
+# -------------------------------------------------------
+# 4. Audio scripts (make executable)
+# -------------------------------------------------------
+echo "[4/8] Audio scripts..."
+chmod +x "$DOTFILES/config/pipewire/headphone-switch.sh" 2>/dev/null || true
+chmod +x "$DOTFILES/config/pipewire/browser-bypass-dsp.sh" 2>/dev/null || true
+chmod +x "$DOTFILES/scripts/"*.sh 2>/dev/null || true
+
+# Add headphone-switch to PATH
+link "$DOTFILES/config/pipewire/headphone-switch.sh" "$HOME/.local/bin/headphone-switch"
+link "$DOTFILES/scripts/workspace-copilot" "$HOME/.local/bin/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.agents/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.claude/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.config/opencode/skills/workspace-copilot"
+link "$DOTFILES/config/agent-skills/workspace-copilot" "$HOME/.gemini/skills/workspace-copilot"
+
+if command -v agent-deck &>/dev/null; then
+    agent-deck codex-hooks install >/dev/null 2>&1 || true
+    agent-deck gemini-hooks install >/dev/null 2>&1 || true
+fi
+
+# -------------------------------------------------------
+# 5. Systemd user services
+# -------------------------------------------------------
+echo "[5/8] Systemd user services..."
+mkdir -p "$HOME/.config/systemd/user"
+
+# browser-bypass-dsp.service is created by 03-setup-audio.sh
+# (uses dynamic $DOTFILES path instead of hardcoded %h/workspace/.files)
+link "$DOTFILES/config/systemd/user/awatcher.service" \
+     "$HOME/.config/systemd/user/awatcher.service"
+link "$DOTFILES/config/systemd/user/workspace-copilot.service" \
+     "$HOME/.config/systemd/user/workspace-copilot.service"
+
+systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable --now awatcher.service workspace-copilot.service 2>/dev/null || true
+
+# -------------------------------------------------------
+# 6. Font configuration
+# -------------------------------------------------------
+echo "[6/8] Font configuration..."
+if [[ -d "$DOTFILES/config/fontconfig" ]]; then
+    link "$DOTFILES/config/fontconfig" "$HOME/.config/fontconfig"
+fi
+
+# Copy i3 custom fonts if they exist
+if [[ -d "$DOTFILES/config/i3/.fonts" ]]; then
+    mkdir -p "$HOME/.local/share/fonts"
+    cp -n "$DOTFILES/config/i3/.fonts/"* "$HOME/.local/share/fonts/" 2>/dev/null || true
+    fc-cache -f 2>/dev/null || true
+fi
+
+# -------------------------------------------------------
+# 7. System-level configs (requires sudo)
+# -------------------------------------------------------
+echo "[7/8] System-level configs (sudo required)..."
+
+# PipeWire realtime limits
+if [[ -f "$DOTFILES/config/system/security/limits.d/99-pipewire.conf" ]]; then
+    sudo cp "$DOTFILES/config/system/security/limits.d/99-pipewire.conf" \
+         /etc/security/limits.d/99-pipewire.conf
+    echo "  /etc/security/limits.d/99-pipewire.conf"
+fi
+
+# Sysctl tuning
+sudo tee /etc/sysctl.d/99-custom.conf > /dev/null << 'EOF'
+# Preserved from Ubuntu setup
+fs.inotify.max_user_watches = 524288
+vm.max_map_count = 1048576
+vm.swappiness = 10
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+EOF
+sudo sysctl --system > /dev/null 2>&1
+echo "  /etc/sysctl.d/99-custom.conf"
+
+# NVIDIA modprobe
+sudo tee /etc/modprobe.d/nvidia.conf > /dev/null << 'EOF'
+options nvidia_drm modeset=1 fbdev=1
+options nvidia NVreg_PreserveVideoMemoryAllocations=1
+options nvidia NVreg_UsePageAttributeTable=1
+options nvidia NVreg_RegistryDwords="PowerMizerEnable=0x1;PerfLevelSrc=0x2222;PowerMizerDefault=0x1;PowerMizerDefaultAC=0x1"
+EOF
+echo "  /etc/modprobe.d/nvidia.conf"
+
+# Makepkg: use all CPU threads for compilation and compression
+if grep -q '^#MAKEFLAGS' /etc/makepkg.conf; then
+    sudo sed -i 's/^#MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' /etc/makepkg.conf
+    echo "  /etc/makepkg.conf: MAKEFLAGS=-j\$(nproc)"
+fi
+if grep -q '^COMPRESSZST' /etc/makepkg.conf; then
+    sudo sed -i 's/^COMPRESSZST=.*/COMPRESSZST=(zstd -c -T0 -)/' /etc/makepkg.conf
+    echo "  /etc/makepkg.conf: COMPRESSZST with -T0 (all threads)"
+fi
+
+# -------------------------------------------------------
+# 8. Wallpapers
+# -------------------------------------------------------
+echo "[8/8] Wallpapers..."
+if [[ -d "$DOTFILES/background" ]]; then
+    link "$DOTFILES/background" "$HOME/Pictures/wallpapers"
+fi
+
+echo ""
+echo "=== Dotfiles Deployment Complete ==="
+echo ""
+echo "Deployed: shell, hyprland, audio, services, fonts, sysctl, wallpapers"
+echo ""
+echo "Next: ./migration/03-setup-audio.sh"

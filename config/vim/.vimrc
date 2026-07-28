@@ -1,95 +1,80 @@
-" # Outline of vimconfig:
-" # =====================
-" # 1. BASIC SETTINGS
-" # 2. PLUGINS
-" # 3. THEMES
-" # =====================
+" Vim Configuration
+" Minimal but functional — Zed is the primary editor
 
-
-
-" # -----------------+
-" # BASIC SETTINGS:  |
-" # -----------------+-----------------------------------------------------------
-
-" # -- Compatible (http://vimdoc.sourceforge.net/htmldoc/options.html#'compatible')
-"set nocompatible 
-
-" # -- Filetypes (http://vimdoc.sourceforge.net/htmldoc/filetype.html#filetype)
-filetype on      
-
-" # -- Soft Tab Stop (http://vimdoc.sourceforge.net/htmldoc/options.html#'softtabstop')
-set softtabstop=2
-
-" # -- Shift Width (http://vimdoc.sourceforge.net/htmldoc/options.html#'shiftwidth')
-set shiftwidth=2
-
-" # -- Expand Tab (http://vimdoc.sourceforge.net/htmldoc/options.html#'expandtab')
-set expandtab
-
-" # -- Encoding (http://vimdoc.sourceforge.net/htmldoc/options.html#'fileencoding')
-set encoding=utf-8
-
-
-
-
-set number
-
-
-set tabstop=2
-
-"set smarttab
-
-
-
-" # ---------+
-" # PLUGINS: |
-" # ---------+-------------------------------------------------------------------
-
-" # -- pathogen (https://github.com/tpope/vim-pathogen)
-call pathogen#infect('bundle/{}')
-syntax on
+" ── Essential Settings ──────────────────────────────────────────────
+set nocompatible
 filetype plugin indent on
+syntax on
 
+set encoding=utf-8
+set number
+set relativenumber
+set tabstop=2
+set softtabstop=2
+set shiftwidth=2
+set expandtab
+set smarttab
+set autoindent
 
-" # --------+
-" # THEMES: |
-" # --------+--------------------------------------------------------------------
+set backspace=indent,eol,start
+set hidden
+set autoread
+set mouse=a
+set scrolloff=8
+set sidescrolloff=8
+set signcolumn=yes
+set cursorline
 
-" # -- ONE DARK (https://github.com/joshdick/onedark.vim)
+" Search
+set hlsearch
+set incsearch
+set ignorecase
+set smartcase
 
-" # (1) SETUP:
-" # --------------------------
-if (empty($TMUX))
-  if (has("nvim")) "For Neovim 0.1.3 and 0.1.4 < https://github.com/neovim/neovim/pull/2198 >
-    let $NVIM_TUI_ENABLE_TRUE_COLOR=1
-  endif
-  "For Neovim > 0.1.5 and Vim > patch 7.4.1799 < https://github.com/vim/vim/commit/61be73bb0f965a895bfb064ea3e55476ac175162 >
-  "Based on Vim patch 7.4.1770 (`guicolors` option) < https://github.com/vim/vim/commit/8a633e3427b47286869aa4b96f2bfc1fe65b25cd >
-  " < https://github.com/neovim/neovim/wiki/Following-HEAD#20160511 >
-  if (has("termguicolors"))
-    set termguicolors
-  endif
+" Command-line completion
+set wildmenu
+set wildmode=longest:full,full
+
+" Persistent undo
+set undofile
+set undodir=~/.vim/undodir
+
+" No swap/backup clutter
+set noswapfile
+set nobackup
+set nowritebackup
+
+" Splits open in natural direction
+set splitbelow
+set splitright
+
+" ── Clipboard (Wayland) ────────────────────────────────────────────
+if has('unnamedplus')
+  set clipboard=unnamedplus
+else
+  " Fallback: use wl-copy/wl-paste for Wayland
+  autocmd TextYankPost * if v:event.operator ==# 'y' | call system('wl-copy', @0) | endif
+  nnoremap p :let @0=system('wl-paste --no-newline')<CR>"0p
 endif
 
-let g:onedark_termcolors=256
-
-" # (2) OPTIONS:
-" # --------------------------
-" let g:lightline = {
-"       \ 'colorscheme': 'wombat',
-"       \ 'component': {
-"       \   'readonly': '%{&readonly?"⭤":""}',
-"       \ },
-"       \ 'separator': { 'left': '⮀', 'right': '⮂' },
-"       \ 'subseparator': { 'left': '⮁', 'right': '⮃' }
-"       \ }
-" let g:onedark_terminal_italics
-"let g:lightline = {
-"  \ 'colorscheme': 'onedark',
-"  \ }
-
-" # (3) ENABLE COLOR SCHEME:
-" # --------------------------
-syntax on
+" ── Theme ──────────────────────────────────────────────────────────
+if (has("termguicolors"))
+  set termguicolors
+endif
 colorscheme onedark
-colorscheme atom-dark-256
+
+" ── Leader Key ─────────────────────────────────────────────────────
+let mapleader = " "
+
+" Clear search highlight
+nnoremap <leader><space> :nohlsearch<CR>
+
+" Quick save/quit
+nnoremap <leader>w :w<CR>
+nnoremap <leader>q :q<CR>
+
+" Split navigation
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l

@@ -1,0 +1,5 @@
+# Wooting official generic Linux device-access rules.
+# Grants the logged-in desktop user access through uaccess and the input group.
+# This changes device-node permissions only; it does not touch keyboard profiles.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="31e3", MODE:="0660", GROUP:="input", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="31e3", MODE:="0660", GROUP:="input", TAG+="uaccess"

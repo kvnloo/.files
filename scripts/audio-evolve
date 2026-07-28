@@ -1,0 +1,916 @@
+#!/usr/bin/env python3
+"""Fast preference evolution for the stable Aural PipeWire sink."""
+
+import hashlib
+import json
+import math
+import os
+import random
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+import wave
+from functools import cache
+from pathlib import Path
+
+SINK = "effect_input.aural_evolution"
+ROOT = Path(__file__).resolve().parents[1]
+DB = Path(os.getenv("AURAL_EVOLUTION_DB", Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local/share")) / "aural-evolution/preferences.db"))
+GENES = ("bass", "body", "presence", "clarity", "room_db")
+BOUNDS = ((-4, 3), (-2, 2), (-3, 2), (-4, 6), (-18, -6))
+SIGMA = (2.2, 1.7, 1.8, 3.0, 3.0)
+FLOOR = (0.15, 0.12, 0.12, 0.20, 0.5)
+STATIC_TONE = (0.8, 0.3, -0.2, 0.0)
+SEED = {
+    "monarch": (0.8, 0.3, -0.2, 0.0, -12.0),
+    "hd800s": (0.0, 0.0, 0.0, 0.0, -12.0),
+}
+CALIBRATION_MODES = ("spectrum", "colors", "imaging")
+
+
+def run(*cmd, check=True, **kwargs):
+    return subprocess.run(cmd, text=True, capture_output=True, check=check, **kwargs)
+
+
+def connect(path=DB):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(path, timeout=2)
+    db.executescript("""
+      PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;
+      CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS round(
+        device TEXT NOT NULL, mode TEXT NOT NULL, generation INTEGER NOT NULL,
+        variants TEXT NOT NULL, sigma TEXT NOT NULL, active INTEGER NOT NULL,
+        favorite INTEGER, created INTEGER NOT NULL,
+        PRIMARY KEY(device, mode, generation));
+      CREATE INDEX IF NOT EXISTS round_favorite ON round(device, mode, favorite);
+      CREATE TABLE IF NOT EXISTS observation(
+        device TEXT NOT NULL, mode TEXT NOT NULL, generation INTEGER NOT NULL,
+        variant INTEGER NOT NULL, params TEXT NOT NULL, note TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        PRIMARY KEY(device, mode, generation, variant, note));
+      CREATE TABLE IF NOT EXISTS event(
+        id INTEGER PRIMARY KEY,
+        device TEXT NOT NULL, mode TEXT NOT NULL, generation INTEGER NOT NULL,
+        variant INTEGER NOT NULL, params TEXT NOT NULL,
+        kind TEXT NOT NULL, value TEXT NOT NULL, created INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS event_round
+        ON event(device, mode, generation, id);
+      CREATE TABLE IF NOT EXISTS round_context(
+        device TEXT NOT NULL, mode TEXT NOT NULL, generation INTEGER NOT NULL,
+        context TEXT NOT NULL, created INTEGER NOT NULL,
+        PRIMARY KEY(device, mode, generation));
+    """)
+    return db
+
+
+def device():
+    try:
+        target = os.readlink(ROOT / "config/autoeq/active_44100Hz.wav").lower()
+        return "hd800s" if "hd800" in target else "monarch"
+    except OSError:
+        return "monarch"
+
+
+def mode(db):
+    row = db.execute("SELECT value FROM meta WHERE key='mode'").fetchone()
+    return row[0] if row else "native"
+
+
+def smoke_state(db):
+    row = db.execute("SELECT value FROM meta WHERE key='smoke'").fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def reflect(x, lo, hi):
+    if lo == hi:
+        return lo
+    while x < lo or x > hi:
+        x = lo + lo - x if x < lo else hi + hi - x
+    return round(x, 3)
+
+
+def artifact(path):
+    path = Path(path).resolve()
+    return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def snapshot(db, dev, lane, generation, sigma, reason="creation"):
+    context = {
+        "reason": reason,
+        "correction": {
+            str(rate): artifact(ROOT / f"config/autoeq/active_{rate}Hz.wav")
+            for rate in (44100, 48000, 96000, 192000, 384000)
+        },
+        "brir": artifact(ROOT / "config/brir/BRIR_R02_C1_True_Stereo.wav"),
+        "pipewire": artifact(ROOT / "config/pipewire/pipewire.conf.d/11-aural-evolution.conf"),
+        "controller": artifact(Path(__file__)),
+        "optimizer": {"genes": GENES, "bounds": BOUNDS, "sigma": sigma,
+                      "level_match": "pink+BS.1770-K"},
+    }
+    db.execute("INSERT OR REPLACE INTO round_context VALUES(?,?,?,?,?)",
+               (dev, lane, generation, json.dumps(context), int(time.time())))
+
+
+def legacy_trim(params):
+    return -8 - sum(w * v for w, v in zip((0.163, 0.259, 0.249, 0.177), params))
+
+
+@cache
+def level_model():
+    """Active correction and BS.1770 K weights on a pink-noise grid."""
+    import numpy as np
+    path = ROOT / "config/autoeq/active_48000Hz.wav"
+    with wave.open(str(path)) as source:
+        channels, width, rate = source.getnchannels(), source.getsampwidth(), source.getframerate()
+        raw = source.readframes(source.getnframes())
+    if width != 4 or rate != 48000:
+        raise RuntimeError(f"level calibration needs a 48 kHz 32-bit FIR: {path}")
+    impulse = np.frombuffer(raw, dtype="<i4")[::channels].astype(float) / 2 ** 31
+    size = 1 << max(13, (len(impulse) - 1).bit_length())
+    bins = np.fft.rfftfreq(size, 1 / rate)
+    frequencies = np.geomspace(20, 20_000, 192)
+    correction = np.interp(frequencies, bins, np.abs(np.fft.rfft(impulse, size)))
+    z = np.exp(-2j * np.pi * frequencies / rate)
+    shelf = ((1.53512485958697 - 2.69169618940638 * z + 1.19839281085285 * z * z)
+             / (1 - 1.69065929318241 * z + .73248077421585 * z * z))
+    highpass = ((1 - 2 * z + z * z)
+                / (1 - 1.99004745483398 * z + .99007225036621 * z * z))
+    return np, frequencies, correction * correction * abs(shelf * highpass) ** 2
+
+
+def eq_magnitude(kind, frequency, q, gain):
+    np, frequencies, _ = level_model()
+    a = 10 ** (gain / 40)
+    w0 = 2 * np.pi * frequency / 48000
+    alpha, cosine = np.sin(w0) / (2 * q), np.cos(w0)
+    if kind == "bq_peaking":
+        b = (1 + alpha * a, -2 * cosine, 1 - alpha * a)
+        d = (1 + alpha / a, -2 * cosine, 1 - alpha / a)
+    else:
+        root = 2 * np.sqrt(a) * alpha
+        b = (a * ((a + 1) - (a - 1) * cosine + root),
+             2 * a * ((a - 1) - (a + 1) * cosine),
+             a * ((a + 1) - (a - 1) * cosine - root))
+        d = ((a + 1) + (a - 1) * cosine + root,
+             -2 * ((a - 1) + (a + 1) * cosine),
+             (a + 1) + (a - 1) * cosine - root)
+    z = np.exp(-2j * np.pi * frequencies / 48000)
+    return abs((b[0] + b[1] * z + b[2] * z * z)
+               / (d[0] + d[1] * z + d[2] * z * z))
+
+
+def tone_response(params):
+    np, frequencies, _ = level_model()
+    response = np.ones_like(frequencies)
+    for spec in (("bq_lowshelf", 105, .7, params[0]),
+                 ("bq_peaking", 250, .7, params[1]),
+                 ("bq_peaking", 2800, .7, params[2]),
+                 ("bq_peaking", 5200, 1, params[3])):
+        response *= eq_magnitude(*spec)
+    return response
+
+
+@cache
+def room_model():
+    import numpy as np
+    path = ROOT / "config/brir/BRIR_R02_C1_True_Stereo.wav"
+    with wave.open(str(path)) as source:
+        channels, width, rate = source.getnchannels(), source.getsampwidth(), source.getframerate()
+        raw = source.readframes(min(4096, source.getnframes()))
+    octets = np.frombuffer(raw, dtype=np.uint8).reshape(-1, width)
+    if width == 3:
+        values = (octets[:, 0].astype(np.int32)
+                  | octets[:, 1].astype(np.int32) << 8
+                  | octets[:, 2].astype(np.int32) << 16)
+        samples = ((values ^ 0x800000) - 0x800000) / 2 ** 23
+    elif width in (2, 4):
+        samples = np.frombuffer(raw, dtype=f"<i{width}").astype(float) / 2 ** (8 * width - 1)
+    else:
+        raise RuntimeError(f"unsupported BRIR width: {width}")
+    samples = samples.reshape(-1, channels)
+    _, frequencies, _ = level_model()
+    size = 1 << max(13, (len(samples) - 1).bit_length())
+    bins = np.fft.rfftfreq(size, 1 / rate)
+    response = []
+    for channel in samples.T:
+        spectrum = np.fft.rfft(channel, size)
+        response.append(np.interp(frequencies, bins, spectrum.real)
+                        + 1j * np.interp(frequencies, bins, spectrum.imag))
+    return np, frequencies, response
+
+
+def spatial_power(room_db):
+    np, frequencies, response = room_model()
+    if room_db <= -60:
+        return np.ones_like(frequencies)
+    wet = 10 ** (room_db / 20)
+    dry = math.sqrt(1 - wet * wet)
+    direct = dry * np.exp(-2j * np.pi * frequencies * .001315)
+    room = [wet * .64 * channel for channel in response]
+    return ((abs(direct + room[0]) ** 2 + abs(room[2]) ** 2
+             + abs(room[1]) ** 2 + abs(direct + room[3]) ** 2) / 2)
+
+
+def level_energy(params):
+    np, _, weights = level_model()
+    response = tone_response(params)
+    return float(np.sum(weights * response * response * spatial_power(params[-1])))
+
+
+def response_distance(left, right):
+    np, _, _ = level_model()
+    delta = 20 * np.log10(tone_response(left) / tone_response(right))
+    return float(np.std(delta))
+
+
+def matched_trim(params, anchor, anchor_trim):
+    return round(anchor_trim + 10 * math.log10(level_energy(anchor) / level_energy(params)), 4)
+
+
+def peak_db(params, trim):
+    np, frequencies, _ = level_model()
+    path = ROOT / "config/autoeq/active_48000Hz.wav"
+    with wave.open(str(path)) as source:
+        channels = source.getnchannels()
+        impulse = (np.frombuffer(source.readframes(source.getnframes()), dtype="<i4")
+                   [::channels].astype(float) / 2 ** 31)
+        rate = source.getframerate()
+    size = 1 << max(13, (len(impulse) - 1).bit_length())
+    correction = np.interp(
+        frequencies, np.fft.rfftfreq(size, 1 / rate),
+        np.abs(np.fft.rfft(impulse, size)))
+    response = correction * tone_response(params) * 10 ** (trim / 20)
+    return 20 * math.log10(max(float(np.max(response)), 1e-12))
+
+
+def safe_trim(params, trim, ceiling=-3):
+    return round(trim - max(0, peak_db(params, trim) - ceiling), 4)
+
+
+def width_compensation(width):
+    return 10 * math.log10((1 + width * width) / 2)
+
+
+def designed_variants(anchor, designs, safety=0):
+    anchor_trim = anchor.get("g", legacy_trim(anchor["p"]))
+    variants = []
+    for design_label, delta in designs:
+        params = [anchor["p"][i] + delta[i] for i in range(4)] + [anchor["p"][-1]]
+        variants.append({
+            "p": params,
+            "g": round(matched_trim(params, anchor["p"], anchor_trim) - safety, 4),
+            "k": "calibration",
+            "label": design_label,
+            "d": list(delta),
+        })
+    return variants
+
+
+def intensity_state(db, dev, lane):
+    row = db.execute("SELECT value FROM meta WHERE key=?",
+                     (f"intensity:{dev}:{lane}",)).fetchone()
+    return json.loads(row[0]) if row else {"index": -1, "level": 1}
+
+
+def intensified(db, dev, lane, variants, index, increment=False, restore=False):
+    variant = variants[index]
+    if lane not in CALIBRATION_MODES or index == 0:
+        return variant, 1
+    saved = intensity_state(db, dev, lane)
+    level = saved["level"] if restore and saved["index"] == index else 1
+    if increment and saved["index"] == index:
+        level = min(2, saved["level"] + 1)
+    reference = variants[0]
+    delta = variant.get("d") or [
+        variant["p"][axis] - reference["p"][axis] for axis in range(4)
+    ]
+    params = [
+        reference["p"][axis] + level * delta[axis] for axis in range(4)
+    ] + [reference["p"][-1]]
+    trim = matched_trim(params, reference["p"], reference["g"])
+    width = 1 + level * (variant.get("s", {}).get("width", 1) - 1)
+    trim -= width_compensation(width)
+    trim = safe_trim(params, trim, -3 - 20 * math.log10(max(1, width)))
+    return {**variant, "p": params, "g": trim, "s": {"width": width}}, level
+
+
+def spectrum_variants(anchor):
+    return designed_variants(anchor, (
+        ("Reference", (0, 0, 0, 0)),
+        ("Bass +", (6, 0, 0, 0)),
+        ("Bass −", (-6, 0, 0, 0)),
+        ("Body +", (0, 5, 0, 0)),
+        ("Body −", (0, -5, 0, 0)),
+        ("Presence +", (0, 0, 6, 0)),
+        ("Presence −", (0, 0, -6, 0)),
+        ("Clarity +", (0, 0, 0, 10)),
+        ("Clarity −", (0, 0, 0, -10)),
+        ("Warm", (4, 2, -4, -6)),
+    ), 3)
+
+
+def color_variants(reference):
+    return designed_variants(reference, (
+        ("Reference", (0, 0, 0, 0)),
+        ("Punch", (4, 2, 2, 3)),
+        ("Deep", (7, 0, -2, -3)),
+        ("Vocal", (-2, 1, 5, -1)),
+        ("Smooth", (2, 1, -4, -7)),
+        ("Airy", (-1, -1, 1, 9)),
+        ("V-shape", (6, -2, -2, 7)),
+        ("Lush", (1, 5, 2, -4)),
+        ("Attack", (0, -1, 3, 6)),
+        ("Night", (3, 2, -5, -10)),
+    ))
+
+
+def imaging_variants(reference):
+    variants = designed_variants(reference, (
+        ("Reference", (0, 0, 0, 0)),
+        ("Bass cleanup", (-3, -1, 0, 1)),
+        ("Center focus", (0, 0, 1, 0)),
+        ("Lateral precision", (-1, -.5, 0, 1)),
+        ("Depth cues", (-1, 0, -1, 2)),
+        ("Pinna cues +", (0, 0, 2, 3)),
+        ("Pinna cues −", (0, 0, -2, -3)),
+        ("Separation", (-1, -1, 0, 2)),
+        ("Spatial blend", (0, 1, -1, -1)),
+        ("Precision blend", (-1, 1, -1, -1)),
+    ))
+    for variant, width in zip(variants, (1, 1, .72, 1.22, .9, 1, 1, 1.35, .82, 1.18)):
+        variant["s"] = {"width": width}
+        variant["g"] = round(variant["g"] - width_compensation(width), 4)
+    return variants
+
+
+def population(parent, sigma, lane, anchor_trim=None):
+    bounds = list(BOUNDS)
+    widths = list(sigma)
+    anchor_trim = legacy_trim(parent) if anchor_trim is None else anchor_trim
+    if lane == "native":
+        bounds[-1] = (-80, -80)
+        widths[-1] = 0
+        parent = (*parent[:-1], -80)
+    variants = [{"p": list(parent), "k": "champion"}]
+    if lane == "native":
+        for axis in range(4):
+            for sign in (-1, 1):
+                p = list(parent)
+                p[axis] = reflect(p[axis] + sign * widths[axis], *bounds[axis])
+                variants.append({"p": p, "k": "axis", "a": axis, "s": sign})
+        best = (-1, None)
+        for _ in range(64):
+            p = [reflect(v + 1.5 * s * random.gauss(0, 1), *b)
+                 for v, s, b in zip(parent, widths, bounds)]
+            distance = min(response_distance(p, variant["p"]) for variant in variants)
+            best = max(best, (distance, p))
+            if distance >= .55:
+                break
+        p = best[1]
+        variants.append({"p": p, "k": "explorer"})
+        random.shuffle(variants)
+        for variant in variants:
+            variant["g"] = matched_trim(variant["p"], parent, anchor_trim)
+        return variants
+    lo, hi = bounds[-1]
+    width = min(4 * widths[-1], hi - lo)
+    start = max(lo, min(parent[-1] - width / 2, hi - width))
+    grid = [round(start + width * i / 9, 3) for i in range(10)]
+    del grid[min(range(10), key=lambda i: abs(grid[i] - parent[-1]))]
+    for wet in grid:
+        p = [*parent[:-1], wet]
+        variants.append({"p": p, "k": "axis", "a": 4,
+                         "s": -1 if wet < parent[-1] else 1})
+    random.shuffle(variants)
+    for variant in variants:
+        variant["g"] = matched_trim(variant["p"], parent, anchor_trim)
+    return variants
+
+
+def current(db, dev=None, lane=None):
+    dev, lane = dev or device(), lane or mode(db)
+    row = db.execute(
+        "SELECT generation,variants,sigma,active,favorite FROM round "
+        "WHERE device=? AND mode=? ORDER BY generation DESC LIMIT 1", (dev, lane)
+    ).fetchone()
+    if row:
+        return dev, lane, (row[0], json.loads(row[1]), json.loads(row[2]), row[3], row[4])
+    if lane in CALIBRATION_MODES:
+        _, native, _, active, _ = current(db, dev, "native")[2]
+        spectrum = spectrum_variants(native[active])
+        variants = (spectrum if lane == "spectrum" else
+                    color_variants(spectrum[0]) if lane == "colors" else
+                    imaging_variants(spectrum[0]))
+        db.execute("INSERT INTO round VALUES(?,?,?,?,?,?,NULL,?)",
+                   (dev, lane, 0, json.dumps(variants), "[]", 0, int(time.time())))
+        snapshot(db, dev, lane, 0, [], "calibration-smoke-test")
+        db.commit()
+        return current(db, dev, lane)
+    seed = list(SEED[dev])
+    anchor_trim = None
+    if lane == "room":
+        _, native, _, active, _ = current(db, dev, "native")[2]
+        seed[:4] = native[active]["p"][:4]
+        anchor_trim = native[active].get("g", legacy_trim(native[active]["p"]))
+    variants = population(seed, SIGMA, lane, anchor_trim)
+    active = next(i for i, v in enumerate(variants) if v["k"] == "champion")
+    db.execute("INSERT INTO round VALUES(?,?,?,?,?,?,NULL,?)",
+               (dev, lane, 0, json.dumps(variants), json.dumps(SIGMA), active, int(time.time())))
+    snapshot(db, dev, lane, 0, SIGMA)
+    db.commit()
+    return current(db, dev, lane)
+
+
+def node_id():
+    out = run("pw-cli", "ls", "Node").stdout
+    for block in re.split(r"(?=\tid \d+)", out):
+        if f'node.name = "{SINK}"' in block:
+            found = re.search(r"\bid (\d+),", block)
+            if found:
+                return found.group(1)
+    raise SystemExit("Aural Evolution sink is not running; install/restart PipeWire first.")
+
+
+def tone_spec(params, trim=None):
+    """Runtime EQ layered after the static graph's correction is cancelled."""
+    trim = legacy_trim(params) if trim is None else trim
+    return (("bq_highshelf", 0, 1, trim + 8),
+            ("bq_lowshelf", 105, 0.7, -STATIC_TONE[0]),
+            ("bq_lowshelf", 105, 0.7, params[0]),
+            ("bq_peaking", 250, 0.7, -STATIC_TONE[1]),
+            ("bq_peaking", 250, 0.7, params[1]),
+            ("bq_peaking", 2800, 0.7, -STATIC_TONE[2]),
+            ("bq_peaking", 2800, 0.7, params[2]),
+            ("bq_peaking", 5200, 1, params[3]))
+
+
+def filter_graph(params, trim=None, spatial=None):
+    wet = 0 if params[-1] <= -60 else 10 ** (params[-1] / 20)
+    dry = math.sqrt(max(0, 1 - wet * wet))
+    delay = 0 if wet == 0 else 0.001315
+    filters = " ".join(
+        f"{{ type={kind} freq={freq} q={q} gain={gain:.6g} }}"
+        for kind, freq, q, gain in tone_spec(params, trim))
+    nodes = [f"{{ type=builtin name=eq label=param_eq config={{ filters=[ {filters} ] }} }}"]
+    links = []
+    sources = ("eq:Out 1", "eq:Out 2")
+    width = (spatial or {}).get("width", 1)
+    if width != 1:
+        direct, cross = (1 + width) / 2, (1 - width) / 2
+        nodes += [
+            f'{{ type=builtin name=width_l label=mixer control={{ "Gain 1"={direct:.8g} "Gain 2"={cross:.8g} }} }}',
+            f'{{ type=builtin name=width_r label=mixer control={{ "Gain 1"={cross:.8g} "Gain 2"={direct:.8g} }} }}',
+        ]
+        links += [
+            '{ output="eq:Out 1" input="width_l:In 1" }',
+            '{ output="eq:Out 2" input="width_l:In 2" }',
+            '{ output="eq:Out 1" input="width_r:In 1" }',
+            '{ output="eq:Out 2" input="width_r:In 2" }',
+        ]
+        sources = ("width_l:Out", "width_r:Out")
+    outputs = [f'"{source}"' for source in sources]
+    if wet:
+        brir = ROOT / "config/brir/BRIR_R02_C1_True_Stereo.wav"
+        nodes += [
+            f'{{ type=builtin name=dry_l label=delay config={{ "max-delay"=0.005 latency={delay} }} control={{ "Delay (s)"={delay} }} }}',
+            f'{{ type=builtin name=dry_r label=delay config={{ "max-delay"=0.005 latency={delay} }} control={{ "Delay (s)"={delay} }} }}',
+            *[f'{{ type=builtin name=brir_{i} label=convolver config={{ filename="{brir}" channel={i} length=4096 blocksize=256 tailsize=8192 gain=0.64 latency=0.001315 resample_quality=14 }} }}'
+              for i in range(4)],
+            '{ type=builtin name=room_l label=mixer }',
+            '{ type=builtin name=room_r label=mixer }',
+            f'{{ type=builtin name=mix_l label=mixer control={{ "Gain 1"={dry:.8g} "Gain 2"={wet:.8g} }} }}',
+            f'{{ type=builtin name=mix_r label=mixer control={{ "Gain 1"={dry:.8g} "Gain 2"={wet:.8g} }} }}',
+        ]
+        links += [
+            f'{{ output="{sources[0]}" input="dry_l:In" }}',
+            f'{{ output="{sources[1]}" input="dry_r:In" }}',
+            '{ output="dry_l:Out" input="mix_l:In 1" }',
+            '{ output="dry_r:Out" input="mix_r:In 1" }',
+            f'{{ output="{sources[0]}" input="brir_0:In" }}',
+            f'{{ output="{sources[0]}" input="brir_1:In" }}',
+            f'{{ output="{sources[1]}" input="brir_2:In" }}',
+            f'{{ output="{sources[1]}" input="brir_3:In" }}',
+            '{ output="brir_0:Out" input="room_l:In 1" }',
+            '{ output="brir_2:Out" input="room_l:In 2" }',
+            '{ output="brir_1:Out" input="room_r:In 1" }',
+            '{ output="brir_3:Out" input="room_r:In 2" }',
+            '{ output="room_l:Out" input="mix_l:In 2" }',
+            '{ output="room_r:Out" input="mix_r:In 2" }',
+        ]
+        outputs = ['"mix_l:Out"', '"mix_r:Out"']
+    return (f'{{ nodes=[ {" ".join(nodes)} ] links=[ {" ".join(links)} ] '
+            f'inputs=[ "eq:In 1" "eq:In 2" ] outputs=[ {" ".join(outputs)} ] }}')
+
+
+def apply(params, trim=None, spatial=None):
+    graph = filter_graph(params, trim, spatial)
+    payload = '{ params = [ "audioconvert.filter-graph.0" ' + json.dumps(graph) + " ] }"
+    ident = node_id()
+    prime = subprocess.Popen(
+        ("pw-cat", "--playback", "--raw", "--target", SINK, "--rate", "48000",
+         "--channels", "2", "--format", "f32", "/dev/zero"),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(0.03)
+        run("pw-cli", "set-param", ident, "Props", payload)
+    finally:
+        prime.terminate()
+        prime.wait()
+    return ident
+
+
+def apply_variant(variant):
+    return apply(variant["p"], variant.get("g"), variant.get("s"))
+
+
+def announce(dev, lane, gen, active):
+    run("notify-send", "-t", "900", "Aural Evolution",
+        f"{dev} · {lane} · generation {gen} · variant {active + 1}", check=False)
+
+
+def record(db, kind, dev, lane, gen, variant, params, value=""):
+    db.execute(
+        "INSERT INTO event(device,mode,generation,variant,params,kind,value,created) "
+        "VALUES(?,?,?,?,?,?,?,?)",
+        (dev, lane, gen, variant, json.dumps(params), kind, value, int(time.time())),
+    )
+
+
+def select(db, index, notify=False):
+    dev, lane, (gen, variants, sigma, _, favorite) = current(db)
+    if not 0 <= index < 10:
+        raise SystemExit("variant must be 1..10 (0 means 10)")
+    active = current(db, dev, lane)[2][3]
+    variant, level = intensified(
+        db, dev, lane, variants, index,
+        increment=lane in CALIBRATION_MODES and not smoke_state(db) and index == active)
+    apply_variant(variant)
+    db.execute("UPDATE round SET active=? WHERE device=? AND mode=? AND generation=?",
+               (index, dev, lane, gen))
+    if lane in CALIBRATION_MODES:
+        db.execute("INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE "
+                   "SET value=excluded.value",
+                   (f"intensity:{dev}:{lane}",
+                    json.dumps({"index": index, "level": level})))
+    record(db, "select", dev, lane, gen, index, variant["p"],
+           json.dumps({"kind": variant["k"], "trim": variant.get("g"),
+                       "intensity": level}))
+    db.commit()
+    if notify:
+        name = variant.get("label", f"variant {index + 1}")
+        suffix = f" ×{level}" if lane in CALIBRATION_MODES and index else ""
+        run("notify-send", "-t", "1200", "Calibration Smoke Test",
+            f"{name}{suffix}", check=False)
+
+
+def favorite(db):
+    if smoke_state(db):
+        raise SystemExit("exit the smoke test before choosing a favorite")
+    dev, lane, (gen, variants, sigma, active, _) = current(db)
+    if lane in CALIBRATION_MODES:
+        raise SystemExit("Calibration Smoke Test banks are permanent listening modes")
+    winner = variants[active]
+    db.execute("UPDATE round SET favorite=? WHERE device=? AND mode=? AND generation=?",
+               (active, dev, lane, gen))
+    record(db, "favorite", dev, lane, gen, active, winner["p"])
+    if lane == "native":
+        axis = winner.get("a")
+        if winner["k"] == "champion":
+            factors = [0.65] * len(sigma)
+        elif axis is not None:
+            factors = [1.15 if i == axis else 0.85 for i in range(len(sigma))]
+        else:
+            factors = [1.05] * len(sigma)
+        sigma = [max(floor, round(value * factor, 3))
+                 for value, factor, floor in zip(sigma, factors, FLOOR)]
+    else:
+        sigma[-1] = max(FLOOR[-1], round(sigma[-1] * 0.65, 3))
+    variants = population(winner["p"], sigma, lane, winner.get("g", legacy_trim(winner["p"])))
+    active = next(i for i, v in enumerate(variants) if v["k"] == "champion")
+    db.execute("INSERT INTO round VALUES(?,?,?,?,?,?,NULL,?)",
+               (dev, lane, gen + 1, json.dumps(variants), json.dumps(sigma), active, int(time.time())))
+    snapshot(db, dev, lane, gen + 1, sigma)
+    apply_variant(variants[active])
+    db.commit()
+
+
+def calibrate(db):
+    """Start a deliberately audible, level-matched round without declaring a winner."""
+    if smoke_state(db):
+        raise SystemExit("exit the smoke test before starting a calibration round")
+    dev, lane, (gen, variants, _, active, _) = current(db)
+    if lane in CALIBRATION_MODES:
+        raise SystemExit("switch to native or room before starting a calibration round")
+    anchor = variants[active]
+    next_variants = population(anchor["p"], SIGMA, lane,
+                               anchor.get("g", legacy_trim(anchor["p"])))
+    next_active = next(i for i, variant in enumerate(next_variants)
+                      if variant["k"] == "champion")
+    db.execute("INSERT INTO round VALUES(?,?,?,?,?,?,NULL,?)",
+               (dev, lane, gen + 1, json.dumps(next_variants), json.dumps(SIGMA),
+                next_active, int(time.time())))
+    snapshot(db, dev, lane, gen + 1, SIGMA, "calibration")
+    record(db, "calibrate", dev, lane, gen + 1, next_active,
+           next_variants[next_active]["p"], f"anchor_generation={gen}")
+    apply_variant(next_variants[next_active])
+    db.commit()
+
+
+def set_mode(db, lane):
+    if smoke_state(db):
+        raise SystemExit("exit the smoke test before changing modes")
+    if lane not in ("native", "room", *CALIBRATION_MODES):
+        raise SystemExit("mode must be native, room, spectrum, colors, or imaging")
+    dev = device()
+    _, _, (gen, variants, _, active, _) = current(db, dev, lane)
+    variant, _ = intensified(db, dev, lane, variants, active, restore=True)
+    apply_variant(variant)
+    db.execute("INSERT INTO meta VALUES('mode',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (lane,))
+    record(db, "mode", dev, lane, gen, active, variant["p"])
+    db.commit()
+
+
+def activate(db):
+    dev, lane, (gen, variants, _, active, _) = current(db)
+    variant, _ = intensified(db, dev, lane, variants, active, restore=True)
+    ident = apply_variant(variant)
+    for _ in range(20):
+        result = run("wpctl", "set-default", ident, check=False)
+        if not result.returncode:
+            break
+        time.sleep(0.05)
+    else:
+        raise SystemExit(result.stderr.strip())
+    inputs = run("pactl", "-f", "json", "list", "sink-inputs", check=False)
+    for stream in json.loads(inputs.stdout or "[]"):
+        name = stream.get("properties", {}).get("node.name", "")
+        if not name.startswith("effect_output."):
+            run("pactl", "move-sink-input", str(stream["index"]), SINK, check=False)
+    record(db, "activate", dev, lane, gen, active, variant["p"])
+    db.commit()
+    print(f"active · {dev} · {lane} · gen {gen} · variant {active + 1}")
+
+
+def label(db):
+    dev, lane, (gen, _, _, active, _) = current(db)
+    suffix = " · SMOKE" if smoke_state(db) else ""
+    return f"{dev} · {lane} · gen {gen} · variant {active + 1}{suffix}"
+
+
+def state(db):
+    dev, lane, (gen, variants, _, active, favorite) = current(db)
+    smoke = smoke_state(db)
+    calibration = lane in CALIBRATION_MODES
+    intensity = intensity_state(db, dev, lane)
+    level = intensity["level"] if calibration and intensity["index"] == active else 1
+    print(json.dumps({"device": dev, "mode": lane, "generation": gen,
+                      "active": active + 1,
+                      "favorite": favorite + 1 if favorite is not None else None,
+                      "calibration": calibration,
+                      "intensity": level,
+                      "variant_labels": [variant.get("label") for variant in variants],
+                      "smoke": bool(smoke),
+                      "smoke_db": smoke.get("offsets") if smoke else None,
+                      "smoke_profile": smoke.get("profile") if smoke else None,
+                      "smoke_labels": smoke.get("labels") if smoke else None},
+                     separators=(",", ":")))
+
+
+def note(db, text):
+    dev, lane, (gen, variants, _, active, _) = current(db)
+    db.execute("INSERT OR REPLACE INTO observation VALUES(?,?,?,?,?,?,?)",
+               (dev, lane, gen, active, json.dumps(variants[active]["p"]),
+                text, int(time.time())))
+    record(db, "note", dev, lane, gen, active, variants[active]["p"], text)
+    db.commit()
+
+
+def save_smoke(db):
+    saved = smoke_state(db)
+    if not saved or saved.get("profile") != "tone":
+        raise SystemExit("start the tonal smoke test before saving it")
+    dev, lane, gen = saved["device"], saved["mode"], saved["generation"]
+    row = db.execute("SELECT variants,active FROM round WHERE "
+                     "device=? AND mode=? AND generation=?",
+                     (dev, lane, gen)).fetchone()
+    diagnostic, active = json.loads(row[0]), row[1]
+    names = ("Reference", "Bass +", "Bass −", "Body +", "Body −",
+             "Presence +", "Presence −", "Clarity +", "Clarity −", "Warm")
+    reference = diagnostic[0]["p"]
+    spectrum = []
+    for name, variant in zip(names, diagnostic):
+        spectrum.append({
+            **variant,
+            "k": "calibration",
+            "label": name,
+            "d": [variant["p"][axis] - reference[axis] for axis in range(4)],
+        })
+    colors = color_variants(spectrum[0])
+    db.execute("UPDATE round SET variants=?,sigma=?,active=?,favorite=? WHERE "
+               "device=? AND mode=? AND generation=?",
+               (json.dumps(saved["variants"]), json.dumps(saved["sigma"]),
+                saved["active"], saved["favorite"], dev, lane, gen))
+    for bank, variants, bank_active in (
+            ("spectrum", spectrum, active), ("colors", colors, 0)):
+        db.execute("INSERT OR REPLACE INTO round VALUES(?,?,?,?,?,?,NULL,?)",
+                   (dev, bank, 0, json.dumps(variants), "[]",
+                    bank_active, int(time.time())))
+        snapshot(db, dev, bank, 0, [], "calibration-smoke-test")
+        db.execute("INSERT INTO meta VALUES(?,?) ON CONFLICT(key) DO UPDATE "
+                   "SET value=excluded.value",
+                   (f"intensity:{dev}:{bank}",
+                    json.dumps({"index": bank_active, "level": 1})))
+    db.execute("DELETE FROM meta WHERE key='smoke'")
+    db.execute("INSERT INTO meta VALUES('mode','spectrum') ON CONFLICT(key) "
+               "DO UPDATE SET value=excluded.value")
+    variant = spectrum[active]
+    apply_variant(variant)
+    record(db, "calibration-save", dev, "spectrum", 0, active,
+           variant["p"], "Calibration Smoke Test")
+    db.commit()
+    print(label(db))
+
+
+def smoke(db, action):
+    saved = smoke_state(db)
+    if action == "save":
+        return save_smoke(db)
+    if action in ("start", "gain", "tone"):
+        if saved:
+            print(label(db))
+            return
+        dev, lane, (gen, variants, sigma, active, favorite_) = current(db)
+        anchor = variants[active]
+        trim = anchor.get("g", legacy_trim(anchor["p"]))
+        profile = "tone" if action == "tone" else "gain"
+        if profile == "gain":
+            offsets = (0, -3, -6, -9, -12, -18, -24, -30, -40, -60)
+            labels = tuple(f"{offset} dB" for offset in offsets)
+            diagnostic = [
+                {"p": anchor["p"], "g": round(trim + offset, 4),
+                 "k": "smoke", "db": offset}
+                for offset in offsets
+            ]
+        else:
+            offsets = None
+            diagnostic = spectrum_variants(anchor)
+            labels = tuple(variant["label"] for variant in diagnostic)
+        saved = {"device": dev, "mode": lane, "generation": gen,
+                 "variants": variants, "sigma": sigma, "active": active,
+                 "favorite": favorite_, "profile": profile,
+                 "offsets": offsets, "labels": labels}
+        apply_variant(diagnostic[0])
+        db.execute("UPDATE round SET variants=?,active=0 WHERE "
+                   "device=? AND mode=? AND generation=?",
+                   (json.dumps(diagnostic), dev, lane, gen))
+        db.execute("INSERT INTO meta VALUES('smoke',?)",
+                   (json.dumps(saved),))
+        record(db, "smoke-start", dev, lane, gen, 0, anchor["p"],
+               json.dumps({"profile": profile, "offsets_db": offsets,
+                           "labels": labels}))
+        db.commit()
+    elif action == "stop":
+        if not saved:
+            print(label(db))
+            return
+        dev, lane, gen = saved["device"], saved["mode"], saved["generation"]
+        variant = saved["variants"][saved["active"]]
+        apply_variant(variant)
+        db.execute("UPDATE round SET variants=?,sigma=?,active=?,favorite=? "
+                   "WHERE device=? AND mode=? AND generation=?",
+                   (json.dumps(saved["variants"]), json.dumps(saved["sigma"]),
+                    saved["active"], saved["favorite"], dev, lane, gen))
+        db.execute("DELETE FROM meta WHERE key='smoke'")
+        record(db, "smoke-stop", dev, lane, gen, saved["active"],
+               variant["p"])
+        db.commit()
+    else:
+        raise SystemExit("smoke must be gain, tone, or stop")
+    print(label(db))
+
+
+def popup(db):
+    while True:
+        dev, lane, (gen, variants, _, active, _) = current(db)
+        rows = [f"{'●' if i == active else ' '}  {i + 1}  Variant {i + 1}" for i in range(10)]
+        if smoke_state(db):
+            rows += ["■  Exit smoke test", "×  Close"]
+        elif lane in CALIBRATION_MODES:
+            other = "colors" if lane == "spectrum" else "spectrum"
+            rows += [f"⇄  Switch to {other} bank", "↩  Return to native", "×  Close"]
+        else:
+            rows += ["★  Favorite current → next generation",
+                     f"⇄  Switch to {'room' if lane == 'native' else 'native'} mode",
+                     "×  Close"]
+        picked = run(
+            "rofi", "-dmenu", "-i", "-no-custom", "-p", f"Aural · {dev} · {lane} · gen {gen}",
+            "-mesg", "Fixed loop + volume · Alt+1…0 · opaque by design",
+            "-theme-str", "window { width: 420px; } listview { lines: 13; }",
+            input="\n".join(rows), check=False
+        )
+        if picked.returncode or not picked.stdout.strip() or picked.stdout.strip().startswith("×"):
+            return
+        choice = picked.stdout.strip()
+        if choice.startswith("★"):
+            favorite(db)
+        elif choice.startswith("■"):
+            smoke(db, "stop")
+        elif choice.startswith("↩"):
+            set_mode(db, "native")
+        elif choice.startswith("⇄"):
+            if lane in CALIBRATION_MODES:
+                set_mode(db, "colors" if lane == "spectrum" else "spectrum")
+            else:
+                set_mode(db, "room" if lane == "native" else "native")
+        else:
+            select(db, rows.index(choice))
+
+
+def doctor(db):
+    ident = node_id()
+    props = run("pw-cli", "enum-params", ident, "PropInfo").stdout
+    if "audioconvert.filter-graph.N" not in props:
+        raise SystemExit("PipeWire does not expose runtime filter-graph swaps")
+    print(f"ok · sink {ident} · db {DB} · {label(db)}")
+
+
+def snapshot_current(db):
+    dev, lane, (gen, _, sigma, _, _) = current(db)
+    snapshot(db, dev, lane, gen, sigma, "manual")
+    db.commit()
+    print(f"snapshotted · {dev} · {lane} · gen {gen}")
+
+
+def self_test():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        db = connect(Path(tmp) / "test.db")
+        expected = device()
+        dev, lane, (_, variants, _, active, _) = current(db, expected, "native")
+        assert dev == expected and lane == "native" and len(variants) == 10
+        assert variants[active]["k"] == "champion" and all(v["p"][-1] == -80 for v in variants)
+        levels = [10 * math.log10(level_energy(v["p"])) + v["g"] for v in variants]
+        assert max(levels) - min(levels) < .001
+        db.execute("UPDATE round SET active=0")
+        db.commit()
+        old = current(db, expected, "native")[2][0]
+        favorite_no_audio(db)
+        assert current(db, expected, "native")[2][0] == old + 1
+        native = current(db, expected, "native")[2][1]
+        tone = next(x["p"][:4] for x in native if x["k"] == "champion")
+        _, _, (_, room, _, _, _) = current(db, expected, "room")
+        assert len(room) == 10 and len({v["p"][-1] for v in room}) == 10
+        assert all(v["p"][:4] == tone for v in room)
+        levels = [10 * math.log10(level_energy(v["p"])) + v["g"] for v in room]
+        assert max(levels) - min(levels) < .001
+    print("ok")
+
+
+def favorite_no_audio(db):
+    original = globals()["apply"]
+    globals()["apply"] = lambda *_: None
+    try:
+        favorite(db)
+    finally:
+        globals()["apply"] = original
+
+
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "self-test":
+        return self_test()
+    db = connect()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "popup"
+    if cmd == "popup":
+        popup(db)
+    elif cmd == "select":
+        raw = int(sys.argv[2])
+        select(db, 9 if raw == 0 else raw - 1, "--notify" in sys.argv)
+    elif cmd == "favorite":
+        favorite(db)
+    elif cmd == "calibrate":
+        calibrate(db)
+    elif cmd == "smoke":
+        smoke(db, sys.argv[2])
+    elif cmd == "mode":
+        set_mode(db, sys.argv[2])
+    elif cmd == "activate":
+        activate(db)
+    elif cmd == "status":
+        print(label(db))
+    elif cmd == "json":
+        state(db)
+    elif cmd == "doctor":
+        doctor(db)
+    elif cmd == "snapshot":
+        snapshot_current(db)
+    elif cmd == "note":
+        note(db, " ".join(sys.argv[2:]))
+    else:
+        raise SystemExit("usage: audio-evolve [popup|select 1..9,0|favorite|calibrate|smoke gain|tone|save|stop|mode native|room|spectrum|colors|imaging|activate|status|json|note TEXT|snapshot|doctor|self-test]")
+
+
+if __name__ == "__main__":
+    main()

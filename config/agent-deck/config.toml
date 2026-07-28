@@ -1,0 +1,19 @@
+# Agent Deck runs on a dedicated tmux socket so it cannot mutate the personal
+# tmux server configured by ~/.tmux.conf.
+default_tool = "claude"
+sync_title = true
+group_sort = "actionable"
+
+[tmux]
+socket_name = "agent-deck"
+inject_status_line = true
+mouse = true
+
+# Keep transcript-wide search disabled. Fleet status detection remains local,
+# while the workspace copilot consumes only session metadata and state counts.
+[global_search]
+enabled = false
+
+# Updates are managed explicitly with the rest of the workstation.
+[updates]
+check_enabled = false

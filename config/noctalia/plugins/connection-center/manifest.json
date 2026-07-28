@@ -1,0 +1,26 @@
+{
+  "id": "connection-center",
+  "name": "Connection Center",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Unified Wi-Fi, Ethernet, Bluetooth, VPN, airplane mode, and Tailscale controls.",
+  "tags": [
+    "Panel",
+    "Network",
+    "System"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "controlCenterWidget": "ControlCenterWidget.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "icon": "network"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "codexbar",
+  "name": "CodexBar",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Native Noctalia usage dashboard for CodexBar providers.",
+  "tags": [
+    "Bar",
+    "Panel",
+    "AI"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "icon": "brand-openai"
+  }
+}

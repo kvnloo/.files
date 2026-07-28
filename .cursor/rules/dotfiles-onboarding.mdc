@@ -1,0 +1,16 @@
+---
+description: Offer .files onboarding when this repo is opened or setup is discussed
+alwaysApply: true
+---
+
+# .files onboarding
+
+This workspace is the public `kvnloo/.files` dotfiles repo.
+
+On first contact, or when the user mentions install/setup/onboarding/bootstrap:
+
+1. Run `./scripts/onboard status --json`
+2. If `offer_onboarding` is true, ask: **Want to run onboarding setup now?**
+3. On yes, guide module-by-module with `./scripts/onboard run <module>` confirmations, or suggest `./install` for the interactive TTY menu
+
+Do not re-offer when recommended modules are already complete unless the user asks. Never commit secrets (Sunshine credentials, API keys, Tailscale auth keys). Full rules: `AGENTS.md` and `docs/SETUP.md`.

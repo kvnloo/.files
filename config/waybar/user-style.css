@@ -1,0 +1,49 @@
+@import url("../../.cache/wal/colors-waybar-semantic.css");
+/* codexbar-waybar — appended by install.sh */
+/* CodexBar Waybar module — append to ~/.config/waybar/user-style.css
+ * or your theme's CSS. Tweak colors to taste; the four state classes
+ * (ok / warning / critical / stale) are emitted by codexbar.sh.
+ */
+
+#custom-codexbar {
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    background: alpha(@wb_foreground, 0.06);
+    border: 1px solid alpha(@wb_foreground, 0.06);
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+#custom-codexbar:hover {
+    background: alpha(@wb_foreground, 0.1);
+    border-color: alpha(@wb_foreground, 0.12);
+}
+
+#custom-codexbar.ok {
+    color: @wb_grad6;
+    border-color: alpha(@wb_grad6, 0.18);
+}
+
+#custom-codexbar.warning {
+    color: @wb_warning;
+    background: alpha(@wb_warning, 0.18);
+    border-color: alpha(@wb_warning, 0.25);
+}
+
+#custom-codexbar.critical {
+    color: @wb_critical;
+    background: alpha(@wb_critical, 0.22);
+    border-color: alpha(@wb_critical, 0.3);
+    animation: codexbar-pulse 2s ease-in-out infinite alternate;
+}
+
+#custom-codexbar.stale {
+    /* Latest fetch failed or the value came from the cache. */
+    color: @wb_muted;
+}
+
+@keyframes codexbar-pulse {
+    from { background: alpha(@wb_critical, 0.22); }
+    to   { background: alpha(@wb_critical, 0.4); }
+}

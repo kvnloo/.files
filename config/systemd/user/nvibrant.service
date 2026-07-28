@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply NVIDIA Digital Vibrance
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/nvibrant 870 870 870 870
+
+[Install]
+WantedBy=default.target

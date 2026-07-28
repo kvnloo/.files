@@ -1,0 +1,205 @@
+/* =====================================================
+ * WAYBAR STYLESHEET — Glassmorphism
+ * ===================================================== */
+@import url("../../.cache/wal/colors-waybar-semantic.css");
+
+* {
+    font-family: "JetBrainsMono Nerd Font", FontAwesome, Roboto, sans-serif;
+    font-size: 9px;
+    min-height: 0;
+}
+
+window#waybar {
+    background: alpha(@wb_background, 0.72);
+    color: @wb_foreground;
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+tooltip {
+    background: alpha(@wb_background, 0.94);
+    border: 1px solid alpha(@wb_foreground, 0.12);
+    border-radius: 12px;
+}
+
+tooltip label {
+    color: @wb_foreground;
+    padding: 4px;
+}
+
+button {
+    border: none;
+    border-radius: 0;
+}
+
+#workspaces {
+    margin: 4px 4px;
+}
+
+#workspaces button {
+    padding: 2px 8px;
+    margin: 0 2px;
+    color: alpha(@wb_foreground, 0.62);
+    background: alpha(@wb_foreground, 0.04);
+    border-radius: 8px;
+    border: 1px solid alpha(@wb_foreground, 0.05);
+    transition: all 0.3s ease;
+}
+
+#workspaces button:hover {
+    background: alpha(@wb_grad1, 0.12);
+    border-color: alpha(@wb_grad1, 0.2);
+    color: @wb_grad1;
+}
+
+#workspaces button.active {
+    background: alpha(@wb_grad1, 0.16);
+    border-color: alpha(@wb_grad1, 0.26);
+    color: @wb_grad1;
+}
+
+#workspaces button.urgent {
+    background: alpha(@wb_critical, 0.2);
+    border-color: alpha(@wb_critical, 0.3);
+    color: @wb_critical;
+}
+
+#submap {
+    padding: 2px 10px;
+    margin: 4px 4px;
+    background: alpha(@wb_critical, 0.15);
+    border: 1px solid alpha(@wb_critical, 0.24);
+    color: @wb_critical;
+    border-radius: 8px;
+    font-weight: bold;
+}
+
+#window {
+    padding: 2px 12px;
+    margin: 4px 0;
+    color: alpha(@wb_grad3, 0.78);
+}
+
+#clock,
+#custom-cpu,
+#custom-gpu,
+#memory,
+#temperature,
+#network,
+#pulseaudio,
+#custom-media,
+#custom-dac,
+#custom-codexbar,
+#tray {
+    padding: 2px 12px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    background: alpha(@wb_foreground, 0.06);
+    border: 1px solid alpha(@wb_foreground, 0.07);
+    transition: all 0.3s ease;
+}
+
+/* A stepped pywal gradient runs left-to-right across module order. */
+#tray,
+#custom-media {
+    color: @wb_grad2;
+    border-color: alpha(@wb_grad2, 0.18);
+}
+
+#pulseaudio,
+#custom-dac {
+    color: @wb_grad3;
+    border-color: alpha(@wb_grad3, 0.18);
+}
+
+#network,
+#custom-cpu {
+    color: @wb_grad4;
+    border-color: alpha(@wb_grad4, 0.18);
+}
+
+#custom-gpu,
+#memory {
+    color: @wb_grad5;
+    border-color: alpha(@wb_grad5, 0.18);
+}
+
+#temperature,
+#custom-codexbar,
+#clock {
+    color: @wb_grad6;
+    border-color: alpha(@wb_grad6, 0.18);
+}
+
+#clock {
+    font-weight: bold;
+}
+
+#pulseaudio.muted,
+#network.disconnected {
+    color: @wb_critical;
+    border-color: alpha(@wb_critical, 0.2);
+}
+
+#temperature.critical {
+    color: @wb_critical;
+    background: alpha(@wb_critical, 0.12);
+    border-color: alpha(@wb_critical, 0.24);
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background: alpha(@wb_critical, 0.14);
+}
+
+#custom-media:hover,
+#custom-dac:hover,
+#pulseaudio:hover,
+#network:hover,
+#cpu:hover,
+#custom-gpu:hover,
+#memory:hover,
+#temperature:hover,
+#custom-codexbar:hover,
+#clock:hover {
+    background: alpha(@wb_foreground, 0.1);
+    border-color: alpha(@wb_foreground, 0.14);
+}
+
+/* codexbar-waybar — AI usage indicator. State classes (ok / warning /
+ * critical / stale) are emitted by codexbar.sh; only colors are
+ * overridden here, the box styling comes from the shared rule above. */
+
+#custom-codexbar.ok {
+    color: @wb_grad6;
+    border-color: alpha(@wb_grad6, 0.18);
+}
+
+#custom-codexbar.warning {
+    color: @wb_warning;
+    background: alpha(@wb_warning, 0.18);
+    border-color: alpha(@wb_warning, 0.28);
+}
+
+#custom-codexbar.critical {
+    color: @wb_critical;
+    background: alpha(@wb_critical, 0.22);
+    border-color: alpha(@wb_critical, 0.32);
+    animation: codexbar-pulse 2s ease-in-out infinite alternate;
+}
+
+#custom-codexbar.stale {
+    color: @wb_muted;
+}
+
+@keyframes codexbar-pulse {
+    from { background: alpha(@wb_critical, 0.22); }
+    to   { background: alpha(@wb_critical, 0.4); }
+}
+

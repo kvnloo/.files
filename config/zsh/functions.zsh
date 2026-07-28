@@ -4,9 +4,6 @@
 # Shell functions for extended functionality
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Terminal Color Testing
-# ──────────────────────────────────────────────────────────────────────────────
-
 # Display all terminal color combinations
 all_colors() {
   for x in {0..8}; do
@@ -26,19 +23,24 @@ colors() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# macOS Specific Functions
-# ──────────────────────────────────────────────────────────────────────────────
 
-# Mount EFI partition (macOS only)
-# Usage: efimount
-efimount() {
-  efidisk=$(diskutil list | grep "EFI EFI" | grep -o -E 'disk[0-9]*s[0-9]*')
-  sudo mkdir /Volumes/efi && sudo mount -t msdos /dev/$efidisk /Volumes/efi && cd /Volumes/efi
-}
 
-# Adjust trackpad speed (macOS only)
-# Usage: trackpad_speed <number>
-# Example: trackpad_speed 2.5
-trackpad_speed() {
-  defaults write -g com.apple.mouse.scaling $1
+# Attach to (or create) a tmux session named after the current project dir.
+# Continuum restores saved sessions at login; agent panes resume in their
+# original project directories.
+tm() {
+  local raw_name="${1:-${PWD:t}}"
+  local name="${raw_name//[^A-Za-z0-9_-]/-}"
+  [[ -n "$name" ]] || name="main"
+
+  if [[ -n "$TMUX" ]]; then
+    if tmux has-session -t "=$name" 2>/dev/null; then
+      tmux switch-client -t "=$name"
+    else
+      tmux new-session -d -s "$name" -c "$PWD"
+      tmux switch-client -t "=$name"
+    fi
+  else
+    tmux new-session -A -s "$name" -c "$PWD"
+  fi
 }

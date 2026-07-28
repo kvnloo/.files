@@ -14,9 +14,9 @@ interface ButtonProps {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--accent-blue)] text-[var(--bg-primary)] font-semibold hover:bg-[var(--accent-purple)]',
+    'bg-[var(--accent-teal)] text-[#041014] font-semibold hover:bg-[var(--accent-blue)] shadow-[var(--shadow-glow)]',
   secondary:
-    'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--border-default)]',
+    'glass-hairline text-[var(--text-secondary)] hover:border-[var(--accent-blue)]',
   ghost:
     'bg-transparent text-[var(--text-muted)] border border-[var(--border-default)] hover:text-[var(--text-primary)] hover:border-[var(--text-muted)]',
 }
@@ -30,7 +30,7 @@ export function Button({
   disabled,
 }: ButtonProps) {
   const baseStyles = clsx(
-    'inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md font-mono text-sm transition-colors',
+    'inline-flex items-center justify-center gap-2 px-6 py-3 rounded-[var(--radius-md)] font-mono text-sm transition-colors',
     variantStyles[variant],
     disabled && 'opacity-50 cursor-not-allowed',
     className

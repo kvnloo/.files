@@ -1,0 +1,7 @@
+# Machine-specific zsh overrides for CachyOS
+# Copy to ~/.zshrc.local and customize
+# This file is sourced at the end of .zshrc and is NOT version-controlled
+
+# LV2/LADSPA plugin paths for PipeWire DSP
+export LV2_PATH="$HOME/.local/lib/lv2:/usr/lib/lv2"
+export LADSPA_PATH="$HOME/.local/lib/ladspa:/usr/lib/ladspa"

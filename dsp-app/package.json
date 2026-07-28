@@ -1,0 +1,12 @@
+{
+  "name": "aural",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:web": "bun run --filter web dev",
+    "dev:server": "bun run --filter server dev",
+    "build": "bun run --filter '*' build",
+    "check": "bun run --filter web check"
+  }
+}

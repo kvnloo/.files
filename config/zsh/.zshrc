@@ -1,3 +1,8 @@
+# Enable Powerlevel10k instant prompt (must stay at top before any console output)
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 # ==============================================================================
 # ZSH CONFIGURATION - MODULAR STRUCTURE
 # ==============================================================================
@@ -44,7 +49,8 @@
 # ==============================================================================
 
 # Get the directory where this .zshrc file is located
-ZSHRC_DIR="${0:A:h}"
+# Uses zsh-native :A modifier to resolve symlinks (cross-platform, works on macOS and Linux)
+ZSHRC_DIR="${${:-$HOME/.zshrc}:A:h}"
 
 # Source modular configuration files in dependency order
 source "$ZSHRC_DIR/env.zsh"             # 1. Environment variables & PATH
@@ -63,13 +69,23 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # create a ~/.zshrc.local file with your custom settings
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
-export PATH=$PATH:/home/kvn/.spicetify
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-. /home/linuxbrew/.linuxbrew/opt/asdf/libexec/asdf.sh
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
+
+# kimi-code
+export PATH="/home/kvn/.kimi-code/bin:$PATH"
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<
 
 # bun completions
 [ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
 
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+# >>> Codex installer >>>
+export PATH="/home/kvn/.local/bin:$PATH"
+# <<< Codex installer <<<

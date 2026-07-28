@@ -1,0 +1,25 @@
+{
+  "id": "hardware-monitor",
+  "name": "Hardware Monitor",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Detailed CPU, GPU, network, storage, sensor, and kernel responsiveness telemetry.",
+  "tags": [
+    "Bar",
+    "Panel",
+    "System"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "icon": "device-analytics"
+  }
+}

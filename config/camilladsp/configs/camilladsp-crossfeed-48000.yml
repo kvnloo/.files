@@ -1,0 +1,152 @@
+# CamillaDSP — Headphone DSP + Crossfeed
+#
+# Signal chain: AutoEQ FIR → bs2b-style crossfeed (IIR biquads) → Compressor → Limiter
+#
+# Crossfeed approximates bs2b Jan Meier preset (700 Hz / 4.5 dB):
+#   - Lowpass filter bleeds opposite channel below 700 Hz
+#   - Attenuated by 4.5 dB for the cross-fed signal
+
+devices:
+  samplerate: 48000
+  chunksize: 4096
+  enable_rate_adjust: true
+  capture:
+    type: CoreAudio
+    channels: 2
+    device: "BlackHole 2ch"
+    format: F32
+  playback:
+    type: CoreAudio
+    channels: 2
+    device: "Moonriver 2"
+    exclusive: true
+    format: S32
+
+filters:
+  eq_l:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_48000Hz.wav"
+      channel: 0
+
+  eq_r:
+    type: Conv
+    parameters:
+      type: Wav
+      filename: "coeffs/active_48000Hz.wav"
+      channel: 1
+
+  crossfeed_lowpass:
+    type: Biquad
+    parameters:
+      type: Lowpass
+      freq: 700
+      q: 0.5
+
+  crossfeed_gain:
+    type: Gain
+    parameters:
+      gain: -4.5
+      inverted: false
+
+  limiter:
+    type: Limiter
+    parameters:
+      soft_clip: true
+      clip_limit: -0.3
+
+processors:
+  compressor:
+    type: Compressor
+    parameters:
+      channels: 2
+      attack: 0.05
+      release: 0.8
+      threshold: -20
+      factor: 3.0
+      makeup_gain: 0
+      soft_clip: true
+
+mixers:
+  split_for_crossfeed:
+    channels:
+      in: 2
+      out: 4
+    mapping:
+      - dest: 0
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+      - dest: 1
+        sources:
+          - channel: 1
+            gain: 0
+            inverted: false
+      - dest: 2
+        sources:
+          - channel: 1
+            gain: 0
+            inverted: false
+      - dest: 3
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+
+  crossfeed_mix:
+    channels:
+      in: 4
+      out: 2
+    mapping:
+      - dest: 0
+        sources:
+          - channel: 0
+            gain: 0
+            inverted: false
+          - channel: 2
+            gain: 0
+            inverted: false
+      - dest: 1
+        sources:
+          - channel: 1
+            gain: 0
+            inverted: false
+          - channel: 3
+            gain: 0
+            inverted: false
+
+pipeline:
+  - type: Filter
+    channels: [0]
+    names:
+      - eq_l
+  - type: Filter
+    channels: [1]
+    names:
+      - eq_r
+  - type: Mixer
+    name: split_for_crossfeed
+  - type: Filter
+    channels: [2]
+    names:
+      - crossfeed_lowpass
+      - crossfeed_gain
+  - type: Filter
+    channels: [3]
+    names:
+      - crossfeed_lowpass
+      - crossfeed_gain
+  - type: Mixer
+    name: crossfeed_mix
+  - type: Processor
+    name: compressor
+  - type: Filter
+    channels: [0]
+    names:
+      - limiter
+  - type: Filter
+    channels: [1]
+    names:
+      - limiter

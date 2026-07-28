@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Header, Footer } from '@/components'
+import { Header, Footer, Filter } from '@/components'
 import { Box, Download } from 'lucide-react'
 import Image from 'next/image'
 import { assetPath } from '@/lib/utils'
@@ -88,50 +88,45 @@ export default function IconsPage() {
       <Header />
       <main className="min-h-screen pt-[72px]">
         {/* Hero */}
-        <section className="flex items-start justify-between gap-16 py-16 px-[120px]">
-          <div className="flex flex-col gap-6">
-            <Box size={48} className="text-[#3FB950]" />
-            <h1 className="text-5xl font-bold font-mono text-[#E6EDF3]">icon_collection/</h1>
-            <p className="text-lg text-[#8B949E] font-[Inter] leading-relaxed max-w-xl">
+        <section className="flex flex-col items-start justify-between gap-8 px-4 py-12 sm:px-8 sm:py-16 lg:flex-row lg:gap-16 lg:px-[120px]">
+          <div className="flex min-w-0 flex-col gap-6">
+            <Box size={48} className="text-[var(--accent-green)]" />
+            <h1 className="break-all text-3xl font-bold font-mono text-[var(--text-primary)] sm:text-5xl">icon_collection/</h1>
+            <p className="text-lg text-[var(--text-muted)] leading-relaxed max-w-xl">
               {icons.length}+ custom macOS application icons with consistent design language. Categories: system, productivity, media, and communication.
             </p>
           </div>
 
           {/* Count Badge */}
-          <div className="flex flex-col items-center gap-2 p-6 bg-[#ffffff08] border border-[#3FB95040] rounded-lg">
-            <span className="text-4xl font-bold font-mono text-[#3FB950]">{icons.length}+</span>
-            <span className="text-xs text-[#8B949E] font-mono">icons</span>
+          <div className="flex w-full flex-col items-center gap-2 p-6 glass rounded-[var(--radius-lg)] border-[rgba(111,191,122,0.35)] sm:w-auto">
+            <span className="text-4xl font-bold font-mono text-[var(--accent-green)]">{icons.length}+</span>
+            <span className="text-xs text-[var(--text-muted)] font-mono">icons</span>
           </div>
         </section>
 
         {/* Filters */}
-        <section className="py-8 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-4">// filter_by_category</p>
-          <div className="flex gap-2 flex-wrap">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-3 py-1.5 text-xs font-mono transition-colors ${
-                  activeCategory === cat
-                    ? 'bg-[#3FB95020] text-[#3FB950] border border-[#3FB950]'
-                    : 'bg-transparent text-[#8B949E] border border-[#30363D] hover:text-[#E6EDF3]'
-                }`}
-              >
-                {cat} ({catCounts[cat]})
-              </button>
-            ))}
-          </div>
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
+          <p className="text-sm font-mono text-[var(--text-dim)] mb-4">// filter_by_category</p>
+          <Filter
+            className="[&>button]:min-h-11 lg:[&>button]:min-h-0"
+            accent="green"
+            value={activeCategory}
+            onChange={setActiveCategory}
+            options={categories.map((cat) => ({
+              label: `${cat} (${catCounts[cat]})`,
+              value: cat,
+            }))}
+          />
         </section>
 
         {/* Icons Grid */}
-        <section className="py-8 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-6">// showing {filtered.length} icons</p>
-          <div className="grid grid-cols-6 gap-4">
+        <section className="px-4 py-8 sm:px-8 lg:px-[120px]">
+          <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// showing {filtered.length} icons</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-6">
             {filtered.map((icon) => (
               <div
                 key={icon.name}
-                className="group flex flex-col items-center gap-3 p-4 bg-[#161B22] border border-[#30363D] rounded-lg hover:border-[#3FB95050] transition-colors cursor-pointer"
+                className="group flex flex-col items-center gap-3 p-4 glass rounded-[var(--radius-lg)] hover:border-[rgba(111,191,122,0.45)] transition-colors cursor-pointer"
               >
                 {/* Icon Image */}
                 <div className="relative w-12 h-12">
@@ -143,25 +138,25 @@ export default function IconsPage() {
                     sizes="48px"
                   />
                 </div>
-                <span className="text-[10px] font-mono text-[#8B949E] truncate max-w-full">{icon.name}</span>
+                <span className="text-[10px] font-mono text-[var(--text-muted)] truncate max-w-full">{icon.name}</span>
               </div>
             ))}
           </div>
         </section>
 
         {/* Quick Install */}
-        <section className="py-12 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-6">// quick_install</p>
-          <div className="flex items-center justify-between p-6 bg-[#161B22] border border-[#30363D] rounded-lg">
+        <section className="px-4 py-12 sm:px-8 lg:px-[120px]">
+          <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// quick_install</p>
+          <div className="flex flex-col items-start justify-between gap-5 p-5 glass rounded-[var(--radius-lg)] sm:flex-row sm:items-center sm:p-6">
             <div>
-              <h3 className="text-lg font-semibold font-mono text-[#E6EDF3] mb-2">Download all icons</h3>
-              <p className="text-sm text-[#8B949E] font-mono">git clone to get all {icons.length}+ icons</p>
+              <h3 className="text-lg font-semibold font-mono text-[var(--text-primary)] mb-2">Download all icons</h3>
+              <p className="text-sm text-[var(--text-muted)] font-mono">git clone to get all {icons.length}+ icons</p>
             </div>
             <a
               href="https://github.com/kvnloo/.files/tree/master/icons"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-6 py-3 bg-[#3FB950] text-[#0D1117] text-sm font-semibold font-mono rounded hover:bg-[#2ea043] transition-colors"
+              className="flex w-full items-center justify-center gap-2 px-6 py-3 bg-[var(--accent-green)] text-[#0D1117] text-sm font-semibold font-mono rounded-[var(--radius-md)] hover:bg-[#2ea043] transition-colors sm:w-auto"
             >
               <Download size={16} />
               <span>Download All</span>
@@ -170,29 +165,29 @@ export default function IconsPage() {
         </section>
 
         {/* Installation */}
-        <section className="py-12 px-[120px]">
-          <p className="text-sm font-mono text-[#6E7681] mb-6">// how_to_use</p>
-          <div className="w-[600px] border border-[#30363D] overflow-hidden rounded-lg">
+        <section className="px-4 py-12 sm:px-8 lg:px-[120px]">
+          <p className="text-sm font-mono text-[var(--text-dim)] mb-6">// how_to_use</p>
+          <div className="w-full max-w-[600px] glass rounded-[var(--radius-lg)] overflow-hidden">
             {/* Terminal Header */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-[#161B22]">
+            <div className="flex items-center gap-2 px-4 py-3 bg-[rgba(10,18,26,0.35)]">
               <div className="w-3 h-3 rounded-full bg-[#F85149]" />
               <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
-              <div className="w-3 h-3 rounded-full bg-[#3FB950]" />
-              <span className="ml-2 text-xs font-mono text-[#8B949E]">terminal</span>
+              <div className="w-3 h-3 rounded-full bg-[var(--accent-green)]" />
+              <span className="ml-2 text-xs font-mono text-[var(--text-muted)]">terminal</span>
             </div>
             {/* Terminal Body */}
-            <div className="flex flex-col gap-2 p-5 bg-[#0D1117]">
+            <div className="flex flex-col gap-2 p-5 bg-[rgba(5,10,14,0.35)]">
               <div className="flex items-center gap-2">
-                <span className="text-[#6E7681] font-mono text-sm">#</span>
-                <span className="text-[#8B949E] font-mono text-sm">Right-click app → Get Info</span>
+                <span className="text-[var(--text-dim)] font-mono text-sm">#</span>
+                <span className="text-[var(--text-muted)] font-mono text-sm">Right-click app → Get Info</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[#6E7681] font-mono text-sm">#</span>
-                <span className="text-[#8B949E] font-mono text-sm">Drag .icns onto icon in top-left</span>
+                <span className="text-[var(--text-dim)] font-mono text-sm">#</span>
+                <span className="text-[var(--text-muted)] font-mono text-sm">Drag .icns onto icon in top-left</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[#58A6FF] font-mono text-sm">$</span>
-                <span className="text-[#E6EDF3] font-mono text-sm">killall Dock</span>
+                <span className="text-[var(--accent-blue)] font-mono text-sm">$</span>
+                <span className="text-[var(--text-primary)] font-mono text-sm">killall Dock</span>
               </div>
             </div>
           </div>

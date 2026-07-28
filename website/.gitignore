@@ -25,6 +25,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local wallpaper capture scratch (never commit workshop/scene.pkg)
+.capture-work/
+
+# Derived Forgotten Ruins textures (workshop art — local spike only)
+# Keep README; ignore baked WebP/JSON from unpack-wallpaper.py
+public/media/ruins/**
+!public/media/ruins/README.md
+
 # Vercel
 .vercel
 

@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+
+/* ─── Aural Audiophile Theme ─────────────────────────────────────── */
+
+@theme {
+  /* Deep listening room palette */
+  --color-void: #0a0a0c;
+  --color-surface-0: #111114;
+  --color-surface-1: #18181c;
+  --color-surface-2: #1f1f24;
+  --color-surface-3: #28282f;
+  --color-border: #2a2a33;
+  --color-border-subtle: #1e1e26;
+
+  /* Warm amber/gold — tube amplifier glow */
+  --color-amber-glow: #d4a34a;
+  --color-amber-warm: #c4913a;
+  --color-amber-dim: #8a6528;
+  --color-amber-ghost: rgba(212, 163, 74, 0.08);
+  --color-amber-pulse: rgba(212, 163, 74, 0.15);
+
+  /* Signal chain stage colors */
+  --color-stage-eq: #6d9eeb;
+  --color-stage-crossfeed: #d4a34a;
+  --color-stage-brir: #9b72cf;
+  --color-stage-loudness: #5ea87a;
+  --color-stage-mbc: #e07a5f;
+  --color-stage-limiter: #e05252;
+
+  /* Text hierarchy */
+  --color-text-primary: #e8e4df;
+  --color-text-secondary: #9a9590;
+  --color-text-tertiary: #5e5a55;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Global resets */
+html {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-void);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(17, 17, 20, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--color-border);
+}
+
+.glass-subtle {
+  background: rgba(17, 17, 20, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-subtle);
+}
+
+/* Glow effects */
+.glow-amber {
+  box-shadow: 0 0 20px rgba(212, 163, 74, 0.15),
+              0 0 60px rgba(212, 163, 74, 0.05);
+}
+
+.glow-stage {
+  box-shadow: 0 0 12px rgba(212, 163, 74, 0.1);
+}
+
+/* Breathing animation for ambient elements */
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(212, 163, 74, 0.1); }
+  50% { box-shadow: 0 0 24px rgba(212, 163, 74, 0.2); }
+}
+
+.animate-breathe {
+  animation: breathe 4s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}

@@ -1,0 +1,18 @@
+upgrading shared libraries...
+venvs are in /home/kvn/.local/share/pipx/venvs
+apps are exposed on your $PATH at /home/kvn/.local/bin
+manual pages are exposed at /home/kvn/.local/share/man
+   package pipenv 2025.0.4, installed using Python 3.12.3
+    - pipenv
+    - pipenv-resolver
+   package pywal 3.3.0, installed using Python 3.12.3
+    - wal
+   package shot-scraper 1.8, installed using Python 3.12.3
+    - shot-scraper
+   package superclaude 4.1.6, installed using Python 3.12.3
+    - SuperClaude
+    - superclaude
+   package supergemini 4.2.1, installed using Python 3.12.3
+    - SuperGemini
+    - sg
+    - supergemini

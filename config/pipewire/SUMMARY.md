@@ -1,306 +1,215 @@
-# PipeWire Bit-Perfect Audio Setup - Complete Summary
+# PipeWire Audiophile Audio Setup - Complete Summary
 
-## ✅ What's Working
+## What This Setup Does
 
-### 1. Bit-Perfect PCM Playback
-- **FLAC, WAV, AIFF**: Perfect bit-perfect playback ✅
-- **Sample rates**: Automatic switching (44.1kHz → 768kHz)
-- **Multi-app support**: Spotify, YouTube, High Tide can run simultaneously
-- **No stuttering**: Prebuffer configuration added for smooth rate transitions
+PipeWire native filter-chain DSP replaces EasyEffects entirely, providing **4** simultaneous virtual sinks (clean / crossfeed / room / movie) for spatial and content-mode switching — all processing happens inside PipeWire with zero external dependencies beyond LV2/LADSPA plugins. Optional Aural Evolution is documented in [AURAL_EVOLUTION.md](AURAL_EVOLUTION.md).
 
-### 2. Automatic Sample Rate Matching
-Your DX5 dynamically switches to match source material:
-- **Spotify**: 44.1 kHz
-- **YouTube**: 48 kHz
-- **Hi-res FLAC**: 96/192/384/768 kHz
+## What's Working
 
-### 3. No More ALSA Blocking
-PipeWire manages the DAC, so applications don't lock each other out.
+### 1. Native Filter-Chain DSP
+Three virtual sinks, each with a full processing chain:
 
----
+| Sink | Chain |
+|------|-------|
+| **Headphone DSP** (clean) | AutoEQ → Loudness Comp → MBC → Limiter |
+| **Headphone DSP + Crossfeed** | AutoEQ → bs2b Crossfeed → Loudness Comp → MBC → Limiter |
+| **Headphone DSP + Room** | AutoEQ → BRIR True Stereo → Loudness Comp → MBC → Limiter |
 
-## ⚠️ Known Limitations
+Switching between sinks is instant (no PipeWire restart needed).
 
-### MQA Hardware Decoding (PipeWire Can't Do It)
+### 2. Per-Headphone AutoEQ
+Symlink-based profile switching between headphone EQ profiles:
+- **HD800S**: IEF Preference 2025 + Harman Over-Ear 2018
+- **Monarch MKII**: IEF Preference 2025 + Harman In-Ear 2019
+- Multi-rate IRs: 44.1k, 48k, 96k, 192k, 384k Hz
 
-**The Problem:**
-- MQA requires bit-identical passthrough
-- PipeWire converts all audio to 32-bit float internally
-- This destroys the MQA encoding signature
-- Your DAC receives PCM instead of MQA
+### 3. Bit-Perfect Transport
+- **Sample rates**: Automatic switching (44.1kHz - 384kHz)
+- **Multi-app support**: Spotify, YouTube, High Tide run simultaneously
+- **Format**: S32LE output (25-bit precision via PipeWire 1.4+ F32-to-S32 path)
+- **Resampler**: Quality 14 (best sinc filter) when resampling is needed
 
-**The Solution:**
-Use **ALSA exclusive mode** in High Tide for MQA tracks:
-```
-High Tide Settings → Audio Backend → ALSA
-```
-
-**Trade-off:**
-- ✅ MQA hardware decoding works
-- ❌ No simultaneous multi-app audio
-
-**Our Recommendation:**
-- Use PipeWire for 99% of listening (FLAC hi-res is better anyway)
-- Switch to ALSA exclusive mode only for the rare MQA track
+### 4. RT Scheduling
+- SCHED_FIFO priority 88 via `pipewire` group membership
+- `threadirqs` kernel parameter for reduced interrupt latency
 
 ---
 
-## 📁 Configuration Files
+## Configuration Files
 
-### Core Files
 ```
 config/pipewire/
-├── pipewire.conf                      # Sample rate switching config
+├── pipewire.conf                      # Sample rate switching, 192kHz default
+├── pipewire.conf.d/
+│   └── 10-headphone-dsp.conf          # Filter-chain DSP (3 sinks, full chain)
+├── headphone-switch.sh                # CLI: spatial mode + EQ profile switching
 ├── README.md                          # Full documentation
-├── TROUBLESHOOTING.md                 # Problem-solving guide
+├── SETUP-UBUNTU.md                    # Ubuntu manual setup guide
 └── SUMMARY.md                         # This file
 
 config/wireplumber/main.lua.d/
-├── 50-mqa-passthrough.lua            # MQA passthrough attempt (experimental)
-└── 51-topping-dx5-bitperfect.lua     # DX5-specific optimizations
+└── 51-topping-dx5-bitperfect.lua      # DX5: S32LE, resample.quality=14, headroom=0
 
-scripts/
-├── install-audio-config.sh           # Auto-install script
-├── verify-bitperfect-audio.sh        # Verification tool
-└── check-dx5-status.sh               # Real-time status check
+config/autoeq/
+├── active_44100Hz.wav → (symlink)     # Currently active EQ profile
+├── active_48000Hz.wav → (symlink)
+├── active_96000Hz.wav → (symlink)
+├── active_192000Hz.wav → (symlink)
+├── active_384000Hz.wav → (symlink)
+├── Sennheiser HD800 minimum phase *.wav
+└── ThieAudio Monarch MKII minimum phase *.wav
 ```
 
 ### What Each File Does
 
 **`pipewire.conf`:**
-- Sets allowed sample rates (44.1kHz → 768kHz)
+- Sets allowed sample rates (44.1kHz - 384kHz)
 - Enables automatic rate switching
 - Default rate: 192kHz
 
+**`pipewire.conf.d/10-headphone-dsp.conf`:**
+- Defines 3 filter-chain virtual sinks
+- Each sink: AutoEQ convolver + optional spatial + loudness comp + MBC + limiter
+- All processing is native PipeWire — no EasyEffects
+
 **`51-topping-dx5-bitperfect.lua`:**
-- Optimizes buffer sizes for smooth playback
-- Adds prebuffer delay (4096 samples = ~85ms)
-- Prevents sample rate switching stutter
-- Disables resampling when rates match
+- S32LE output format (was S24LE — S32LE is strictly better on PipeWire 1.4+)
+- resample.quality = 14 (best sinc filter)
+- api.alsa.headroom = 0 (DX5 is stable async USB)
+- Prevents suspend, keeps ALSA reservation active
 
-**`50-mqa-passthrough.lua`:**
-- Attempts to preserve MQA encoding
-- Forces S16LE format
-- Disables channel mixing/resampling
-- **May not work** due to PipeWire's 32-bit float processing
+**`headphone-switch.sh`:**
+- `headphone-switch.sh clean|crossfeed|room` — instant spatial mode switch
+- `headphone-switch.sh eq monarch|hd800s` — EQ profile switch (restarts PipeWire)
 
 ---
 
-## 🎯 Usage Scenarios
+## DSP Chain Details
 
-### Scenario 1: Everyday Listening (Recommended)
-**Use:** PipeWire mode
+### AutoEQ Convolver
+Per-headphone minimum-phase IR convolution for frequency correction.
+Generated with AutoEQ CLI against target response curves.
 
-**Configuration:**
-```
-High Tide Settings → Audio Backend → PipeWire/Automatic
-```
+### bs2b Crossfeed (Sink 2 only)
+LADSPA plugin. Jan Meier preset: 700 Hz crossover / 4.5 dB cut.
+Analog-like stereo-to-binaural blending to reduce headphone stereo separation.
 
-**Benefits:**
-- Multi-app audio (Spotify + YouTube + High Tide)
-- Automatic sample rate switching
-- Bit-perfect FLAC/PCM playback
-- Smooth transitions (no stutter)
+### ASH BRIR True Stereo (Sink 3 only)
+Room R02 (WDR Broadcast Control Room, RT60 0.235s).
+4-channel convolver (LL, LR, RL, RR) with gain=0.5 for level matching.
 
-**Works With:**
-- ✅ FLAC hi-res (up to 768kHz)
-- ✅ Spotify (44.1kHz Ogg Vorbis)
-- ✅ YouTube (48kHz AAC/Opus)
-- ✅ WAV, AIFF, ALAC
-- ❌ MQA (decoded to PCM)
+### LSP Loudness Compensator
+ISO 226:2003 equal-loudness contours.
+Adjusts perceived frequency balance at different listening volumes.
 
----
+### GentleDynamics MBC
+8-band Bark-scale multiband compressor (LSP `mb_compressor_stereo`).
+Mixed upward/downward compression. Reduces listening fatigue.
 
-### Scenario 2: MQA Hardware Decoding (Rare)
-**Use:** ALSA exclusive mode
-
-**Configuration:**
-```
-High Tide Settings → Audio Backend → ALSA
-```
-
-**Benefits:**
-- MQA hardware decoder activates
-- True bit-perfect MQA passthrough
-- Lowest possible latency
-
-**Drawbacks:**
-- ❌ Device locked (no other apps can play audio)
-- ❌ Must close High Tide to use other apps
-- ❌ Manual switching required
+### ZaMaximX2 Limiter
+Safety brickwall limiter. Ceiling: -0.3 dBFS.
 
 ---
 
-## 🔍 Verification Commands
+## Usage
 
-### Check Current Sample Rate
+### Everyday Listening
 ```bash
-cat /proc/asound/card0/stream0 | grep "Momentary freq"
+# Set your preferred spatial mode
+headphone-switch.sh clean        # No spatial processing
+headphone-switch.sh crossfeed    # bs2b crossfeed
+headphone-switch.sh room         # BRIR room simulation
 ```
 
-### Monitor Playback in Real-Time
+All sinks include AutoEQ + Loudness Comp + MBC + Limiter.
+
+### Switching Headphones
+```bash
+headphone-switch.sh eq hd800s    # Switch to HD800S EQ profile
+headphone-switch.sh eq monarch   # Switch to Monarch MKII EQ profile
+```
+
+EQ switching requires a PipeWire restart (the script handles this).
+
+### Check Status
+```bash
+headphone-switch.sh              # Show current sink and EQ profile
+```
+
+---
+
+## Verification Commands
+
+### Check DSP Sinks are Loaded
+```bash
+pw-cli ls Node | grep -A3 "Headphone DSP"
+# Should show 3 filter-chain nodes
+```
+
+### Monitor Playback
 ```bash
 pw-top
-# Look for DX5 row, check RATE column
+# DX5 row: RATE matches source, FORMAT=S32LE, XRUN=0
 ```
 
-### Full Status Check
+### Check RT Scheduling
 ```bash
-./scripts/check-dx5-status.sh
+chrt -p $(pgrep -x pipewire)
+# Expected: SCHED_FIFO priority 88
 ```
 
-### Verify Bit-Perfect Playback
+### Check DX5 Properties
 ```bash
-./scripts/verify-bitperfect-audio.sh
+pw-cli info $(pw-cli ls Node | grep "Topping DX5" | head -1 | awk '{print $2}') \
+  | grep -E "resample|headroom|audio.format"
+# Expected: resample.quality=14, headroom=0, audio.format=S32LE
 ```
 
 ---
 
-## 📊 Performance Metrics
+## Audio Quality Chain
 
-### Latency
-| Configuration | Latency | Trade-off |
-|---------------|---------|-----------|
-| **PipeWire (current)** | ~85ms | Smooth transitions, no stutter |
-| **PipeWire (original)** | ~5ms | Stuttering on rate changes |
-| **ALSA exclusive** | ~2ms | Device locking |
-
-### Sample Rate Switching
-When switching from 44.1kHz → 48kHz:
-1. PipeWire detects new rate (instant)
-2. Configures DAC to 48kHz (~10ms)
-3. Buffers 4096 samples of silence (~85ms @ 48kHz)
-4. DAC locks to new clock during silence
-5. Real audio starts after lock
-6. **Result**: Smooth, click-free transition ✅
-
----
-
-## 🎵 Audio Quality Chain
-
-### PipeWire Mode (Current)
 ```
 Source: FLAC 96kHz/24-bit
-    ↓
-High Tide: Decodes to PCM
-    ↓
-PipeWire: 32-bit float processing → converts to S24LE
-    ↓
-ALSA: S24LE → USB
-    ↓
-DX5: Receives 96kHz/24-bit PCM
-    ↓
-Result: Bit-perfect ✅
-```
-
-### ALSA Exclusive Mode
-```
-Source: MQA 44.1kHz/16-bit (encoded)
-    ↓
-High Tide: Passes raw MQA stream
-    ↓
-ALSA: S16LE (untouched) → USB
-    ↓
-DX5: MQA decoder activates
-    ↓
-Result: Hardware MQA decode ✅
+    |
+Player: Decodes to PCM
+    |
+PipeWire: 32-bit float internal
+    |
+Filter-Chain: AutoEQ → [Crossfeed|BRIR] → Loudness → MBC → Limiter
+    |
+ALSA: S32LE → USB
+    |
+DX5: DAC rate matches source → Headphones
 ```
 
 ---
 
-## 🚀 Quick Start
+## Prerequisites (Ubuntu)
 
-### Initial Setup
 ```bash
-# Install configurations
-./scripts/install-audio-config.sh
+# Required packages
+sudo apt install lsp-plugins-lv2 zam-plugins bs2b-ladspa
 
-# Verify installation
-./scripts/verify-bitperfect-audio.sh
+# RT scheduling
+sudo groupadd -f pipewire
+sudo usermod -aG pipewire $USER
+# Reboot for group change
 
-# Check status
-./scripts/check-dx5-status.sh
+# Recommended: threadirqs kernel parameter
+# Add to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub
 ```
 
-### Configure High Tide
-```
-Settings → Audio Backend → PipeWire (or Automatic)
-```
-
-### Test Playback
-1. Play 44.1kHz track (Spotify)
-2. Switch to 48kHz (YouTube)
-3. Listen for smooth transition (no clicks/stutters)
-4. Check with `pw-top` - RATE column should match source
+See `SETUP-UBUNTU.md` for complete step-by-step setup instructions.
 
 ---
 
-## 📚 Technical Details
+## What You Get
 
-### Why PipeWire Can't Do MQA
-- **MQA encoding** embeds hi-res data in PCM stream's LSBs (Least Significant Bits)
-- **PipeWire processes as normal PCM** → converts to 32-bit float
-- **Float conversion destroys LSB data** → MQA signature lost
-- **DAC receives decoded PCM** → can't authenticate as MQA
-
-### Why FLAC is Better Than MQA Anyway
-| Aspect | FLAC | MQA |
-|--------|------|-----|
-| **Compression** | Lossless | Lossy (first unfold) |
-| **Decoding** | Software (free) | Hardware ($$$ DAC) |
-| **Transparency** | Bit-perfect to master | Not bit-perfect |
-| **Compatibility** | All devices | MQA DACs only |
-| **Open Source** | Yes | Proprietary |
-
----
-
-## 🛠️ Troubleshooting
-
-### Stuttering Still Occurs
-Try increasing start delay in `51-topping-dx5-bitperfect.lua`:
-```lua
-["api.alsa.start-delay"] = 8192,  -- Increase to ~170ms
-```
-
-### MQA Not Working in ALSA Mode
-1. Check High Tide is using ALSA backend (not PipeWire)
-2. Ensure no other apps are using the audio device
-3. Verify track is actually MQA (some may have been converted to FLAC)
-
-### DX5 Not Showing Up
-```bash
-# Restart services
-systemctl --user restart pipewire wireplumber
-
-# Check USB connection
-aplay -l | grep DX5
-
-# Verify PipeWire sees it
-pactl list sinks short | grep DX5
-```
-
----
-
-## 📖 Additional Resources
-
-- **PipeWire Wiki**: https://wiki.archlinux.org/title/PipeWire
-- **WirePlumber Docs**: https://pipewire.pages.freedesktop.org/wireplumber/
-- **Topping DX5 Specs**: Up to 32-bit/768kHz PCM, DSD512, MQA 16x
-- **Full Documentation**: `config/pipewire/README.md`
-- **Troubleshooting**: `config/pipewire/TROUBLESHOOTING.md`
-
----
-
-## ✨ Summary
-
-You now have:
-- ✅ Bit-perfect FLAC playback with PipeWire
-- ✅ Automatic sample rate switching (44.1kHz → 768kHz)
-- ✅ Smooth transitions without stuttering
-- ✅ Multi-app audio support
-- ✅ MQA option via ALSA exclusive mode (when needed)
-
-**Recommended workflow:**
-1. Use **PipeWire mode** for daily listening (FLAC/Spotify/YouTube)
-2. Switch to **ALSA mode** only for rare MQA tracks
-3. Enjoy superior audio quality with modern convenience! 🎧
+- Native PipeWire filter-chain DSP (no EasyEffects dependency)
+- 4 virtual sinks (clean / crossfeed / room / movie) plus optional Aural Evolution
+- Per-headphone AutoEQ with one-command profile switching
+- S32LE output with quality-14 resampling
+- RT scheduling for dropout-free playback under load
+- Automatic sample rate matching (44.1kHz - 384kHz)
+- Multi-app audio (Spotify + YouTube + High Tide simultaneously)

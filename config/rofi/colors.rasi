@@ -1,3 +1,11 @@
-/* Pywal colors for Rofi */
-/* Import colors from pywal */
+/* Keep the launcher layout intact; source only its colors from pywal. */
 @import "~/.cache/wal/colors-rofi-dark.rasi"
+
+* {
+    bg: @background;
+    fg: @foreground;
+    ac: @active-background;
+    se: @selected-normal-background;
+    br: @active-background;
+    al: @background;
+}

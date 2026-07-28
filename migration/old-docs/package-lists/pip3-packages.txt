@@ -1,0 +1,4 @@
+Package Version
+------- -------
+pip     25.2
+wheel   0.45.1

@@ -1,0 +1,683 @@
+#!/usr/bin/env bash
+# Dual-path onboarding for .files
+#
+# Paths:
+#   1) Interactive installer:  ./install   or  ./scripts/onboard install
+#   2) LLM harness guided:     agents read AGENTS.md / CLAUDE.md, run
+#                              ./scripts/onboard status --json, then walk modules
+#
+# Usage:
+#   onboard status [--json]
+#   onboard detect-harness
+#   onboard doctor
+#   onboard install [--interactive] [--all] [--yes] [--module NAME ...]
+#   onboard run MODULE [--yes]
+#   onboard list-modules
+#   onboard offer   # ask whether to start onboarding (for harness hooks)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/onboard-common.sh
+source "${SCRIPT_DIR}/lib/onboard-common.sh"
+
+REPO_ROOT="$(onboard_repo_root)"
+REPO_ROOT="$(readlink -f "$REPO_ROOT" 2>/dev/null || printf '%s\n' "$REPO_ROOT")"
+export ONBOARD_REPO_ROOT="$REPO_ROOT"
+
+MODULES=(
+  core-links
+  agent-skills
+  agent-tools
+  tailnet-ssh
+  nix-home
+  audio-evolution
+)
+
+MODULE_HELP=(
+  "core-links:Symlink shell, tmux, git, Hyprland, nvim, noctalia, and CLI helpers"
+  "agent-skills:Install workspace-copilot skill into Claude/Codex/OpenCode/Gemini skill dirs"
+  "agent-tools:Install Agent Reach, yt-dlp, and shared mcporter MCP config"
+  "tailnet-ssh:Enable Tailscale + SSH for private remote access (Linux)"
+  "nix-home:Bootstrap Nix + Home Manager on CachyOS/Arch hosts"
+  "audio-evolution:Install PipeWire Aural Evolution headphone DSP chain"
+)
+
+usage() {
+  cat <<'EOF'
+Usage: onboard <command> [options]
+
+Commands:
+  status [--json]              Show onboarding completion state
+  detect-harness               Print detected LLM harness (or unknown)
+  doctor                       Quick health checks for this machine
+  list-modules                 List installable modules
+  offer                        Prompt to start interactive onboarding
+  install [options]            Interactive or batch installer
+  run <module> [--yes]         Run a single module
+
+Install options:
+  --interactive                Menu-driven TTY installer (default when stdin is a TTY)
+  --all                        Run every recommended module with prompts
+  --yes                        Assume yes for prompts (non-destructive skips still apply)
+  --module NAME                Run only the named module (repeatable)
+  --noninteractive             Never prompt; use defaults / --yes
+
+Examples:
+  ./install
+  ./scripts/onboard install --interactive
+  ./scripts/onboard status --json
+  ./scripts/onboard run agent-tools --yes
+EOF
+}
+
+cmd_detect_harness() {
+  onboard_detect_harness
+}
+
+cmd_list_modules() {
+  local entry name desc
+  for entry in "${MODULE_HELP[@]}"; do
+    name="${entry%%:*}"
+    desc="${entry#*:}"
+    printf '%-18s  %s\n' "$name" "$desc"
+  done
+}
+
+module_description() {
+  local want="$1" entry
+  for entry in "${MODULE_HELP[@]}"; do
+    if [[ "${entry%%:*}" == "$want" ]]; then
+      printf '%s\n' "${entry#*:}"
+      return 0
+    fi
+  done
+  printf '%s\n' "$want"
+}
+
+is_known_module() {
+  local want="$1" m
+  for m in "${MODULES[@]}"; do
+    [[ "$m" == "$want" ]] && return 0
+  done
+  return 1
+}
+
+# --- module implementations -------------------------------------------------
+
+run_core_links() {
+  local repo="$REPO_ROOT"
+  printf '\n==> core-links\n'
+
+  mkdir -p "$HOME/.local/bin" "$HOME/.config"
+
+  # Workspace convenience link used throughout this repo
+  if [[ -d "/workspace" && ! -e "$HOME/workspace" ]]; then
+    ln -s /workspace "$HOME/workspace"
+    printf '  linked ~/workspace -> /workspace\n'
+  fi
+
+  onboard_link "$repo/.gitconfig" "$HOME/.gitconfig"
+  onboard_link "$repo/config/zsh/.zshrc" "$HOME/.zshrc"
+  onboard_link "$repo/config/.tmux.conf" "$HOME/.tmux.conf"
+  onboard_link "$repo/config/fish" "$HOME/.config/fish"
+
+  if [[ -d "$repo/config/hyprland" ]]; then
+    mkdir -p "$HOME/.config/hypr"
+    onboard_link "$repo/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
+    onboard_link "$repo/config/hyprland/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"
+    onboard_link "$repo/config/hyprland/hypridle.conf" "$HOME/.config/hypr/hypridle.conf"
+    if [[ -d "$repo/config/hyprland/config" ]]; then
+      onboard_link "$repo/config/hyprland/config" "$HOME/.config/hypr/config"
+    fi
+  fi
+
+  onboard_link "$repo/config/nvim" "$HOME/.config/nvim"
+  onboard_link "$repo/config/noctalia" "$HOME/.config/noctalia"
+  onboard_link "$repo/config/waybar" "$HOME/.config/waybar"
+  onboard_link "$repo/config/rofi" "$HOME/.config/rofi"
+  onboard_link "$repo/config/dunst" "$HOME/.config/dunst"
+  onboard_link "$repo/config/agent-deck/config.toml" "$HOME/.config/agent-deck/config.toml"
+  onboard_link "$repo/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
+  onboard_link "$repo/config/zed/settings.json" "$HOME/.config/zed/settings.json"
+
+  # PipeWire user configs (non-destructive link of tracked fragments)
+  if [[ -d "$repo/config/pipewire" ]]; then
+    mkdir -p "$HOME/.config/pipewire/pipewire.conf.d" \
+             "$HOME/.config/pipewire/pipewire-pulse.conf.d"
+    [[ -f "$repo/config/pipewire/pipewire.conf" ]] && \
+      onboard_link "$repo/config/pipewire/pipewire.conf" "$HOME/.config/pipewire/pipewire.conf"
+    local f
+    for f in "$repo"/config/pipewire/pipewire.conf.d/*.conf; do
+      [[ -e "$f" ]] || continue
+      onboard_link "$f" "$HOME/.config/pipewire/pipewire.conf.d/$(basename "$f")"
+    done
+    for f in "$repo"/config/pipewire/pipewire-pulse.conf.d/*.conf; do
+      [[ -e "$f" ]] || continue
+      onboard_link "$f" "$HOME/.config/pipewire/pipewire-pulse.conf.d/$(basename "$f")"
+    done
+  fi
+
+  # Sunshine phone-desktop (config only; credentials stay in ~/.config/sunshine)
+  if [[ -d "$repo/config/sunshine" ]]; then
+    mkdir -p "$HOME/.config/sunshine"
+    onboard_link "$repo/config/sunshine/apps.json" "$HOME/.config/sunshine/apps.json"
+    onboard_link "$repo/config/sunshine/sunshine.conf" "$HOME/.config/sunshine/sunshine.conf"
+  fi
+
+  # CLI helpers on PATH
+  local bin command_name
+  for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
+             desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
+             performance-mode.sh performance-pressure.py taildrop-phone.sh \
+             taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
+             tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh \
+             reload-desktop.sh keybind-cheatsheet.py; do
+    if [[ -e "$repo/scripts/$bin" ]]; then
+      command_name="${bin%.sh}"
+      command_name="${command_name%.py}"
+      onboard_link "$repo/scripts/$bin" "$HOME/.local/bin/$command_name"
+      # keep .sh name too when helpful
+      if [[ "$bin" == *.sh || "$bin" == *.py ]]; then
+        onboard_link "$repo/scripts/$bin" "$HOME/.local/bin/$bin"
+      fi
+    fi
+  done
+
+  # The hardened Taildrop unit requires its writable bind path to exist before
+  # systemd creates the service mount namespace.
+  mkdir -p "$HOME/Downloads/Taildrop"
+
+  mkdir -p "$HOME/.config/systemd/user"
+  for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service; do
+    [[ -e "$repo/config/systemd/user/$unit" ]] && \
+      onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
+  done
+
+  chmod +x "$repo"/scripts/* 2>/dev/null || true
+  onboard_mark_module "core-links" "done"
+  printf 'core-links complete.\n'
+}
+
+run_agent_skills() {
+  local repo="$REPO_ROOT"
+  local skill_src="$repo/config/agent-skills/workspace-copilot"
+  printf '\n==> agent-skills\n'
+  if [[ ! -d "$skill_src" ]]; then
+    printf '  workspace-copilot skill missing at %s\n' "$skill_src" >&2
+    return 1
+  fi
+
+  onboard_link "$skill_src" "$HOME/.agents/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.claude/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.codex/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.config/opencode/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.gemini/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.omp/skills/workspace-copilot"
+  onboard_link "$skill_src" "$HOME/.cursor/skills/workspace-copilot"
+
+  if command -v agent-deck >/dev/null 2>&1; then
+    agent-deck codex-hooks install >/dev/null 2>&1 || true
+    agent-deck gemini-hooks install >/dev/null 2>&1 || true
+  fi
+
+  onboard_mark_module "agent-skills" "done"
+  printf 'agent-skills complete.\n'
+}
+
+run_agent_tools() {
+  printf '\n==> agent-tools\n'
+  "$REPO_ROOT/scripts/setup-agent-tools.sh"
+  onboard_mark_module "agent-tools" "done"
+  printf 'agent-tools complete.\n'
+}
+
+run_tailnet_ssh() {
+  printf '\n==> tailnet-ssh\n'
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    printf '  skipped (Linux only)\n'
+    onboard_mark_module "tailnet-ssh" "skipped"
+    return 0
+  fi
+  "$REPO_ROOT/scripts/setup-tailnet-ssh.sh"
+  onboard_mark_module "tailnet-ssh" "done"
+  printf 'tailnet-ssh complete.\n'
+}
+
+run_nix_home() {
+  printf '\n==> nix-home\n'
+  if [[ ! -f /etc/os-release ]] || ! grep -qiE 'cachyos|arch' /etc/os-release; then
+    printf '  skipped (CachyOS/Arch Home Manager bootstrap only)\n'
+    onboard_mark_module "nix-home" "skipped"
+    return 0
+  fi
+  if ! onboard_prompt_yn "Bootstrap Nix + Home Manager for this host?" default_n; then
+    onboard_mark_module "nix-home" "skipped"
+    return 0
+  fi
+  ONBOARD_NESTED=1 "$REPO_ROOT/config/nix/bootstrap-cachyos.sh"
+  onboard_mark_module "nix-home" "done"
+  printf 'nix-home complete.\n'
+}
+
+run_audio_evolution() {
+  printf '\n==> audio-evolution\n'
+  if [[ ! -x "$REPO_ROOT/scripts/install-audio-evolution.sh" ]]; then
+    printf '  install-audio-evolution.sh missing\n' >&2
+    return 1
+  fi
+  if ! onboard_prompt_yn "Install PipeWire Aural Evolution DSP?" default_n; then
+    onboard_mark_module "audio-evolution" "skipped"
+    return 0
+  fi
+  "$REPO_ROOT/scripts/install-audio-evolution.sh"
+  onboard_mark_module "audio-evolution" "done"
+  printf 'audio-evolution complete.\n'
+}
+
+run_module() {
+  local module="$1"
+  case "$module" in
+    core-links) run_core_links ;;
+    agent-skills) run_agent_skills ;;
+    agent-tools) run_agent_tools ;;
+    tailnet-ssh) run_tailnet_ssh ;;
+    nix-home) run_nix_home ;;
+    audio-evolution) run_audio_evolution ;;
+    *)
+      printf 'Unknown module: %s\n' "$module" >&2
+      return 1
+      ;;
+  esac
+}
+
+# --- status / doctor --------------------------------------------------------
+
+# Returns 0 when recommended modules look satisfied either by state file or by
+# existing symlinks that already point into this repository.
+links_look_configured() {
+  local repo="$REPO_ROOT"
+  local link target
+  for link in "$HOME/.tmux.conf" "$HOME/.zshrc" "$HOME/.config/hypr/hyprland.conf"; do
+    [[ -L "$link" ]] || return 1
+    target="$(readlink -f "$link" 2>/dev/null || true)"
+    [[ -n "$target" && "$target" == "$repo"* ]] || return 1
+  done
+  return 0
+}
+
+skills_look_configured() {
+  local repo="$REPO_ROOT"
+  local skill
+  skill="$(readlink -f "$repo/config/agent-skills/workspace-copilot" 2>/dev/null || true)"
+  [[ -n "$skill" ]] || return 1
+  local link target
+  for link in \
+    "$HOME/.claude/skills/workspace-copilot" \
+    "$HOME/.agents/skills/workspace-copilot" \
+    "$HOME/.config/opencode/skills/workspace-copilot" \
+    "$HOME/.codex/skills/workspace-copilot" \
+    "$HOME/.cursor/skills/workspace-copilot"; do
+    if [[ -e "$link" ]]; then
+      target="$(readlink -f "$link" 2>/dev/null || true)"
+      if [[ "$target" == "$skill" ]]; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+recommended_done() {
+  local m status
+  local state_ok=1
+  for m in core-links agent-skills; do
+    status="$(onboard_module_status "$m")"
+    if [[ "$status" != "done" ]]; then
+      state_ok=0
+      break
+    fi
+  done
+  if [[ "$state_ok" -eq 1 ]]; then
+    return 0
+  fi
+  # Heuristic for machines configured before onboard state existed
+  if links_look_configured && skills_look_configured; then
+    return 0
+  fi
+  if links_look_configured; then
+    # Core is present; skills may still be pending — not fully done
+    return 1
+  fi
+  return 1
+}
+
+cmd_status() {
+  local json=0
+  [[ "${1:-}" == "--json" ]] && json=1
+
+  local harness state_file complete=false inferred=false
+  local links_ok=false skills_ok=false
+  harness="$(onboard_detect_harness)"
+  state_file="$(onboard_state_file)"
+  if links_look_configured; then links_ok=true; fi
+  if skills_look_configured; then skills_ok=true; fi
+  if recommended_done; then
+    complete=true
+    if [[ "$(onboard_module_status core-links)" != "done" || "$(onboard_module_status agent-skills)" != "done" ]]; then
+      if [[ "$links_ok" == "true" ]]; then
+        inferred=true
+      fi
+    fi
+  fi
+
+  if [[ "$json" -eq 1 ]]; then
+    python3 - "$state_file" "$harness" "$complete" "$inferred" "$links_ok" "$skills_ok" "$REPO_ROOT" "${MODULES[@]}" <<'PY'
+import json, pathlib, sys
+state_file = pathlib.Path(sys.argv[1])
+harness = sys.argv[2]
+complete = sys.argv[3] == "true"
+inferred = sys.argv[4] == "true"
+links_ok = sys.argv[5] == "true"
+skills_ok = sys.argv[6] == "true"
+repo = sys.argv[7]
+modules = sys.argv[8:]
+stored = {}
+if state_file.exists():
+    try:
+        stored = json.loads(state_file.read_text())
+    except json.JSONDecodeError:
+        stored = {}
+out_modules = {}
+for name in modules:
+    info = stored.get("modules", {}).get(name, {})
+    status = info.get("status", "pending")
+    if name == "core-links" and links_ok and status == "pending":
+        status = "done-inferred"
+    if name == "agent-skills" and skills_ok and status == "pending":
+        status = "done-inferred"
+    out_modules[name] = {
+        "status": status,
+        "updated_at": info.get("updated_at"),
+        "harness": info.get("harness"),
+    }
+offer = not complete
+if complete:
+    next_msg = "Onboarding recommended modules are done. Use ./scripts/onboard doctor or install optional modules."
+elif links_ok and not skills_ok:
+    offer = True
+    next_msg = (
+        "Core links look configured, but agent-skills may still be missing. "
+        "Ask the user whether to finish onboarding (agent-skills / optional modules)."
+    )
+else:
+    next_msg = "Ask the user: want to run .files onboarding setup?"
+
+print(json.dumps({
+    "complete": complete,
+    "recommended_complete": complete,
+    "inferred_from_links": inferred,
+    "links_configured": links_ok,
+    "skills_configured": skills_ok,
+    "harness": harness,
+    "repo": repo,
+    "state_file": str(state_file),
+    "offer_onboarding": offer,
+    "modules": out_modules,
+    "next": next_msg,
+}, indent=2))
+PY
+    return 0
+  fi
+
+  printf 'repo:     %s\n' "$REPO_ROOT"
+  printf 'harness:  %s\n' "$harness"
+  printf 'state:    %s\n' "$state_file"
+  printf 'complete: %s\n' "$complete"
+  if [[ "$inferred" == "true" ]]; then
+    printf 'note:     complete inferred from existing repo symlinks\n'
+  fi
+  printf '\nmodules:\n'
+  local m status
+  for m in "${MODULES[@]}"; do
+    status="$(onboard_module_status "$m")"
+    if [[ "$m" == "core-links" && "$links_ok" == "true" && "$status" == "pending" ]]; then
+      status="done-inferred"
+    fi
+    if [[ "$m" == "agent-skills" && "$skills_ok" == "true" && "$status" == "pending" ]]; then
+      status="done-inferred"
+    fi
+    printf '  %-18s %s\n' "$m" "$status"
+  done
+  if [[ "$complete" != "true" ]]; then
+    printf '\nRecommended: ask whether to run onboarding, then:\n'
+    printf '  ./scripts/onboard install --interactive\n'
+    printf '  # or guided: ./scripts/onboard run core-links && ./scripts/onboard run agent-skills\n'
+  fi
+}
+
+cmd_doctor() {
+  printf 'Onboarding doctor\n'
+  printf '%s\n' '-----------------'
+  cmd_status
+  printf '\nbinaries:\n'
+  local bin
+  for bin in git tmux zsh nvim hyprctl tailscale agent-reach mcporter workspace-copilot; do
+    if command -v "$bin" >/dev/null 2>&1; then
+      printf '  ok   %s (%s)\n' "$bin" "$(command -v "$bin")"
+    else
+      printf '  miss %s\n' "$bin"
+    fi
+  done
+  printf '\nlinks:\n'
+  local link
+  for link in "$HOME/.tmux.conf" "$HOME/.zshrc" "$HOME/.config/hypr/hyprland.conf" "$HOME/.config/nvim"; do
+    if [[ -L "$link" ]]; then
+      printf '  ok   %s -> %s\n' "$link" "$(readlink "$link")"
+    elif [[ -e "$link" ]]; then
+      printf '  file %s (not a symlink)\n' "$link"
+    else
+      printf '  miss %s\n' "$link"
+    fi
+  done
+}
+
+# --- interactive installer --------------------------------------------------
+
+interactive_menu() {
+  local choice
+  while true; do
+    cat <<EOF
+
+========================================
+  .files onboarding
+========================================
+  detected harness: $(onboard_detect_harness)
+  repo: $REPO_ROOT
+
+  1) Recommended setup (core-links + agent-skills)
+  2) Full guided setup (all modules, prompted)
+  3) Pick modules
+  4) Status / doctor
+  5) Quit
+EOF
+    if ! read -r -p "Choose [1-5]: " choice; then
+      printf '\nEOF — exiting onboarding menu.\n'
+      return 0
+    fi
+    case "${choice:-}" in
+      1)
+        run_module core-links
+        run_module agent-skills
+        if onboard_prompt_yn "Also install shared agent research tools?" default_y; then
+          run_module agent-tools
+        fi
+        printf '\nRecommended setup finished.\n'
+        ;;
+      2)
+        local m
+        for m in "${MODULES[@]}"; do
+          if onboard_prompt_yn "Run module '$m' — $(module_description "$m")?" default_y; then
+            run_module "$m" || true
+          else
+            onboard_mark_module "$m" "skipped"
+          fi
+        done
+        printf '\nGuided setup finished.\n'
+        ;;
+      3)
+        cmd_list_modules
+        if ! read -r -p "Module names (space-separated): " -a picked; then
+          printf '\nEOF — exiting onboarding menu.\n'
+          return 0
+        fi
+        local m
+        for m in "${picked[@]:-}"; do
+          if is_known_module "$m"; then
+            run_module "$m" || true
+          else
+            printf 'Unknown module: %s\n' "$m" >&2
+          fi
+        done
+        ;;
+      4)
+        cmd_doctor
+        ;;
+      5|q|Q|"")
+        return 0
+        ;;
+      *)
+        printf 'Invalid choice.\n'
+        ;;
+    esac
+  done
+}
+
+cmd_offer() {
+  local harness
+  harness="$(onboard_detect_harness)"
+  if recommended_done; then
+    printf 'Onboarding already complete for recommended modules.\n'
+    printf 'Run ./scripts/onboard doctor or ./scripts/onboard install --interactive for optional modules.\n'
+    return 0
+  fi
+
+  printf 'Detected LLM harness: %s\n' "$harness"
+  printf 'This repository has an interactive onboarding flow for dotfiles, agent skills, and optional tooling.\n'
+
+  # Harness agents should ask in chat; this command is for TTY / explicit invocation.
+  if [[ "${ONBOARD_NONINTERACTIVE:-0}" == "1" ]] || ! onboard_is_tty; then
+    printf 'Offer pending: ask the user whether to run .files onboarding setup.\n'
+    printf 'If yes: ./scripts/onboard install --interactive\n'
+    printf '   or: ./scripts/onboard run core-links && ./scripts/onboard run agent-skills\n'
+    return 0
+  fi
+
+  if onboard_prompt_yn "Run .files onboarding setup now?" default_y; then
+    cmd_install --interactive
+  else
+    printf 'Skipped. You can run ./install later, or ask your agent to continue onboarding.\n'
+  fi
+}
+
+cmd_install() {
+  local interactive=0
+  local all=0
+  local modules=()
+  local arg
+
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    shift
+    case "$arg" in
+      --interactive) interactive=1 ;;
+      --all) all=1 ;;
+      --yes)
+        export ONBOARD_ASSUME_YES=1
+        ;;
+      --noninteractive)
+        export ONBOARD_NONINTERACTIVE=1
+        ;;
+      --module)
+        [[ $# -gt 0 ]] || { printf '--module needs a name\n' >&2; return 1; }
+        modules+=("$1")
+        shift
+        ;;
+      --module=*)
+        modules+=("${arg#--module=}")
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      *)
+        printf 'Unknown install option: %s\n' "$arg" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ ${#modules[@]} -gt 0 ]]; then
+    local m
+    for m in "${modules[@]}"; do
+      is_known_module "$m" || { printf 'Unknown module: %s\n' "$m" >&2; return 1; }
+      run_module "$m"
+    done
+    return 0
+  fi
+
+  if [[ "$all" -eq 1 ]]; then
+    local m
+    for m in "${MODULES[@]}"; do
+      run_module "$m" || true
+    done
+    return 0
+  fi
+
+  if [[ "$interactive" -eq 1 ]] || { onboard_is_tty && [[ "${ONBOARD_NONINTERACTIVE:-0}" != "1" ]]; }; then
+    interactive_menu
+    return 0
+  fi
+
+  # Non-TTY default: recommended modules only
+  run_module core-links
+  run_module agent-skills
+}
+
+cmd_run() {
+  local module="${1:-}"
+  shift || true
+  [[ -n "$module" ]] || { usage; return 1; }
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yes) export ONBOARD_ASSUME_YES=1 ;;
+      --noninteractive) export ONBOARD_NONINTERACTIVE=1 ;;
+      *) printf 'Unknown option: %s\n' "$1" >&2; return 1 ;;
+    esac
+    shift
+  done
+  is_known_module "$module" || { printf 'Unknown module: %s\n' "$module" >&2; return 1; }
+  run_module "$module"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    status) cmd_status "$@" ;;
+    detect-harness|detect) cmd_detect_harness "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    list-modules|modules) cmd_list_modules "$@" ;;
+    offer) cmd_offer "$@" ;;
+    install) cmd_install "$@" ;;
+    run) cmd_run "$@" ;;
+    -h|--help|help|"") usage ;;
+    *)
+      printf 'Unknown command: %s\n\n' "$cmd" >&2
+      usage
+      return 1
+      ;;
+  esac
+}
+
+main "$@"

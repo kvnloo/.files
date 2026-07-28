@@ -1,106 +1,56 @@
 #!/usr/bin/env bash
-# Theme Switcher for i3/polybar/rofi/dunst
-# Uses pywal to generate colors from wallpapers
+# Select a static wallpaper, stop Wallpaper Engine, and derive the full desktop
+# palette from the selected image.
+set -euo pipefail
 
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 WALLPAPER_DIR="$HOME/workspace/UX/background"
+WALLPAPER_MODE="$ROOT/scripts/wallpaper-mode.sh"
+STATE_FILE="$HOME/.cache/wallpaper-mode/state"
 
-# Function to apply theme from wallpaper
+wallpapers() {
+  "$ROOT/scripts/wallpaper-catalog.py" "$WALLPAPER_DIR"
+}
+
 apply_theme() {
-    local wallpaper="$1"
-
-    if [ ! -f "$wallpaper" ]; then
-        notify-send "Theme Switcher" "Wallpaper not found: $wallpaper" -u critical
-        return 1
-    fi
-
-    # Generate color scheme with pywal
-    wal -i "$wallpaper" --backend colorthief
-
-    # Update dunst colors dynamically
-    update_dunst_colors
-
-    # Reload i3 to apply new colors
-    i3-msg reload
-
-    # Reload polybar
-    ~/.config/polybar/hack/scripts/pywal.sh $wallpaper
-
-    # Send notification
-    notify-send "Theme Switcher" "Applied theme from: $(basename "$wallpaper")"
+  local wallpaper=${1:?wallpaper path required}
+  [[ -f $wallpaper ]] || { notify-send -u critical "Theme Switcher" "Wallpaper not found: $wallpaper"; return 1; }
+  "$WALLPAPER_MODE" static "$wallpaper"
 }
 
-# Function to update dunst configuration with pywal colors
-update_dunst_colors() {
-    local dunst_config="$HOME/.config/dunst/dunstrc"
-    local bg=$(grep "^background=" ~/.cache/wal/colors.sh | cut -d"'" -f2)
-    local fg=$(grep "^foreground=" ~/.cache/wal/colors.sh | cut -d"'" -f2)
-    local accent=$(grep "^color1=" ~/.cache/wal/colors.sh | cut -d"'" -f2)
-
-    # Update dunst colors
-    sed -i "s/^    background = .*/    background = \"$bg\"/" "$dunst_config"
-    sed -i "s/^    foreground = .*/    foreground = \"$fg\"/" "$dunst_config"
-    sed -i "s/^    frame_color = .*/    frame_color = \"$accent\"/" "$dunst_config"
-
-    # Restart dunst
-    killall dunst
-    dunst &
-}
-
-# Function to show wallpaper selector with rofi
 show_wallpaper_selector() {
-    local wallpapers=$(find "$WALLPAPER_DIR" -type f \( -name "*.png" -o -name "*.jpg" \))
-
-    # Create menu with wallpaper names
-    local selected=$(echo "$wallpapers" | while read -r wall; do
-        echo "$(basename "$wall") | $wall"
-    done | rofi -dmenu -i -p "Select Wallpaper" -format "s" | cut -d"|" -f2 | tr -d ' ')
-
-    if [ -n "$selected" ]; then
-        apply_theme "$selected"
-    fi
+  local selected
+  selected=$(
+    wallpapers | rofi -dmenu -i -p 'Static theme · highest-resolution variants' -display-columns 1
+  ) || return 0
+  [[ -n $selected ]] && apply_theme "${selected#*$'\t'}"
 }
 
-# Function to cycle to next wallpaper
 cycle_wallpaper() {
-    local current=$(cat ~/.cache/wal/wal 2>/dev/null)
-    local wallpapers=$(find "$WALLPAPER_DIR" -type f \( -name "*.png" -o -name "*.jpg" \) | sort)
-    local next=""
+  local -a files=()
+  local _label file
+  while IFS=$'\t' read -r _label file; do
+    [[ -n $file ]] && files+=("$file")
+  done < <(wallpapers)
+  ((${#files[@]})) || return 1
 
-    if [ -z "$current" ]; then
-        # No current wallpaper, use first one
-        next=$(echo "$wallpapers" | head -1)
-    else
-        # Find next wallpaper in list
-        local found=false
-        for wall in $wallpapers; do
-            if [ "$found" = true ]; then
-                next="$wall"
-                break
-            fi
-            if [ "$wall" = "$current" ]; then
-                found=true
-            fi
-        done
-
-        # If we reached the end, wrap to first wallpaper
-        if [ -z "$next" ]; then
-            next=$(echo "$wallpapers" | head -1)
-        fi
+  local state current='' index next=0
+  state=$(cat "$STATE_FILE" 2>/dev/null || true)
+  case "$state" in
+    static\|*\|*) current=${state#static|}; current=${current#*|} ;;
+    static\|*)    current=${state#static|} ;;
+  esac
+  for index in "${!files[@]}"; do
+    if [[ ${files[$index]} == "$current" ]]; then
+      next=$(( (index + 1) % ${#files[@]} ))
+      break
     fi
-
-    apply_theme "$next"
+  done
+  apply_theme "${files[$next]}"
 }
 
-# Main script logic
 case "${1:-menu}" in
-    menu)
-        show_wallpaper_selector
-        ;;
-    cycle)
-        cycle_wallpaper
-        ;;
-    *)
-        # Direct wallpaper file path
-        apply_theme "$1"
-        ;;
+  menu)  show_wallpaper_selector ;;
+  cycle) cycle_wallpaper ;;
+  *)     apply_theme "$1" ;;
 esac

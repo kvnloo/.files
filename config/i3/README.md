@@ -1,5 +1,9 @@
 # .i3
-My i3 configuration
+
+> **Legacy.** This tree is from the Ubuntu/i3 era. Current desktop is Hyprland
+> (`config/hyprland/`). See [docs/SETUP.md](../../docs/SETUP.md).
+
+My historical i3 configuration.
 
 # Packages to install
 
