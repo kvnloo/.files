@@ -14,6 +14,7 @@ TARGET = Path.home() / ".config/quickshell/noctalia-shell"
 AUDIO_OVERRIDE = Path("Modules/Panels/Audio/AudioPanel.qml")
 DISPLAY_OVERRIDE = Path("Modules/Panels/Settings/Tabs/Display/DisplayTab.qml")
 BRIGHTNESS_PANEL_OVERRIDE = Path("Modules/Panels/Brightness/BrightnessPanel.qml")
+BRIGHTNESS_WIDGET_OVERRIDE = Path("Modules/Bar/Widgets/Brightness.qml")
 SYSTEM_MONITOR_OVERRIDE = Path("Modules/Cards/SystemMonitorCard.qml")
 
 
@@ -672,6 +673,87 @@ def customize_display_tab(text: str) -> str:
     return text
 
 
+def customize_brightness_widget(text: str) -> str:
+    text = replace_once(
+        text,
+        "import qs.Services.Hardware\nimport qs.Services.UI",
+        "import qs.Services.Hardware\nimport qs.Services.Noctalia\nimport qs.Services.UI",
+    )
+    text = replace_once(
+        text,
+        """  readonly property bool reverseScroll: Settings.data.general.reverseScroll
+
+  // Used to avoid opening the pill on Quickshell startup""",
+        """  readonly property bool reverseScroll: Settings.data.general.reverseScroll
+  property var monitorLayoutApi: null
+  readonly property var monitorLayout: monitorLayoutApi?.mainInstance
+  readonly property string displayTimeoutLabel: monitorLayout?.displayTimeoutLabel || "?"
+
+  function syncMonitorLayoutApi() {
+    monitorLayoutApi = PluginService.getPluginAPI("monitor-layout");
+  }
+
+  Component.onCompleted: syncMonitorLayoutApi()
+
+  Connections {
+    target: PluginService
+
+    function onAllPluginsLoaded() {
+      root.syncMonitorLayoutApi();
+    }
+
+    function onPluginLoaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.syncMonitorLayoutApi();
+    }
+
+    function onPluginReloaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.syncMonitorLayoutApi();
+    }
+
+    function onPluginUnloaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.monitorLayoutApi = null;
+    }
+  }
+
+  // Used to avoid opening the pill on Quickshell startup""",
+    )
+    text = replace_once(
+        text,
+        """    text: {
+      var monitor = brightnessMonitor;
+      if (!monitor || !monitor.brightnessControlAvailable || isNaN(monitor.brightness))
+        return "";
+      return Math.round(monitor.brightness * 100);
+    }
+    suffix: text.length > 0 ? "%" : "-" """.rstrip(),
+        """    text: {
+      var monitor = brightnessMonitor;
+      if (!monitor || !monitor.brightnessControlAvailable || isNaN(monitor.brightness))
+        return "";
+      return Math.round(monitor.brightness * 100) + "% · " + root.displayTimeoutLabel;
+    }
+    suffix: "" """.rstrip(),
+    )
+    text = replace_once(
+        text,
+        """      return I18n.tr("tooltips.brightness-at", {
+                       "brightness": Math.round(monitor.brightness * 100)
+                     });""",
+        """      var brightnessText = I18n.tr("tooltips.brightness-at", {
+                       "brightness": Math.round(monitor.brightness * 100)
+                     });
+      var timeoutError = root.monitorLayout?.displayTimeoutError || "";
+      var timeoutStatus = root.monitorLayout?.displayTimeoutInfinite
+        ? "Display timeout: INF (automatic dimming and locking disabled)"
+        : "Display timeout: " + root.displayTimeoutLabel;
+      return brightnessText + "\\n" + (timeoutError !== "" ? timeoutError : timeoutStatus);""",
+    )
+    return text
+
+
 def customize_brightness_panel(_: str) -> str:
     return BRIGHTNESS_PANEL_SOURCE.read_text()
 
@@ -681,6 +763,7 @@ def customize_system_monitor(_: str) -> str:
 
 
 CUSTOMIZERS = {
+    BRIGHTNESS_WIDGET_OVERRIDE: customize_brightness_widget,
     AUDIO_OVERRIDE: customize_audio_panel,
     DISPLAY_OVERRIDE: customize_display_tab,
     BRIGHTNESS_PANEL_OVERRIDE: customize_brightness_panel,

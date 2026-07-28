@@ -2,10 +2,12 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Modules.MainScreen
 import qs.Modules.Panels.Settings
 import qs.Services.Hardware
+import qs.Services.Noctalia
 import qs.Services.UI
 import qs.Widgets
 
@@ -14,6 +16,65 @@ SmartPanel {
 
   preferredWidth: Math.round(620 * Style.uiScaleRatio)
   preferredHeight: Math.round(720 * Style.uiScaleRatio)
+
+  property var monitorLayoutApi: null
+  readonly property var monitorLayout: monitorLayoutApi?.mainInstance
+  readonly property var displayOutputs: monitorLayout?.draftOutputs || []
+
+  Component.onCompleted: syncMonitorLayoutApi()
+
+  Connections {
+    target: PluginService
+
+    function onAllPluginsLoaded() {
+      root.syncMonitorLayoutApi();
+    }
+
+    function onPluginLoaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.syncMonitorLayoutApi();
+    }
+
+    function onPluginReloaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.syncMonitorLayoutApi();
+    }
+
+    function onPluginUnloaded(pluginId) {
+      if (pluginId === "monitor-layout")
+        root.monitorLayoutApi = null;
+    }
+  }
+
+  onOpened: {
+    syncMonitorLayoutApi();
+    monitorLayout?.refreshOutputs();
+    monitorLayout?.refreshDisplayTimeout();
+  }
+
+
+  function syncMonitorLayoutApi() {
+    monitorLayoutApi = PluginService.getPluginAPI("monitor-layout");
+  }
+
+  function configuredTimeoutLabel() {
+    var seconds = Number(monitorLayout?.displayTimeoutSeconds || 0);
+    if (seconds > 0 && seconds % 3600 === 0)
+      return (seconds / 3600) + "h";
+    if (seconds > 0 && seconds % 60 === 0)
+      return (seconds / 60) + "m";
+    return seconds > 0 ? seconds + "s" : "?";
+  }
+
+  function setDisplayPosition(output, xText, yText) {
+    var normalizedX = String(xText).trim();
+    var normalizedY = String(yText).trim();
+    var x = normalizedX === "" ? Number(output?.x || 0) : Number(normalizedX);
+    var y = normalizedY === "" ? Number(output?.y || 0) : Number(normalizedY);
+    if (!output || !isFinite(x) || !isFinite(y) || !monitorLayout)
+      return;
+    monitorLayout.setOutputPosition(output.outputId, x, y, false);
+  }
 
   function openDisplaySettings() {
     var panel = PanelService.getPanel("settingsPanel", screen);
@@ -31,13 +92,50 @@ SmartPanel {
     Quickshell.execDetached([Quickshell.env("HOME") + "/workspace/.files/scripts/" + script, argument]);
   }
 
-  function setVibrance(portIndex, value) {
+  property var pendingVibrance: ({})
+
+  function queueVibrance(portIndex, value) {
+    var next = Object.assign({}, pendingVibrance);
+    next[String(portIndex)] = Math.round(value);
+    pendingVibrance = next;
+    vibranceDebounce.restart();
+  }
+
+  function flushVibrance() {
+    if (vibranceProcess.running) {
+      vibranceDebounce.restart();
+      return;
+    }
+    var ports = Object.keys(pendingVibrance);
+    if (ports.length === 0)
+      return;
+    var portIndex = Number(ports[0]);
+    var value = pendingVibrance[ports[0]];
+    var next = Object.assign({}, pendingVibrance);
+    delete next[ports[0]];
+    pendingVibrance = next;
     var command = ["nvibrant"];
     for (var index = 0; index < portIndex; index++)
       command.push("0");
-    command.push(String(Math.round(value)));
+    command.push(String(value));
+    vibranceProcess.command = command;
+    vibranceProcess.running = true;
+  }
 
-    Quickshell.execDetached(command);
+  Timer {
+    id: vibranceDebounce
+    interval: 90
+    repeat: false
+    onTriggered: root.flushVibrance()
+  }
+
+  Process {
+    id: vibranceProcess
+    running: false
+    onExited: {
+      if (Object.keys(root.pendingVibrance).length > 0)
+        vibranceDebounce.restart();
+    }
   }
 
 
@@ -248,20 +346,147 @@ SmartPanel {
 
               RowLayout {
                 Layout.fillWidth: true
+                spacing: Style.marginS
+
+                NText {
+                  text: "Display timeout"
+                  color: Color.mOnSurface
+                  Layout.preferredWidth: 105 * Style.uiScaleRatio
+                }
+
+                NComboBox {
+                  Layout.fillWidth: true
+                  model: [
+                    {
+                      "key": "default",
+                      "name": "Configured (" + root.configuredTimeoutLabel() + ")"
+                    },
+                    {
+                      "key": "infinite",
+                      "name": "Infinite (no dim or auto-lock)"
+                    }
+                  ]
+                  currentKey: root.monitorLayout?.displayTimeoutInfinite ? "infinite" : "default"
+                  enabled: (root.monitorLayout?.displayTimeoutAvailable ?? false) && !(root.monitorLayout?.displayTimeoutBusy ?? false)
+                  onSelected: key => root.monitorLayout?.setDisplayTimeoutInfinite(key === "infinite")
+                }
+              }
+
+              NText {
+                Layout.fillWidth: true
+                visible: root.monitorLayout?.displayTimeoutInfinite ?? false
+                text: "Infinite keeps displays on and disables automatic dimming and locking."
+                color: Color.mTertiary
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+
+              NText {
+                Layout.fillWidth: true
+                visible: (root.monitorLayout?.displayTimeoutError || "") !== ""
+                text: root.monitorLayout?.displayTimeoutError || ""
+                color: Color.mError
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+
+              Repeater {
+                model: root.displayOutputs
+
+                ColumnLayout {
+                  required property var modelData
+                  Layout.fillWidth: true
+                  spacing: Style.marginXS
+
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.marginS
+
+                    NText {
+                      text: modelData.name
+                      Layout.preferredWidth: 92 * Style.uiScaleRatio
+                      color: Color.mOnSurface
+                      elide: Text.ElideRight
+                    }
+
+                    NComboBox {
+                      Layout.fillWidth: true
+                      label: "Resolution"
+                      model: root.monitorLayout?.resolutionOptions(modelData) || []
+                      currentKey: root.monitorLayout?.resolutionKey(modelData) || ""
+                      onSelected: key => {
+                        var modeId = root.monitorLayout?.closestModeForResolution(modelData, key) || "";
+                        if (modeId !== "")
+                          root.monitorLayout?.setOutputResolution(modelData.outputId, modeId);
+                      }
+                    }
+                  }
+
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.marginS
+
+                    Item {
+                      Layout.preferredWidth: 92 * Style.uiScaleRatio
+                    }
+
+                    NComboBox {
+                      Layout.fillWidth: true
+                      label: "Refresh rate"
+                      model: root.monitorLayout?.refreshOptions(modelData) || []
+                      currentKey: modelData.modeId
+                      onSelected: key => root.monitorLayout?.setOutputResolution(modelData.outputId, key)
+                    }
+                  }
+
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.marginS
+
+                    NTextInput {
+                      id: positionX
+                      Layout.fillWidth: true
+                      label: "X"
+                      text: String(modelData.x)
+                      onEditingFinished: root.setDisplayPosition(modelData, text, positionY.text)
+                    }
+
+                    NTextInput {
+                      id: positionY
+                      Layout.fillWidth: true
+                      label: "Y"
+                      text: String(modelData.y)
+                      onEditingFinished: root.setDisplayPosition(modelData, positionX.text, text)
+                    }
+                  }
+                }
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.marginS
 
                 NButton {
                   Layout.fillWidth: true
-                  icon: "settings-display"
-                  text: "Resolution & refresh"
-                  onClicked: root.openDisplaySettings()
+                  text: "Reset"
+                  enabled: root.monitorLayout?.hasPendingChanges ?? false
+                  onClicked: root.monitorLayout?.resetDraftOutputs()
                 }
 
                 NButton {
                   Layout.fillWidth: true
-                  icon: "layout-grid"
-                  text: "Arrange monitors"
-                  onClicked: root.callPlugin("plugin:layout-mon", "toggle")
+                  text: root.monitorLayout?.isApplying ? "Applying…" : "Apply display changes"
+                  enabled: (root.monitorLayout?.hasPendingChanges ?? false) && !(root.monitorLayout?.isApplying ?? false)
+                  onClicked: root.monitorLayout?.applyLayout()
                 }
+              }
+
+              NText {
+                Layout.fillWidth: true
+                visible: (root.monitorLayout?.errorText || "") !== ""
+                text: root.monitorLayout?.errorText || ""
+                color: Color.mError
+                wrapMode: Text.WordWrap
               }
             }
           }
@@ -293,7 +518,7 @@ SmartPanel {
                   stepSize: 16
                   text: Math.round(value)
                   Layout.fillWidth: true
-                  onMoved: value => root.setVibrance(1, value)
+                  onMoved: value => root.queueVibrance(1, value)
                 }
               }
 
@@ -307,7 +532,7 @@ SmartPanel {
                   stepSize: 16
                   text: Math.round(value)
                   Layout.fillWidth: true
-                  onMoved: value => root.setVibrance(3, value)
+                  onMoved: value => root.queueVibrance(3, value)
                 }
               }
             }

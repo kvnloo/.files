@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Services.Compositor
 import "backends/SwayBackend.js" as SwayBackend
 import "backends/HyprlandBackend.js" as HyprlandBackend
+import "DisplayModeOptions.js" as DisplayModeOptions
 
 Item {
   id: root
@@ -23,16 +24,29 @@ Item {
   property string statusText: ""
   property string refreshStderr: ""
   property string applyStderr: ""
+  property bool displayTimeoutAvailable: false
+  property bool displayTimeoutInfinite: false
+  property bool displayTimeoutBusy: false
+  property int displayTimeoutSeconds: 0
+  property string displayTimeoutLabel: "?"
+  property string displayTimeoutError: ""
+  property string displayTimeoutStdout: ""
+  property string displayTimeoutStderr: ""
 
   readonly property string backendId: resolveBackendId()
   readonly property bool hasPendingChanges: JSON.stringify(draftOutputs) !== JSON.stringify(liveOutputs)
 
   Component.onCompleted: {
     refreshOutputs();
+    refreshDisplayTimeout();
   }
 
   IpcHandler {
     target: "plugin:layout-mon"
+    readonly property bool pendingDisplayChanges: root.hasPendingChanges
+    readonly property string displayTimeoutLabel: root.displayTimeoutLabel
+    readonly property bool displayTimeoutInfinite: root.displayTimeoutInfinite
+
 
     function toggle() {
       if (pluginApi) {
@@ -48,6 +62,26 @@ Item {
 
     function apply() {
       root.applyLayout();
+    }
+
+    function refreshDisplayTimeout() {
+      root.refreshDisplayTimeout();
+    }
+
+    function enableDisplayTimeoutInfinite() {
+      root.setDisplayTimeoutInfinite(true);
+    }
+
+    function restoreDisplayTimeout() {
+      root.setDisplayTimeoutInfinite(false);
+    }
+
+    function stageDisplayMode(outputId: string, modeId: string) {
+      root.setOutputResolution(outputId, modeId);
+    }
+
+    function resetDisplayModes() {
+      root.resetDraftOutputs();
     }
   }
 
@@ -77,6 +111,7 @@ Item {
   }
 
   Process {
+
     id: applyProcess
 
     stdout: StdioCollector {}
@@ -101,8 +136,104 @@ Item {
     }
   }
 
+  Process {
+    id: displayTimeoutProcess
+
+    stdout: StdioCollector {
+      onStreamFinished: {
+        root.displayTimeoutStdout = this.text.trim();
+      }
+    }
+
+    stderr: StdioCollector {
+      onStreamFinished: {
+        root.displayTimeoutStderr = this.text.trim();
+      }
+    }
+
+    onExited: function (exitCode) {
+      root.displayTimeoutBusy = false;
+      root.applyDisplayTimeoutPayload(root.displayTimeoutStdout, root.displayTimeoutStderr, exitCode);
+    }
+  }
+
+  Timer {
+    interval: 30000
+    running: true
+    repeat: true
+    onTriggered: root.refreshDisplayTimeout()
+  }
 
 
+
+
+  function displayTimeoutScript() {
+    var pluginDir = pluginApi?.pluginDir || "";
+    return pluginDir === "" ? "" : pluginDir + "/scripts/display-timeout.sh";
+  }
+
+  function runDisplayTimeoutAction(action) {
+    var script = displayTimeoutScript();
+    if (displayTimeoutBusy || script === "")
+      return;
+    displayTimeoutStdout = "";
+    displayTimeoutStderr = "";
+    displayTimeoutError = "";
+    displayTimeoutBusy = true;
+    displayTimeoutProcess.command = [script, action];
+    displayTimeoutProcess.running = true;
+  }
+
+  function refreshDisplayTimeout() {
+    runDisplayTimeoutAction("status");
+  }
+
+  function setDisplayTimeoutInfinite(enabled) {
+    runDisplayTimeoutAction(enabled ? "enable" : "disable");
+  }
+
+  function applyDisplayTimeoutPayload(rawText, stderrText, exitCode) {
+    if (String(rawText || "").trim() === "") {
+      displayTimeoutError = stderrText || "Display timeout status returned no data.";
+      return;
+    }
+
+    var payload;
+    try {
+      payload = JSON.parse(rawText);
+    } catch (error) {
+      displayTimeoutError = stderrText || "Display timeout status returned invalid data.";
+      return;
+    }
+
+    displayTimeoutAvailable = payload.available === true;
+    displayTimeoutInfinite = payload.infinite === true;
+    displayTimeoutSeconds = Number(payload.timeoutSeconds || 0);
+    displayTimeoutLabel = String(payload.label || "?");
+    displayTimeoutError = String(payload.error || "");
+    if (exitCode !== 0 && displayTimeoutError === "")
+      displayTimeoutError = stderrText || "Display timeout command failed.";
+  }
+
+  function resolutionKey(output) {
+    return DisplayModeOptions.resolutionKey(output);
+  }
+
+  function resolutionOptions(output) {
+    return DisplayModeOptions.resolutionOptions(output?.availableModes || []);
+  }
+
+  function refreshOptions(output) {
+    return DisplayModeOptions.refreshOptions(output?.availableModes || [], resolutionKey(output));
+  }
+
+  function closestModeForResolution(output, selectedResolution) {
+    return DisplayModeOptions.closestModeId(
+      output?.availableModes || [],
+      selectedResolution,
+      Number(output?.refresh || 0)
+    );
+  }
 
   function resolveBackendId() {
     var preferred = cfg.backend ?? defaults.backend ?? "auto";
@@ -302,7 +433,7 @@ Item {
     nextOutputs[index].scale = Math.round(clamped * 100) / 100;
     draftOutputs = nextOutputs;
     selectedOutputId = outputId;
-    statusText = t("status.dirty");
+    statusText = pluginApi?.tr("status.dirty");
   }
 
   function resetDraftOutputs() {

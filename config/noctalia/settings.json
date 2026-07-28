@@ -25,7 +25,7 @@
         "showIconBackground": false,
         "sortByMostUsed": true,
         "terminalCommand": "alacritty -e",
-        "viewMode": "list"
+        "viewMode": "grid"
     },
     "audio": {
         "mprisBlacklist": [
@@ -121,26 +121,8 @@
                     "useCustomFont": false
                 },
                 {
-                    "compactMode": true,
-                    "diskPath": "/",
-                    "iconColor": "none",
-                    "id": "SystemMonitor",
-                    "showCpuCores": false,
-                    "showCpuFreq": false,
-                    "showCpuTemp": true,
-                    "showCpuUsage": true,
-                    "showDiskAvailable": false,
-                    "showDiskUsage": false,
-                    "showDiskUsageAsPercent": false,
-                    "showGpuTemp": false,
-                    "showLoadAverage": false,
-                    "showMemoryAsPercent": false,
-                    "showMemoryUsage": true,
-                    "showNetworkStats": false,
-                    "showSwapUsage": false,
-                    "textColor": "none",
-                    "useMonospaceFont": true,
-                    "usePadding": false
+                    "icon": "device-analytics",
+                    "id": "plugin:hardware-monitor"
                 },
                 {
                     "colorizeIcons": false,
@@ -195,6 +177,10 @@
                     "id": "plugin:aural-evolution"
                 },
                 {
+                    "icon": "brand-openai",
+                    "id": "plugin:codexbar"
+                },
+                {
                     "deviceNativePath": "__default__",
                     "displayMode": "graphic-clean",
                     "hideIfIdle": false,
@@ -202,6 +188,14 @@
                     "id": "Battery",
                     "showNoctaliaPerformance": false,
                     "showPowerProfiles": false
+                },
+                {
+                    "icon": "command",
+                    "id": "plugin:submap-indicator"
+                },
+                {
+                    "icon": "world",
+                    "id": "plugin:connection-center"
                 },
                 {
                     "displayMode": "onhover",
@@ -212,7 +206,7 @@
                 },
                 {
                     "applyToAllMonitors": false,
-                    "displayMode": "onhover",
+                    "displayMode": "alwaysShow",
                     "iconColor": "none",
                     "id": "Brightness",
                     "textColor": "none"
@@ -296,10 +290,7 @@
         "shortcuts": {
             "left": [
                 {
-                    "id": "Network"
-                },
-                {
-                    "id": "Bluetooth"
+                    "id": "plugin:monitor-layout"
                 },
                 {
                     "id": "WallpaperSelector"

@@ -16,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -n "${CODEXBAR_BIN:-}" ]]; then
     CODEXBAR="$CODEXBAR_BIN"
+elif [[ -x "${HOME}/.local/bin/codexbar" ]]; then
+    CODEXBAR="${HOME}/.local/bin/codexbar"
 elif command -v codexbar >/dev/null 2>&1; then
     CODEXBAR="$(command -v codexbar)"
 else

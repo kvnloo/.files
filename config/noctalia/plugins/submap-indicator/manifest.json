@@ -1,0 +1,24 @@
+{
+  "id": "submap-indicator",
+  "name": "Hyprland Mode Indicator",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Shows the active Hyprland submap as a temporary bar chip.",
+  "tags": [
+    "Bar",
+    "Hyprland",
+    "System"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "icon": "command"
+  }
+}
