@@ -29,7 +29,7 @@ Item {
     if (busy)
       return;
     busy = true;
-    action.command = ["/home/kvn/.local/bin/audio-evolve"].concat(args);
+    action.command = ["audio-evolve"].concat(args);
     action.running = true;
   }
 
@@ -54,7 +54,7 @@ Item {
 
   Process {
     id: status
-    command: ["/home/kvn/.local/bin/audio-evolve", "json"]
+    command: ["audio-evolve", "json"]
     stdout: StdioCollector {}
     onExited: function(exitCode) {
       if (exitCode === 0) {

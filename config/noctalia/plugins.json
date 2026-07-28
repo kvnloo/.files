@@ -11,10 +11,10 @@
             "enabled": true,
             "sourceUrl": "https://github.com/noctalia-dev/noctalia-plugins"
         },
-    "codexbar": {
-      "enabled": true,
-      "sourceUrl": "local"
-    },
+        "codexbar": {
+            "enabled": true,
+            "sourceUrl": "local"
+        },
         "connection-center": {
             "enabled": true,
             "sourceUrl": "local"

@@ -13,7 +13,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/Downloads/Taildrop /workspace/Transfers/Taildrop
+ReadWritePaths=%h/Downloads/Taildrop
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]

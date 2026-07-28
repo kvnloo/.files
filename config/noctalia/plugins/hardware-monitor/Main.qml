@@ -41,7 +41,10 @@ Item {
 
   Process {
     id: snapshotProcess
-    command: ["/home/kvn/.config/noctalia/plugins/hardware-monitor/scripts/snapshot.py"]
+    command: {
+      const pluginDir = root.pluginApi?.pluginDir || "";
+      return [pluginDir + "/scripts/snapshot.py"];
+    }
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 

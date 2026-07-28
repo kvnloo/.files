@@ -11,6 +11,7 @@ Item {
   property bool refreshing: false
   property string errorText: ""
   property string refreshError: ""
+  readonly property string snapshotScriptPath: root.pluginApi?.pluginDir + "/scripts/snapshot.sh"
 
   readonly property int maxUsedPercent: computeMaxUsedPercent()
   readonly property bool hasData: providers.length > 0
@@ -29,7 +30,7 @@ Item {
 
   Process {
     id: snapshotProcess
-    command: ["/home/kvn/.config/noctalia/plugins/codexbar/scripts/snapshot.sh", "read"]
+    command: [root.snapshotScriptPath, "read"]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 
@@ -50,7 +51,7 @@ Item {
 
   Process {
     id: refreshProcess
-    command: ["/home/kvn/.config/noctalia/plugins/codexbar/scripts/snapshot.sh", "refresh"]
+    command: [root.snapshotScriptPath, "refresh"]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 

@@ -50,7 +50,7 @@ Item {
   Process {
     id: networkStats
     running: false
-    command: ["/home/kvn/.config/noctalia/plugins/connection-center/scripts/network-stats.py"]
+    command: [root.pluginApi?.pluginDir + "/scripts/network-stats.py"]
     stdout: StdioCollector {}
     stderr: StdioCollector {}
 
