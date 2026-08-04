@@ -12,6 +12,13 @@ command -v wal >/dev/null 2>&1 || { printf 'pywal (wal) is required\n' >&2; exit
 wal -i "$image" -n -s -t -e -q
 "$root/scripts/sync-pywal-theme.py"
 
+# Hermes Desktop liquid-glass theme (pywal → DesktopTheme + plugin poll).
+if [[ -x $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
+  "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true
+elif [[ -f $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
+  bash "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true
+fi
+
 if command -v dunstctl >/dev/null 2>&1; then
   dunstctl reload "$HOME/.cache/wal/dunstrc" >/dev/null 2>&1 || true
 fi
