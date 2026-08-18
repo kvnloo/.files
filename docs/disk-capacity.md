@@ -21,6 +21,14 @@ ownership, mode 0600 (or stricter), exact service syntax, duplicates, blank
 lines, comments, and whitespace. Any defect publishes `unknown` and performs
 zero stop actions. It never deletes files. Use `--dry-run` to print stop actions;
 all other arguments are rejected.
+
+Allowlist presence is lexical: a dangling symlink is invalid, not absent. Before
+opening, the guard uses `lstat` and accepts only a caller-owned, singly linked
+regular file with private mode. It then opens with `O_NOFOLLOW|O_NONBLOCK`,
+checks the descriptor's type, owner, mode, link count, device and inode against
+the precheck, and bounds both size and read time. Directories, FIFOs, sockets,
+devices, valid or dangling symlinks, hardlinks, and files replaced during the
+check therefore fail closed without blocking or invoking a service action.
 Targets use `mountpoint|device|filesystem` records in `DISK_GUARD_TARGETS`.
 The checked mount identity must be exact; `*` is accepted for device or
 filesystem only when an operator deliberately configures it. The default is

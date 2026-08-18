@@ -159,16 +159,38 @@ for spec in "${checked[@]}"; do validate_target "$spec"; done
 # Phase one: validate the complete allowlist into an immutable array. No stop can
 # occur until ownership, mode, syntax, empties, and duplicates all pass.
 declare -a stop_units=()
-if [[ $tier == stop-runaway-writers && -e $UNIT_ALLOWLIST ]]; then
+if [[ $tier == stop-runaway-writers && ( -e $UNIT_ALLOWLIST || -L $UNIT_ALLOWLIST ) ]]; then
   validated=$(
     python3 - "$UNIT_ALLOWLIST" <<'PY'
-import os, re, stat, sys
+import os, re, signal, stat, subprocess, sys
 p = sys.argv[1]; uid = os.geteuid(); seen = set(); units = []
 try:
-    fd = os.open(p, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
-    st = os.fstat(fd)
-    if not stat.S_ISREG(st.st_mode) or st.st_uid != uid or st.st_mode & 0o077: raise ValueError()
-    with os.fdopen(fd, "r", encoding="utf-8", newline="") as f: lines = f.read().splitlines()
+    before = os.lstat(p)
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != uid or
+            before.st_mode & 0o077 or before.st_nlink != 1):
+        raise ValueError()
+    hook = os.environ.get("DISK_GUARD_TEST_ALLOWLIST_AFTER_LSTAT")
+    if hook:
+        subprocess.run([hook], check=True, timeout=2)
+    signal.alarm(2)
+    fd = os.open(p, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        after = os.fstat(fd)
+        identity = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink")
+        if (not stat.S_ISREG(after.st_mode) or
+                any(getattr(before, key) != getattr(after, key) for key in identity) or
+                after.st_size > 65536):
+            raise ValueError()
+        data = bytearray()
+        while len(data) <= 65536:
+            chunk = os.read(fd, min(8192, 65537 - len(data)))
+            if not chunk: break
+            data.extend(chunk)
+        if len(data) > 65536: raise ValueError()
+    finally:
+        os.close(fd)
+        signal.alarm(0)
+    lines = bytes(data).decode("utf-8").splitlines()
     for raw in lines:
         if not raw or raw != raw.strip() or raw.startswith("#"): raise ValueError()
         if not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", raw) or raw in seen: raise ValueError()

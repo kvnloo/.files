@@ -74,6 +74,38 @@ for contents in $'good.service\n../bad.service\n' $'good.service\ngood.service\n
 done
 printf 'good.service\n' >"$root/allow"; chmod 644 "$root/allow"; expect_fail allowmode env "${base[@]}" DISK_GUARD_WARN_PERCENT=99 DISK_GUARD_STOP_NEW_PERCENT=98 DISK_GUARD_STOP_WRITERS_PERCENT=97 DISK_GUARD_UNIT_ALLOWLIST="$root/allow" "$repo/scripts/disk-pressure-guard.sh"
 chmod 600 "$root/allow"; SYSTEMCTL_LOG="$root/log" DISK_GUARD_WARN_PERCENT=99 DISK_GUARD_STOP_NEW_PERCENT=98 DISK_GUARD_STOP_WRITERS_PERCENT=97 DISK_GUARD_UNIT_ALLOWLIST="$root/allow" run --dry-run >"$root/a" || true; grep -q '^would-stop good.service$' "$root/a"
+
+# Every lexically present non-regular or multiply-linked allowlist fails quickly,
+# publishes unknown, performs no service action, and releases the guard lock.
+critical=(env "${base[@]}" SYSTEMCTL_LOG="$root/log" DISK_GUARD_WARN_PERCENT=99 DISK_GUARD_STOP_NEW_PERCENT=98 DISK_GUARD_STOP_WRITERS_PERCENT=97)
+expect_unsafe_allowlist() {
+  local name=$1 path=$2; shift 2; rm -f "$root/log"
+  expect_fail "$name" timeout 4 "${critical[@]}" DISK_GUARD_UNIT_ALLOWLIST="$path" "$@" "$repo/scripts/disk-pressure-guard.sh"
+  grep -q 'invalid-allowlist' "$root/err"
+  [[ ! -e $root/log && ! -e $root/state-parent/guard/.lock ]]
+  python3 - "$root/state-parent/guard/current.json" <<'PY'
+import json,sys
+p=json.load(open(sys.argv[1])); assert p["tier"] == "unknown" and p["reason"] == "invalid-allowlist"
+PY
+}
+rm -f "$root/allow"; mkfifo -m 600 "$root/allow"; expect_unsafe_allowlist fifo "$root/allow"; rm "$root/allow"
+python3 - "$root/allow" <<'PY'
+import socket,sys
+s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()
+PY
+expect_unsafe_allowlist socket "$root/allow"; rm "$root/allow"
+mkdir "$root/allow"; expect_unsafe_allowlist directory "$root/allow"; rmdir "$root/allow"
+expect_unsafe_allowlist device /dev/null
+ln -s "$root/missing-allow-target" "$root/allow"; expect_unsafe_allowlist dangling-symlink "$root/allow"; rm "$root/allow"
+printf 'good.service\n' >"$root/real-allow"; chmod 600 "$root/real-allow"; ln -s "$root/real-allow" "$root/allow"; expect_unsafe_allowlist valid-symlink "$root/allow"; rm "$root/allow"
+ln "$root/real-allow" "$root/allow"; expect_unsafe_allowlist hardlink "$root/allow"; rm "$root/allow" "$root/real-allow"
+printf 'good.service\n' >"$root/allow"; chmod 600 "$root/allow"
+cat >"$root/swap-allow" <<EOF
+#!/usr/bin/env bash
+printf 'other.service\\n' >"$root/replacement"; chmod 600 "$root/replacement"; mv -f "$root/replacement" "$root/allow"
+EOF
+chmod 700 "$root/swap-allow"
+expect_unsafe_allowlist replacement-race "$root/allow" env DISK_GUARD_TEST_ALLOWLIST_AFTER_LSTAT="$root/swap-allow"
 python3 - "$root/state-parent/guard/current.json" <<'PY'
 import hashlib,json,sys
 p=json.load(open(sys.argv[1])); h=p.pop('content_sha256'); assert hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()==h
