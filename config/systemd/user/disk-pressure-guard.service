@@ -10,4 +10,5 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/state/disk-pressure-guard
+# user-tmpfiles creates the leaf before activation; sandbox the guaranteed parent.
+ReadWritePaths=%h/.local/state

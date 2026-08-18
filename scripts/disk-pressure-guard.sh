@@ -10,49 +10,106 @@ STATE_DIR=${DISK_GUARD_STATE_DIR:-$STATE_PARENT/disk-pressure-guard}
 UNIT_ALLOWLIST=${DISK_GUARD_UNIT_ALLOWLIST:-${XDG_CONFIG_HOME:-$HOME/.config}/disk-pressure-guard/stop-units}
 TARGETS=${DISK_GUARD_TARGETS:-'/|/dev/nvme0n1p1|xfs /workspace|/dev/nvme0n1p3|xfs'}
 DRY_RUN=false
-[[ ${1:-} == --dry-run ]] && DRY_RUN=true
-[[ $# -le 1 ]] || { printf 'usage: %s [--dry-run]\n' "$0" >&2; exit 2; }
+case $#:$* in
+  0:) ;;
+  1:--dry-run) DRY_RUN=true ;;
+  *) printf 'usage: %s [--dry-run]\n' "$0" >&2; printf 'tier=unknown reason=invalid-arguments\n' >&2; exit 2 ;;
+esac
 
-fail() { printf 'tier=unknown reason=%s\n' "$1" >&2; exit "${2:-3}"; }
+state_ready=false
+publish_snapshot() {
+  local snapshot_tier=$1 snapshot_report=$2 reason=${3:-}
+  SNAPSHOT_TIER=$snapshot_tier SNAPSHOT_REPORT=$snapshot_report SNAPSHOT_REASON=$reason \
+    python3 - "$STATE_DIR" <<'PY'
+import hashlib, json, os, sys, tempfile
+root = sys.argv[1]
+current = os.path.join(root, "current.json")
+generation = 1
+try:
+    with open(current, "rb") as f:
+        previous = json.load(f)
+    generation = int(previous.get("generation", 0)) + 1
+except FileNotFoundError:
+    pass
+payload = {
+    "generation": generation,
+    "report": os.environ["SNAPSHOT_REPORT"],
+    "tier": os.environ["SNAPSHOT_TIER"],
+}
+reason = os.environ.get("SNAPSHOT_REASON", "")
+if reason:
+    payload["reason"] = reason
+canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+payload["content_sha256"] = hashlib.sha256(canonical).hexdigest()
+data = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+fd, tmp = tempfile.mkstemp(prefix=".snapshot.", dir=root)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data); f.flush(); os.fsync(f.fileno())
+    if os.environ.get("DISK_GUARD_TEST_PUBLISH_FAIL") == "enospc":
+        raise OSError(28, "No space left on device")
+    os.replace(tmp, current)
+    dfd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(dfd)
+    finally: os.close(dfd)
+except BaseException:
+    try: os.close(fd)
+    except OSError: pass
+    try: os.unlink(tmp)
+    except OSError: pass
+    raise
+PY
+}
+fail() {
+  local reason=$1 rc=${2:-3}
+  if $state_ready; then
+    publish_snapshot unknown "reason=$reason" "$reason" 2>/dev/null || true
+  fi
+  printf 'tier=unknown reason=%s\n' "$reason" >&2
+  exit "$rc"
+}
+
 for n in "$WARN_PERCENT" "$STOP_NEW_PERCENT" "$STOP_WRITERS_PERCENT"; do
   [[ $n =~ ^[0-9]+$ ]] && (( n >= 1 && n <= 99 )) || fail "invalid-threshold:$n" 2
 done
 (( WARN_PERCENT > STOP_NEW_PERCENT && STOP_NEW_PERCENT > STOP_WRITERS_PERCENT )) || fail invalid-threshold-order 2
 [[ $STATE_DIR == "$STATE_PARENT"/* && $STATE_DIR != "$STATE_PARENT/"*/* ]] || fail state-outside-allowlisted-parent
 
-# Refuse symlinks, foreign ownership, non-directories, and group/world access in every
-# existing state-path component. Creation is confined to one allowlisted real parent.
-python3 - "$STATE_PARENT" "$STATE_DIR" <<'PY' || exit $?
+# The installer/tmpfiles phase creates STATE_PARENT. The guard creates only its direct leaf.
+# Catch every setup error here so an unavailable state root yields a stable stderr receipt.
+if ! python3 - "$STATE_PARENT" "$STATE_DIR" <<'PY'
 import os, stat, sys
-parent, leaf = sys.argv[1:]
+parent, leaf = map(os.path.abspath, sys.argv[1:])
 uid = os.geteuid()
-def reject(reason):
-    print(f"tier=unknown reason=unsafe-state:{reason}", file=sys.stderr); raise SystemExit(3)
-p = os.path.abspath(parent)
-parts = p.split(os.sep)
-cur = os.sep
-for part in parts:
-    if not part: continue
-    cur = os.path.join(cur, part)
-    st = os.lstat(cur)
-    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode): reject(cur)
-# The allowlisted parent itself must be private and owned; ancestors only need be real dirs.
-st = os.lstat(p)
-if st.st_uid != uid or st.st_mode & 0o077: reject("parent-owner-or-mode")
-try: os.mkdir(leaf, 0o700)
-except FileExistsError: pass
-st = os.lstat(leaf)
-if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode) or st.st_uid != uid or st.st_mode & 0o077:
-    reject("leaf-owner-or-mode")
-if os.path.dirname(os.path.realpath(leaf)) != os.path.realpath(p): reject("containment")
-if os.stat(leaf).st_dev != os.stat(p).st_dev: reject("mount-boundary")
+try:
+    cur = os.sep
+    for part in parent.split(os.sep):
+        if not part: continue
+        cur = os.path.join(cur, part)
+        st = os.lstat(cur)
+        if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode): raise ValueError("path-component")
+    st = os.lstat(parent)
+    if st.st_uid != uid or st.st_mode & 0o077: raise ValueError("parent-owner-or-mode")
+    try: os.mkdir(leaf, 0o700)
+    except FileExistsError: pass
+    st = os.lstat(leaf)
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode): raise ValueError("leaf-type")
+    if st.st_uid != uid or st.st_mode & 0o077: raise ValueError("leaf-owner-or-mode")
+    if os.path.dirname(os.path.realpath(leaf)) != os.path.realpath(parent): raise ValueError("containment")
+    if os.stat(leaf).st_dev != os.stat(parent).st_dev: raise ValueError("mount-boundary")
+except BaseException:
+    raise SystemExit(1)
 PY
+then
+  printf 'tier=unknown reason=unsafe-or-unavailable-state\n' >&2
+  exit 3
+fi
+state_ready=true
 
 LOCK_DIR=$STATE_DIR/.lock
 if ! mkdir -m 700 -- "$LOCK_DIR" 2>/dev/null; then fail concurrent-run 75; fi
-tier_tmp=$STATE_DIR/.tier.$$
-report_tmp=$STATE_DIR/.report.$$
-cleanup() { rm -f -- "$tier_tmp" "$report_tmp"; rmdir -- "$LOCK_DIR" 2>/dev/null || true; }
+cleanup() { rm -f -- "$STATE_DIR"/.snapshot.$$*; rmdir -- "$LOCK_DIR" 2>/dev/null || true; }
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -62,7 +119,7 @@ tier=ok
 report=""
 declare -a checked=()
 validate_target() {
-  local spec=$1 path source fstype actual
+  local spec=$1 path source fstype extra actual actual_target actual_source actual_fstype
   IFS='|' read -r path source fstype extra <<<"$spec"
   [[ -n $path && -n $source && -n $fstype && -z ${extra:-} && $path == /* ]] || fail "malformed-target:$spec" 2
   actual=$(findmnt -rn -o TARGET,SOURCE,FSTYPE --target "$path" 2>/dev/null) || fail "target-missing:$path"
@@ -71,6 +128,7 @@ validate_target() {
   [[ $actual_target == "$path" ]] || fail "target-not-mountpoint:$path:$actual_target"
   [[ $source == '*' || $actual_source == "$source" ]] || fail "target-wrong-device:$path:$actual_source"
   [[ $fstype == '*' || $actual_fstype == "$fstype" ]] || fail "target-wrong-filesystem:$path:$actual_fstype"
+  VALIDATED_SOURCE=$actual_source VALIDATED_FSTYPE=$actual_fstype
 }
 
 for spec in $TARGETS; do
@@ -91,25 +149,46 @@ for spec in $TARGETS; do
     stop-new-heavy-work) [[ $tier == stop-runaway-writers ]] || tier=stop-new-heavy-work ;;
     warn) [[ $tier == ok ]] && tier=warn ;;
   esac
-  report+=$(printf '%s source=%s filesystem=%s bytes_free_pct=%s inodes_free_pct=%s tier=%s' "$mount" "$actual_source" "$actual_fstype" "$byte_pct" "$inode_pct" "$current")$'\n'
+  report+=$(printf '%s source=%s filesystem=%s bytes_free_pct=%s inodes_free_pct=%s tier=%s' "$mount" "$VALIDATED_SOURCE" "$VALIDATED_FSTYPE" "$byte_pct" "$inode_pct" "$current")$'\n'
 done
 ((${#checked[@]} > 0)) || fail no-targets 2
 
-# Test-only hook permits deterministic disappearance/interruption/ENOSPC fixtures.
 if [[ -n ${DISK_GUARD_TEST_BEFORE_WRITE:-} ]]; then "$DISK_GUARD_TEST_BEFORE_WRITE"; fi
 for spec in "${checked[@]}"; do validate_target "$spec"; done
-printf '%s' "$report"
-printf '%s\n' "$tier" >"$tier_tmp" || fail tier-write-failed
-printf '%s' "$report" >"$report_tmp" || fail report-write-failed
-chmod 600 -- "$tier_tmp" "$report_tmp"
-mv -fT -- "$tier_tmp" "$STATE_DIR/tier" || fail tier-publish-failed
-mv -fT -- "$report_tmp" "$STATE_DIR/report" || fail report-publish-failed
 
-if [[ $tier == stop-runaway-writers && -f $UNIT_ALLOWLIST && ! -L $UNIT_ALLOWLIST ]]; then
-  while IFS= read -r unit; do
-    [[ -z $unit || $unit == \#* ]] && continue
-    [[ $unit =~ ^[A-Za-z0-9_.@:-]+\.service$ ]] || fail "invalid-allowlist-entry:$unit" 2
-    if $DRY_RUN; then printf 'would-stop %s\n' "$unit"; else systemctl --user stop -- "$unit"; fi
-  done <"$UNIT_ALLOWLIST"
+# Phase one: validate the complete allowlist into an immutable array. No stop can
+# occur until ownership, mode, syntax, empties, and duplicates all pass.
+declare -a stop_units=()
+if [[ $tier == stop-runaway-writers && -e $UNIT_ALLOWLIST ]]; then
+  validated=$(
+    python3 - "$UNIT_ALLOWLIST" <<'PY'
+import os, re, stat, sys
+p = sys.argv[1]; uid = os.geteuid(); seen = set(); units = []
+try:
+    fd = os.open(p, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != uid or st.st_mode & 0o077: raise ValueError()
+    with os.fdopen(fd, "r", encoding="utf-8", newline="") as f: lines = f.read().splitlines()
+    for raw in lines:
+        if not raw or raw != raw.strip() or raw.startswith("#"): raise ValueError()
+        if not re.fullmatch(r"[A-Za-z0-9_.@:-]+\.service", raw) or raw in seen: raise ValueError()
+        seen.add(raw); units.append(raw)
+except BaseException:
+    raise SystemExit(1)
+print("\n".join(units))
+PY
+  ) || fail invalid-allowlist 2
+  mapfile -t parsed_units <<<"$validated"
+  [[ -n $validated ]] || parsed_units=()
+  stop_units=("${parsed_units[@]}")
 fi
+readonly stop_units
+
+printf '%s' "$report"
+publish_snapshot "$tier" "$report" 2>/dev/null || fail snapshot-publish-failed
+
+# Phase two: side effects only after complete validation and authoritative publication.
+for unit in "${stop_units[@]}"; do
+  if $DRY_RUN; then printf 'would-stop %s\n' "$unit"; else systemctl --user stop -- "$unit"; fi
+done
 [[ $tier == ok || $tier == warn ]]
