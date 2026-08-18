@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "taskId": "t_cdd5626e",
+  "filesystem": {
+    "workspace": {"type": "xfs", "beforeFreeGiB": 1.1, "afterFreeGiB": 12.1, "afterUsePercent": 97},
+    "root": {"type": "xfs", "afterFreeGiB": 3.7, "afterUsePercent": 97}
+  },
+  "cleanup": [
+    {"root": "/workspace/cache/uv", "method": "uv cache clean", "reportedFiles": 111573, "reportedBytes": 16106127360, "class": "reproducible-cache"},
+    {"root": "/workspace/cache/npm", "method": "npm cache clean --force", "class": "reproducible-cache"},
+    {"root": "/workspace/.pnpm-store", "method": "pnpm store prune", "reportedFiles": 66214, "reportedBytes": 699400192, "reportedPackages": 905, "class": "reproducible-cache"}
+  ],
+  "preserved": ["canonical repositories", "dirty worktrees", "models", "datasets", "private product assets", "kanban attachments", "Trash", "Downloads"],
+  "stoppedProcessGroups": [849607, 882896, 885772, 891002, 895855],
+  "remainingHarnessPid": 778142,
+  "dotfilesCommit": "2397224705ccd228b51b7e399d1b9240b4f79969",
+  "serviceEnabled": false,
+  "bountyScout": {"active": false, "unitFound": false, "restarted": false},
+  "gates": ["root capacity remains critical", "review and merge dotfiles commit", "explicitly install/enable timer", "review stop-unit allowlist"]
+}
