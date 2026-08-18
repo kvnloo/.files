@@ -1,6 +1,6 @@
 # Expand the installed XFS root from a CachyOS rescue USB
 
-Status: destructive procedure prepared, not executed. Independent safety review is required before use.
+Status: v2 destructive procedure prepared, not executed. Fresh independent safety review is required before use.
 
 ## Geometry lock
 
@@ -18,14 +18,14 @@ p1 root XFS  [  4,196,352 .. 281,020,415]  132 GiB
 p3 workspace [281,020,416 .. 976,773,134]  unchanged
 ```
 
-The script is host-specific and fail-closed. It validates model, full serial, by-id resolution, disk bytes, logical/physical sector size, all four partitions, starts/sizes, root/swap/workspace filesystem UUIDs, adjacency, mount state, and absence of LUKS/LVM/RAID ambiguity. It never formats, writes p3, reboots, or writes a USB.
+The script is host-specific and fail-closed. It validates model, full serial, by-id resolution, disk bytes, logical/physical sector size, exact partition paths/types/PARTUUIDs, all four partitions, starts/sizes, filesystem UUIDs, adjacency, mount state, and absence of LUKS/LVM/RAID ambiguity. Already-grown verification repeats the same identity contract for p1/p3/p4; only p2 absence and p1 end may differ. It never formats, writes p3/p4, reboots, or writes a USB.
 
 Live read-only evidence on 2026-08-18 confirmed the geometry above with `lsblk --json -b`. Installed `/etc/fstab` contains one disk-swap UUID `316f4699-5371-4798-9873-68f2b6194cb4`, plus an independent emergency swapfile. The running installed system was deliberately not used to run the script. Unprivileged `sfdisk --json` and `blkid` were permission-limited, so the script requires fresh root-level rescue verification and records both views before offering apply.
 
 ## Prerequisites
 
 1. Have a current, independently verified backup or reimage path for irreplaceable root data. A partition-table dump is not a file backup.
-2. Plug in a second persistent drive for receipts. It must not be p1, p2, or p3 of the target NVMe and needs at least 1 MiB free. Do not use `/tmp`, `/run`, the live overlay, or RAM.
+2. Plug in a second persistent physical drive for receipts. It must not be any partition (including p4), alias, or mapper stack backed by the target NVMe and needs at least 1 MiB free. The script resolves aliases by realpath and traces MAJ:MIN through `lsblk` PKNAME plus sysfs mapper slaves to physical disks. It rejects tmpfs, overlay, ramfs, squashfs, aufs, non-block sources, and unwritable mounts.
 3. Put a reviewed copy of `scripts/expand-root-from-rescue.sh` on persistent media. Copying it to USB is intentionally outside this task.
 4. Obtain independent destructive-safety approval for the exact script SHA-256 printed below/on the reviewed commit.
 
@@ -62,16 +62,16 @@ sudo ./expand-root-from-rescue.sh --apply \
   --confirm 'EXPAND 23446Z P1 4196352-281020415 DELETE P2 KEEP P3 281020416'
 ```
 
-Apply checkpoints are `preflight → table_changed → grown → fstab_updated → verified`. Before the XFS grow starts, the failure trap may restore the exact saved partition table. Once `xfs_growfs` starts, XFS cannot shrink: the trap will not blindly restore the old table. A post-grow failure requires diagnosis and potentially restore/reimage from the real backup.
+Apply checkpoints are `preflight → table_changed → grown → fstab_updated → verified`. Before the XFS grow starts, the failure trap may restore the exact saved partition table; fstab is not modified in that interval. Once `xfs_growfs` starts, XFS cannot shrink: the trap will not blindly restore the old table or claim rollback. A post-grow failure requires diagnosis and potentially restore/reimage from the real backup.
 
 ## What apply does
 
 1. Revalidates two independent partition views and persistent receipts.
-2. Mounts p1 read-only with `norecovery`, verifies root UUID/machine markers/fstab, copies fstab, then unmounts it.
+2. Mounts p1 read-only with `norecovery`, verifies root UUID/machine markers, and uses one exact parser for fstab preflight, staging, and final verification. It requires exactly one active `UUID=316f… none swap` entry; comments, disabled lines, UUID prefixes, zram, swapfiles, and all unrelated bytes are preserved. The exact transformed file is staged and validated before any partition write.
 3. Runs non-modifying `xfs_repair -n` while p1 is unmounted.
 4. Turns off only p2 swap, deletes only p2, and changes only p1's size to end at sector `281020415`.
 5. Rereads the table, settles udev, and proves p3 start/size/UUID unchanged before filesystem growth.
-6. Mounts p1 read-write, verifies fstab has not changed since preflight, grows XFS, then atomically removes exactly one obsolete disk-swap line. Zram is runtime-managed; the emergency swapfile fstab line is required to survive.
+6. Mounts p1 read-write, verifies fstab has not changed since preflight, grows XFS, then atomically installs the already-staged transform and verifies its bytes exactly against the original contract.
 7. Records XFS geometry, free bytes/inodes, final hashes, and requires at least 15% root free.
 
 ## Postflight and reboot
@@ -90,3 +90,7 @@ swapon --show
 Expected: p1 is 132 GiB and mounted at `/`; p2 is absent; p3 still begins at sector `281020416` and mounts at `/workspace`; zram and `/mnt/zer0models/.swap/emergency.swap` remain available; obsolete UUID `316f4699-5371-4798-9873-68f2b6194cb4` is absent from fstab/swapon; root has at least 15% free.
 
 Do not recreate or format p2. Do not attempt to shrink XFS. Keep the immutable receipt pack with the backup evidence.
+
+## Artifact-only test harness
+
+`scripts/rescue_expand_mock_apply.py` is executable only against a non-symlink regular sparse file. It records command intent and injects failures before delete, after delete, after resize, before/during/after grow, at fstab installation, and at final verification. Tests assert p3/p4 invariance, pre-grow table rollback, the no-rollback boundary once growth starts, exact checkpoints, typed confirmation, and already-grown idempotence. It never accepts a block device and mocks filesystem growth; the only real partition operation in tests is `sfdisk` against disposable sparse files.

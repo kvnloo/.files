@@ -1,5 +1,8 @@
-# expand-root-from-rescue v1.0.0 artifact hashes
+# expand-root-from-rescue v2.0.0 artifact hashes
 # Generated 2026-08-18; review the committed bytes independently before rescue use.
-a88902ba1f516de5a20275acede0b7712ded88b2876d9e6bce594f9144fa1404  scripts/expand-root-from-rescue.sh
-e7a070db86b66d5f8ee6c58c5083f4df726339d0d14cf571779d38cac4bd245e  docs/expand-root-from-rescue.md
-c8ce7964c176e335999f90715702721367f09969b14a48b30de7fbc615570866  tests/test_expand_root_from_rescue.py
+5cafad7c9fe86e5900126d99f19b3b7710de32eefe06acb8a411dbbd2497e471  scripts/expand-root-from-rescue.sh
+577208362cb97555745340d1487b8170665bc4cdc2947edb971d860e5130366e  scripts/rescue_expand_fstab.py
+ffad80f39b2391dfc3d213845126c8b0d97b51118a024168aeaec9c95d3aa124  scripts/rescue_expand_receipt.py
+c94ca524d76cf15778cfaa6990758eedc5f9bcc3b4dc1b6ae01c17f08555b4da  scripts/rescue_expand_mock_apply.py
+34e961709978e66329f59c1ebafa65e39d89ea21d8ed3c03ba5238ee43507b01  docs/expand-root-from-rescue.md
+a335e7b66e6f3712314aa7b8d30815161371d9c351c9ec3a471ae1071ee6ad85  tests/test_expand_root_from_rescue.py
