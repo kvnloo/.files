@@ -1,0 +1,13 @@
+[Unit]
+Description=Fail-closed disk pressure guard
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/disk-pressure-guard
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/disk-pressure-guard
