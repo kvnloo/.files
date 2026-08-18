@@ -10,10 +10,17 @@
     {"root": "/workspace/cache/npm", "method": "npm cache clean --force", "class": "reproducible-cache"},
     {"root": "/workspace/.pnpm-store", "method": "pnpm store prune", "reportedFiles": 66214, "reportedBytes": 699400192, "reportedPackages": 905, "class": "reproducible-cache"}
   ],
-  "preserved": ["canonical repositories", "dirty worktrees", "models", "datasets", "private product assets", "kanban attachments", "Trash", "Downloads"],
+  "cleanupScopeExcluded": ["canonical repositories", "dirty worktrees", "models", "datasets", "private product assets", "kanban attachments", "Trash", "Downloads"],
+  "evidenceLimitations": ["raw pre-delete inventories were not preserved", "raw pre-stop process command lines were not preserved", "pre-delete open-file receipts were not preserved", "post-facto lsof inventory had overlay permission warnings and is incomplete"],
+  "postFactoReceipts": {
+    "root": {"usePercent": 97, "freeGiB": 3.7, "inodeUsePercent": 20},
+    "workspace": {"usePercent": 97, "freeGiB": 12, "inodeUsePercent": 19},
+    "remainingHarness": {"pid": 778142, "command": "python tests/kanban_hold_harness/start.py --keep-home"},
+    "bountyScout": {"id": "bounty-scout.service", "loadState": "not-found", "activeState": "inactive", "fragmentPath": ""}
+  },
   "stoppedProcessGroups": [849607, 882896, 885772, 891002, 895855],
   "remainingHarnessPid": 778142,
-  "dotfilesCommit": "2397224705ccd228b51b7e399d1b9240b4f79969",
+  "dotfilesIntroducedCommit": "2397224705ccd228b51b7e399d1b9240b4f79969",
   "serviceEnabled": false,
   "bountyScout": {"active": false, "unitFound": false, "restarted": false},
   "gates": ["root capacity remains critical", "review and merge dotfiles commit", "explicitly install/enable timer", "review stop-unit allowlist"]

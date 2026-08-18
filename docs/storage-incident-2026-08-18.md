@@ -26,7 +26,11 @@ AFTER   [###################.]  97%   3.7 GiB free  (still critical)
 - `npm cache clean --force --cache /workspace/cache/npm`: reproducible cache only.
 - `pnpm store prune --store-dir /workspace/.pnpm-store`: tool reported 66,214 files / 667 MB and 905 packages removed.
 - Stopped four orphaned `npm run matrix` process groups plus their Chromium descendants; each had run ~2h45m from a deleted `kanban_hold_harness` worktree. Preserved the parent `start.py --keep-home` harness because ownership/terminal state was not proven.
-- No repositories, dirty worktrees, models, datasets, attachments, product assets, Trash, Downloads, snapshots, or user documents were deleted.
+- Cleanup commands targeted only the three named cache roots. No deletion was
+  requested for repositories, dirty worktrees, models, datasets, attachments,
+  product assets, Trash, Downloads, snapshots, or user documents. This is a
+  scope claim, not a byte-complete no-loss proof: raw pre-delete inventories,
+  process command lines, and open-file listings were not preserved.
 
 ## Root cause and recurrence
 
@@ -34,7 +38,25 @@ The immediate ENOSPC condition was cumulative reproducible package/build caches 
 
 ## Permanent control
 
-Dotfiles commit `2397224705ccd228b51b7e399d1b9240b4f79969` adds a fail-closed byte+inode guard with tiers 15% warn, 10% stop-new-heavy-work, 5% allowlisted writer stop. It uses locking, atomic state writes, dry-run, and an explicit service allowlist; it never deletes files. Service installation/enabling was intentionally not performed.
+Dotfiles commit `2397224705ccd228b51b7e399d1b9240b4f79969` introduced the guard; the repair commit following review adds exact mount/device/filesystem validation, private no-symlink state roots, nonzero unknown receipts, mount-race revalidation, and tested atomic publication. It uses an explicit service allowlist and never deletes files. Service installation/enabling was intentionally not performed.
+
+## Post-facto receipts available after cleanup
+
+These observations were collected after cleanup and must not be read as
+pre-delete evidence:
+
+- `df -h / /workspace`: root 97% used / 3.7 GiB available; workspace 97% used /
+  12 GiB available. `df -ih`: root 20% and workspace 19% inode use.
+- `ps -eo pid,ppid,pgid,etimes,stat,args`: PID 778142 remained as
+  `python tests/kanban_hold_harness/start.py --keep-home`; the four stopped
+  matrix groups were absent. This confirms current absence, not their exact
+  pre-stop command lines.
+- `lsof +L1 /workspace` was run post-facto. It found the retained harness with
+  a deleted worktree cwd/log and unrelated live open files; it emitted overlay
+  permission warnings, so the inventory is explicitly incomplete.
+- `systemctl --user show bounty-scout.service`: exact ID
+  `bounty-scout.service`, `LoadState=not-found`, `ActiveState=inactive`, empty
+  `FragmentPath`. No similarly named unit was inferred.
 
 ## Remaining Captain gates
 
