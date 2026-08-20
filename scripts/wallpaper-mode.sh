@@ -29,6 +29,7 @@ SCREENS=(
 
 CACHE_DIR="$HOME/.cache/wallpaper-mode"
 STATE_FILE="$CACHE_DIR/state"
+PERFORMANCE_RECEIPT="$CACHE_DIR/performance-receipt.json"
 STATIC_FILE="$CACHE_DIR/static-wallpaper"
 DRAW_FILE="$CACHE_DIR/draw-mode"
 SPAN_DIR="$CACHE_DIR/span"
@@ -50,6 +51,24 @@ notify() {
 kill_engine()  { pkill -x linux-wallpaper 2>/dev/null; }
 kill_swaybg()  { pkill -x swaybg 2>/dev/null; }
 engine_pids()  { pgrep -x linux-wallpaper 2>/dev/null; }
+
+live_wallpaper_id() {
+  local requested=$1 pid token previous="" screen="" bg=""
+  while read -r pid; do
+    [[ -r /proc/$pid/cmdline ]] || continue
+    previous=""; screen=""; bg=""
+    while IFS= read -r -d '' token; do
+      [[ $previous == --screen-root ]] && screen=$token
+      [[ $previous == --bg ]] && bg=$token
+      previous=$token
+    done < "/proc/$pid/cmdline"
+    if [[ $screen == "$requested" && $bg =~ /([0-9]+)(/)?$ ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+      return 0
+    fi
+  done < <(engine_pids)
+  return 1
+}
 
 resolve_hyprland() {
   hyprctl -j monitors >/dev/null 2>&1 && return 0
@@ -154,27 +173,63 @@ start_engine() {  # $1 = fps field index: 3 for chill, 4 for native
   done
 }
 
+verify_resumed_assets() {
+  local receipt=${1:-} entry screen expected actual attempts
+  for entry in "${SCREENS[@]}"; do
+    IFS='|' read -r screen expected _ _ <<< "$entry"
+    actual=""
+    for attempts in 1 2 3 4 5; do
+      actual=$(live_wallpaper_id "$screen" 2>/dev/null || true)
+      [[ -n $actual ]] && break
+      sleep .2
+    done
+    [[ $actual == "$expected" ]] || { echo "resume wallpaper mismatch for $screen: expected $expected, got ${actual:-missing}" >&2; return 1; }
+  done
+  if [[ -n $receipt && -s $receipt ]]; then
+    local temporary="$receipt.tmp.$$"
+    jq --argjson resumed "$(printf '%s\n' "${SCREENS[@]}" | jq -R 'split("|") | {output:.[0],assetId:.[1]}' | jq -s '.')" '. + {resumedOutputs:$resumed}' "$receipt" > "$temporary" && mv "$temporary" "$receipt"
+  fi
+}
+
 
 mode_performance() {
+  command -v grim >/dev/null 2>&1 || { echo "performance mode requires grim" >&2; return 1; }
+  command -v jq >/dev/null 2>&1 || { echo "performance mode requires jq" >&2; return 1; }
+  local staging="$CACHE_DIR/.performance-staging.$$" screen shot expected actual frame_hash
+  local receipt='[]'
+  mkdir -p "$staging" || return 1
+  # Capture and verify every live output before stopping anything. A stale cache
+  # or missing/mismatched Wallpaper Engine process must never change the desktop.
+  for entry in "${SCREENS[@]}"; do
+    IFS='|' read -r screen expected _ _ <<< "$entry"
+    actual=$(live_wallpaper_id "$screen") || { rm -rf "$staging"; echo "no verified live wallpaper for $screen" >&2; return 1; }
+    [[ $actual == "$expected" ]] || { rm -rf "$staging"; echo "wallpaper mismatch for $screen: expected $expected, got $actual" >&2; return 1; }
+    shot="$staging/$screen.png"
+    grim -l 1 -o "$screen" "$shot" || { rm -rf "$staging"; return 1; }
+    [[ -s $shot ]] || { rm -rf "$staging"; echo "empty capture for $screen" >&2; return 1; }
+    frame_hash=$(sha256sum "$shot" | cut -d' ' -f1)
+    receipt=$(jq -c --arg output "$screen" --arg asset "$actual" --arg frame "$frame_hash" '. + [{output:$output,assetId:$asset,capturedFrameHash:$frame,staticFrameHash:$frame,drawMode:"fill"}]' <<< "$receipt")
+  done
   kill_engine; kill_swaybg
-  local screen shot
   for entry in "${SCREENS[@]}"; do
     IFS='|' read -r screen _ _ _ <<< "$entry"
     shot="$CACHE_DIR/$screen.png"
-    if [ -s "$shot" ]; then
-      swaybg -o "$screen" -i "$shot" -m fill >/dev/null 2>&1 &
-    else
-      swaybg -o "$screen" -c '#101010' >/dev/null 2>&1 &
-    fi
+    mv "$staging/$screen.png" "$shot" || return 1
+    swaybg -o "$screen" -i "$shot" -m fill >/dev/null 2>&1 &
   done
+  rmdir "$staging"
   apply_palette "$CACHE_DIR/DP-1.png"
+  local pywal_hash
+  pywal_hash=$(sha256sum "$HOME/.cache/wal/colors.json" | cut -d' ' -f1)
+  jq --arg pywal "$pywal_hash" '{mode:"performance",outputs:.,pywalHash:$pywal}' <<< "$receipt" > "$PERFORMANCE_RECEIPT"
   echo performance > "$STATE_FILE"
-  notify "Performance mode — engine off, static frames"
+  notify "Performance mode — verified live frames frozen"
 }
 
 mode_chill() {
   kill_engine; kill_swaybg
   start_engine 3
+  verify_resumed_assets "$PERFORMANCE_RECEIPT" || return 1
   apply_palette "$CACHE_DIR/DP-1.png"
   echo chill > "$STATE_FILE"
   notify "Chill mode — 120/120/75 fps"
@@ -183,6 +238,7 @@ mode_chill() {
 mode_aesthetic() {
   kill_engine; kill_swaybg
   start_engine 4
+  verify_resumed_assets "$PERFORMANCE_RECEIPT" || return 1
   apply_palette "$CACHE_DIR/DP-1.png"
   echo aesthetic > "$STATE_FILE"
   notify "Aesthetic mode — native 540/240/75 fps"
