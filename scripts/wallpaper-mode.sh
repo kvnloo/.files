@@ -52,7 +52,7 @@ kill_engine()  { pkill -x linux-wallpaper 2>/dev/null; }
 kill_swaybg()  { pkill -x swaybg 2>/dev/null; }
 engine_pids()  { pgrep -x linux-wallpaper 2>/dev/null; }
 
-live_wallpaper_id() {
+live_wallpaper_process() {
   local requested=$1 pid token previous="" screen="" bg=""
   while read -r pid; do
     [[ -r /proc/$pid/cmdline ]] || continue
@@ -63,11 +63,46 @@ live_wallpaper_id() {
       previous=$token
     done < "/proc/$pid/cmdline"
     if [[ $screen == "$requested" && $bg =~ /([0-9]+)(/)?$ ]]; then
-      printf '%s\n' "${BASH_REMATCH[1]}"
+      printf '%s\t%s\n' "$pid" "${BASH_REMATCH[1]}"
       return 0
     fi
   done < <(engine_pids)
   return 1
+}
+
+live_wallpaper_id() {
+  local row
+  row=$(live_wallpaper_process "$1") || return 1
+  printf '%s\n' "${row#*$'\t'}"
+}
+
+live_wallpaper_argv_json() {
+  local row pid
+  row=$(live_wallpaper_process "$1") || return 1
+  pid=${row%%$'\t'*}
+  jq -Rs 'split("\u0000") | map(select(length > 0))' < "/proc/$pid/cmdline"
+}
+
+start_receipt_engines() {
+  local receipt=$1 mode=${2:-captured} output index fps entry screen chill native
+  local -a argv=()
+  [[ -s $receipt ]] || return 1
+  while IFS= read -r output; do
+    mapfile -t argv < <(jq -r --arg output "$output" '.outputs[] | select(.output == $output) | .engineArgv[]' "$receipt")
+    ((${#argv[@]})) || { echo "missing captured engine argv for $output" >&2; return 1; }
+    if [[ $mode != captured ]]; then
+      for index in "${!argv[@]}"; do
+        [[ ${argv[$index]} == --fps && $((index + 1)) -lt ${#argv[@]} ]] || continue
+        for entry in "${SCREENS[@]}"; do
+          IFS='|' read -r screen _ chill native <<< "$entry"
+          [[ $screen == "$output" ]] || continue
+          [[ $mode == chill ]] && fps=$chill || fps=$native
+          argv[$((index + 1))]=$fps
+        done
+      done
+    fi
+    "${argv[@]}" >/dev/null 2>&1 &
+  done < <(jq -r '.outputs[].output' "$receipt")
 }
 
 resolve_hyprland() {
@@ -173,9 +208,18 @@ start_engine() {  # $1 = fps field index: 3 for chill, 4 for native
   done
 }
 
+active_screen_entries() {
+  local active entry screen
+  active=$(monitor_geometry | cut -f1) || return 1
+  for entry in "${SCREENS[@]}"; do
+    IFS='|' read -r screen _ _ _ <<< "$entry"
+    grep -Fxq "$screen" <<< "$active" && printf '%s\n' "$entry"
+  done
+}
+
 verify_resumed_assets() {
   local receipt=${1:-} entry screen expected actual attempts
-  for entry in "${SCREENS[@]}"; do
+  while IFS= read -r entry; do
     IFS='|' read -r screen expected _ _ <<< "$entry"
     actual=""
     for attempts in 1 2 3 4 5; do
@@ -184,10 +228,10 @@ verify_resumed_assets() {
       sleep .2
     done
     [[ $actual == "$expected" ]] || { echo "resume wallpaper mismatch for $screen: expected $expected, got ${actual:-missing}" >&2; return 1; }
-  done
+  done < <(active_screen_entries)
   if [[ -n $receipt && -s $receipt ]]; then
     local temporary="$receipt.tmp.$$"
-    jq --argjson resumed "$(printf '%s\n' "${SCREENS[@]}" | jq -R 'split("|") | {output:.[0],assetId:.[1]}' | jq -s '.')" '. + {resumedOutputs:$resumed}' "$receipt" > "$temporary" && mv "$temporary" "$receipt"
+    jq --argjson resumed "$(active_screen_entries | jq -R 'split("|") | {output:.[0],assetId:.[1]}' | jq -s '.')" '. + {resumedOutputs:$resumed}' "$receipt" > "$temporary" && mv "$temporary" "$receipt"
   fi
 }
 
@@ -195,12 +239,12 @@ verify_resumed_assets() {
 mode_performance() {
   command -v grim >/dev/null 2>&1 || { echo "performance mode requires grim" >&2; return 1; }
   command -v jq >/dev/null 2>&1 || { echo "performance mode requires jq" >&2; return 1; }
-  local staging="$CACHE_DIR/.performance-staging.$$" screen shot expected actual frame_hash
+  local staging="$CACHE_DIR/.performance-staging.$$" screen shot expected actual frame_hash engine_argv
   local receipt='[]'
   mkdir -p "$staging" || return 1
   # Capture and verify every live output before stopping anything. A stale cache
   # or missing/mismatched Wallpaper Engine process must never change the desktop.
-  for entry in "${SCREENS[@]}"; do
+  while IFS= read -r entry; do
     IFS='|' read -r screen expected _ _ <<< "$entry"
     actual=$(live_wallpaper_id "$screen") || { rm -rf "$staging"; echo "no verified live wallpaper for $screen" >&2; return 1; }
     [[ $actual == "$expected" ]] || { rm -rf "$staging"; echo "wallpaper mismatch for $screen: expected $expected, got $actual" >&2; return 1; }
@@ -208,15 +252,16 @@ mode_performance() {
     grim -l 1 -o "$screen" "$shot" || { rm -rf "$staging"; return 1; }
     [[ -s $shot ]] || { rm -rf "$staging"; echo "empty capture for $screen" >&2; return 1; }
     frame_hash=$(sha256sum "$shot" | cut -d' ' -f1)
-    receipt=$(jq -c --arg output "$screen" --arg asset "$actual" --arg frame "$frame_hash" '. + [{output:$output,assetId:$asset,capturedFrameHash:$frame,staticFrameHash:$frame,drawMode:"fill"}]' <<< "$receipt")
-  done
+    engine_argv=$(live_wallpaper_argv_json "$screen") || { rm -rf "$staging"; echo "cannot capture engine command for $screen" >&2; return 1; }
+    receipt=$(jq -c --arg output "$screen" --arg asset "$actual" --arg frame "$frame_hash" --argjson argv "$engine_argv" '. + [{output:$output,assetId:$asset,capturedFrameHash:$frame,staticFrameHash:$frame,drawMode:"fill",engineArgv:$argv}]' <<< "$receipt")
+  done < <(active_screen_entries)
   kill_engine; kill_swaybg
-  for entry in "${SCREENS[@]}"; do
+  while IFS= read -r entry; do
     IFS='|' read -r screen _ _ _ <<< "$entry"
     shot="$CACHE_DIR/$screen.png"
     mv "$staging/$screen.png" "$shot" || return 1
     swaybg -o "$screen" -i "$shot" -m fill >/dev/null 2>&1 &
-  done
+  done < <(active_screen_entries)
   rmdir "$staging"
   apply_palette "$CACHE_DIR/DP-1.png"
   local pywal_hash
@@ -228,7 +273,11 @@ mode_performance() {
 
 mode_chill() {
   kill_engine; kill_swaybg
-  start_engine 3
+  if [[ -s $PERFORMANCE_RECEIPT ]] && jq -e '.outputs | length > 0 and all(.[]; (.engineArgv | type == "array" and length > 0))' "$PERFORMANCE_RECEIPT" >/dev/null; then
+    start_receipt_engines "$PERFORMANCE_RECEIPT" chill
+  else
+    start_engine 3
+  fi
   verify_resumed_assets "$PERFORMANCE_RECEIPT" || return 1
   apply_palette "$CACHE_DIR/DP-1.png"
   echo chill > "$STATE_FILE"
@@ -237,7 +286,11 @@ mode_chill() {
 
 mode_aesthetic() {
   kill_engine; kill_swaybg
-  start_engine 4
+  if [[ -s $PERFORMANCE_RECEIPT ]] && jq -e '.outputs | length > 0 and all(.[]; (.engineArgv | type == "array" and length > 0))' "$PERFORMANCE_RECEIPT" >/dev/null; then
+    start_receipt_engines "$PERFORMANCE_RECEIPT" aesthetic
+  else
+    start_engine 4
+  fi
   verify_resumed_assets "$PERFORMANCE_RECEIPT" || return 1
   apply_palette "$CACHE_DIR/DP-1.png"
   echo aesthetic > "$STATE_FILE"
