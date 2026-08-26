@@ -8,8 +8,12 @@
 # owned by the Intel GPU PWM, but the gmux default leaves the mux on the
 # discrete AMD GPU, so the gmux_backlight interface is inert.
 #
-# Fix: register the real ACPI/Intel backlight interface via the
-# acpi_backlight=video kernel parameter so F1/F2 actually drive the panel.
+# Fix: register the GPU-native (vendor) backlight interface on the 2015 Retina
+# MacBook Pro via the acpi_backlight=vendor kernel parameter so F1/F2 actually
+# drive the panel PWM. Note: acpi_backlight=video was tried first and found
+# INERT on this hardware -- it only exposes a type=firmware acpi_video interface
+# whose writes/reads (actual_brightness) are accepted but never reach the panel.
+# =vendor makes the GPU driver (amdgpu_bl0 / intel_backlight) register instead.
 set -euo pipefail
 
 if [[ ${EUID} -ne 0 ]]; then
@@ -18,7 +22,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 grub=/etc/default/grub
-param='acpi_backlight=video'
+param='acpi_backlight=vendor'
 
 echo "=== current backlight state (pre-fix) ==="
 ls -1 /sys/class/backlight/ 2>/dev/null || echo "(no backlight devices)"
@@ -58,10 +62,10 @@ echo
 echo "=== NEXT STEPS ==="
 echo "1. Reboot: sudo reboot"
 echo "2. After reboot, verify the panel actually dims with F1/F2 and run:"
-echo "     ls /sys/class/backlight/        # expect acpi_video0 / intel_backlight now present"
-echo "     cat /sys/class/backlight/*/actual_brightness   # should TRACK the value, not 16777215"
+echo "     ls /sys/class/backlight/        # expect amdgpu_bl0 / intel_backlight now present"
+echo "     cat /sys/class/backlight/*/actual_brightness   # should TRACK the value, not be pinned"
 echo
-echo "If actual_brightness is STILL pinned at 16777215 after reboot, the fallback"
-echo "is to swap the param for acpi_backlight=vendor (re-run this script after"
-echo "editing GRUB_CMDLINE_LINUX_DEFAULT). Note: =vendor can make the interface"
-echo "disappear on some models -- removing the param reverts to the current state."
+echo "If =vendor makes the backlight interface VANISH entirely (ls /sys/class/backlight/"
+echo "empty), the Arch wiki notes this can happen on some models. Recover by removing the"
+echo "param: sudo sed -i 's/acpi_backlight=vendor//' /etc/default/grub && sudo grub-mkconfig"
+echo "-o /boot/grub/grub.cfg && sudo reboot   (reverts to the acpi_video firmware interface)."
