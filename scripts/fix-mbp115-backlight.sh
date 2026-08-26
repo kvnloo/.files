@@ -31,8 +31,9 @@ if [[ -f $grub ]]; then
     echo "GRUB already has an acpi_backlight setting; leaving CMDLINE untouched:"
     grep 'acpi_backlight=' "$grub"
   else
-    sed -i.bak-mbp115 \
-      "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"/GRUB_CMDLINE_LINUX_DEFAULT=\"${param} \1\"/" \
+    # Quote-agnostic: match either ' or " around the value.
+    sed -i.bak-mbp115 -E \
+      "s/^(GRUB_CMDLINE_LINUX_DEFAULT=)['\"]([^'\"]*)['\"]/\1'\2 ${param}'/" \
       "$grub"
     echo "Added $param to GRUB_CMDLINE_LINUX_DEFAULT:"
     grep '^GRUB_CMDLINE_LINUX_DEFAULT' "$grub"
@@ -40,6 +41,12 @@ if [[ -f $grub ]]; then
   if command -v grub-mkconfig >/dev/null; then
     grub-mkconfig -o /boot/grub/grub.cfg
     echo "Regenerated /boot/grub/grub.cfg"
+  fi
+  # Verify the param made it into the boot config (catches silent sed no-ops).
+  if grep -q "acpi_backlight=video" /boot/grub/grub.cfg 2>/dev/null; then
+    echo "VERIFIED: acpi_backlight=video is present in /boot/grub/grub.cfg"
+  else
+    echo "WARNING: acpi_backlight=video NOT found in /boot/grub/grub.cfg -- edit may have failed" >&2
   fi
 else
   echo "No $grub found; skipped GRUB edit. If you use systemd-boot, add"
