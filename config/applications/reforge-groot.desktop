@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Reforge Groot
+GenericName=Update Everything
+Comment=Update system packages, apps, firmware, and developer tools
+Exec=/workspace/.files/scripts/reforge-groot-launcher.sh
+Icon=system-software-update
+Terminal=false
+Categories=System;
+Keywords=groot;reforge;update;upgrade;everything;packages;system;apps;firmware;paru;flatpak;pipx;npm;cargo;
+StartupNotify=true

@@ -49,3 +49,9 @@ id_ed25519.*
 .venv/
 config/waybar/*.codexbar-backup-*
 config/waybar/scripts/*.so
+
+# Local audit/research captures and large runtime artifacts
+/hw_monitor
+/t3code-audit/
+/theo_t3code_research/
+/tmux-client-*.log
