@@ -8,6 +8,7 @@ legacy = root / "config/hyprland/hyprland.legacy.conf"
 out = root / "config/hyprland/migration-inventory.json"
 stack = []
 directives = []
+semantics = []
 for number, raw in enumerate(legacy.read_text().splitlines(), 1):
     text = raw.split("#", 1)[0].strip()
     if not text:
@@ -33,6 +34,10 @@ for number, raw in enumerate(legacy.read_text().splitlines(), 1):
     else:
         owner = "lua/appearance.lua"
     directives.append({"line": number, "directive": text, "owner": owner})
+    if "=" in text and not text.endswith("{"):
+        name, value = (part.strip() for part in text.split("=", 1))
+        path = ".".join([*stack, name]) if stack else name
+        semantics.append({"line": number, "path": path, "value": value, "owner": owner})
 if stack:
     raise SystemExit(f"unclosed blocks: {stack}")
-out.write_text(json.dumps({"legacy": legacy.name, "directives": directives, "unclassified": []}, indent=2) + "\n")
+out.write_text(json.dumps({"legacy": legacy.name, "directives": directives, "semantics": semantics, "unclassified": []}, indent=2) + "\n")

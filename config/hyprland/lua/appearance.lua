@@ -1,7 +1,20 @@
 local home = os.getenv("HOME")
 
+local hyprglass={
+  enabled=0,
+  default_theme="dark",
+  default_preset="flow",
+  preset={
+    "name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
+    "name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
+  },
+  layers={enabled=0,namespaces="waybar",preset="flow",namespace_mask_thresholds="waybar=0.05"},
+}
+
 if os.getenv("HYPR_LUA_TEST_MODE") ~= "1" then
   hl.plugin.load(home .. "/.local/share/hyprland/plugins/hyprglass/hyprglass.so")
+  -- Plugin keys only exist after the shared object has registered them.
+  hl.on("hyprland.start", function() hl.config({["plugin:hyprglass"]=hyprglass}) end)
 end
 
 hl.config({
@@ -14,6 +27,11 @@ hl.config({
   gestures={workspace_swipe_distance=300,workspace_swipe_create_new=true},
   misc={force_default_wallpaper=0,disable_hyprland_logo=true,disable_splash_rendering=true},
 })
+
+-- Nested migration tests run on Xvfb and must not spawn a second Xwayland.
+if os.getenv("HYPR_LUA_TEST_MODE") == "1" then
+  hl.config({xwayland={enabled=false}})
+end
 
 hl.device({name="trackpad", accel_profile="adaptive"})
 hl.device({name="pen-passthrough", output="PHONE"})

@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Fail closed when representative legacy semantics are absent from Lua modules."""
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT = ROOT / "config/hyprland/lua"
+
+CHECKS = {
+    "monitors.lua": (
+        'output="DP-1"', 'mode="1920x1080@540"', 'position="3000x420"',
+        'output="PHONE"', 'workspace="20"',
+    ),
+    "rules.lua": (
+        'class="^(Spotify|spotify)$"', 'workspace="10"',
+        'special:hermes-tests', 'hyprglass_disabled',
+    ),
+    "binds.lua": (
+        '"SUPER + Return"', '"SUPER + SHIFT + B"', 'hl.define_submap(',
+        'phone-display.sh toggle',
+    ),
+    "appearance.lua": (
+        '["plugin:hyprglass"]', 'enabled=0', 'default_theme="dark"',
+        'default_preset="flow"', 'blur_strength:1.10', 'brightness:0.88',
+        'namespace_mask_thresholds="waybar=0.05"', 'colors.json',
+    ),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lua-root", type=Path, default=DEFAULT)
+    args = parser.parse_args()
+    failures = []
+    for name, tokens in CHECKS.items():
+        candidate = args.lua_root / name
+        source = candidate if candidate.exists() else DEFAULT / name
+        body = source.read_text()
+        for token in tokens:
+            if token not in body:
+                failures.append(f"{name}: missing {token}")
+    if failures:
+        print("parity mismatch: " + "; ".join(failures), file=sys.stderr)
+        return 1
+    print("semantic parity sentinels ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

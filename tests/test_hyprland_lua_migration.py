@@ -87,3 +87,68 @@ def test_sabotaged_lua_is_rejected_by_parser(tmp_path):
     result = subprocess.run(["luac", "-p", broken], capture_output=True, text=True)
     assert result.returncode != 0
     assert "expected" in result.stderr
+
+
+def test_hyprglass_semantics_are_preserved_in_lua_and_inventory():
+    appearance = (HYPR / "lua/appearance.lua").read_text()
+    inventory = json.loads(INVENTORY.read_text())
+    expected = {
+        "plugin:hyprglass.enabled": "0",
+        "plugin:hyprglass.default_theme": "dark",
+        "plugin:hyprglass.default_preset": "flow",
+        "plugin:hyprglass.layers.enabled": "0",
+        "plugin:hyprglass.layers.namespaces": "waybar",
+        "plugin:hyprglass.layers.preset": "flow",
+        "plugin:hyprglass.layers.namespace_mask_thresholds": "waybar=0.05",
+    }
+    semantics = {item["path"]: item["value"] for item in inventory["semantics"]}
+    assert expected.items() <= semantics.items()
+    for value in expected.values():
+        assert repr(value).strip("'") in appearance
+    assert "blur_strength:1.10" in appearance
+    assert "brightness:0.88" in appearance
+
+
+def test_semantic_inventory_rejects_representative_sabotage(tmp_path):
+    checker = ROOT / "scripts/check-hypr-lua-parity"
+    for relative, old, new in (
+        ("lua/monitors.lua", 'mode="1920x1080@540"', 'mode="1920x1080@539"'),
+        ("lua/rules.lua", 'workspace="10"', 'workspace="11"'),
+        ("lua/binds.lua", '"SUPER + Return"', '"SUPER + Backspace"'),
+        ("lua/appearance.lua", 'default_theme="dark"', 'default_theme="light"'),
+    ):
+        candidate = tmp_path / relative
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        body = (HYPR / relative).read_text()
+        assert old in body
+        candidate.write_text(body.replace(old, new, 1))
+        result = subprocess.run(
+            [checker, "--lua-root", tmp_path / "lua"], capture_output=True, text=True
+        )
+        assert result.returncode != 0, relative
+        assert "parity mismatch" in result.stderr
+
+
+def test_phone_display_uses_injected_isolated_instance_without_focus_dispatch():
+    script = (ROOT / "scripts/phone-display.sh").read_text()
+    assert 'HYPRCTL_BIN=${PHONE_DISPLAY_HYPRCTL:-hyprctl}' in script
+    assert 'SYSTEMCTL_BIN=${PHONE_DISPLAY_SYSTEMCTL:-systemctl}' in script
+    assert 'dispatch focusmonitor' not in script
+    assert 'dispatch workspace' not in script
+    assert 'dispatch moveworkspacetomonitor' not in script
+
+
+def test_nested_parity_harness_owns_health_readback_and_dynamic_lifecycles():
+    harness = ROOT / "scripts/verify-hypr-lua-nested"
+    assert harness.exists()
+    body = harness.read_text()
+    for token in (
+        "configProvider: lua", "configerrors", "monitors", "workspaces",
+        "binds", "devices", "plugins", "workspaceRules", "clients",
+        "gui-e2e-display.sh", "phone-display.sh", "systeminfo",
+        "HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "evidence",
+    ):
+        assert token in body
+    result = subprocess.run([harness, "--help"], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "protected workspaces" in result.stdout
