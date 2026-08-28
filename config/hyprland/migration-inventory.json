@@ -1,0 +1,1681 @@
+{
+  "legacy": "hyprland.legacy.conf",
+  "directives": [
+    {
+      "line": 9,
+      "directive": "plugin = /home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 18,
+      "directive": "monitor = HDMI-A-1, 1920x1080@75, 0x420, 1",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 19,
+      "directive": "monitor = DP-2, 1920x1080@240, 1920x0, 1, transform, 1",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 20,
+      "directive": "monitor = DP-1, 1920x1080@540, 3000x420, 1",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 22,
+      "directive": "monitor = PHONE, 3120x1440@120, 4920x420, 1",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 25,
+      "directive": "monitor = , preferred, auto, 1",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 45,
+      "directive": "workspace = 20, monitor:PHONE, default:true",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 47,
+      "directive": "workspace = 1, monitor:DP-1, default:true",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 48,
+      "directive": "workspace = 10, monitor:HDMI-A-1, default:true",
+      "owner": "lua/monitors.lua"
+    },
+    {
+      "line": 54,
+      "directive": "env = QT_QPA_PLATFORMTHEME,qt6ct",
+      "owner": "lua/environment.lua"
+    },
+    {
+      "line": 55,
+      "directive": "env = QT_QPA_PLATFORM,wayland;xcb",
+      "owner": "lua/environment.lua"
+    },
+    {
+      "line": 56,
+      "directive": "env = QT_WAYLAND_DISABLE_WINDOWDECORATION,1",
+      "owner": "lua/environment.lua"
+    },
+    {
+      "line": 57,
+      "directive": "env = XCURSOR_THEME,capitaine-cursors",
+      "owner": "lua/environment.lua"
+    },
+    {
+      "line": 58,
+      "directive": "env = XCURSOR_SIZE,24",
+      "owner": "lua/environment.lua"
+    },
+    {
+      "line": 64,
+      "directive": "input {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 65,
+      "directive": "kb_layout = us",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 66,
+      "directive": "follow_mouse = 1",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 67,
+      "directive": "sensitivity = 0",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 68,
+      "directive": "accel_profile = flat",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 70,
+      "directive": "touchpad {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 71,
+      "directive": "natural_scroll = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 72,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 73,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 77,
+      "directive": "device {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 78,
+      "directive": "name = trackpad",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 79,
+      "directive": "accel_profile = adaptive",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 80,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 85,
+      "directive": "device {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 86,
+      "directive": "name = pen-passthrough",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 87,
+      "directive": "output = PHONE",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 88,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 90,
+      "directive": "device {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 91,
+      "directive": "name = touch-passthrough",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 92,
+      "directive": "output = PHONE",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 93,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 99,
+      "directive": "general {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 100,
+      "directive": "gaps_in = 18",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 101,
+      "directive": "gaps_out = 8",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 102,
+      "directive": "border_size = 4",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 105,
+      "directive": "col.active_border = rgba(75A4CDff) rgba(BE78D1ff) 45deg",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 106,
+      "directive": "col.inactive_border = rgba(2f343faa)",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 108,
+      "directive": "layout = dwindle",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 109,
+      "directive": "allow_tearing = false",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 110,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 113,
+      "directive": "group {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 114,
+      "directive": "groupbar {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 115,
+      "directive": "height = 30",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 116,
+      "directive": "font_size = 12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 117,
+      "directive": "font_family = JetBrainsMono Nerd Font",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 118,
+      "directive": "font_weight_active = 600",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 119,
+      "directive": "font_weight_inactive = 450",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 120,
+      "directive": "gradients = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 121,
+      "directive": "blur = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 122,
+      "directive": "rounding = 12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 123,
+      "directive": "rounding_power = 2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 124,
+      "directive": "text_padding = 10",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 125,
+      "directive": "indicator_gap = 2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 126,
+      "directive": "indicator_height = 2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 127,
+      "directive": "gaps_in = 6",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 128,
+      "directive": "gaps_out = 8",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 129,
+      "directive": "gradient_rounding = 12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 130,
+      "directive": "gradient_round_only_edges = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 131,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 132,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 136,
+      "directive": "source = ~/.cache/wal/colors-hyprland.conf",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 142,
+      "directive": "decoration {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 143,
+      "directive": "rounding = 12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 146,
+      "directive": "active_opacity = 1.0",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 147,
+      "directive": "inactive_opacity = 0.95",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 149,
+      "directive": "shadow {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 150,
+      "directive": "enabled = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 151,
+      "directive": "range = 12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 152,
+      "directive": "offset = -12 -12",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 153,
+      "directive": "render_power = 3",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 154,
+      "directive": "color = rgba(00000080)",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 155,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 157,
+      "directive": "blur {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 158,
+      "directive": "enabled = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 159,
+      "directive": "size = 6",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 160,
+      "directive": "passes = 2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 161,
+      "directive": "new_optimizations = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 165,
+      "directive": "ignore_opacity = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 166,
+      "directive": "noise = 0.015",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 167,
+      "directive": "vibrancy = 0.22",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 168,
+      "directive": "contrast = 0.9",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 169,
+      "directive": "brightness = 0.85",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 170,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 171,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 177,
+      "directive": "animations {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 178,
+      "directive": "enabled = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 181,
+      "directive": "bezier = smoothOut, 0.36, 0, 0.66, -0.56",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 182,
+      "directive": "bezier = smoothIn, 0.25, 1, 0.5, 1",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 183,
+      "directive": "bezier = overshot, 0.4, 0.8, 0.2, 1.2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 185,
+      "directive": "animation = windows, 1, 5, overshot, slide",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 186,
+      "directive": "animation = windowsOut, 1, 4, smoothOut, slide",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 187,
+      "directive": "animation = windowsMove, 1, 4, smoothIn, slide",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 188,
+      "directive": "animation = border, 1, 10, default",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 189,
+      "directive": "animation = borderangle, 1, 40, default, loop",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 190,
+      "directive": "animation = fade, 1, 5, smoothIn",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 191,
+      "directive": "animation = fadeDim, 1, 5, smoothIn",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 192,
+      "directive": "animation = workspaces, 1, 6, overshot, slidevert",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 193,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 200,
+      "directive": "plugin:hyprglass {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 202,
+      "directive": "enabled = 0",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 203,
+      "directive": "default_theme = dark",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 204,
+      "directive": "default_preset = flow",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 205,
+      "directive": "preset = name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 206,
+      "directive": "preset = name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 208,
+      "directive": "layers {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 209,
+      "directive": "enabled = 0",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 210,
+      "directive": "namespaces = waybar",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 211,
+      "directive": "preset = flow",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 212,
+      "directive": "namespace_mask_thresholds = waybar=0.05",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 213,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 214,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 220,
+      "directive": "dwindle {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 221,
+      "directive": "preserve_split = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 222,
+      "directive": "force_split = 2",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 223,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 225,
+      "directive": "master {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 226,
+      "directive": "new_status = master",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 227,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 282,
+      "directive": "gestures {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 283,
+      "directive": "workspace_swipe_distance = 300",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 284,
+      "directive": "workspace_swipe_create_new = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 285,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 291,
+      "directive": "misc {",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 292,
+      "directive": "force_default_wallpaper = 0",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 293,
+      "directive": "disable_hyprland_logo = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 294,
+      "directive": "disable_splash_rendering = true",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 295,
+      "directive": "}",
+      "owner": "lua/appearance.lua"
+    },
+    {
+      "line": 302,
+      "directive": "windowrule = match:class ^(Spotify|spotify)$, workspace 10",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 303,
+      "directive": "windowrule = match:class ^(high-tide)$, workspace 10",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 304,
+      "directive": "windowrule = match:class ^(kitty)$, workspace 1",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 305,
+      "directive": "windowrule = match:class ^(google-chrome|google-chrome-unstable|Google-chrome)$, workspace 2 silent",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 309,
+      "directive": "windowrule = match:class ^(com\\.obsproject\\.Studio)$, workspace 8 silent",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 310,
+      "directive": "windowrule = match:class ^(com\\.obsproject\\.Studio)$, no_initial_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 316,
+      "directive": "windowrule = match:class ^(HermesE2E-[0-9]+)$, workspace special:hermes-tests silent",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 317,
+      "directive": "windowrule = match:class ^(HermesE2E-[0-9]+)$, no_initial_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 318,
+      "directive": "windowrule = match:class ^(HermesE2E-[0-9]+)$, no_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 322,
+      "directive": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, workspace 9 silent",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 323,
+      "directive": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_initial_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 324,
+      "directive": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 328,
+      "directive": "windowrule = match:class ^(ZenCDAE2E.*)$, workspace 9 silent",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 329,
+      "directive": "windowrule = match:class ^(ZenCDAE2E.*)$, no_initial_focus on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 332,
+      "directive": "windowrule = tag +hyprglass_disabled, match:fullscreen true",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 333,
+      "directive": "windowrule = tag +hyprglass_disabled, match:class ^(steam|Steam|Plex|linux-wallpaperengine)$",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 336,
+      "directive": "windowrule = match:class ^(scratch_term)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 337,
+      "directive": "windowrule = match:class ^(scratch_term)$, size 80% 70%",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 338,
+      "directive": "windowrule = match:class ^(scratch_term)$, center on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 339,
+      "directive": "windowrule = match:class ^(scratch_term)$, workspace special:scratch_term",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 342,
+      "directive": "windowrule = match:class ^(pavucontrol)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 343,
+      "directive": "windowrule = match:class ^(nm-connection-editor)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 344,
+      "directive": "windowrule = match:class ^(blueman-manager)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 347,
+      "directive": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 348,
+      "directive": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, size 1700 900",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 349,
+      "directive": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, center on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 350,
+      "directive": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, pin on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 352,
+      "directive": "windowrule = match:title ^(Picture-in-Picture)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 353,
+      "directive": "windowrule = match:title ^(Picture-in-Picture)$, decorate off",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 354,
+      "directive": "windowrule = match:title ^(Picture-in-Picture)$, pin on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 357,
+      "directive": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 358,
+      "directive": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, decorate off",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 359,
+      "directive": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, pin on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 361,
+      "directive": "windowrule = match:title ^(Volume Control)$, float on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 366,
+      "directive": "windowrule = match:class ^(Alacritty)$, opacity 0.88 0.82",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 368,
+      "directive": "source = /home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 369,
+      "directive": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, opacity 0.90 0.84",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 370,
+      "directive": "windowrule = match:class ^(dev.warp.Warp)$, opacity 0.95 0.90",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 371,
+      "directive": "windowrule = match:class ^(Code)$, opacity 0.95 0.90",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 372,
+      "directive": "windowrule = match:class ^(org.telegram.desktop)$, opacity 0.88 0.82",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 375,
+      "directive": "layerrule = match:namespace ^(noctalia-background-.*)$, blur on",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 376,
+      "directive": "layerrule = match:namespace ^(noctalia-background-.*)$, ignore_alpha 0.18",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 379,
+      "directive": "windowrule = idle_inhibit fullscreen",
+      "owner": "lua/rules.lua"
+    },
+    {
+      "line": 385,
+      "directive": "$mod = SUPER",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 388,
+      "directive": "bind = $mod, Return, exec, kitty",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 389,
+      "directive": "bind = $mod SHIFT, E, exec, nautilus",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 390,
+      "directive": "bind = $mod SHIFT, Q, killactive",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 393,
+      "directive": "bindl = $mod, N, exec, $HOME/workspace/.files/scripts/night-mode.sh off",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 396,
+      "directive": "bind = $mod, space, exec, qs -c noctalia-shell ipc --any-display call launcher toggle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 397,
+      "directive": "bind = $mod SHIFT, space, exec, rofi -show run",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 398,
+      "directive": "bind = $mod, Tab, exec, rofi -show window",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 399,
+      "directive": "bind = $mod, slash, exec, $HOME/workspace/.files/scripts/keybind-cheatsheet.py",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 400,
+      "directive": "bind = $mod, O, exec, $HOME/workspace/.files/scripts/workspace-atlas.py",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 401,
+      "directive": "bind = $mod, V, exec, cliphist list | rofi -dmenu | cliphist decode | wl-copy",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 404,
+      "directive": "bind = $mod, F, fullscreen, 0",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 405,
+      "directive": "bind = $mod SHIFT, F, togglefloating",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 406,
+      "directive": "bind = $mod SHIFT, F, resizewindowpixel, exact 960 540",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 407,
+      "directive": "bind = $mod SHIFT, F, centerwindow",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 412,
+      "directive": "bind = $mod, H, movefocus, l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 413,
+      "directive": "bind = $mod, J, movefocus, d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 414,
+      "directive": "bind = $mod, K, movefocus, u",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 415,
+      "directive": "bind = $mod, L, movefocus, r",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 416,
+      "directive": "bind = $mod, left, movefocus, l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 417,
+      "directive": "bind = $mod, down, movefocus, d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 418,
+      "directive": "bind = $mod, up, movefocus, u",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 419,
+      "directive": "bind = $mod, right, movefocus, r",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 420,
+      "directive": "bind = $mod SHIFT, H, movewindoworgroup, l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 421,
+      "directive": "bind = $mod SHIFT, J, movewindoworgroup, d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 422,
+      "directive": "bind = $mod SHIFT, K, movewindoworgroup, u",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 423,
+      "directive": "bind = $mod SHIFT, L, movewindoworgroup, r",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 424,
+      "directive": "bind = $mod SHIFT, left, movewindoworgroup, l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 425,
+      "directive": "bind = $mod SHIFT, down, movewindoworgroup, d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 426,
+      "directive": "bind = $mod SHIFT, up, movewindoworgroup, u",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 427,
+      "directive": "bind = $mod SHIFT, right, movewindoworgroup, r",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 428,
+      "directive": "bind = $mod, C, layoutmsg, preselect l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 429,
+      "directive": "bind = $mod, V, layoutmsg, preselect d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 430,
+      "directive": "bind = $mod, W, togglegroup",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 431,
+      "directive": "bind = $mod, G, exec, $HOME/workspace/.files/scripts/hypr-group-workspace.sh",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 432,
+      "directive": "bind = $mod, E, layoutmsg, togglesplit",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 433,
+      "directive": "bind = $mod, bracketright, changegroupactive, f",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 434,
+      "directive": "bind = $mod, bracketleft, changegroupactive, b",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 435,
+      "directive": "bind = $mod SHIFT, G, moveoutofgroup",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 436,
+      "directive": "bind = $mod, A, focuscurrentorlast",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 465,
+      "directive": "bind = $mod, 1, workspace, 1",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 466,
+      "directive": "bind = $mod, 2, workspace, 2",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 467,
+      "directive": "bind = $mod, 3, workspace, 3",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 468,
+      "directive": "bind = $mod, 4, workspace, 4",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 469,
+      "directive": "bind = $mod, 5, workspace, 5",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 470,
+      "directive": "bind = $mod, 6, workspace, 6",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 471,
+      "directive": "bind = $mod, 7, workspace, 7",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 472,
+      "directive": "bind = $mod, 8, workspace, 8",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 473,
+      "directive": "bind = $mod, 9, workspace, 9",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 474,
+      "directive": "bind = $mod, 0, workspace, 10",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 477,
+      "directive": "bind = $mod SHIFT, 1, movetoworkspace, 1",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 478,
+      "directive": "bind = $mod SHIFT, 2, movetoworkspace, 2",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 479,
+      "directive": "bind = $mod SHIFT, 3, movetoworkspace, 3",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 480,
+      "directive": "bind = $mod SHIFT, 4, movetoworkspace, 4",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 481,
+      "directive": "bind = $mod SHIFT, 5, movetoworkspace, 5",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 482,
+      "directive": "bind = $mod SHIFT, 6, movetoworkspace, 6",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 483,
+      "directive": "bind = $mod SHIFT, 7, movetoworkspace, 7",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 484,
+      "directive": "bind = $mod SHIFT, 8, movetoworkspace, 8",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 485,
+      "directive": "bind = $mod SHIFT, 9, movetoworkspace, 9",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 486,
+      "directive": "bind = $mod SHIFT, 0, movetoworkspace, 10",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 489,
+      "directive": "bind = $mod SHIFT CTRL, H, movecurrentworkspacetomonitor, l",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 490,
+      "directive": "bind = $mod SHIFT CTRL, L, movecurrentworkspacetomonitor, r",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 491,
+      "directive": "bind = $mod SHIFT CTRL, K, movecurrentworkspacetomonitor, u",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 492,
+      "directive": "bind = $mod SHIFT CTRL, J, movecurrentworkspacetomonitor, d",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 495,
+      "directive": "bind = $mod SHIFT, minus, movetoworkspacesilent, special",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 496,
+      "directive": "bind = $mod, minus, togglespecialworkspace",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 497,
+      "directive": "bind = $mod, grave, togglespecialworkspace, scratch_term",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 500,
+      "directive": "bind = $mod CTRL, equal, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh increase",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 501,
+      "directive": "bind = $mod CTRL, minus, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh decrease",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 502,
+      "directive": "bind = $mod CTRL, 0, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 505,
+      "directive": "bind = $mod SHIFT, R, exec, $HOME/workspace/.files/scripts/reload-desktop.sh",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 508,
+      "directive": "bind = $mod SHIFT, T, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-picker.sh",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 509,
+      "directive": "bind = $mod SHIFT, comma, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py previous",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 510,
+      "directive": "bind = $mod SHIFT, period, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py next",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 511,
+      "directive": "bind = $mod CTRL, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh cycle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 512,
+      "directive": "bind = $mod ALT, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh toggle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 513,
+      "directive": "bind = $mod CTRL, B, exec, $HOME/workspace/.files/scripts/bar-mode.sh toggle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 514,
+      "directive": "bind = $mod ALT, P, exec, $HOME/workspace/.files/scripts/phone-display.sh toggle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 515,
+      "directive": "bind = $mod SHIFT, B, submap, wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 517,
+      "directive": "submap = wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 518,
+      "directive": "bind = , A, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw auto",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 519,
+      "directive": "bind = , A, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 520,
+      "directive": "bind = , S, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw span",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 521,
+      "directive": "bind = , S, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 522,
+      "directive": "bind = , F, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fill",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 523,
+      "directive": "bind = , F, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 524,
+      "directive": "bind = , I, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fit",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 525,
+      "directive": "bind = , I, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 526,
+      "directive": "bind = , C, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw center",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 527,
+      "directive": "bind = , C, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 528,
+      "directive": "bind = , T, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw tile",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 529,
+      "directive": "bind = , T, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 530,
+      "directive": "bind = , X, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw stretch",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 531,
+      "directive": "bind = , X, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 532,
+      "directive": "bind = , Return, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 533,
+      "directive": "bind = , escape, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 534,
+      "directive": "submap = reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 541,
+      "directive": "bind = $mod, P, exec, grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 544,
+      "directive": "bind = $mod SHIFT, P, exec, grim -g \"$(slurp)\" - | wl-copy",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 547,
+      "directive": "bind = $mod CTRL, P, exec, grim ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 550,
+      "directive": "bind = $mod CTRL SHIFT, P, exec, grim - | wl-copy",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 556,
+      "directive": "bindel = , XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 557,
+      "directive": "bindel = , XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 558,
+      "directive": "bindl = , XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 559,
+      "directive": "bindl = , XF86AudioPlay, exec, playerctl play-pause",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 560,
+      "directive": "bindl = , XF86AudioPause, exec, playerctl play-pause",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 561,
+      "directive": "bindl = , XF86AudioNext, exec, playerctl next",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 562,
+      "directive": "bindl = , XF86AudioPrev, exec, playerctl previous",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 565,
+      "directive": "bind = ALT, 1, exec, $HOME/.local/bin/audio-evolve select 1 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 566,
+      "directive": "bind = ALT, 2, exec, $HOME/.local/bin/audio-evolve select 2 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 567,
+      "directive": "bind = ALT, 3, exec, $HOME/.local/bin/audio-evolve select 3 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 568,
+      "directive": "bind = ALT, 4, exec, $HOME/.local/bin/audio-evolve select 4 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 569,
+      "directive": "bind = ALT, 5, exec, $HOME/.local/bin/audio-evolve select 5 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 570,
+      "directive": "bind = ALT, 6, exec, $HOME/.local/bin/audio-evolve select 6 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 571,
+      "directive": "bind = ALT, 7, exec, $HOME/.local/bin/audio-evolve select 7 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 572,
+      "directive": "bind = ALT, 8, exec, $HOME/.local/bin/audio-evolve select 8 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 573,
+      "directive": "bind = ALT, 9, exec, $HOME/.local/bin/audio-evolve select 9 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 574,
+      "directive": "bind = ALT, 0, exec, $HOME/.local/bin/audio-evolve select 0 --notify",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 575,
+      "directive": "bind = ALT, F12, exec, $HOME/.local/bin/audio-sink bitperfect",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 576,
+      "directive": "bind = ALT, F11, exec, $HOME/.local/bin/audio-sink bs2b",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 577,
+      "directive": "bind = ALT, F10, exec, $HOME/.local/bin/audio-sink room",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 578,
+      "directive": "bind = ALT, F9, exec, $HOME/.local/bin/audio-sink aural",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 581,
+      "directive": "bind = $mod SHIFT, A, exec, notify-send -u critical -t 5000 \"Audio restart in 3 seconds\" \"PipeWire will briefly interrupt active streams\" && sleep 3 && systemctl --user restart pipewire pipewire-pulse && notify-send \"PipeWire\" \"Audio stack restarted\"",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 584,
+      "directive": "bind = $mod, S, exec, $HOME/workspace/.files/scripts/speak-selection.sh",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 590,
+      "directive": "bind = $mod, R, submap, resize",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 592,
+      "directive": "submap = resize",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 593,
+      "directive": "binde = , H, resizeactive, -40 0",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 594,
+      "directive": "binde = , J, resizeactive, 0 40",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 595,
+      "directive": "binde = , K, resizeactive, 0 -40",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 596,
+      "directive": "binde = , L, resizeactive, 40 0",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 597,
+      "directive": "binde = , left, resizeactive, -40 0",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 598,
+      "directive": "binde = , down, resizeactive, 0 40",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 599,
+      "directive": "binde = , up, resizeactive, 0 -40",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 600,
+      "directive": "binde = , right, resizeactive, 40 0",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 601,
+      "directive": "bind = , Return, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 602,
+      "directive": "bind = , escape, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 603,
+      "directive": "submap = reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 609,
+      "directive": "bind = $mod SHIFT, X, submap, system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 611,
+      "directive": "submap = system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 612,
+      "directive": "bind = , L, exec, hyprlock",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 613,
+      "directive": "bind = , L, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 614,
+      "directive": "bind = , N, exec, $HOME/workspace/.files/scripts/night-mode.sh on",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 615,
+      "directive": "bind = , N, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 616,
+      "directive": "bind = , E, exit",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 617,
+      "directive": "bind = , S, exec, systemctl suspend",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 618,
+      "directive": "bind = , S, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 619,
+      "directive": "bind = , R, exec, systemctl reboot",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 620,
+      "directive": "bind = SHIFT, S, exec, systemctl poweroff",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 621,
+      "directive": "bind = , Return, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 622,
+      "directive": "bind = , escape, submap, reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 623,
+      "directive": "submap = reset",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 629,
+      "directive": "bindm = $mod, mouse:272, movewindow",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 630,
+      "directive": "bindm = $mod, mouse:273, resizewindow",
+      "owner": "lua/binds.lua"
+    },
+    {
+      "line": 637,
+      "directive": "exec-once = $HOME/workspace/.files/scripts/bar-mode.sh restore",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 640,
+      "directive": "exec-once = $HOME/workspace/.files/scripts/wallpaper-mode.sh restore",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 641,
+      "directive": "exec-once = /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 642,
+      "directive": "exec-once = $HOME/workspace/.files/scripts/kdeconnect-tailnet.py --start",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 643,
+      "directive": "exec-once = warp-terminal --class scratch_term",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 644,
+      "directive": "exec-once = wl-paste --type text --watch cliphist store",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 645,
+      "directive": "exec-once = wl-paste --type image --watch cliphist store",
+      "owner": "lua/autostart.lua"
+    },
+    {
+      "line": 646,
+      "directive": "exec-once = env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb WAYLAND_DISPLAY= rustdesk",
+      "owner": "lua/autostart.lua"
+    }
+  ],
+  "unclassified": []
+}

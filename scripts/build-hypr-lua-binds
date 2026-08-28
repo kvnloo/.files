@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Translate the audited bind surface to native hl.bind declarations."""
+from pathlib import Path
+import json
+
+root=Path(__file__).resolve().parents[1]
+legacy=root/"config/hyprland/hyprland.legacy.conf"
+out=root/"config/hyprland/lua/binds.lua"
+groups={"reset":[]}
+current="reset"
+for raw in legacy.read_text().splitlines():
+    text=raw.split("#",1)[0].strip()
+    if text.startswith("submap ="):
+        current=text.split("=",1)[1].strip()
+        groups.setdefault(current,[])
+    elif text.startswith(("bind =","bindl =","binde =","bindel =","bindm =")):
+        kind,rhs=(part.strip() for part in text.split("=",1))
+        parts=[p.strip() for p in rhs.split(",",3)]
+        if len(parts)<3: raise SystemExit(f"bad bind: {text}")
+        mods,key,dispatcher=parts[:3]
+        arg=parts[3] if len(parts)==4 else ""
+        mods=mods.replace("$mod","SUPER")
+        modifier_keys=mods.split()
+        keys=" + ".join([*modifier_keys,key] if key else modifier_keys)
+        opts=[]
+        if "l" in kind[4:]: opts.append("locked=true")
+        if "e" in kind[4:]: opts.append("repeating=true")
+        if kind=="bindm": opts.append("drag=true")
+        options=", {"+",".join(opts)+"}" if opts else ""
+        # Dispatchers stay typed at the bind boundary; exec_raw preserves every
+        # legacy dispatcher argument without shell evaluation.
+        line=f"hl.bind({json.dumps(keys, ensure_ascii=False)}, hl.dsp.exec_raw({json.dumps(dispatcher, ensure_ascii=False)}, {json.dumps(arg, ensure_ascii=False)}){options})"
+        groups[current].append(line)
+lines=["-- Generated from the audited bind directives in hyprland.legacy.conf."]
+lines.extend(groups.pop("reset",[]))
+for name,binds in groups.items():
+    lines.append(f"hl.define_submap({json.dumps(name, ensure_ascii=False)}, \"reset\", function()")
+    lines.extend("  "+b for b in binds)
+    lines.append("end)")
+out.write_text("\n".join(lines)+"\n")
