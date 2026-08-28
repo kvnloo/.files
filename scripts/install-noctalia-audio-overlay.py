@@ -16,6 +16,7 @@ DISPLAY_OVERRIDE = Path("Modules/Panels/Settings/Tabs/Display/DisplayTab.qml")
 BRIGHTNESS_PANEL_OVERRIDE = Path("Modules/Panels/Brightness/BrightnessPanel.qml")
 BRIGHTNESS_WIDGET_OVERRIDE = Path("Modules/Bar/Widgets/Brightness.qml")
 SYSTEM_MONITOR_OVERRIDE = Path("Modules/Cards/SystemMonitorCard.qml")
+PROFILE_CARD_OVERRIDE = Path("Modules/Cards/ProfileCard.qml")
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -762,12 +763,57 @@ def customize_system_monitor(_: str) -> str:
     return SYSTEM_MONITOR_SOURCE.read_text()
 
 
+def customize_profile_card(text: str) -> str:
+    text = replace_once(
+        text,
+        "import qs.Services.System\nimport qs.Services.UI",
+        "import qs.Services.System\nimport qs.Services.Noctalia\nimport qs.Services.UI",
+    )
+    return replace_once(
+        text,
+        '''      NIconButton {
+        icon: "power"
+        tooltipText: I18n.tr("tooltips.session-menu")''',
+        '''      NIconButton {
+        id: reforgeGrootButton
+        icon: "package"
+        tooltipText: "Reforge Groot · update everything"
+        onClicked: reforgeGrootAnimation.restart()
+      }
+
+      SequentialAnimation {
+        id: reforgeGrootAnimation
+        running: false
+        NumberAnimation {
+          target: reforgeGrootButton
+          property: "rotation"
+          from: 0
+          to: 360
+          duration: 480
+          easing.type: Easing.InOutCubic
+        }
+        ScriptAction {
+          script: {
+            reforgeGrootButton.rotation = 0;
+            PanelService.getPanel("controlCenterPanel", screen)?.close();
+            PluginService.getPluginAPI("reforge-groot")?.openPanel(screen, reforgeGrootButton);
+          }
+        }
+      }
+
+      NIconButton {
+        icon: "power"
+        tooltipText: I18n.tr("tooltips.session-menu")''',
+    )
+
+
 CUSTOMIZERS = {
     BRIGHTNESS_WIDGET_OVERRIDE: customize_brightness_widget,
     AUDIO_OVERRIDE: customize_audio_panel,
     DISPLAY_OVERRIDE: customize_display_tab,
     BRIGHTNESS_PANEL_OVERRIDE: customize_brightness_panel,
     SYSTEM_MONITOR_OVERRIDE: customize_system_monitor,
+    PROFILE_CARD_OVERRIDE: customize_profile_card,
 }
 
 

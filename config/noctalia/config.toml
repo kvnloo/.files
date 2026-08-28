@@ -76,7 +76,7 @@ settings_show_advanced = true
     variant = "destructive"
 
 [system.monitor]
-gpu_poll_seconds = 2
+gpu_poll_seconds = 10
 
 [theme]
 mode = "dark"

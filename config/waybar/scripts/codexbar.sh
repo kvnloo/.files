@@ -262,9 +262,14 @@ for p in "${PROVIDERS[@]}"; do
 done
 merged+="]"
 
+providers_json="$(printf '%s\n' "${PROVIDERS[@]}" | jq -R . | jq -s .)"
 last_good_json=""
 if [[ -f "$LAST_GOOD" ]]; then
-    last_good_json="$(jq -c 'select(type == "array")' "$LAST_GOOD" 2>/dev/null || true)"
+    # Disabled providers must not survive indefinitely through the stale cache.
+    last_good_json="$(jq -c --argjson requested "$providers_json" '
+        select(type == "array")
+        | map(select(.provider as $pid | $requested | index($pid)))
+    ' "$LAST_GOOD" 2>/dev/null || true)"
 fi
 
 # Persist fresh successful provider snapshots without dropping older successful

@@ -9,13 +9,43 @@ config/fish/fish_variables
 config/fish/config.fish.bak.*
 config/pulse/cookie
 
-# dotenvx: encrypted payloads may be tracked; private decryption keys may not.
+# dotenvx: keep private keys and decrypted env out of git.
+# Encrypted payloads may be tracked deliberately; private keys may not.
 secrets/.env
 secrets/.env.keys
 secrets/.env.*.keys
+secrets/.env.local
+secrets/**
+!secrets/.gitkeep
+
+# Never track Sunshine runtime secrets if they land under the repo tree
+config/sunshine/credentials/
+config/sunshine/sunshine_state.json
+config/sunshine/*.log
+config/sunshine/Sunshine.log
+**/sunshine_state.json
+
+# Agent Reach / onboard state (live under $HOME; defensive if nested here)
+.agent-reach/
+**/.agent-reach/
+.local/
+**/.local/state/dotfiles/
+
+# Generic secret patterns
+.env
+.env.*
+!.env.example
+**/.env.keys
+*.pem
+*.p12
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.ovpn
+
 **/__pycache__/
 .cast-tools/
 .venv/
-.local/
 config/waybar/*.codexbar-backup-*
 config/waybar/scripts/*.so

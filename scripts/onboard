@@ -141,6 +141,16 @@ run_core_links() {
   onboard_link "$repo/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
   onboard_link "$repo/config/zed/settings.json" "$HOME/.config/zed/settings.json"
 
+  # Searchable desktop actions for Noctalia/Rofi application launchers.
+  if [[ -d "$repo/config/applications" ]]; then
+    mkdir -p "$HOME/.local/share/applications"
+    local desktop_entry
+    for desktop_entry in "$repo"/config/applications/*.desktop; do
+      [[ -e "$desktop_entry" ]] || continue
+      onboard_link "$desktop_entry" "$HOME/.local/share/applications/$(basename "$desktop_entry")"
+    done
+  fi
+
   # PipeWire user configs (non-destructive link of tracked fragments)
   if [[ -d "$repo/config/pipewire" ]]; then
     mkdir -p "$HOME/.config/pipewire/pipewire.conf.d" \
@@ -169,6 +179,7 @@ run_core_links() {
   local bin command_name
   for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
              desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
+             reforge-groot-launcher.sh update-all-ui-runner.sh \
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh \

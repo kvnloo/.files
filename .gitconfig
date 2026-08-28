@@ -1,8 +1,5 @@
 [alias]
 	random = !"git add -A; git commit -am \"$(echo $(curl -s https://whatthecommit.com/index.txt))\"; git push"
-[user]
-	name = lesseradmin
-	email = veeman961@gmail.com
 [core]
 	pager = delta
 [interactive]

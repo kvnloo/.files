@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import configparser
 import json
 import os
 import shutil
@@ -35,17 +34,17 @@ def tailnet_ipv4() -> list[str]:
 def configure() -> int:
     addresses = tailnet_ipv4()
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    parser = configparser.ConfigParser(interpolation=None)
-    parser.optionxform = str
+    values: dict[str, str] = {}
     if CONFIG.exists():
-        parser.read(CONFIG)
-    if not parser.has_section("General"):
-        parser.add_section("General")
-    if not parser.has_option("General", "name"):
-        parser.set("General", "name", socket.gethostname())
-    parser.set("General", "customDevices", ",".join(addresses))
-    with CONFIG.open("w") as handle:
-        parser.write(handle, space_around_delimiters=False)
+        for line in CONFIG.read_text().splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("#", ";", "[")) or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            values[key] = value
+    values.setdefault("name", socket.gethostname())
+    values["customDevices"] = ",".join(addresses)
+    CONFIG.write_text("".join(f"{key}={values[key]}\n" for key in sorted(values)))
     os.chmod(CONFIG, 0o600)
     print(f"KDE Connect discovery configured for {len(addresses)} tailnet peers")
     return len(addresses)

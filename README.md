@@ -1,8 +1,13 @@
 # .files
 
-Personal Linux/macOS dotfiles for Hyprland, tmux, shells, audio DSP, agent tooling, and related desktop helpers.
+[![Website](https://img.shields.io/badge/site-kvnloo.github.io%2F.files-0f172a?style=flat-square)](https://kvnloo.github.io/.files/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
 
-Contact: [dev@ek.vin](mailto:dev@ek.vin)
+Personal Linux/macOS **agent-native** dotfiles for Hyprland, tmux, shells, audio DSP, agent tooling, and related desktop helpers.
+
+**Author:** Kevin Rajan ([kvnloo](https://github.com/kvnloo)) · Contact: [dev@ek.vin](mailto:dev@ek.vin)
+
+Showcase site: **[https://kvnloo.github.io/.files/](https://kvnloo.github.io/.files/)**
 
 ## Setup (two methods)
 
@@ -45,9 +50,23 @@ Useful commands:
 
 ## Safety notes (public repo)
 
-- Sunshine **credentials / state / logs** stay in `~/.config/sunshine` and are not tracked.
-- Agent Reach state lives in `~/.agent-reach` (not tracked).
-- Onboarding state lives in `~/.local/state/dotfiles/onboard.json` (not tracked).
+This tree is public. Treat anything that can authenticate as **out of band**:
+
+| Keep local (not tracked) | Where it lives |
+|--------------------------|----------------|
+| Sunshine credentials / state / logs | `~/.config/sunshine/` |
+| Agent Reach state | `~/.agent-reach` |
+| Onboarding state | `~/.local/state/dotfiles/onboard.json` |
+| dotenvx private keys / secrets | `secrets/.env.keys` (gitignored) |
+
+- Tracked Sunshine files are **config only** (`sunshine.conf`, `apps.json`) — no credentials.
+- Do not commit Tailscale auth keys, provider API tokens, SSH private keys, or shell history.
+- `scripts/with-secrets` loads local dotenvx material; keys never ship in git.
+- See [AGENTS.md](AGENTS.md) safety rules for agent harnesses cloning this repo.
+
+## License
+
+[MIT](LICENSE) © Kevin Rajan (kvnloo)
 
 ## Legacy / deep migration
 
