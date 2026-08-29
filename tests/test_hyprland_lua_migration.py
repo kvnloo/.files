@@ -260,3 +260,21 @@ def test_checker_detects_specific_rule_and_ordinary_semantic_sabotage(tmp_path):
         (lua_root / source.name).write_text(body.replace(old, new, 1))
         result = subprocess.run([checker, "--lua-root", lua_root], capture_output=True, text=True)
         assert result.returncode != 0, (relative, result.stdout, result.stderr)
+
+
+def test_checker_detects_exact_typed_config_value_sabotage(tmp_path):
+    checker = ROOT / "scripts/check-hypr-lua-parity"
+    for old, new, semantic in (
+        ("gaps_out=8", "gaps_out=9", "general.gaps_out"),
+        ("allow_tearing=false", "allow_tearing=true", "general.allow_tearing"),
+        ("gaps_out=8, gradient_rounding", "gaps_out=9, gradient_rounding", "group.groupbar.gaps_out"),
+    ):
+        lua_root = tmp_path / semantic.replace(".", "-")
+        lua_root.mkdir()
+        source = HYPR / "lua/appearance.lua"
+        body = source.read_text()
+        assert old in body
+        (lua_root / source.name).write_text(body.replace(old, new, 1))
+        result = subprocess.run([checker, "--lua-root", lua_root], capture_output=True, text=True)
+        assert result.returncode != 0, (semantic, result.stdout, result.stderr)
+        assert semantic in result.stderr

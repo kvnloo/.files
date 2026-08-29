@@ -1963,15 +1963,13 @@
       "proof": {
         "expected": "input.kb_layout=us",
         "source_tokens": [
-          "kb_layout",
-          "us"
+          "input.kb_layout",
+          "string:us"
         ],
         "source_lines": [
-          27,
-          32,
-          37
+          27
         ],
-        "actual": "lua[appearance.lua:27,32,37]:kb_layout,us"
+        "actual": "lua[appearance.lua:27]:input.kb_layout=string:us"
       }
     },
     {
@@ -1982,12 +1980,13 @@
       "proof": {
         "expected": "input.follow_mouse=1",
         "source_tokens": [
-          "follow_mouse"
+          "input.follow_mouse",
+          "number:1"
         ],
         "source_lines": [
           27
         ],
-        "actual": "lua[appearance.lua:27]:follow_mouse"
+        "actual": "lua[appearance.lua:27]:input.follow_mouse=number:1"
       }
     },
     {
@@ -1998,12 +1997,13 @@
       "proof": {
         "expected": "input.sensitivity=0",
         "source_tokens": [
-          "sensitivity"
+          "input.sensitivity",
+          "number:0"
         ],
         "source_lines": [
           27
         ],
-        "actual": "lua[appearance.lua:27]:sensitivity"
+        "actual": "lua[appearance.lua:27]:input.sensitivity=number:0"
       }
     },
     {
@@ -2014,14 +2014,14 @@
       "proof": {
         "expected": "input.accel_profile=flat",
         "source_tokens": [
-          "accel_profile",
-          "flat"
+          "input.accel_profile",
+          "string:flat"
         ],
         "source_lines": [
           27,
           42
         ],
-        "actual": "lua[appearance.lua:27,42]:accel_profile,flat"
+        "actual": "lua[appearance.lua:27,42]:input.accel_profile=string:flat"
       }
     },
     {
@@ -2032,12 +2032,13 @@
       "proof": {
         "expected": "input.touchpad.natural_scroll=true",
         "source_tokens": [
-          "natural_scroll"
+          "input.touchpad.natural_scroll",
+          "bool:true"
         ],
         "source_lines": [
           27
         ],
-        "actual": "lua[appearance.lua:27]:natural_scroll"
+        "actual": "lua[appearance.lua:27]:input.touchpad.natural_scroll=bool:true"
       }
     },
     {
@@ -2160,16 +2161,14 @@
       "proof": {
         "expected": "general.gaps_in=18",
         "source_tokens": [
-          "gaps_in",
-          "18"
+          "general.gaps_in",
+          "number:18"
         ],
         "source_lines": [
-          18,
-          21,
           28,
           29
         ],
-        "actual": "lua[appearance.lua:18,21,28,29]:gaps_in,18"
+        "actual": "lua[appearance.lua:28,29]:general.gaps_in=number:18"
       }
     },
     {
@@ -2180,13 +2179,14 @@
       "proof": {
         "expected": "general.gaps_out=8",
         "source_tokens": [
-          "gaps_out"
+          "general.gaps_out",
+          "number:8"
         ],
         "source_lines": [
           28,
           29
         ],
-        "actual": "lua[appearance.lua:28,29]:gaps_out"
+        "actual": "lua[appearance.lua:28,29]:general.gaps_out=number:8"
       }
     },
     {
@@ -2197,12 +2197,13 @@
       "proof": {
         "expected": "general.border_size=4",
         "source_tokens": [
-          "border_size"
+          "general.border_size",
+          "number:4"
         ],
         "source_lines": [
           28
         ],
-        "actual": "lua[appearance.lua:28]:border_size"
+        "actual": "lua[appearance.lua:28]:general.border_size=number:4"
       }
     },
     {
@@ -2238,16 +2239,13 @@
       "proof": {
         "expected": "general.col.inactive_border=rgba(2f343faa)",
         "source_tokens": [
-          "inactive_border",
-          "f343faa",
-          "rgba"
+          "general.col.inactive_border",
+          "string:rgba(2f343faa)"
         ],
         "source_lines": [
-          28,
-          30,
-          65
+          28
         ],
-        "actual": "lua[appearance.lua:28,30,65]:inactive_border,f343faa,rgba"
+        "actual": "lua[appearance.lua:28]:general.col.inactive_border=string:rgba(2f343faa)"
       }
     },
     {
@@ -2258,15 +2256,13 @@
       "proof": {
         "expected": "general.layout=dwindle",
         "source_tokens": [
-          "dwindle",
-          "layout"
+          "general.layout",
+          "string:dwindle"
         ],
         "source_lines": [
-          27,
-          28,
-          32
+          28
         ],
-        "actual": "lua[appearance.lua:27,28,32]:dwindle,layout"
+        "actual": "lua[appearance.lua:28]:general.layout=string:dwindle"
       }
     },
     {
@@ -2277,12 +2273,13 @@
       "proof": {
         "expected": "general.allow_tearing=false",
         "source_tokens": [
-          "allow_tearing"
+          "general.allow_tearing",
+          "bool:false"
         ],
         "source_lines": [
           28
         ],
-        "actual": "lua[appearance.lua:28]:allow_tearing"
+        "actual": "lua[appearance.lua:28]:general.allow_tearing=bool:false"
       }
     },
     {
@@ -2293,15 +2290,13 @@
       "proof": {
         "expected": "group.groupbar.height=30",
         "source_tokens": [
-          "height",
-          "30"
+          "group.groupbar.height",
+          "number:30"
         ],
         "source_lines": [
-          20,
-          29,
-          33
+          29
         ],
-        "actual": "lua[appearance.lua:20,29,33]:height,30"
+        "actual": "lua[appearance.lua:29]:group.groupbar.height=number:30"
       }
     },
     {
@@ -2312,14 +2307,13 @@
       "proof": {
         "expected": "group.groupbar.font_size=12",
         "source_tokens": [
-          "font_size",
-          "12"
+          "group.groupbar.font_size",
+          "number:12"
         ],
         "source_lines": [
-          29,
-          30
+          29
         ],
-        "actual": "lua[appearance.lua:29,30]:font_size,12"
+        "actual": "lua[appearance.lua:29]:group.groupbar.font_size=number:12"
       }
     },
     {
@@ -2330,15 +2324,13 @@
       "proof": {
         "expected": "group.groupbar.font_family=JetBrainsMono Nerd Font",
         "source_tokens": [
-          "jetbrainsmono",
-          "font_family",
-          "nerd",
-          "font"
+          "group.groupbar.font_family",
+          "string:jetbrainsmononerdfont"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:jetbrainsmono,font_family,nerd,font"
+        "actual": "lua[appearance.lua:29]:group.groupbar.font_family=string:jetbrainsmononerdfont"
       }
     },
     {
@@ -2349,13 +2341,13 @@
       "proof": {
         "expected": "group.groupbar.font_weight_active=600",
         "source_tokens": [
-          "font_weight_active",
-          "600"
+          "group.groupbar.font_weight_active",
+          "number:600"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:font_weight_active,600"
+        "actual": "lua[appearance.lua:29]:group.groupbar.font_weight_active=number:600"
       }
     },
     {
@@ -2366,13 +2358,13 @@
       "proof": {
         "expected": "group.groupbar.font_weight_inactive=450",
         "source_tokens": [
-          "font_weight_inactive",
-          "450"
+          "group.groupbar.font_weight_inactive",
+          "number:450"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:font_weight_inactive,450"
+        "actual": "lua[appearance.lua:29]:group.groupbar.font_weight_inactive=number:450"
       }
     },
     {
@@ -2383,12 +2375,13 @@
       "proof": {
         "expected": "group.groupbar.gradients=true",
         "source_tokens": [
-          "gradients"
+          "group.groupbar.gradients",
+          "bool:true"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:gradients"
+        "actual": "lua[appearance.lua:29]:group.groupbar.gradients=bool:true"
       }
     },
     {
@@ -2399,14 +2392,14 @@
       "proof": {
         "expected": "group.groupbar.blur=true",
         "source_tokens": [
-          "blur"
+          "group.groupbar.blur",
+          "bool:true"
         ],
         "source_lines": [
-          17,
           29,
           30
         ],
-        "actual": "lua[appearance.lua:17,29,30]:blur"
+        "actual": "lua[appearance.lua:29,30]:group.groupbar.blur=bool:true"
       }
     },
     {
@@ -2417,14 +2410,14 @@
       "proof": {
         "expected": "group.groupbar.rounding=12",
         "source_tokens": [
-          "rounding",
-          "12"
+          "group.groupbar.rounding",
+          "number:12"
         ],
         "source_lines": [
           29,
           30
         ],
-        "actual": "lua[appearance.lua:29,30]:rounding,12"
+        "actual": "lua[appearance.lua:29,30]:group.groupbar.rounding=number:12"
       }
     },
     {
@@ -2435,12 +2428,13 @@
       "proof": {
         "expected": "group.groupbar.rounding_power=2",
         "source_tokens": [
-          "rounding_power"
+          "group.groupbar.rounding_power",
+          "number:2"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:rounding_power"
+        "actual": "lua[appearance.lua:29]:group.groupbar.rounding_power=number:2"
       }
     },
     {
@@ -2451,15 +2445,13 @@
       "proof": {
         "expected": "group.groupbar.text_padding=10",
         "source_tokens": [
-          "text_padding",
-          "10"
+          "group.groupbar.text_padding",
+          "number:10"
         ],
         "source_lines": [
-          17,
-          29,
-          52
+          29
         ],
-        "actual": "lua[appearance.lua:17,29,52]:text_padding,10"
+        "actual": "lua[appearance.lua:29]:group.groupbar.text_padding=number:10"
       }
     },
     {
@@ -2470,12 +2462,13 @@
       "proof": {
         "expected": "group.groupbar.indicator_gap=2",
         "source_tokens": [
-          "indicator_gap"
+          "group.groupbar.indicator_gap",
+          "number:2"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:indicator_gap"
+        "actual": "lua[appearance.lua:29]:group.groupbar.indicator_gap=number:2"
       }
     },
     {
@@ -2486,12 +2479,13 @@
       "proof": {
         "expected": "group.groupbar.indicator_height=2",
         "source_tokens": [
-          "indicator_height"
+          "group.groupbar.indicator_height",
+          "number:2"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:indicator_height"
+        "actual": "lua[appearance.lua:29]:group.groupbar.indicator_height=number:2"
       }
     },
     {
@@ -2502,13 +2496,14 @@
       "proof": {
         "expected": "group.groupbar.gaps_in=6",
         "source_tokens": [
-          "gaps_in"
+          "group.groupbar.gaps_in",
+          "number:6"
         ],
         "source_lines": [
           28,
           29
         ],
-        "actual": "lua[appearance.lua:28,29]:gaps_in"
+        "actual": "lua[appearance.lua:28,29]:group.groupbar.gaps_in=number:6"
       }
     },
     {
@@ -2519,13 +2514,14 @@
       "proof": {
         "expected": "group.groupbar.gaps_out=8",
         "source_tokens": [
-          "gaps_out"
+          "group.groupbar.gaps_out",
+          "number:8"
         ],
         "source_lines": [
           28,
           29
         ],
-        "actual": "lua[appearance.lua:28,29]:gaps_out"
+        "actual": "lua[appearance.lua:28,29]:group.groupbar.gaps_out=number:8"
       }
     },
     {
@@ -2536,14 +2532,13 @@
       "proof": {
         "expected": "group.groupbar.gradient_rounding=12",
         "source_tokens": [
-          "gradient_rounding",
-          "12"
+          "group.groupbar.gradient_rounding",
+          "number:12"
         ],
         "source_lines": [
-          29,
-          30
+          29
         ],
-        "actual": "lua[appearance.lua:29,30]:gradient_rounding,12"
+        "actual": "lua[appearance.lua:29]:group.groupbar.gradient_rounding=number:12"
       }
     },
     {
@@ -2554,12 +2549,13 @@
       "proof": {
         "expected": "group.groupbar.gradient_round_only_edges=true",
         "source_tokens": [
-          "gradient_round_only_edges"
+          "group.groupbar.gradient_round_only_edges",
+          "bool:true"
         ],
         "source_lines": [
           29
         ],
-        "actual": "lua[appearance.lua:29]:gradient_round_only_edges"
+        "actual": "lua[appearance.lua:29]:group.groupbar.gradient_round_only_edges=bool:true"
       }
     },
     {
@@ -2588,14 +2584,14 @@
       "proof": {
         "expected": "decoration.rounding=12",
         "source_tokens": [
-          "rounding",
-          "12"
+          "decoration.rounding",
+          "number:12"
         ],
         "source_lines": [
           29,
           30
         ],
-        "actual": "lua[appearance.lua:29,30]:rounding,12"
+        "actual": "lua[appearance.lua:29,30]:decoration.rounding=number:12"
       }
     },
     {
@@ -2606,13 +2602,13 @@
       "proof": {
         "expected": "decoration.active_opacity=1.0",
         "source_tokens": [
-          "active_opacity",
-          "1.0"
+          "decoration.active_opacity",
+          "number:1.0"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:active_opacity,1.0"
+        "actual": "lua[appearance.lua:30]:decoration.active_opacity=number:1.0"
       }
     },
     {
@@ -2623,13 +2619,13 @@
       "proof": {
         "expected": "decoration.inactive_opacity=0.95",
         "source_tokens": [
-          "inactive_opacity",
-          "0.95"
+          "decoration.inactive_opacity",
+          "number:0.95"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:inactive_opacity,0.95"
+        "actual": "lua[appearance.lua:30]:decoration.inactive_opacity=number:0.95"
       }
     },
     {
@@ -2640,7 +2636,8 @@
       "proof": {
         "expected": "decoration.shadow.enabled=true",
         "source_tokens": [
-          "enabled"
+          "decoration.shadow.enabled",
+          "bool:true"
         ],
         "source_lines": [
           5,
@@ -2657,7 +2654,7 @@
           55,
           56
         ],
-        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:enabled"
+        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:decoration.shadow.enabled=bool:true"
       }
     },
     {
@@ -2668,14 +2665,13 @@
       "proof": {
         "expected": "decoration.shadow.range=12",
         "source_tokens": [
-          "range",
-          "12"
+          "decoration.shadow.range",
+          "number:12"
         ],
         "source_lines": [
-          29,
           30
         ],
-        "actual": "lua[appearance.lua:29,30]:range,12"
+        "actual": "lua[appearance.lua:30]:decoration.shadow.range=number:12"
       }
     },
     {
@@ -2686,14 +2682,13 @@
       "proof": {
         "expected": "decoration.shadow.offset=-12 -12",
         "source_tokens": [
-          "offset",
-          "12"
+          "decoration.shadow.offset",
+          "string:-12-12"
         ],
         "source_lines": [
-          29,
           30
         ],
-        "actual": "lua[appearance.lua:29,30]:offset,12"
+        "actual": "lua[appearance.lua:30]:decoration.shadow.offset=string:-12-12"
       }
     },
     {
@@ -2704,12 +2699,13 @@
       "proof": {
         "expected": "decoration.shadow.render_power=3",
         "source_tokens": [
-          "render_power"
+          "decoration.shadow.render_power",
+          "number:3"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:render_power"
+        "actual": "lua[appearance.lua:30]:decoration.shadow.render_power=number:3"
       }
     },
     {
@@ -2720,19 +2716,13 @@
       "proof": {
         "expected": "decoration.shadow.color=rgba(00000080)",
         "source_tokens": [
-          "00000080",
-          "color",
-          "rgba"
+          "decoration.shadow.color",
+          "string:rgba(00000080)"
         ],
         "source_lines": [
-          28,
-          30,
-          59,
-          60,
-          64,
-          65
+          30
         ],
-        "actual": "lua[appearance.lua:28,30,59,60,64,65]:00000080,color,rgba"
+        "actual": "lua[appearance.lua:30]:decoration.shadow.color=string:rgba(00000080)"
       }
     },
     {
@@ -2743,7 +2733,8 @@
       "proof": {
         "expected": "decoration.blur.enabled=true",
         "source_tokens": [
-          "enabled"
+          "decoration.blur.enabled",
+          "bool:true"
         ],
         "source_lines": [
           5,
@@ -2760,7 +2751,7 @@
           55,
           56
         ],
-        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:enabled"
+        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:decoration.blur.enabled=bool:true"
       }
     },
     {
@@ -2771,14 +2762,13 @@
       "proof": {
         "expected": "decoration.blur.size=6",
         "source_tokens": [
-          "size"
+          "decoration.blur.size",
+          "number:6"
         ],
         "source_lines": [
-          28,
-          29,
           30
         ],
-        "actual": "lua[appearance.lua:28,29,30]:size"
+        "actual": "lua[appearance.lua:30]:decoration.blur.size=number:6"
       }
     },
     {
@@ -2789,12 +2779,13 @@
       "proof": {
         "expected": "decoration.blur.passes=2",
         "source_tokens": [
-          "passes"
+          "decoration.blur.passes",
+          "number:2"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:passes"
+        "actual": "lua[appearance.lua:30]:decoration.blur.passes=number:2"
       }
     },
     {
@@ -2805,12 +2796,13 @@
       "proof": {
         "expected": "decoration.blur.new_optimizations=true",
         "source_tokens": [
-          "new_optimizations"
+          "decoration.blur.new_optimizations",
+          "bool:true"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:new_optimizations"
+        "actual": "lua[appearance.lua:30]:decoration.blur.new_optimizations=bool:true"
       }
     },
     {
@@ -2821,12 +2813,13 @@
       "proof": {
         "expected": "decoration.blur.ignore_opacity=true",
         "source_tokens": [
-          "ignore_opacity"
+          "decoration.blur.ignore_opacity",
+          "bool:true"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:ignore_opacity"
+        "actual": "lua[appearance.lua:30]:decoration.blur.ignore_opacity=bool:true"
       }
     },
     {
@@ -2837,13 +2830,13 @@
       "proof": {
         "expected": "decoration.blur.noise=0.015",
         "source_tokens": [
-          "noise",
-          "0.015"
+          "decoration.blur.noise",
+          "number:0.015"
         ],
         "source_lines": [
           30
         ],
-        "actual": "lua[appearance.lua:30]:noise,0.015"
+        "actual": "lua[appearance.lua:30]:decoration.blur.noise=number:0.015"
       }
     },
     {
@@ -2854,14 +2847,14 @@
       "proof": {
         "expected": "decoration.blur.vibrancy=0.22",
         "source_tokens": [
-          "vibrancy",
-          "0.22"
+          "decoration.blur.vibrancy",
+          "number:0.22"
         ],
         "source_lines": [
           21,
           30
         ],
-        "actual": "lua[appearance.lua:21,30]:vibrancy,0.22"
+        "actual": "lua[appearance.lua:21,30]:decoration.blur.vibrancy=number:0.22"
       }
     },
     {
@@ -2872,14 +2865,14 @@
       "proof": {
         "expected": "decoration.blur.contrast=0.9",
         "source_tokens": [
-          "contrast",
-          "0.9"
+          "decoration.blur.contrast",
+          "number:0.9"
         ],
         "source_lines": [
           21,
           30
         ],
-        "actual": "lua[appearance.lua:21,30]:contrast,0.9"
+        "actual": "lua[appearance.lua:21,30]:decoration.blur.contrast=number:0.9"
       }
     },
     {
@@ -2890,14 +2883,14 @@
       "proof": {
         "expected": "decoration.blur.brightness=0.85",
         "source_tokens": [
-          "brightness",
-          "0.85"
+          "decoration.blur.brightness",
+          "number:0.85"
         ],
         "source_lines": [
           21,
           30
         ],
-        "actual": "lua[appearance.lua:21,30]:brightness,0.85"
+        "actual": "lua[appearance.lua:21,30]:decoration.blur.brightness=number:0.85"
       }
     },
     {
@@ -2908,7 +2901,8 @@
       "proof": {
         "expected": "animations.enabled=true",
         "source_tokens": [
-          "enabled"
+          "animations.enabled",
+          "bool:true"
         ],
         "source_lines": [
           5,
@@ -2925,7 +2919,7 @@
           55,
           56
         ],
-        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:enabled"
+        "actual": "lua[appearance.lua:5,8,30,31,39,49,50,51,52,53,54,55,56]:animations.enabled=bool:true"
       }
     },
     {
@@ -3452,12 +3446,13 @@
       "proof": {
         "expected": "dwindle.preserve_split=true",
         "source_tokens": [
-          "preserve_split"
+          "dwindle.preserve_split",
+          "bool:true"
         ],
         "source_lines": [
           32
         ],
-        "actual": "lua[appearance.lua:32]:preserve_split"
+        "actual": "lua[appearance.lua:32]:dwindle.preserve_split=bool:true"
       }
     },
     {
@@ -3468,12 +3463,13 @@
       "proof": {
         "expected": "dwindle.force_split=2",
         "source_tokens": [
-          "force_split"
+          "dwindle.force_split",
+          "number:2"
         ],
         "source_lines": [
           32
         ],
-        "actual": "lua[appearance.lua:32]:force_split"
+        "actual": "lua[appearance.lua:32]:dwindle.force_split=number:2"
       }
     },
     {
@@ -3484,13 +3480,13 @@
       "proof": {
         "expected": "master.new_status=master",
         "source_tokens": [
-          "new_status",
-          "master"
+          "master.new_status",
+          "string:master"
         ],
         "source_lines": [
           32
         ],
-        "actual": "lua[appearance.lua:32]:new_status,master"
+        "actual": "lua[appearance.lua:32]:master.new_status=string:master"
       }
     },
     {
@@ -3501,13 +3497,13 @@
       "proof": {
         "expected": "gestures.workspace_swipe_distance=300",
         "source_tokens": [
-          "workspace_swipe_distance",
-          "300"
+          "gestures.workspace_swipe_distance",
+          "number:300"
         ],
         "source_lines": [
           33
         ],
-        "actual": "lua[appearance.lua:33]:workspace_swipe_distance,300"
+        "actual": "lua[appearance.lua:33]:gestures.workspace_swipe_distance=number:300"
       }
     },
     {
@@ -3518,12 +3514,13 @@
       "proof": {
         "expected": "gestures.workspace_swipe_create_new=true",
         "source_tokens": [
-          "workspace_swipe_create_new"
+          "gestures.workspace_swipe_create_new",
+          "bool:true"
         ],
         "source_lines": [
           33
         ],
-        "actual": "lua[appearance.lua:33]:workspace_swipe_create_new"
+        "actual": "lua[appearance.lua:33]:gestures.workspace_swipe_create_new=bool:true"
       }
     },
     {
@@ -3534,12 +3531,13 @@
       "proof": {
         "expected": "misc.force_default_wallpaper=0",
         "source_tokens": [
-          "force_default_wallpaper"
+          "misc.force_default_wallpaper",
+          "number:0"
         ],
         "source_lines": [
           34
         ],
-        "actual": "lua[appearance.lua:34]:force_default_wallpaper"
+        "actual": "lua[appearance.lua:34]:misc.force_default_wallpaper=number:0"
       }
     },
     {
@@ -3550,12 +3548,13 @@
       "proof": {
         "expected": "misc.disable_hyprland_logo=true",
         "source_tokens": [
-          "disable_hyprland_logo"
+          "misc.disable_hyprland_logo",
+          "bool:true"
         ],
         "source_lines": [
           34
         ],
-        "actual": "lua[appearance.lua:34]:disable_hyprland_logo"
+        "actual": "lua[appearance.lua:34]:misc.disable_hyprland_logo=bool:true"
       }
     },
     {
@@ -3566,12 +3565,13 @@
       "proof": {
         "expected": "misc.disable_splash_rendering=true",
         "source_tokens": [
-          "disable_splash_rendering"
+          "misc.disable_splash_rendering",
+          "bool:true"
         ],
         "source_lines": [
           34
         ],
-        "actual": "lua[appearance.lua:34]:disable_splash_rendering"
+        "actual": "lua[appearance.lua:34]:misc.disable_splash_rendering=bool:true"
       }
     },
     {
