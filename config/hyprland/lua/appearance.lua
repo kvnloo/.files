@@ -11,16 +11,19 @@ local hyprglass={
 if os.getenv("HYPR_LUA_TEST_MODE") ~= "1" or os.getenv("HYPR_LUA_ISOLATED_MODE") == "1" then
   -- Plugin keys only exist after the shared object has registered them.
   hl.plugin.load(hyprglass_plugin)
-  local hg=hl.plugin.hyprglass
-  hg.config(hyprglass)
-  hg.preset("flow", {
-    blur_strength=1.10, blur_iterations=2, refraction_strength=0.42,
-    chromatic_aberration=0.18, fresnel_strength=0.46,
-    specular_strength=0.52, glass_opacity=0.88,
-    edge_thickness=0.045, lens_distortion=0.30,
-    dark={brightness=0.88,contrast=0.96,saturation=0.92,vibrancy=0.18,adaptive_dim=0.20},
-  })
-  hg.layer("waybar", {preset="flow",mask_threshold=0.05})
+  hl.on("hyprland.start", function()
+    local hg=hl.plugin.hyprglass
+    if not hg then error("hyprglass Lua API unavailable after plugin load") end
+    hg.config(hyprglass)
+    hg.preset("flow", {
+      blur_strength=1.10, blur_iterations=2, refraction_strength=0.42,
+      chromatic_aberration=0.18, fresnel_strength=0.46,
+      specular_strength=0.52, glass_opacity=0.88,
+      edge_thickness=0.045, lens_distortion=0.30,
+      dark={brightness=0.88,contrast=0.96,saturation=0.92,vibrancy=0.18,adaptive_dim=0.20},
+    })
+    hg.layer("waybar", {preset="flow",mask_threshold=0.05})
+  end)
 end
 
 hl.config({

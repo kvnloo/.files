@@ -160,16 +160,28 @@ def test_generated_mouse_binds_use_native_lua_mouse_flag():
     assert '{drag=true}' not in binds
 
 
-def test_hyprglass_uses_post_load_native_lua_api():
+def test_hyprglass_defers_native_lua_api_until_hyprland_start():
     appearance = (HYPR / "lua/appearance.lua").read_text()
     harness = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
     assert 'local hg=hl.plugin.hyprglass' in appearance
-    assert 'hl.plugin.load(hyprglass_plugin)\n  local hg=hl.plugin.hyprglass' in appearance
-    assert 'hl.on("hyprland.start"' not in appearance
+    assert 'hl.plugin.load(hyprglass_plugin)\n  hl.on("hyprland.start", function()' in appearance
+    assert 'error("hyprglass Lua API unavailable after plugin load")' in appearance
     assert 'hg.config(hyprglass)' in appearance
     assert 'hg.preset("flow"' in appearance
     assert 'hg.layer("waybar"' in appearance
     assert 'keyword plugin:hyprglass' not in harness
+
+
+def test_production_verify_config_has_no_error_text():
+    result = subprocess.run(
+        ["Hyprland", "--verify-config", "-c", HYPR / "hyprland.lua"],
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "error" not in output.lower(), output
+    assert "config ok" in output.lower(), output
 
 
 def test_nested_parity_harness_owns_health_readback_and_dynamic_lifecycles():
