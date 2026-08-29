@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Fail closed when representative legacy semantics are absent from Lua modules."""
+"""Fail closed unless every inventoried semantic has its audited Lua owner."""
 import argparse
+import hashlib
+import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "config/hyprland/lua"
+INVENTORY = ROOT / "config/hyprland/migration-inventory.json"
 
 CHECKS = {
     "monitors.lua": (
@@ -21,9 +24,9 @@ CHECKS = {
         'phone-display.sh toggle',
     ),
     "appearance.lua": (
-        '["plugin:hyprglass"]', 'enabled=0', 'default_theme="dark"',
-        'default_preset="flow"', 'blur_strength:1.10', 'brightness:0.88',
-        'namespace_mask_thresholds="waybar=0.05"', 'colors.json',
+        'hl.plugin.hyprglass', 'enabled=false', 'default_theme="dark"',
+        'default_preset="flow"', 'blur_strength=1.10', 'brightness=0.88',
+        'hg.layer("waybar", {preset="flow",mask_threshold=0.05})', 'colors.json',
     ),
 }
 
@@ -33,6 +36,17 @@ def main():
     parser.add_argument("--lua-root", type=Path, default=DEFAULT)
     args = parser.parse_args()
     failures = []
+    inventory = json.loads(INVENTORY.read_text())
+    for item in inventory.get("semantics", []):
+        proof = item.get("proof", {})
+        owner = Path(item["owner"]).name
+        candidate = args.lua_root / owner
+        source = candidate if candidate.exists() else DEFAULT / owner
+        actual = hashlib.sha256(source.read_bytes()).hexdigest()
+        if proof.get("owner_sha256") != actual:
+            failures.append(f"line {item['line']} {item['path']}: owner digest mismatch")
+    if not inventory.get("semantics"):
+        failures.append("inventory has no semantics")
     for name, tokens in CHECKS.items():
         candidate = args.lua_root / name
         source = candidate if candidate.exists() else DEFAULT / name

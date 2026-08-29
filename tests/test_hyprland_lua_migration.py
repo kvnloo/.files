@@ -103,10 +103,14 @@ def test_hyprglass_semantics_are_preserved_in_lua_and_inventory():
     }
     semantics = {item["path"]: item["value"] for item in inventory["semantics"]}
     assert expected.items() <= semantics.items()
-    for value in expected.values():
-        assert repr(value).strip("'") in appearance
-    assert "blur_strength:1.10" in appearance
-    assert "brightness:0.88" in appearance
+    for token in (
+        "enabled=false", 'default_theme="dark"', 'default_preset="flow"',
+        'layers={enabled=false,preset="flow"}',
+        'hg.layer("waybar", {preset="flow",mask_threshold=0.05})',
+    ):
+        assert token in appearance
+    assert "blur_strength=1.10" in appearance
+    assert "brightness=0.88" in appearance
 
 
 def test_semantic_inventory_rejects_representative_sabotage(tmp_path):
@@ -138,6 +142,36 @@ def test_phone_display_uses_injected_isolated_instance_without_focus_dispatch():
     assert 'dispatch moveworkspacetomonitor' not in script
 
 
+def test_nested_bind_parity_normalizes_lua_callback_transport_only():
+    script = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
+    assert 'if [[ $category == binds ]]; then' in script
+    assert '.dispatcher,.arg,.mouse' in script
+    assert 'sort_by(.submap,.modmask,.key' in script
+    assert 'The executable inventory separately proves dispatcher/argument ownership' in script
+    assert 'Lua IPC reports native callback mouse binds as mouse=false' in script
+    assert 'canonical_config()' in script
+    assert '.value=(.custom // .css // .str // .int // .float // .bool)' in script
+
+
+def test_generated_mouse_binds_use_native_lua_mouse_flag():
+    binds = (HYPR / "lua/binds.lua").read_text()
+    assert 'hl.dsp.window.drag(), {mouse=true}' in binds
+    assert 'hl.dsp.window.resize(), {mouse=true}' in binds
+    assert '{drag=true}' not in binds
+
+
+def test_hyprglass_uses_post_load_native_lua_api():
+    appearance = (HYPR / "lua/appearance.lua").read_text()
+    harness = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
+    assert 'local hg=hl.plugin.hyprglass' in appearance
+    assert 'hl.plugin.load(hyprglass_plugin)\n  local hg=hl.plugin.hyprglass' in appearance
+    assert 'hl.on("hyprland.start"' not in appearance
+    assert 'hg.config(hyprglass)' in appearance
+    assert 'hg.preset("flow"' in appearance
+    assert 'hg.layer("waybar"' in appearance
+    assert 'keyword plugin:hyprglass' not in harness
+
+
 def test_nested_parity_harness_owns_health_readback_and_dynamic_lifecycles():
     harness = ROOT / "scripts/verify-hypr-lua-nested"
     assert harness.exists()
@@ -152,3 +186,33 @@ def test_nested_parity_harness_owns_health_readback_and_dynamic_lifecycles():
     result = subprocess.run([harness, "--help"], capture_output=True, text=True)
     assert result.returncode == 0
     assert "protected workspaces" in result.stdout
+
+
+def test_checker_executes_every_inventory_semantic_and_broad_sabotage(tmp_path):
+    checker = ROOT / "scripts/check-hypr-lua-parity"
+    inventory = json.loads(INVENTORY.read_text())
+    assert inventory["semantics"]
+    for item in inventory["semantics"]:
+        assert item.get("proof"), item
+    for relative, old, new in (
+        ("lua/environment.lua", "QT_QPA_PLATFORMTHEME", "QT_THEME_SABOTAGED"),
+        ("lua/appearance.lua", "workspace_swipe_distance=300", "workspace_swipe_distance=301"),
+        ("lua/appearance.lua", 'leaf="fadeDim"', 'leaf="fadeDimBroken"'),
+        ("lua/autostart.lua", "cliphist store", "cliphist discard"),
+    ):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        body = (HYPR / relative).read_text()
+        assert old in body
+        target.write_text(body.replace(old, new, 1))
+        result = subprocess.run([checker, "--lua-root", tmp_path / "lua"], capture_output=True, text=True)
+        assert result.returncode != 0, relative
+
+
+def test_nested_harness_compares_legacy_and_lua_and_asserts_cleanup_and_plugin():
+    body = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
+    for token in (
+        "legacy-", "lua-", "parity-mismatch", "plugin:hyprglass:enabled",
+        "cleanup_complete", "kill -0", "host-workspaces-after", "nested socket remains",
+    ):
+        assert token in body

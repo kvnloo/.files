@@ -1,5 +1,5 @@
 local home=os.getenv("HOME")
-if os.getenv("HYPR_LUA_TEST_MODE") == "1" then return end
+if os.getenv("HYPR_LUA_TEST_MODE") == "1" or os.getenv("HYPR_LUA_ISOLATED_MODE") == "1" then return end
 hl.on("hyprland.start", function()
   for _,cmd in ipairs({
     home.."/workspace/.files/scripts/bar-mode.sh restore",

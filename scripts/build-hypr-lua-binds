@@ -25,11 +25,19 @@ for raw in legacy.read_text().splitlines():
         opts=[]
         if "l" in kind[4:]: opts.append("locked=true")
         if "e" in kind[4:]: opts.append("repeating=true")
-        if kind=="bindm": opts.append("drag=true")
+        if kind=="bindm": opts.append("mouse=true")
         options=", {"+",".join(opts)+"}" if opts else ""
         # Dispatchers stay typed at the bind boundary; exec_raw preserves every
-        # legacy dispatcher argument without shell evaluation.
-        line=f"hl.bind({json.dumps(keys, ensure_ascii=False)}, hl.dsp.exec_raw({json.dumps(dispatcher, ensure_ascii=False)}, {json.dumps(arg, ensure_ascii=False)}){options})"
+        # legacy dispatcher argument without shell evaluation. Mouse drags need
+        # the dedicated native dispatchers so Hyprland retains bindm semantics.
+        if kind == "bindm":
+            mouse_dispatchers = {"movewindow": "hl.dsp.window.drag()", "resizewindow": "hl.dsp.window.resize()"}
+            if dispatcher not in mouse_dispatchers or arg:
+                raise SystemExit(f"unsupported mouse bind: {text}")
+            dispatch = mouse_dispatchers[dispatcher]
+        else:
+            dispatch = f"hl.dsp.exec_raw({json.dumps(dispatcher, ensure_ascii=False)}, {json.dumps(arg, ensure_ascii=False)})"
+        line=f"hl.bind({json.dumps(keys, ensure_ascii=False)}, {dispatch}{options})"
         groups[current].append(line)
 lines=["-- Generated from the audited bind directives in hyprland.legacy.conf."]
 lines.extend(groups.pop("reset",[]))

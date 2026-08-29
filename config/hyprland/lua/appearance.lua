@@ -1,20 +1,26 @@
 local home = os.getenv("HOME")
+local hyprglass_plugin = os.getenv("HYPR_LUA_PLUGIN") or (home .. "/.local/share/hyprland/plugins/hyprglass/hyprglass.so")
 
 local hyprglass={
-  enabled=0,
+  enabled=false,
   default_theme="dark",
   default_preset="flow",
-  preset={
-    "name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
-    "name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
-  },
-  layers={enabled=0,namespaces="waybar",preset="flow",namespace_mask_thresholds="waybar=0.05"},
+  layers={enabled=false,preset="flow"},
 }
 
-if os.getenv("HYPR_LUA_TEST_MODE") ~= "1" then
-  hl.plugin.load(home .. "/.local/share/hyprland/plugins/hyprglass/hyprglass.so")
+if os.getenv("HYPR_LUA_TEST_MODE") ~= "1" or os.getenv("HYPR_LUA_ISOLATED_MODE") == "1" then
   -- Plugin keys only exist after the shared object has registered them.
-  hl.on("hyprland.start", function() hl.config({["plugin:hyprglass"]=hyprglass}) end)
+  hl.plugin.load(hyprglass_plugin)
+  local hg=hl.plugin.hyprglass
+  hg.config(hyprglass)
+  hg.preset("flow", {
+    blur_strength=1.10, blur_iterations=2, refraction_strength=0.42,
+    chromatic_aberration=0.18, fresnel_strength=0.46,
+    specular_strength=0.52, glass_opacity=0.88,
+    edge_thickness=0.045, lens_distortion=0.30,
+    dark={brightness=0.88,contrast=0.96,saturation=0.92,vibrancy=0.18,adaptive_dim=0.20},
+  })
+  hg.layer("waybar", {preset="flow",mask_threshold=0.05})
 end
 
 hl.config({
