@@ -238,6 +238,25 @@ def test_each_inventory_semantic_has_independent_expected_and_actual_proof():
         proof = item["proof"]
         assert proof["expected"] == f'{item["path"]}={item["value"]}'
         assert proof["actual"]
+        assert proof["actual"].startswith("lua[")
+        assert proof["source_tokens"]
         key = (item["line"], proof["actual"])
         assert key not in keys
         keys.add(key)
+
+
+def test_checker_detects_specific_rule_and_ordinary_semantic_sabotage(tmp_path):
+    checker = ROOT / "scripts/check-hypr-lua-parity"
+    for relative, old, new in (
+        ("lua/rules.lua", 'class="^(Spotify|spotify)$"', 'class="^(SpotifyBROKEN|spotify)$"'),
+        ("lua/rules.lua", 'namespace="^(noctalia-background-.*)$"', 'namespace="^(noctalia-broken-.*)$"'),
+        ("lua/appearance.lua", "workspace_swipe_distance=300", "workspace_swipe_distance=301"),
+    ):
+        lua_root = tmp_path / relative.replace("lua/" + relative.split("/")[-1], "lua")
+        lua_root.mkdir(parents=True, exist_ok=True)
+        source = HYPR / relative
+        body = source.read_text()
+        assert old in body
+        (lua_root / source.name).write_text(body.replace(old, new, 1))
+        result = subprocess.run([checker, "--lua-root", lua_root], capture_output=True, text=True)
+        assert result.returncode != 0, (relative, result.stdout, result.stderr)

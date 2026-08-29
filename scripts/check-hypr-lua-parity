@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Fail closed unless every inventoried semantic has its audited Lua owner."""
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
+from hypr_lua_semantics import extract
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "config/hyprland/lua"
@@ -40,13 +40,17 @@ def main():
     for item in inventory.get("semantics", []):
         proof = item.get("proof", {})
         expected = f'{item["path"]}={item["value"]}'
-        actual = f'legacy[{item["line"]}]:{expected}'
-        if proof.get("expected") != expected or proof.get("actual") != actual:
+        if proof.get("expected") != expected:
             failures.append(f"line {item['line']} {item['path']}: semantic proof mismatch")
         owner = Path(item["owner"]).name
         candidate = args.lua_root / owner
         source = candidate if candidate.exists() else DEFAULT / owner
-        if proof.get("owner_sha256") != hashlib.sha256(source.read_bytes()).hexdigest():
+        try:
+            actual = extract(source, item["path"], item["value"])
+        except ValueError as error:
+            failures.append(f"line {item['line']} {error}")
+            continue
+        if proof.get("source_tokens") != actual["source_tokens"] or proof.get("actual") != actual["actual"]:
             failures.append(f"line {item['line']} {item['path']}: implementation mismatch")
     if not inventory.get("semantics"):
         failures.append("inventory has no semantics")

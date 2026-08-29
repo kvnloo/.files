@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the auditable legacy-directive-to-Lua ownership inventory."""
 import json
-import hashlib
 from pathlib import Path
+from hypr_lua_semantics import extract
 
 root = Path(__file__).resolve().parents[1]
 legacy = root / "config/hyprland/hyprland.legacy.conf"
@@ -43,11 +43,6 @@ if stack:
     raise SystemExit(f"unclosed blocks: {stack}")
 for item in semantics:
     expected = f'{item["path"]}={item["value"]}'
-    # The actual proof is independently keyed by the immutable legacy line and
-    # normalized semantic, rather than sharing an owner-wide digest.
-    item["proof"] = {
-        "expected": expected,
-        "actual": f'legacy[{item["line"]}]:{expected}',
-        "owner_sha256": hashlib.sha256((root / "config/hyprland" / item["owner"]).read_bytes()).hexdigest(),
-    }
+    owner = root / "config/hyprland" / item["owner"]
+    item["proof"] = {"expected": expected, **extract(owner, item["path"], item["value"])}
 out.write_text(json.dumps({"legacy": legacy.name, "directives": directives, "semantics": semantics, "unclassified": []}, indent=2) + "\n")

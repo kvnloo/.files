@@ -61,11 +61,25 @@ compare_category() {
     printf 'parity mismatch: %s\n' "$category" >&2; exit 1; }
 }
 compare_static_category() {
-  local category=$1 pattern
+  local category=$1 pattern owner="$ROOT/config/hyprland/lua/rules.lua"
   [[ $category == window-rules ]] && pattern='^windowrule' || pattern='^layerrule'
-  jq -S --arg pattern "$pattern" '[.semantics[] | select(.path|test($pattern)) | {path,value,proof}]' "$ROOT/config/hyprland/migration-inventory.json" >"$EVIDENCE/legacy-$category.normalized.json"
-  cp "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json"
-  "$ROOT/scripts/check-hypr-lua-parity" >/dev/null
+  jq -S --arg pattern "$pattern" '[.semantics[] | select(.path|test($pattern)) | {line,path,source_tokens:.proof.source_tokens}]' "$ROOT/config/hyprland/migration-inventory.json" >"$EVIDENCE/legacy-$category.normalized.json"
+  python3 - "$ROOT" "$pattern" "$owner" "$EVIDENCE/lua-$category.normalized.json" <<'PY'
+import json, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+from hypr_lua_semantics import extract
+inventory=json.loads((Path(sys.argv[1]) / "config/hyprland/migration-inventory.json").read_text())
+rows=[]
+for item in inventory["semantics"]:
+    if __import__("re").search(sys.argv[2], item["path"]):
+        proof=extract(Path(sys.argv[3]), item["path"], item["value"])
+        rows.append({"line":item["line"],"path":item["path"],"source_tokens":proof["source_tokens"]})
+Path(sys.argv[4]).write_text(json.dumps(rows, sort_keys=True, indent=2)+"\n")
+PY
+  cmp -s "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" || {
+    diff -u "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" >"$EVIDENCE/parity-mismatch-$category.diff" || true
+    printf 'parity mismatch: %s\n' "$category" >&2; exit 1; }
 }
 cleanup() {
   local status=$?
