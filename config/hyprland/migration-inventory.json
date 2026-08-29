@@ -1684,6 +1684,8 @@
       "value": "/home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin=/home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so",
+        "actual": "legacy[9]:plugin=/home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1693,6 +1695,8 @@
       "value": "HDMI-A-1, 1920x1080@75, 0x420, 1",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "monitor=HDMI-A-1, 1920x1080@75, 0x420, 1",
+        "actual": "legacy[18]:monitor=HDMI-A-1, 1920x1080@75, 0x420, 1",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1702,6 +1706,8 @@
       "value": "DP-2, 1920x1080@240, 1920x0, 1, transform, 1",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "monitor=DP-2, 1920x1080@240, 1920x0, 1, transform, 1",
+        "actual": "legacy[19]:monitor=DP-2, 1920x1080@240, 1920x0, 1, transform, 1",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1711,6 +1717,8 @@
       "value": "DP-1, 1920x1080@540, 3000x420, 1",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "monitor=DP-1, 1920x1080@540, 3000x420, 1",
+        "actual": "legacy[20]:monitor=DP-1, 1920x1080@540, 3000x420, 1",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1720,6 +1728,8 @@
       "value": "PHONE, 3120x1440@120, 4920x420, 1",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "monitor=PHONE, 3120x1440@120, 4920x420, 1",
+        "actual": "legacy[22]:monitor=PHONE, 3120x1440@120, 4920x420, 1",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1729,6 +1739,8 @@
       "value": ", preferred, auto, 1",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "monitor=, preferred, auto, 1",
+        "actual": "legacy[25]:monitor=, preferred, auto, 1",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1738,6 +1750,8 @@
       "value": "20, monitor:PHONE, default:true",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "workspace=20, monitor:PHONE, default:true",
+        "actual": "legacy[45]:workspace=20, monitor:PHONE, default:true",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1747,6 +1761,8 @@
       "value": "1, monitor:DP-1, default:true",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "workspace=1, monitor:DP-1, default:true",
+        "actual": "legacy[47]:workspace=1, monitor:DP-1, default:true",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1756,6 +1772,8 @@
       "value": "10, monitor:HDMI-A-1, default:true",
       "owner": "lua/monitors.lua",
       "proof": {
+        "expected": "workspace=10, monitor:HDMI-A-1, default:true",
+        "actual": "legacy[48]:workspace=10, monitor:HDMI-A-1, default:true",
         "owner_sha256": "0cbbdf4311200bfbcee079894a5d977245eba1d6c9d3ad3983c3c5a6203beef0"
       }
     },
@@ -1765,6 +1783,8 @@
       "value": "QT_QPA_PLATFORMTHEME,qt6ct",
       "owner": "lua/environment.lua",
       "proof": {
+        "expected": "env=QT_QPA_PLATFORMTHEME,qt6ct",
+        "actual": "legacy[54]:env=QT_QPA_PLATFORMTHEME,qt6ct",
         "owner_sha256": "b4e4c755cc82b4abbabbf2d644387277bede525fea4966a3611d38b65ba05c4d"
       }
     },
@@ -1774,6 +1794,8 @@
       "value": "QT_QPA_PLATFORM,wayland;xcb",
       "owner": "lua/environment.lua",
       "proof": {
+        "expected": "env=QT_QPA_PLATFORM,wayland;xcb",
+        "actual": "legacy[55]:env=QT_QPA_PLATFORM,wayland;xcb",
         "owner_sha256": "b4e4c755cc82b4abbabbf2d644387277bede525fea4966a3611d38b65ba05c4d"
       }
     },
@@ -1783,6 +1805,8 @@
       "value": "QT_WAYLAND_DISABLE_WINDOWDECORATION,1",
       "owner": "lua/environment.lua",
       "proof": {
+        "expected": "env=QT_WAYLAND_DISABLE_WINDOWDECORATION,1",
+        "actual": "legacy[56]:env=QT_WAYLAND_DISABLE_WINDOWDECORATION,1",
         "owner_sha256": "b4e4c755cc82b4abbabbf2d644387277bede525fea4966a3611d38b65ba05c4d"
       }
     },
@@ -1792,6 +1816,8 @@
       "value": "XCURSOR_THEME,capitaine-cursors",
       "owner": "lua/environment.lua",
       "proof": {
+        "expected": "env=XCURSOR_THEME,capitaine-cursors",
+        "actual": "legacy[57]:env=XCURSOR_THEME,capitaine-cursors",
         "owner_sha256": "b4e4c755cc82b4abbabbf2d644387277bede525fea4966a3611d38b65ba05c4d"
       }
     },
@@ -1801,6 +1827,8 @@
       "value": "XCURSOR_SIZE,24",
       "owner": "lua/environment.lua",
       "proof": {
+        "expected": "env=XCURSOR_SIZE,24",
+        "actual": "legacy[58]:env=XCURSOR_SIZE,24",
         "owner_sha256": "b4e4c755cc82b4abbabbf2d644387277bede525fea4966a3611d38b65ba05c4d"
       }
     },
@@ -1810,6 +1838,8 @@
       "value": "us",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "input.kb_layout=us",
+        "actual": "legacy[65]:input.kb_layout=us",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1819,6 +1849,8 @@
       "value": "1",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "input.follow_mouse=1",
+        "actual": "legacy[66]:input.follow_mouse=1",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1828,6 +1860,8 @@
       "value": "0",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "input.sensitivity=0",
+        "actual": "legacy[67]:input.sensitivity=0",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1837,6 +1871,8 @@
       "value": "flat",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "input.accel_profile=flat",
+        "actual": "legacy[68]:input.accel_profile=flat",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1846,6 +1882,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "input.touchpad.natural_scroll=true",
+        "actual": "legacy[71]:input.touchpad.natural_scroll=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1855,6 +1893,8 @@
       "value": "trackpad",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.name=trackpad",
+        "actual": "legacy[78]:device.name=trackpad",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1864,6 +1904,8 @@
       "value": "adaptive",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.accel_profile=adaptive",
+        "actual": "legacy[79]:device.accel_profile=adaptive",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1873,6 +1915,8 @@
       "value": "pen-passthrough",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.name=pen-passthrough",
+        "actual": "legacy[86]:device.name=pen-passthrough",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1882,6 +1926,8 @@
       "value": "PHONE",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.output=PHONE",
+        "actual": "legacy[87]:device.output=PHONE",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1891,6 +1937,8 @@
       "value": "touch-passthrough",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.name=touch-passthrough",
+        "actual": "legacy[91]:device.name=touch-passthrough",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1900,6 +1948,8 @@
       "value": "PHONE",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "device.output=PHONE",
+        "actual": "legacy[92]:device.output=PHONE",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1909,6 +1959,8 @@
       "value": "18",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.gaps_in=18",
+        "actual": "legacy[100]:general.gaps_in=18",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1918,6 +1970,8 @@
       "value": "8",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.gaps_out=8",
+        "actual": "legacy[101]:general.gaps_out=8",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1927,6 +1981,8 @@
       "value": "4",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.border_size=4",
+        "actual": "legacy[102]:general.border_size=4",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1936,6 +1992,8 @@
       "value": "rgba(75A4CDff) rgba(BE78D1ff) 45deg",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.col.active_border=rgba(75A4CDff) rgba(BE78D1ff) 45deg",
+        "actual": "legacy[105]:general.col.active_border=rgba(75A4CDff) rgba(BE78D1ff) 45deg",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1945,6 +2003,8 @@
       "value": "rgba(2f343faa)",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.col.inactive_border=rgba(2f343faa)",
+        "actual": "legacy[106]:general.col.inactive_border=rgba(2f343faa)",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1954,6 +2014,8 @@
       "value": "dwindle",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.layout=dwindle",
+        "actual": "legacy[108]:general.layout=dwindle",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1963,6 +2025,8 @@
       "value": "false",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "general.allow_tearing=false",
+        "actual": "legacy[109]:general.allow_tearing=false",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1972,6 +2036,8 @@
       "value": "30",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.height=30",
+        "actual": "legacy[115]:group.groupbar.height=30",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1981,6 +2047,8 @@
       "value": "12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.font_size=12",
+        "actual": "legacy[116]:group.groupbar.font_size=12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1990,6 +2058,8 @@
       "value": "JetBrainsMono Nerd Font",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.font_family=JetBrainsMono Nerd Font",
+        "actual": "legacy[117]:group.groupbar.font_family=JetBrainsMono Nerd Font",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -1999,6 +2069,8 @@
       "value": "600",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.font_weight_active=600",
+        "actual": "legacy[118]:group.groupbar.font_weight_active=600",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2008,6 +2080,8 @@
       "value": "450",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.font_weight_inactive=450",
+        "actual": "legacy[119]:group.groupbar.font_weight_inactive=450",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2017,6 +2091,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.gradients=true",
+        "actual": "legacy[120]:group.groupbar.gradients=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2026,6 +2102,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.blur=true",
+        "actual": "legacy[121]:group.groupbar.blur=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2035,6 +2113,8 @@
       "value": "12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.rounding=12",
+        "actual": "legacy[122]:group.groupbar.rounding=12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2044,6 +2124,8 @@
       "value": "2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.rounding_power=2",
+        "actual": "legacy[123]:group.groupbar.rounding_power=2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2053,6 +2135,8 @@
       "value": "10",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.text_padding=10",
+        "actual": "legacy[124]:group.groupbar.text_padding=10",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2062,6 +2146,8 @@
       "value": "2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.indicator_gap=2",
+        "actual": "legacy[125]:group.groupbar.indicator_gap=2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2071,6 +2157,8 @@
       "value": "2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.indicator_height=2",
+        "actual": "legacy[126]:group.groupbar.indicator_height=2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2080,6 +2168,8 @@
       "value": "6",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.gaps_in=6",
+        "actual": "legacy[127]:group.groupbar.gaps_in=6",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2089,6 +2179,8 @@
       "value": "8",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.gaps_out=8",
+        "actual": "legacy[128]:group.groupbar.gaps_out=8",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2098,6 +2190,8 @@
       "value": "12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.gradient_rounding=12",
+        "actual": "legacy[129]:group.groupbar.gradient_rounding=12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2107,6 +2201,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "group.groupbar.gradient_round_only_edges=true",
+        "actual": "legacy[130]:group.groupbar.gradient_round_only_edges=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2116,6 +2212,8 @@
       "value": "~/.cache/wal/colors-hyprland.conf",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "source=~/.cache/wal/colors-hyprland.conf",
+        "actual": "legacy[136]:source=~/.cache/wal/colors-hyprland.conf",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2125,6 +2223,8 @@
       "value": "12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.rounding=12",
+        "actual": "legacy[143]:decoration.rounding=12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2134,6 +2234,8 @@
       "value": "1.0",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.active_opacity=1.0",
+        "actual": "legacy[146]:decoration.active_opacity=1.0",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2143,6 +2245,8 @@
       "value": "0.95",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.inactive_opacity=0.95",
+        "actual": "legacy[147]:decoration.inactive_opacity=0.95",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2152,6 +2256,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.shadow.enabled=true",
+        "actual": "legacy[150]:decoration.shadow.enabled=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2161,6 +2267,8 @@
       "value": "12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.shadow.range=12",
+        "actual": "legacy[151]:decoration.shadow.range=12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2170,6 +2278,8 @@
       "value": "-12 -12",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.shadow.offset=-12 -12",
+        "actual": "legacy[152]:decoration.shadow.offset=-12 -12",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2179,6 +2289,8 @@
       "value": "3",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.shadow.render_power=3",
+        "actual": "legacy[153]:decoration.shadow.render_power=3",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2188,6 +2300,8 @@
       "value": "rgba(00000080)",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.shadow.color=rgba(00000080)",
+        "actual": "legacy[154]:decoration.shadow.color=rgba(00000080)",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2197,6 +2311,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.enabled=true",
+        "actual": "legacy[158]:decoration.blur.enabled=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2206,6 +2322,8 @@
       "value": "6",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.size=6",
+        "actual": "legacy[159]:decoration.blur.size=6",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2215,6 +2333,8 @@
       "value": "2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.passes=2",
+        "actual": "legacy[160]:decoration.blur.passes=2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2224,6 +2344,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.new_optimizations=true",
+        "actual": "legacy[161]:decoration.blur.new_optimizations=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2233,6 +2355,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.ignore_opacity=true",
+        "actual": "legacy[165]:decoration.blur.ignore_opacity=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2242,6 +2366,8 @@
       "value": "0.015",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.noise=0.015",
+        "actual": "legacy[166]:decoration.blur.noise=0.015",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2251,6 +2377,8 @@
       "value": "0.22",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.vibrancy=0.22",
+        "actual": "legacy[167]:decoration.blur.vibrancy=0.22",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2260,6 +2388,8 @@
       "value": "0.9",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.contrast=0.9",
+        "actual": "legacy[168]:decoration.blur.contrast=0.9",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2269,6 +2399,8 @@
       "value": "0.85",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "decoration.blur.brightness=0.85",
+        "actual": "legacy[169]:decoration.blur.brightness=0.85",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2278,6 +2410,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.enabled=true",
+        "actual": "legacy[178]:animations.enabled=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2287,6 +2421,8 @@
       "value": "smoothOut, 0.36, 0, 0.66, -0.56",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.bezier=smoothOut, 0.36, 0, 0.66, -0.56",
+        "actual": "legacy[181]:animations.bezier=smoothOut, 0.36, 0, 0.66, -0.56",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2296,6 +2432,8 @@
       "value": "smoothIn, 0.25, 1, 0.5, 1",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.bezier=smoothIn, 0.25, 1, 0.5, 1",
+        "actual": "legacy[182]:animations.bezier=smoothIn, 0.25, 1, 0.5, 1",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2305,6 +2443,8 @@
       "value": "overshot, 0.4, 0.8, 0.2, 1.2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.bezier=overshot, 0.4, 0.8, 0.2, 1.2",
+        "actual": "legacy[183]:animations.bezier=overshot, 0.4, 0.8, 0.2, 1.2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2314,6 +2454,8 @@
       "value": "windows, 1, 5, overshot, slide",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=windows, 1, 5, overshot, slide",
+        "actual": "legacy[185]:animations.animation=windows, 1, 5, overshot, slide",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2323,6 +2465,8 @@
       "value": "windowsOut, 1, 4, smoothOut, slide",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=windowsOut, 1, 4, smoothOut, slide",
+        "actual": "legacy[186]:animations.animation=windowsOut, 1, 4, smoothOut, slide",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2332,6 +2476,8 @@
       "value": "windowsMove, 1, 4, smoothIn, slide",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=windowsMove, 1, 4, smoothIn, slide",
+        "actual": "legacy[187]:animations.animation=windowsMove, 1, 4, smoothIn, slide",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2341,6 +2487,8 @@
       "value": "border, 1, 10, default",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=border, 1, 10, default",
+        "actual": "legacy[188]:animations.animation=border, 1, 10, default",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2350,6 +2498,8 @@
       "value": "borderangle, 1, 40, default, loop",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=borderangle, 1, 40, default, loop",
+        "actual": "legacy[189]:animations.animation=borderangle, 1, 40, default, loop",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2359,6 +2509,8 @@
       "value": "fade, 1, 5, smoothIn",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=fade, 1, 5, smoothIn",
+        "actual": "legacy[190]:animations.animation=fade, 1, 5, smoothIn",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2368,6 +2520,8 @@
       "value": "fadeDim, 1, 5, smoothIn",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=fadeDim, 1, 5, smoothIn",
+        "actual": "legacy[191]:animations.animation=fadeDim, 1, 5, smoothIn",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2377,6 +2531,8 @@
       "value": "workspaces, 1, 6, overshot, slidevert",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "animations.animation=workspaces, 1, 6, overshot, slidevert",
+        "actual": "legacy[192]:animations.animation=workspaces, 1, 6, overshot, slidevert",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2386,6 +2542,8 @@
       "value": "0",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.enabled=0",
+        "actual": "legacy[202]:plugin:hyprglass.enabled=0",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2395,6 +2553,8 @@
       "value": "dark",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.default_theme=dark",
+        "actual": "legacy[203]:plugin:hyprglass.default_theme=dark",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2404,6 +2564,8 @@
       "value": "flow",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.default_preset=flow",
+        "actual": "legacy[204]:plugin:hyprglass.default_preset=flow",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2413,6 +2575,8 @@
       "value": "name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.preset=name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
+        "actual": "legacy[205]:plugin:hyprglass.preset=name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2422,6 +2586,8 @@
       "value": "name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.preset=name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
+        "actual": "legacy[206]:plugin:hyprglass.preset=name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2431,6 +2597,8 @@
       "value": "0",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.layers.enabled=0",
+        "actual": "legacy[209]:plugin:hyprglass.layers.enabled=0",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2440,6 +2608,8 @@
       "value": "waybar",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.layers.namespaces=waybar",
+        "actual": "legacy[210]:plugin:hyprglass.layers.namespaces=waybar",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2449,6 +2619,8 @@
       "value": "flow",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.layers.preset=flow",
+        "actual": "legacy[211]:plugin:hyprglass.layers.preset=flow",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2458,6 +2630,8 @@
       "value": "waybar=0.05",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "plugin:hyprglass.layers.namespace_mask_thresholds=waybar=0.05",
+        "actual": "legacy[212]:plugin:hyprglass.layers.namespace_mask_thresholds=waybar=0.05",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2467,6 +2641,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "dwindle.preserve_split=true",
+        "actual": "legacy[221]:dwindle.preserve_split=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2476,6 +2652,8 @@
       "value": "2",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "dwindle.force_split=2",
+        "actual": "legacy[222]:dwindle.force_split=2",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2485,6 +2663,8 @@
       "value": "master",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "master.new_status=master",
+        "actual": "legacy[226]:master.new_status=master",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2494,6 +2674,8 @@
       "value": "300",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "gestures.workspace_swipe_distance=300",
+        "actual": "legacy[283]:gestures.workspace_swipe_distance=300",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2503,6 +2685,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "gestures.workspace_swipe_create_new=true",
+        "actual": "legacy[284]:gestures.workspace_swipe_create_new=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2512,6 +2696,8 @@
       "value": "0",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "misc.force_default_wallpaper=0",
+        "actual": "legacy[292]:misc.force_default_wallpaper=0",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2521,6 +2707,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "misc.disable_hyprland_logo=true",
+        "actual": "legacy[293]:misc.disable_hyprland_logo=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2530,6 +2718,8 @@
       "value": "true",
       "owner": "lua/appearance.lua",
       "proof": {
+        "expected": "misc.disable_splash_rendering=true",
+        "actual": "legacy[294]:misc.disable_splash_rendering=true",
         "owner_sha256": "ca0cff2a283d821d43731e9b3d6190e20d6473ca1e81b29332059c15fe3bf95f"
       }
     },
@@ -2539,6 +2729,8 @@
       "value": "match:class ^(Spotify|spotify)$, workspace 10",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Spotify|spotify)$, workspace 10",
+        "actual": "legacy[302]:windowrule=match:class ^(Spotify|spotify)$, workspace 10",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2548,6 +2740,8 @@
       "value": "match:class ^(high-tide)$, workspace 10",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(high-tide)$, workspace 10",
+        "actual": "legacy[303]:windowrule=match:class ^(high-tide)$, workspace 10",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2557,6 +2751,8 @@
       "value": "match:class ^(kitty)$, workspace 1",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(kitty)$, workspace 1",
+        "actual": "legacy[304]:windowrule=match:class ^(kitty)$, workspace 1",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2566,6 +2762,8 @@
       "value": "match:class ^(google-chrome|google-chrome-unstable|Google-chrome)$, workspace 2 silent",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(google-chrome|google-chrome-unstable|Google-chrome)$, workspace 2 silent",
+        "actual": "legacy[305]:windowrule=match:class ^(google-chrome|google-chrome-unstable|Google-chrome)$, workspace 2 silent",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2575,6 +2773,8 @@
       "value": "match:class ^(com\\.obsproject\\.Studio)$, workspace 8 silent",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(com\\.obsproject\\.Studio)$, workspace 8 silent",
+        "actual": "legacy[309]:windowrule=match:class ^(com\\.obsproject\\.Studio)$, workspace 8 silent",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2584,6 +2784,8 @@
       "value": "match:class ^(com\\.obsproject\\.Studio)$, no_initial_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(com\\.obsproject\\.Studio)$, no_initial_focus on",
+        "actual": "legacy[310]:windowrule=match:class ^(com\\.obsproject\\.Studio)$, no_initial_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2593,6 +2795,8 @@
       "value": "match:class ^(HermesE2E-[0-9]+)$, workspace special:hermes-tests silent",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(HermesE2E-[0-9]+)$, workspace special:hermes-tests silent",
+        "actual": "legacy[316]:windowrule=match:class ^(HermesE2E-[0-9]+)$, workspace special:hermes-tests silent",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2602,6 +2806,8 @@
       "value": "match:class ^(HermesE2E-[0-9]+)$, no_initial_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(HermesE2E-[0-9]+)$, no_initial_focus on",
+        "actual": "legacy[317]:windowrule=match:class ^(HermesE2E-[0-9]+)$, no_initial_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2611,6 +2817,8 @@
       "value": "match:class ^(HermesE2E-[0-9]+)$, no_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(HermesE2E-[0-9]+)$, no_focus on",
+        "actual": "legacy[318]:windowrule=match:class ^(HermesE2E-[0-9]+)$, no_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2620,6 +2828,8 @@
       "value": "match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, workspace 9 silent",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, workspace 9 silent",
+        "actual": "legacy[322]:windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, workspace 9 silent",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2629,6 +2839,8 @@
       "value": "match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_initial_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_initial_focus on",
+        "actual": "legacy[323]:windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_initial_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2638,6 +2850,8 @@
       "value": "match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_focus on",
+        "actual": "legacy[324]:windowrule=match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2647,6 +2861,8 @@
       "value": "match:class ^(ZenCDAE2E.*)$, workspace 9 silent",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(ZenCDAE2E.*)$, workspace 9 silent",
+        "actual": "legacy[328]:windowrule=match:class ^(ZenCDAE2E.*)$, workspace 9 silent",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2656,6 +2872,8 @@
       "value": "match:class ^(ZenCDAE2E.*)$, no_initial_focus on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(ZenCDAE2E.*)$, no_initial_focus on",
+        "actual": "legacy[329]:windowrule=match:class ^(ZenCDAE2E.*)$, no_initial_focus on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2665,6 +2883,8 @@
       "value": "tag +hyprglass_disabled, match:fullscreen true",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=tag +hyprglass_disabled, match:fullscreen true",
+        "actual": "legacy[332]:windowrule=tag +hyprglass_disabled, match:fullscreen true",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2674,6 +2894,8 @@
       "value": "tag +hyprglass_disabled, match:class ^(steam|Steam|Plex|linux-wallpaperengine)$",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=tag +hyprglass_disabled, match:class ^(steam|Steam|Plex|linux-wallpaperengine)$",
+        "actual": "legacy[333]:windowrule=tag +hyprglass_disabled, match:class ^(steam|Steam|Plex|linux-wallpaperengine)$",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2683,6 +2905,8 @@
       "value": "match:class ^(scratch_term)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(scratch_term)$, float on",
+        "actual": "legacy[336]:windowrule=match:class ^(scratch_term)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2692,6 +2916,8 @@
       "value": "match:class ^(scratch_term)$, size 80% 70%",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(scratch_term)$, size 80% 70%",
+        "actual": "legacy[337]:windowrule=match:class ^(scratch_term)$, size 80% 70%",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2701,6 +2927,8 @@
       "value": "match:class ^(scratch_term)$, center on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(scratch_term)$, center on",
+        "actual": "legacy[338]:windowrule=match:class ^(scratch_term)$, center on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2710,6 +2938,8 @@
       "value": "match:class ^(scratch_term)$, workspace special:scratch_term",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(scratch_term)$, workspace special:scratch_term",
+        "actual": "legacy[339]:windowrule=match:class ^(scratch_term)$, workspace special:scratch_term",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2719,6 +2949,8 @@
       "value": "match:class ^(pavucontrol)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(pavucontrol)$, float on",
+        "actual": "legacy[342]:windowrule=match:class ^(pavucontrol)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2728,6 +2960,8 @@
       "value": "match:class ^(nm-connection-editor)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(nm-connection-editor)$, float on",
+        "actual": "legacy[343]:windowrule=match:class ^(nm-connection-editor)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2737,6 +2971,8 @@
       "value": "match:class ^(blueman-manager)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(blueman-manager)$, float on",
+        "actual": "legacy[344]:windowrule=match:class ^(blueman-manager)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2746,6 +2982,8 @@
       "value": "match:class ^(agent-fleet-popup|agent-deck-popup)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, float on",
+        "actual": "legacy[347]:windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2755,6 +2993,8 @@
       "value": "match:class ^(agent-fleet-popup|agent-deck-popup)$, size 1700 900",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, size 1700 900",
+        "actual": "legacy[348]:windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, size 1700 900",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2764,6 +3004,8 @@
       "value": "match:class ^(agent-fleet-popup|agent-deck-popup)$, center on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, center on",
+        "actual": "legacy[349]:windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, center on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2773,6 +3015,8 @@
       "value": "match:class ^(agent-fleet-popup|agent-deck-popup)$, pin on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, pin on",
+        "actual": "legacy[350]:windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, pin on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2782,6 +3026,8 @@
       "value": "match:title ^(Picture-in-Picture)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:title ^(Picture-in-Picture)$, float on",
+        "actual": "legacy[352]:windowrule=match:title ^(Picture-in-Picture)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2791,6 +3037,8 @@
       "value": "match:title ^(Picture-in-Picture)$, decorate off",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:title ^(Picture-in-Picture)$, decorate off",
+        "actual": "legacy[353]:windowrule=match:title ^(Picture-in-Picture)$, decorate off",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2800,6 +3048,8 @@
       "value": "match:title ^(Picture-in-Picture)$, pin on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:title ^(Picture-in-Picture)$, pin on",
+        "actual": "legacy[354]:windowrule=match:title ^(Picture-in-Picture)$, pin on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2809,6 +3059,8 @@
       "value": "match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, float on",
+        "actual": "legacy[357]:windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2818,6 +3070,8 @@
       "value": "match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, decorate off",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, decorate off",
+        "actual": "legacy[358]:windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, decorate off",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2827,6 +3081,8 @@
       "value": "match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, pin on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, pin on",
+        "actual": "legacy[359]:windowrule=match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, pin on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2836,6 +3092,8 @@
       "value": "match:title ^(Volume Control)$, float on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:title ^(Volume Control)$, float on",
+        "actual": "legacy[361]:windowrule=match:title ^(Volume Control)$, float on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2845,6 +3103,8 @@
       "value": "match:class ^(Alacritty)$, opacity 0.88 0.82",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Alacritty)$, opacity 0.88 0.82",
+        "actual": "legacy[366]:windowrule=match:class ^(Alacritty)$, opacity 0.88 0.82",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2854,6 +3114,8 @@
       "value": "/home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "source=/home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
+        "actual": "legacy[368]:source=/home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2863,6 +3125,8 @@
       "value": "match:class ^(agent-fleet-popup|agent-deck-popup)$, opacity 0.90 0.84",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, opacity 0.90 0.84",
+        "actual": "legacy[369]:windowrule=match:class ^(agent-fleet-popup|agent-deck-popup)$, opacity 0.90 0.84",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2872,6 +3136,8 @@
       "value": "match:class ^(dev.warp.Warp)$, opacity 0.95 0.90",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(dev.warp.Warp)$, opacity 0.95 0.90",
+        "actual": "legacy[370]:windowrule=match:class ^(dev.warp.Warp)$, opacity 0.95 0.90",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2881,6 +3147,8 @@
       "value": "match:class ^(Code)$, opacity 0.95 0.90",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(Code)$, opacity 0.95 0.90",
+        "actual": "legacy[371]:windowrule=match:class ^(Code)$, opacity 0.95 0.90",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2890,6 +3158,8 @@
       "value": "match:class ^(org.telegram.desktop)$, opacity 0.88 0.82",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=match:class ^(org.telegram.desktop)$, opacity 0.88 0.82",
+        "actual": "legacy[372]:windowrule=match:class ^(org.telegram.desktop)$, opacity 0.88 0.82",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2899,6 +3169,8 @@
       "value": "match:namespace ^(noctalia-background-.*)$, blur on",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "layerrule=match:namespace ^(noctalia-background-.*)$, blur on",
+        "actual": "legacy[375]:layerrule=match:namespace ^(noctalia-background-.*)$, blur on",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2908,6 +3180,8 @@
       "value": "match:namespace ^(noctalia-background-.*)$, ignore_alpha 0.18",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "layerrule=match:namespace ^(noctalia-background-.*)$, ignore_alpha 0.18",
+        "actual": "legacy[376]:layerrule=match:namespace ^(noctalia-background-.*)$, ignore_alpha 0.18",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2917,6 +3191,8 @@
       "value": "idle_inhibit fullscreen",
       "owner": "lua/rules.lua",
       "proof": {
+        "expected": "windowrule=idle_inhibit fullscreen",
+        "actual": "legacy[379]:windowrule=idle_inhibit fullscreen",
         "owner_sha256": "85acaa209644f58975ec588b92fb8ae7ca6a4758d9b019bffd6278723a4dff93"
       }
     },
@@ -2926,6 +3202,8 @@
       "value": "SUPER",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "$mod=SUPER",
+        "actual": "legacy[385]:$mod=SUPER",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2935,6 +3213,8 @@
       "value": "$mod, Return, exec, kitty",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, Return, exec, kitty",
+        "actual": "legacy[388]:bind=$mod, Return, exec, kitty",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2944,6 +3224,8 @@
       "value": "$mod SHIFT, E, exec, nautilus",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, E, exec, nautilus",
+        "actual": "legacy[389]:bind=$mod SHIFT, E, exec, nautilus",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2953,6 +3235,8 @@
       "value": "$mod SHIFT, Q, killactive",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, Q, killactive",
+        "actual": "legacy[390]:bind=$mod SHIFT, Q, killactive",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2962,6 +3246,8 @@
       "value": "$mod, N, exec, $HOME/workspace/.files/scripts/night-mode.sh off",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=$mod, N, exec, $HOME/workspace/.files/scripts/night-mode.sh off",
+        "actual": "legacy[393]:bindl=$mod, N, exec, $HOME/workspace/.files/scripts/night-mode.sh off",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2971,6 +3257,8 @@
       "value": "$mod, space, exec, qs -c noctalia-shell ipc --any-display call launcher toggle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, space, exec, qs -c noctalia-shell ipc --any-display call launcher toggle",
+        "actual": "legacy[396]:bind=$mod, space, exec, qs -c noctalia-shell ipc --any-display call launcher toggle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2980,6 +3268,8 @@
       "value": "$mod SHIFT, space, exec, rofi -show run",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, space, exec, rofi -show run",
+        "actual": "legacy[397]:bind=$mod SHIFT, space, exec, rofi -show run",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2989,6 +3279,8 @@
       "value": "$mod, Tab, exec, rofi -show window",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, Tab, exec, rofi -show window",
+        "actual": "legacy[398]:bind=$mod, Tab, exec, rofi -show window",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -2998,6 +3290,8 @@
       "value": "$mod, slash, exec, $HOME/workspace/.files/scripts/keybind-cheatsheet.py",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, slash, exec, $HOME/workspace/.files/scripts/keybind-cheatsheet.py",
+        "actual": "legacy[399]:bind=$mod, slash, exec, $HOME/workspace/.files/scripts/keybind-cheatsheet.py",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3007,6 +3301,8 @@
       "value": "$mod, O, exec, $HOME/workspace/.files/scripts/workspace-atlas.py",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, O, exec, $HOME/workspace/.files/scripts/workspace-atlas.py",
+        "actual": "legacy[400]:bind=$mod, O, exec, $HOME/workspace/.files/scripts/workspace-atlas.py",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3016,6 +3312,8 @@
       "value": "$mod, V, exec, cliphist list | rofi -dmenu | cliphist decode | wl-copy",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, V, exec, cliphist list | rofi -dmenu | cliphist decode | wl-copy",
+        "actual": "legacy[401]:bind=$mod, V, exec, cliphist list | rofi -dmenu | cliphist decode | wl-copy",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3025,6 +3323,8 @@
       "value": "$mod, F, fullscreen, 0",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, F, fullscreen, 0",
+        "actual": "legacy[404]:bind=$mod, F, fullscreen, 0",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3034,6 +3334,8 @@
       "value": "$mod SHIFT, F, togglefloating",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, F, togglefloating",
+        "actual": "legacy[405]:bind=$mod SHIFT, F, togglefloating",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3043,6 +3345,8 @@
       "value": "$mod SHIFT, F, resizewindowpixel, exact 960 540",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, F, resizewindowpixel, exact 960 540",
+        "actual": "legacy[406]:bind=$mod SHIFT, F, resizewindowpixel, exact 960 540",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3052,6 +3356,8 @@
       "value": "$mod SHIFT, F, centerwindow",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, F, centerwindow",
+        "actual": "legacy[407]:bind=$mod SHIFT, F, centerwindow",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3061,6 +3367,8 @@
       "value": "$mod, H, movefocus, l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, H, movefocus, l",
+        "actual": "legacy[412]:bind=$mod, H, movefocus, l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3070,6 +3378,8 @@
       "value": "$mod, J, movefocus, d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, J, movefocus, d",
+        "actual": "legacy[413]:bind=$mod, J, movefocus, d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3079,6 +3389,8 @@
       "value": "$mod, K, movefocus, u",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, K, movefocus, u",
+        "actual": "legacy[414]:bind=$mod, K, movefocus, u",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3088,6 +3400,8 @@
       "value": "$mod, L, movefocus, r",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, L, movefocus, r",
+        "actual": "legacy[415]:bind=$mod, L, movefocus, r",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3097,6 +3411,8 @@
       "value": "$mod, left, movefocus, l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, left, movefocus, l",
+        "actual": "legacy[416]:bind=$mod, left, movefocus, l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3106,6 +3422,8 @@
       "value": "$mod, down, movefocus, d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, down, movefocus, d",
+        "actual": "legacy[417]:bind=$mod, down, movefocus, d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3115,6 +3433,8 @@
       "value": "$mod, up, movefocus, u",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, up, movefocus, u",
+        "actual": "legacy[418]:bind=$mod, up, movefocus, u",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3124,6 +3444,8 @@
       "value": "$mod, right, movefocus, r",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, right, movefocus, r",
+        "actual": "legacy[419]:bind=$mod, right, movefocus, r",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3133,6 +3455,8 @@
       "value": "$mod SHIFT, H, movewindoworgroup, l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, H, movewindoworgroup, l",
+        "actual": "legacy[420]:bind=$mod SHIFT, H, movewindoworgroup, l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3142,6 +3466,8 @@
       "value": "$mod SHIFT, J, movewindoworgroup, d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, J, movewindoworgroup, d",
+        "actual": "legacy[421]:bind=$mod SHIFT, J, movewindoworgroup, d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3151,6 +3477,8 @@
       "value": "$mod SHIFT, K, movewindoworgroup, u",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, K, movewindoworgroup, u",
+        "actual": "legacy[422]:bind=$mod SHIFT, K, movewindoworgroup, u",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3160,6 +3488,8 @@
       "value": "$mod SHIFT, L, movewindoworgroup, r",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, L, movewindoworgroup, r",
+        "actual": "legacy[423]:bind=$mod SHIFT, L, movewindoworgroup, r",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3169,6 +3499,8 @@
       "value": "$mod SHIFT, left, movewindoworgroup, l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, left, movewindoworgroup, l",
+        "actual": "legacy[424]:bind=$mod SHIFT, left, movewindoworgroup, l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3178,6 +3510,8 @@
       "value": "$mod SHIFT, down, movewindoworgroup, d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, down, movewindoworgroup, d",
+        "actual": "legacy[425]:bind=$mod SHIFT, down, movewindoworgroup, d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3187,6 +3521,8 @@
       "value": "$mod SHIFT, up, movewindoworgroup, u",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, up, movewindoworgroup, u",
+        "actual": "legacy[426]:bind=$mod SHIFT, up, movewindoworgroup, u",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3196,6 +3532,8 @@
       "value": "$mod SHIFT, right, movewindoworgroup, r",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, right, movewindoworgroup, r",
+        "actual": "legacy[427]:bind=$mod SHIFT, right, movewindoworgroup, r",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3205,6 +3543,8 @@
       "value": "$mod, C, layoutmsg, preselect l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, C, layoutmsg, preselect l",
+        "actual": "legacy[428]:bind=$mod, C, layoutmsg, preselect l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3214,6 +3554,8 @@
       "value": "$mod, V, layoutmsg, preselect d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, V, layoutmsg, preselect d",
+        "actual": "legacy[429]:bind=$mod, V, layoutmsg, preselect d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3223,6 +3565,8 @@
       "value": "$mod, W, togglegroup",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, W, togglegroup",
+        "actual": "legacy[430]:bind=$mod, W, togglegroup",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3232,6 +3576,8 @@
       "value": "$mod, G, exec, $HOME/workspace/.files/scripts/hypr-group-workspace.sh",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, G, exec, $HOME/workspace/.files/scripts/hypr-group-workspace.sh",
+        "actual": "legacy[431]:bind=$mod, G, exec, $HOME/workspace/.files/scripts/hypr-group-workspace.sh",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3241,6 +3587,8 @@
       "value": "$mod, E, layoutmsg, togglesplit",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, E, layoutmsg, togglesplit",
+        "actual": "legacy[432]:bind=$mod, E, layoutmsg, togglesplit",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3250,6 +3598,8 @@
       "value": "$mod, bracketright, changegroupactive, f",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, bracketright, changegroupactive, f",
+        "actual": "legacy[433]:bind=$mod, bracketright, changegroupactive, f",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3259,6 +3609,8 @@
       "value": "$mod, bracketleft, changegroupactive, b",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, bracketleft, changegroupactive, b",
+        "actual": "legacy[434]:bind=$mod, bracketleft, changegroupactive, b",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3268,6 +3620,8 @@
       "value": "$mod SHIFT, G, moveoutofgroup",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, G, moveoutofgroup",
+        "actual": "legacy[435]:bind=$mod SHIFT, G, moveoutofgroup",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3277,6 +3631,8 @@
       "value": "$mod, A, focuscurrentorlast",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, A, focuscurrentorlast",
+        "actual": "legacy[436]:bind=$mod, A, focuscurrentorlast",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3286,6 +3642,8 @@
       "value": "$mod, 1, workspace, 1",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 1, workspace, 1",
+        "actual": "legacy[465]:bind=$mod, 1, workspace, 1",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3295,6 +3653,8 @@
       "value": "$mod, 2, workspace, 2",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 2, workspace, 2",
+        "actual": "legacy[466]:bind=$mod, 2, workspace, 2",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3304,6 +3664,8 @@
       "value": "$mod, 3, workspace, 3",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 3, workspace, 3",
+        "actual": "legacy[467]:bind=$mod, 3, workspace, 3",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3313,6 +3675,8 @@
       "value": "$mod, 4, workspace, 4",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 4, workspace, 4",
+        "actual": "legacy[468]:bind=$mod, 4, workspace, 4",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3322,6 +3686,8 @@
       "value": "$mod, 5, workspace, 5",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 5, workspace, 5",
+        "actual": "legacy[469]:bind=$mod, 5, workspace, 5",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3331,6 +3697,8 @@
       "value": "$mod, 6, workspace, 6",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 6, workspace, 6",
+        "actual": "legacy[470]:bind=$mod, 6, workspace, 6",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3340,6 +3708,8 @@
       "value": "$mod, 7, workspace, 7",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 7, workspace, 7",
+        "actual": "legacy[471]:bind=$mod, 7, workspace, 7",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3349,6 +3719,8 @@
       "value": "$mod, 8, workspace, 8",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 8, workspace, 8",
+        "actual": "legacy[472]:bind=$mod, 8, workspace, 8",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3358,6 +3730,8 @@
       "value": "$mod, 9, workspace, 9",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 9, workspace, 9",
+        "actual": "legacy[473]:bind=$mod, 9, workspace, 9",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3367,6 +3741,8 @@
       "value": "$mod, 0, workspace, 10",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, 0, workspace, 10",
+        "actual": "legacy[474]:bind=$mod, 0, workspace, 10",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3376,6 +3752,8 @@
       "value": "$mod SHIFT, 1, movetoworkspace, 1",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 1, movetoworkspace, 1",
+        "actual": "legacy[477]:bind=$mod SHIFT, 1, movetoworkspace, 1",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3385,6 +3763,8 @@
       "value": "$mod SHIFT, 2, movetoworkspace, 2",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 2, movetoworkspace, 2",
+        "actual": "legacy[478]:bind=$mod SHIFT, 2, movetoworkspace, 2",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3394,6 +3774,8 @@
       "value": "$mod SHIFT, 3, movetoworkspace, 3",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 3, movetoworkspace, 3",
+        "actual": "legacy[479]:bind=$mod SHIFT, 3, movetoworkspace, 3",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3403,6 +3785,8 @@
       "value": "$mod SHIFT, 4, movetoworkspace, 4",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 4, movetoworkspace, 4",
+        "actual": "legacy[480]:bind=$mod SHIFT, 4, movetoworkspace, 4",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3412,6 +3796,8 @@
       "value": "$mod SHIFT, 5, movetoworkspace, 5",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 5, movetoworkspace, 5",
+        "actual": "legacy[481]:bind=$mod SHIFT, 5, movetoworkspace, 5",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3421,6 +3807,8 @@
       "value": "$mod SHIFT, 6, movetoworkspace, 6",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 6, movetoworkspace, 6",
+        "actual": "legacy[482]:bind=$mod SHIFT, 6, movetoworkspace, 6",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3430,6 +3818,8 @@
       "value": "$mod SHIFT, 7, movetoworkspace, 7",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 7, movetoworkspace, 7",
+        "actual": "legacy[483]:bind=$mod SHIFT, 7, movetoworkspace, 7",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3439,6 +3829,8 @@
       "value": "$mod SHIFT, 8, movetoworkspace, 8",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 8, movetoworkspace, 8",
+        "actual": "legacy[484]:bind=$mod SHIFT, 8, movetoworkspace, 8",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3448,6 +3840,8 @@
       "value": "$mod SHIFT, 9, movetoworkspace, 9",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 9, movetoworkspace, 9",
+        "actual": "legacy[485]:bind=$mod SHIFT, 9, movetoworkspace, 9",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3457,6 +3851,8 @@
       "value": "$mod SHIFT, 0, movetoworkspace, 10",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, 0, movetoworkspace, 10",
+        "actual": "legacy[486]:bind=$mod SHIFT, 0, movetoworkspace, 10",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3466,6 +3862,8 @@
       "value": "$mod SHIFT CTRL, H, movecurrentworkspacetomonitor, l",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT CTRL, H, movecurrentworkspacetomonitor, l",
+        "actual": "legacy[489]:bind=$mod SHIFT CTRL, H, movecurrentworkspacetomonitor, l",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3475,6 +3873,8 @@
       "value": "$mod SHIFT CTRL, L, movecurrentworkspacetomonitor, r",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT CTRL, L, movecurrentworkspacetomonitor, r",
+        "actual": "legacy[490]:bind=$mod SHIFT CTRL, L, movecurrentworkspacetomonitor, r",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3484,6 +3884,8 @@
       "value": "$mod SHIFT CTRL, K, movecurrentworkspacetomonitor, u",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT CTRL, K, movecurrentworkspacetomonitor, u",
+        "actual": "legacy[491]:bind=$mod SHIFT CTRL, K, movecurrentworkspacetomonitor, u",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3493,6 +3895,8 @@
       "value": "$mod SHIFT CTRL, J, movecurrentworkspacetomonitor, d",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT CTRL, J, movecurrentworkspacetomonitor, d",
+        "actual": "legacy[492]:bind=$mod SHIFT CTRL, J, movecurrentworkspacetomonitor, d",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3502,6 +3906,8 @@
       "value": "$mod SHIFT, minus, movetoworkspacesilent, special",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, minus, movetoworkspacesilent, special",
+        "actual": "legacy[495]:bind=$mod SHIFT, minus, movetoworkspacesilent, special",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3511,6 +3917,8 @@
       "value": "$mod, minus, togglespecialworkspace",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, minus, togglespecialworkspace",
+        "actual": "legacy[496]:bind=$mod, minus, togglespecialworkspace",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3520,6 +3928,8 @@
       "value": "$mod, grave, togglespecialworkspace, scratch_term",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, grave, togglespecialworkspace, scratch_term",
+        "actual": "legacy[497]:bind=$mod, grave, togglespecialworkspace, scratch_term",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3529,6 +3939,8 @@
       "value": "$mod CTRL, equal, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh increase",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, equal, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh increase",
+        "actual": "legacy[500]:bind=$mod CTRL, equal, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh increase",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3538,6 +3950,8 @@
       "value": "$mod CTRL, minus, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh decrease",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, minus, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh decrease",
+        "actual": "legacy[501]:bind=$mod CTRL, minus, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh decrease",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3547,6 +3961,8 @@
       "value": "$mod CTRL, 0, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, 0, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh reset",
+        "actual": "legacy[502]:bind=$mod CTRL, 0, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3556,6 +3972,8 @@
       "value": "$mod SHIFT, R, exec, $HOME/workspace/.files/scripts/reload-desktop.sh",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, R, exec, $HOME/workspace/.files/scripts/reload-desktop.sh",
+        "actual": "legacy[505]:bind=$mod SHIFT, R, exec, $HOME/workspace/.files/scripts/reload-desktop.sh",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3565,6 +3983,8 @@
       "value": "$mod SHIFT, T, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-picker.sh",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, T, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-picker.sh",
+        "actual": "legacy[508]:bind=$mod SHIFT, T, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-picker.sh",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3574,6 +3994,8 @@
       "value": "$mod SHIFT, comma, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py previous",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, comma, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py previous",
+        "actual": "legacy[509]:bind=$mod SHIFT, comma, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py previous",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3583,6 +4005,8 @@
       "value": "$mod SHIFT, period, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py next",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, period, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py next",
+        "actual": "legacy[510]:bind=$mod SHIFT, period, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py next",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3592,6 +4016,8 @@
       "value": "$mod CTRL, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh cycle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh cycle",
+        "actual": "legacy[511]:bind=$mod CTRL, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh cycle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3601,6 +4027,8 @@
       "value": "$mod ALT, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh toggle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod ALT, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh toggle",
+        "actual": "legacy[512]:bind=$mod ALT, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh toggle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3610,6 +4038,8 @@
       "value": "$mod CTRL, B, exec, $HOME/workspace/.files/scripts/bar-mode.sh toggle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, B, exec, $HOME/workspace/.files/scripts/bar-mode.sh toggle",
+        "actual": "legacy[513]:bind=$mod CTRL, B, exec, $HOME/workspace/.files/scripts/bar-mode.sh toggle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3619,6 +4049,8 @@
       "value": "$mod ALT, P, exec, $HOME/workspace/.files/scripts/phone-display.sh toggle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod ALT, P, exec, $HOME/workspace/.files/scripts/phone-display.sh toggle",
+        "actual": "legacy[514]:bind=$mod ALT, P, exec, $HOME/workspace/.files/scripts/phone-display.sh toggle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3628,6 +4060,8 @@
       "value": "$mod SHIFT, B, submap, wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, B, submap, wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+        "actual": "legacy[515]:bind=$mod SHIFT, B, submap, wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3637,6 +4071,8 @@
       "value": "wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+        "actual": "legacy[517]:submap=wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3646,6 +4082,8 @@
       "value": ", A, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw auto",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, A, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw auto",
+        "actual": "legacy[518]:bind=, A, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw auto",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3655,6 +4093,8 @@
       "value": ", A, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, A, submap, reset",
+        "actual": "legacy[519]:bind=, A, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3664,6 +4104,8 @@
       "value": ", S, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw span",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, S, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw span",
+        "actual": "legacy[520]:bind=, S, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw span",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3673,6 +4115,8 @@
       "value": ", S, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, S, submap, reset",
+        "actual": "legacy[521]:bind=, S, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3682,6 +4126,8 @@
       "value": ", F, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fill",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, F, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fill",
+        "actual": "legacy[522]:bind=, F, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fill",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3691,6 +4137,8 @@
       "value": ", F, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, F, submap, reset",
+        "actual": "legacy[523]:bind=, F, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3700,6 +4148,8 @@
       "value": ", I, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fit",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, I, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fit",
+        "actual": "legacy[524]:bind=, I, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fit",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3709,6 +4159,8 @@
       "value": ", I, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, I, submap, reset",
+        "actual": "legacy[525]:bind=, I, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3718,6 +4170,8 @@
       "value": ", C, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw center",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, C, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw center",
+        "actual": "legacy[526]:bind=, C, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw center",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3727,6 +4181,8 @@
       "value": ", C, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, C, submap, reset",
+        "actual": "legacy[527]:bind=, C, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3736,6 +4192,8 @@
       "value": ", T, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw tile",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, T, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw tile",
+        "actual": "legacy[528]:bind=, T, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw tile",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3745,6 +4203,8 @@
       "value": ", T, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, T, submap, reset",
+        "actual": "legacy[529]:bind=, T, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3754,6 +4214,8 @@
       "value": ", X, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw stretch",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, X, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw stretch",
+        "actual": "legacy[530]:bind=, X, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw stretch",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3763,6 +4225,8 @@
       "value": ", X, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, X, submap, reset",
+        "actual": "legacy[531]:bind=, X, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3772,6 +4236,8 @@
       "value": ", Return, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, Return, submap, reset",
+        "actual": "legacy[532]:bind=, Return, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3781,6 +4247,8 @@
       "value": ", escape, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, escape, submap, reset",
+        "actual": "legacy[533]:bind=, escape, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3790,6 +4258,8 @@
       "value": "reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=reset",
+        "actual": "legacy[534]:submap=reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3799,6 +4269,8 @@
       "value": "$mod, P, exec, grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, P, exec, grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+        "actual": "legacy[541]:bind=$mod, P, exec, grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3808,6 +4280,8 @@
       "value": "$mod SHIFT, P, exec, grim -g \"$(slurp)\" - | wl-copy",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, P, exec, grim -g \"$(slurp)\" - | wl-copy",
+        "actual": "legacy[544]:bind=$mod SHIFT, P, exec, grim -g \"$(slurp)\" - | wl-copy",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3817,6 +4291,8 @@
       "value": "$mod CTRL, P, exec, grim ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL, P, exec, grim ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+        "actual": "legacy[547]:bind=$mod CTRL, P, exec, grim ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3826,6 +4302,8 @@
       "value": "$mod CTRL SHIFT, P, exec, grim - | wl-copy",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod CTRL SHIFT, P, exec, grim - | wl-copy",
+        "actual": "legacy[550]:bind=$mod CTRL SHIFT, P, exec, grim - | wl-copy",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3835,6 +4313,8 @@
       "value": ", XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindel=, XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+        "actual": "legacy[556]:bindel=, XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3844,6 +4324,8 @@
       "value": ", XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindel=, XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
+        "actual": "legacy[557]:bindel=, XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3853,6 +4335,8 @@
       "value": ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=, XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+        "actual": "legacy[558]:bindl=, XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3862,6 +4346,8 @@
       "value": ", XF86AudioPlay, exec, playerctl play-pause",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=, XF86AudioPlay, exec, playerctl play-pause",
+        "actual": "legacy[559]:bindl=, XF86AudioPlay, exec, playerctl play-pause",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3871,6 +4357,8 @@
       "value": ", XF86AudioPause, exec, playerctl play-pause",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=, XF86AudioPause, exec, playerctl play-pause",
+        "actual": "legacy[560]:bindl=, XF86AudioPause, exec, playerctl play-pause",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3880,6 +4368,8 @@
       "value": ", XF86AudioNext, exec, playerctl next",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=, XF86AudioNext, exec, playerctl next",
+        "actual": "legacy[561]:bindl=, XF86AudioNext, exec, playerctl next",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3889,6 +4379,8 @@
       "value": ", XF86AudioPrev, exec, playerctl previous",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindl=, XF86AudioPrev, exec, playerctl previous",
+        "actual": "legacy[562]:bindl=, XF86AudioPrev, exec, playerctl previous",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3898,6 +4390,8 @@
       "value": "ALT, 1, exec, $HOME/.local/bin/audio-evolve select 1 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 1, exec, $HOME/.local/bin/audio-evolve select 1 --notify",
+        "actual": "legacy[565]:bind=ALT, 1, exec, $HOME/.local/bin/audio-evolve select 1 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3907,6 +4401,8 @@
       "value": "ALT, 2, exec, $HOME/.local/bin/audio-evolve select 2 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 2, exec, $HOME/.local/bin/audio-evolve select 2 --notify",
+        "actual": "legacy[566]:bind=ALT, 2, exec, $HOME/.local/bin/audio-evolve select 2 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3916,6 +4412,8 @@
       "value": "ALT, 3, exec, $HOME/.local/bin/audio-evolve select 3 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 3, exec, $HOME/.local/bin/audio-evolve select 3 --notify",
+        "actual": "legacy[567]:bind=ALT, 3, exec, $HOME/.local/bin/audio-evolve select 3 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3925,6 +4423,8 @@
       "value": "ALT, 4, exec, $HOME/.local/bin/audio-evolve select 4 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 4, exec, $HOME/.local/bin/audio-evolve select 4 --notify",
+        "actual": "legacy[568]:bind=ALT, 4, exec, $HOME/.local/bin/audio-evolve select 4 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3934,6 +4434,8 @@
       "value": "ALT, 5, exec, $HOME/.local/bin/audio-evolve select 5 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 5, exec, $HOME/.local/bin/audio-evolve select 5 --notify",
+        "actual": "legacy[569]:bind=ALT, 5, exec, $HOME/.local/bin/audio-evolve select 5 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3943,6 +4445,8 @@
       "value": "ALT, 6, exec, $HOME/.local/bin/audio-evolve select 6 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 6, exec, $HOME/.local/bin/audio-evolve select 6 --notify",
+        "actual": "legacy[570]:bind=ALT, 6, exec, $HOME/.local/bin/audio-evolve select 6 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3952,6 +4456,8 @@
       "value": "ALT, 7, exec, $HOME/.local/bin/audio-evolve select 7 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 7, exec, $HOME/.local/bin/audio-evolve select 7 --notify",
+        "actual": "legacy[571]:bind=ALT, 7, exec, $HOME/.local/bin/audio-evolve select 7 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3961,6 +4467,8 @@
       "value": "ALT, 8, exec, $HOME/.local/bin/audio-evolve select 8 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 8, exec, $HOME/.local/bin/audio-evolve select 8 --notify",
+        "actual": "legacy[572]:bind=ALT, 8, exec, $HOME/.local/bin/audio-evolve select 8 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3970,6 +4478,8 @@
       "value": "ALT, 9, exec, $HOME/.local/bin/audio-evolve select 9 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 9, exec, $HOME/.local/bin/audio-evolve select 9 --notify",
+        "actual": "legacy[573]:bind=ALT, 9, exec, $HOME/.local/bin/audio-evolve select 9 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3979,6 +4489,8 @@
       "value": "ALT, 0, exec, $HOME/.local/bin/audio-evolve select 0 --notify",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, 0, exec, $HOME/.local/bin/audio-evolve select 0 --notify",
+        "actual": "legacy[574]:bind=ALT, 0, exec, $HOME/.local/bin/audio-evolve select 0 --notify",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3988,6 +4500,8 @@
       "value": "ALT, F12, exec, $HOME/.local/bin/audio-sink bitperfect",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, F12, exec, $HOME/.local/bin/audio-sink bitperfect",
+        "actual": "legacy[575]:bind=ALT, F12, exec, $HOME/.local/bin/audio-sink bitperfect",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -3997,6 +4511,8 @@
       "value": "ALT, F11, exec, $HOME/.local/bin/audio-sink bs2b",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, F11, exec, $HOME/.local/bin/audio-sink bs2b",
+        "actual": "legacy[576]:bind=ALT, F11, exec, $HOME/.local/bin/audio-sink bs2b",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4006,6 +4522,8 @@
       "value": "ALT, F10, exec, $HOME/.local/bin/audio-sink room",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, F10, exec, $HOME/.local/bin/audio-sink room",
+        "actual": "legacy[577]:bind=ALT, F10, exec, $HOME/.local/bin/audio-sink room",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4015,6 +4533,8 @@
       "value": "ALT, F9, exec, $HOME/.local/bin/audio-sink aural",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=ALT, F9, exec, $HOME/.local/bin/audio-sink aural",
+        "actual": "legacy[578]:bind=ALT, F9, exec, $HOME/.local/bin/audio-sink aural",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4024,6 +4544,8 @@
       "value": "$mod SHIFT, A, exec, notify-send -u critical -t 5000 \"Audio restart in 3 seconds\" \"PipeWire will briefly interrupt active streams\" && sleep 3 && systemctl --user restart pipewire pipewire-pulse && notify-send \"PipeWire\" \"Audio stack restarted\"",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, A, exec, notify-send -u critical -t 5000 \"Audio restart in 3 seconds\" \"PipeWire will briefly interrupt active streams\" && sleep 3 && systemctl --user restart pipewire pipewire-pulse && notify-send \"PipeWire\" \"Audio stack restarted\"",
+        "actual": "legacy[581]:bind=$mod SHIFT, A, exec, notify-send -u critical -t 5000 \"Audio restart in 3 seconds\" \"PipeWire will briefly interrupt active streams\" && sleep 3 && systemctl --user restart pipewire pipewire-pulse && notify-send \"PipeWire\" \"Audio stack restarted\"",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4033,6 +4555,8 @@
       "value": "$mod, S, exec, $HOME/workspace/.files/scripts/speak-selection.sh",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, S, exec, $HOME/workspace/.files/scripts/speak-selection.sh",
+        "actual": "legacy[584]:bind=$mod, S, exec, $HOME/workspace/.files/scripts/speak-selection.sh",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4042,6 +4566,8 @@
       "value": "$mod, R, submap, resize",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod, R, submap, resize",
+        "actual": "legacy[590]:bind=$mod, R, submap, resize",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4051,6 +4577,8 @@
       "value": "resize",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=resize",
+        "actual": "legacy[592]:submap=resize",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4060,6 +4588,8 @@
       "value": ", H, resizeactive, -40 0",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, H, resizeactive, -40 0",
+        "actual": "legacy[593]:binde=, H, resizeactive, -40 0",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4069,6 +4599,8 @@
       "value": ", J, resizeactive, 0 40",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, J, resizeactive, 0 40",
+        "actual": "legacy[594]:binde=, J, resizeactive, 0 40",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4078,6 +4610,8 @@
       "value": ", K, resizeactive, 0 -40",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, K, resizeactive, 0 -40",
+        "actual": "legacy[595]:binde=, K, resizeactive, 0 -40",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4087,6 +4621,8 @@
       "value": ", L, resizeactive, 40 0",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, L, resizeactive, 40 0",
+        "actual": "legacy[596]:binde=, L, resizeactive, 40 0",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4096,6 +4632,8 @@
       "value": ", left, resizeactive, -40 0",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, left, resizeactive, -40 0",
+        "actual": "legacy[597]:binde=, left, resizeactive, -40 0",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4105,6 +4643,8 @@
       "value": ", down, resizeactive, 0 40",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, down, resizeactive, 0 40",
+        "actual": "legacy[598]:binde=, down, resizeactive, 0 40",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4114,6 +4654,8 @@
       "value": ", up, resizeactive, 0 -40",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, up, resizeactive, 0 -40",
+        "actual": "legacy[599]:binde=, up, resizeactive, 0 -40",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4123,6 +4665,8 @@
       "value": ", right, resizeactive, 40 0",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "binde=, right, resizeactive, 40 0",
+        "actual": "legacy[600]:binde=, right, resizeactive, 40 0",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4132,6 +4676,8 @@
       "value": ", Return, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, Return, submap, reset",
+        "actual": "legacy[601]:bind=, Return, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4141,6 +4687,8 @@
       "value": ", escape, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, escape, submap, reset",
+        "actual": "legacy[602]:bind=, escape, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4150,6 +4698,8 @@
       "value": "reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=reset",
+        "actual": "legacy[603]:submap=reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4159,6 +4709,8 @@
       "value": "$mod SHIFT, X, submap, system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=$mod SHIFT, X, submap, system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+        "actual": "legacy[609]:bind=$mod SHIFT, X, submap, system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4168,6 +4720,8 @@
       "value": "system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+        "actual": "legacy[611]:submap=system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4177,6 +4731,8 @@
       "value": ", L, exec, hyprlock",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, L, exec, hyprlock",
+        "actual": "legacy[612]:bind=, L, exec, hyprlock",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4186,6 +4742,8 @@
       "value": ", L, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, L, submap, reset",
+        "actual": "legacy[613]:bind=, L, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4195,6 +4753,8 @@
       "value": ", N, exec, $HOME/workspace/.files/scripts/night-mode.sh on",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, N, exec, $HOME/workspace/.files/scripts/night-mode.sh on",
+        "actual": "legacy[614]:bind=, N, exec, $HOME/workspace/.files/scripts/night-mode.sh on",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4204,6 +4764,8 @@
       "value": ", N, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, N, submap, reset",
+        "actual": "legacy[615]:bind=, N, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4213,6 +4775,8 @@
       "value": ", E, exit",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, E, exit",
+        "actual": "legacy[616]:bind=, E, exit",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4222,6 +4786,8 @@
       "value": ", S, exec, systemctl suspend",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, S, exec, systemctl suspend",
+        "actual": "legacy[617]:bind=, S, exec, systemctl suspend",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4231,6 +4797,8 @@
       "value": ", S, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, S, submap, reset",
+        "actual": "legacy[618]:bind=, S, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4240,6 +4808,8 @@
       "value": ", R, exec, systemctl reboot",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, R, exec, systemctl reboot",
+        "actual": "legacy[619]:bind=, R, exec, systemctl reboot",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4249,6 +4819,8 @@
       "value": "SHIFT, S, exec, systemctl poweroff",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=SHIFT, S, exec, systemctl poweroff",
+        "actual": "legacy[620]:bind=SHIFT, S, exec, systemctl poweroff",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4258,6 +4830,8 @@
       "value": ", Return, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, Return, submap, reset",
+        "actual": "legacy[621]:bind=, Return, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4267,6 +4841,8 @@
       "value": ", escape, submap, reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bind=, escape, submap, reset",
+        "actual": "legacy[622]:bind=, escape, submap, reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4276,6 +4852,8 @@
       "value": "reset",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "submap=reset",
+        "actual": "legacy[623]:submap=reset",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4285,6 +4863,8 @@
       "value": "$mod, mouse:272, movewindow",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindm=$mod, mouse:272, movewindow",
+        "actual": "legacy[629]:bindm=$mod, mouse:272, movewindow",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4294,6 +4874,8 @@
       "value": "$mod, mouse:273, resizewindow",
       "owner": "lua/binds.lua",
       "proof": {
+        "expected": "bindm=$mod, mouse:273, resizewindow",
+        "actual": "legacy[630]:bindm=$mod, mouse:273, resizewindow",
         "owner_sha256": "353ef66a0eb9528ce0ec1360eb3da2b2dffbd4c436d83e3fa5970370928b8e9a"
       }
     },
@@ -4303,6 +4885,8 @@
       "value": "$HOME/workspace/.files/scripts/bar-mode.sh restore",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=$HOME/workspace/.files/scripts/bar-mode.sh restore",
+        "actual": "legacy[637]:exec-once=$HOME/workspace/.files/scripts/bar-mode.sh restore",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4312,6 +4896,8 @@
       "value": "$HOME/workspace/.files/scripts/wallpaper-mode.sh restore",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=$HOME/workspace/.files/scripts/wallpaper-mode.sh restore",
+        "actual": "legacy[640]:exec-once=$HOME/workspace/.files/scripts/wallpaper-mode.sh restore",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4321,6 +4907,8 @@
       "value": "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
+        "actual": "legacy[641]:exec-once=/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4330,6 +4918,8 @@
       "value": "$HOME/workspace/.files/scripts/kdeconnect-tailnet.py --start",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=$HOME/workspace/.files/scripts/kdeconnect-tailnet.py --start",
+        "actual": "legacy[642]:exec-once=$HOME/workspace/.files/scripts/kdeconnect-tailnet.py --start",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4339,6 +4929,8 @@
       "value": "warp-terminal --class scratch_term",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=warp-terminal --class scratch_term",
+        "actual": "legacy[643]:exec-once=warp-terminal --class scratch_term",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4348,6 +4940,8 @@
       "value": "wl-paste --type text --watch cliphist store",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=wl-paste --type text --watch cliphist store",
+        "actual": "legacy[644]:exec-once=wl-paste --type text --watch cliphist store",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4357,6 +4951,8 @@
       "value": "wl-paste --type image --watch cliphist store",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=wl-paste --type image --watch cliphist store",
+        "actual": "legacy[645]:exec-once=wl-paste --type image --watch cliphist store",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     },
@@ -4366,6 +4962,8 @@
       "value": "env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb WAYLAND_DISPLAY= rustdesk",
       "owner": "lua/autostart.lua",
       "proof": {
+        "expected": "exec-once=env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb WAYLAND_DISPLAY= rustdesk",
+        "actual": "legacy[646]:exec-once=env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb WAYLAND_DISPLAY= rustdesk",
         "owner_sha256": "0f1179ce232291fa9be0a79bb08ae796eb63a2ddbedf364ae40517b9f8b8b254"
       }
     }

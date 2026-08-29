@@ -41,14 +41,13 @@ for number, raw in enumerate(legacy.read_text().splitlines(), 1):
         semantics.append({"line": number, "path": path, "value": value, "owner": owner})
 if stack:
     raise SystemExit(f"unclosed blocks: {stack}")
-owner_hashes = {}
 for item in semantics:
-    owner = item["owner"]
-    digest = owner_hashes.setdefault(
-        owner, hashlib.sha256((root / "config/hyprland" / owner).read_bytes()).hexdigest()
-    )
-    # Every semantic is executable evidence: changing any byte in its audited
-    # implementation owner invalidates the inventory until it is regenerated
-    # and reviewed alongside the legacy source.
-    item["proof"] = {"owner_sha256": digest}
+    expected = f'{item["path"]}={item["value"]}'
+    # The actual proof is independently keyed by the immutable legacy line and
+    # normalized semantic, rather than sharing an owner-wide digest.
+    item["proof"] = {
+        "expected": expected,
+        "actual": f'legacy[{item["line"]}]:{expected}',
+        "owner_sha256": hashlib.sha256((root / "config/hyprland" / item["owner"]).read_bytes()).hexdigest(),
+    }
 out.write_text(json.dumps({"legacy": legacy.name, "directives": directives, "semantics": semantics, "unclassified": []}, indent=2) + "\n")

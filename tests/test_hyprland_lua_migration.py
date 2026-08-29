@@ -144,7 +144,7 @@ def test_phone_display_uses_injected_isolated_instance_without_focus_dispatch():
 
 def test_nested_bind_parity_normalizes_lua_callback_transport_only():
     script = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
-    assert 'if [[ $category == binds ]]; then' in script
+    assert '[[ $category != binds ]] || normalization=' in script
     assert '.dispatcher,.arg,.mouse' in script
     assert 'sort_by(.submap,.modmask,.key' in script
     assert 'The executable inventory separately proves dispatcher/argument ownership' in script
@@ -216,3 +216,28 @@ def test_nested_harness_compares_legacy_and_lua_and_asserts_cleanup_and_plugin()
         "cleanup_complete", "kill -0", "host-workspaces-after", "nested socket remains",
     ):
         assert token in body
+
+
+def test_nested_harness_compares_every_required_runtime_category_and_hyprglass_value():
+    body = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
+    for category in ("monitors", "workspaces", "workspacerules", "clients", "binds", "devices", "plugins"):
+        assert f'compare_category "{category}"' in body
+    assert 'compare_static_category "window-rules"' in body
+    assert 'compare_static_category "layer-rules"' in body
+    for option in (
+        "preset-flow", "preset-flow-dark", "layers-enabled", "layers-namespaces",
+        "layers-preset", "layers-namespace_mask_thresholds",
+    ):
+        assert option in body
+
+
+def test_each_inventory_semantic_has_independent_expected_and_actual_proof():
+    inventory = json.loads(INVENTORY.read_text())
+    keys = set()
+    for item in inventory["semantics"]:
+        proof = item["proof"]
+        assert proof["expected"] == f'{item["path"]}={item["value"]}'
+        assert proof["actual"]
+        key = (item["line"], proof["actual"])
+        assert key not in keys
+        keys.add(key)

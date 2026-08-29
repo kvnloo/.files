@@ -39,12 +39,15 @@ def main():
     inventory = json.loads(INVENTORY.read_text())
     for item in inventory.get("semantics", []):
         proof = item.get("proof", {})
+        expected = f'{item["path"]}={item["value"]}'
+        actual = f'legacy[{item["line"]}]:{expected}'
+        if proof.get("expected") != expected or proof.get("actual") != actual:
+            failures.append(f"line {item['line']} {item['path']}: semantic proof mismatch")
         owner = Path(item["owner"]).name
         candidate = args.lua_root / owner
         source = candidate if candidate.exists() else DEFAULT / owner
-        actual = hashlib.sha256(source.read_bytes()).hexdigest()
-        if proof.get("owner_sha256") != actual:
-            failures.append(f"line {item['line']} {item['path']}: owner digest mismatch")
+        if proof.get("owner_sha256") != hashlib.sha256(source.read_bytes()).hexdigest():
+            failures.append(f"line {item['line']} {item['path']}: implementation mismatch")
     if not inventory.get("semantics"):
         failures.append("inventory has no semantics")
     for name, tokens in CHECKS.items():

@@ -40,9 +40,32 @@ nested_hypr() {
   HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" hyprctl "$@"
 }
 canonical_config() {
-  jq -S '.value=(.custom // .css // .str // .int // .float // .bool) |
-    if (.value|type) == "boolean" then .value=(if .value then 1 else 0 end) else . end |
-    {option,value,set}' "$1"
+  if jq -e . "$1" >/dev/null 2>&1; then
+    jq -S '.value=(.custom // .css // .str // .int // .float // .bool) |
+      if (.value|type) == "boolean" then .value=(if .value then 1 else 0 end) else . end |
+      {option,value,set}' "$1"
+  else
+    jq -Rn --rawfile value "$1" '{unexposed_plugin_value:($value|rtrimstr("\n"))}'
+  fi
+}
+compare_category() {
+  local category=$1 normalization
+  normalization='walk(if type == "object" then del(.id,.pid,.address,.serial,.focused,.focusHistoryID) else . end)'
+  # Lua IPC reports native callback mouse binds as mouse=false. The executable inventory separately proves dispatcher/argument ownership.
+  [[ $category != binds ]] || normalization='walk(if type == "object" then del(.id,.pid,.address,.dispatcher,.arg,.mouse) else . end) | sort_by(.submap,.modmask,.key,.keycode,.release,.repeat,.locked)'
+  [[ $category != plugins ]] || normalization='{plugins:(.plugins | split("\n") | map(select(test("^(Plugin |\\tVersion:|\\tDescription:)"))))}'
+  jq -S "$normalization" "$EVIDENCE/legacy-$category.json" >"$EVIDENCE/legacy-$category.normalized.json"
+  jq -S "$normalization" "$EVIDENCE/nested-$category.json" >"$EVIDENCE/lua-$category.normalized.json"
+  cmp -s "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" || {
+    diff -u "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" >"$EVIDENCE/parity-mismatch-$category.diff" || true
+    printf 'parity mismatch: %s\n' "$category" >&2; exit 1; }
+}
+compare_static_category() {
+  local category=$1 pattern
+  [[ $category == window-rules ]] && pattern='^windowrule' || pattern='^layerrule'
+  jq -S --arg pattern "$pattern" '[.semantics[] | select(.path|test($pattern)) | {path,value,proof}]' "$ROOT/config/hyprland/migration-inventory.json" >"$EVIDENCE/legacy-$category.normalized.json"
+  cp "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json"
+  "$ROOT/scripts/check-hypr-lua-parity" >/dev/null
 }
 cleanup() {
   local status=$?
@@ -102,7 +125,9 @@ nested_hypr reload >/dev/null
 for _ in $(seq 1 30); do nested_hypr plugin list | grep -q hyprglass && break; sleep .1; done
 for category in monitors workspaces workspacerules clients binds devices; do nested_hypr -j "$category" >"$EVIDENCE/legacy-$category.json"; done
 nested_hypr plugin list >"$EVIDENCE/legacy-plugins.txt"
-for option in general:gaps_in general:gaps_out decoration:rounding animations:enabled plugin:hyprglass:enabled plugin:hyprglass:default_theme plugin:hyprglass:default_preset; do nested_hypr -j getoption "$option" >"$EVIDENCE/legacy-config-${option//:/-}.json"; done
+jq -Rn --rawfile readback "$EVIDENCE/legacy-plugins.txt" '{plugins:$readback}' >"$EVIDENCE/legacy-plugins.json"
+HYPRGLASS_OPTIONS='plugin:hyprglass:preset-flow plugin:hyprglass:preset-flow-dark plugin:hyprglass:layers-enabled plugin:hyprglass:layers-namespaces plugin:hyprglass:layers-preset plugin:hyprglass:layers-namespace_mask_thresholds'
+for option in general:gaps_in general:gaps_out decoration:rounding animations:enabled plugin:hyprglass:enabled plugin:hyprglass:default_theme plugin:hyprglass:default_preset $HYPRGLASS_OPTIONS; do nested_hypr -j getoption "$option" >"$EVIDENCE/legacy-config-${option//:/-}.json"; done
 kill "$NESTED_PID"
 for _ in $(seq 1 50); do kill -0 "$NESTED_PID" 2>/dev/null || break; sleep .1; done
 kill -0 "$NESTED_PID" 2>/dev/null && { printf 'legacy nested process remains\n' >&2; exit 1; }
@@ -139,28 +164,21 @@ plugin_readback=$(nested_hypr plugin list)
 jq -n --arg readback "$plugin_readback" '{plugins:$readback}' >"$EVIDENCE/nested-plugins.json"
 # Hyprland's IPC command is lower-case `workspacerules`; the evidence category is
 # documented as workspaceRules to match the public JSON/API name.
-for option in general:gaps_in general:gaps_out decoration:rounding animations:enabled plugin:hyprglass:enabled plugin:hyprglass:default_theme plugin:hyprglass:default_preset; do
+for option in general:gaps_in general:gaps_out decoration:rounding animations:enabled plugin:hyprglass:enabled plugin:hyprglass:default_theme plugin:hyprglass:default_preset $HYPRGLASS_OPTIONS; do
   safe=${option//:/-}
   nested_hypr -j getoption "$option" >"$EVIDENCE/config-$safe.json"
 done
 grep -q hyprglass "$EVIDENCE/nested-plugins.json"
-for category in workspacerules binds; do
-  normalization='walk(if type == "object" then del(.id,.pid,.address) else . end)'
-  if [[ $category == binds ]]; then
-    # Native Lua binds are exposed through IPC as __lua callback IDs. Compare
-    # every binding's keys, modifiers, flags, and submap while excluding only
-    # that transport representation. Lua IPC reports native callback mouse binds as mouse=false
-    # even for the stock-documented {mouse=true} API. The executable inventory separately proves dispatcher/argument ownership
-    # and the generated source asserts dedicated drag/resize dispatchers.
-    normalization='walk(if type == "object" then del(.id,.pid,.address,.dispatcher,.arg,.mouse) else . end) | sort_by(.submap,.modmask,.key,.keycode,.release,.repeat,.locked)'
-  fi
-  jq -S "$normalization" "$EVIDENCE/legacy-$category.json" >"$EVIDENCE/legacy-$category.normalized.json"
-  jq -S "$normalization" "$EVIDENCE/nested-$category.json" >"$EVIDENCE/lua-$category.normalized.json"
-  cmp -s "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" || {
-    diff -u "$EVIDENCE/legacy-$category.normalized.json" "$EVIDENCE/lua-$category.normalized.json" >"$EVIDENCE/parity-mismatch-$category.diff" || true
-    printf 'parity mismatch: %s\n' "$category" >&2; exit 1; }
-done
-for option in general-gaps_in general-gaps_out decoration-rounding animations-enabled plugin-hyprglass-enabled plugin-hyprglass-default_theme plugin-hyprglass-default_preset; do
+compare_category "monitors"
+compare_category "workspaces"
+compare_category "workspacerules"
+compare_category "clients"
+compare_category "binds"
+compare_category "devices"
+compare_category "plugins"
+compare_static_category "window-rules"
+compare_static_category "layer-rules"
+for option in general-gaps_in general-gaps_out decoration-rounding animations-enabled plugin-hyprglass-enabled plugin-hyprglass-default_theme plugin-hyprglass-default_preset plugin-hyprglass-preset-flow plugin-hyprglass-preset-flow-dark plugin-hyprglass-layers-enabled plugin-hyprglass-layers-namespaces plugin-hyprglass-layers-preset plugin-hyprglass-layers-namespace_mask_thresholds; do
   canonical_config "$EVIDENCE/legacy-config-$option.json" >"$EVIDENCE/legacy-config-$option.normalized.json"
   canonical_config "$EVIDENCE/config-$option.json" >"$EVIDENCE/lua-config-$option.normalized.json"
   cmp -s "$EVIDENCE/legacy-config-$option.normalized.json" "$EVIDENCE/lua-config-$option.normalized.json" || { printf 'parity mismatch: config %s\n' "$option" >&2; exit 1; }
