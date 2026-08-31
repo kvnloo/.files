@@ -1,0 +1,193 @@
+{
+  "exported_at": "2026-08-31T02:26:39.217653+00:00",
+  "hermes_version": "0.1.0",
+  "skills": [
+    {
+      "category": "",
+      "identifier": "official/yuanbao",
+      "name": "yuanbao",
+      "source": "official"
+    },
+    {
+      "category": "creative",
+      "identifier": "official/creative/baoyu-article-illustrator",
+      "name": "baoyu-article-illustrator",
+      "source": "official"
+    },
+    {
+      "category": "creative",
+      "identifier": "official/creative/baoyu-comic",
+      "name": "baoyu-comic",
+      "source": "official"
+    },
+    {
+      "category": "dogfood",
+      "identifier": "official/dogfood/adversarial-ux-test",
+      "name": "adversarial-ux-test",
+      "source": "official"
+    },
+    {
+      "category": "mlops/training",
+      "identifier": "official/mlops/training/axolotl",
+      "name": "axolotl",
+      "source": "official"
+    },
+    {
+      "category": "",
+      "identifier": "remotion",
+      "name": "remotion",
+      "source": "clawhub"
+    },
+    {
+      "category": "oss-quality",
+      "identifier": "https://raw.githubusercontent.com/SWEStash/swe-workflow-skills/main/skills/code-slop-cleanup/SKILL.md",
+      "name": "code-slop-cleanup",
+      "source": "url"
+    },
+    {
+      "category": "oss-quality",
+      "identifier": "https://raw.githubusercontent.com/scanaislop/skills/main/skills/aislop/SKILL.md",
+      "name": "aislop",
+      "source": "url"
+    },
+    {
+      "category": "oss-quality",
+      "identifier": "https://raw.githubusercontent.com/addyosmani/agent-skills/main/skills/code-review-and-quality/SKILL.md",
+      "name": "code-review-and-quality",
+      "source": "url"
+    },
+    {
+      "category": "autonomous-ai-agents",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/poteto-mode/SKILL.md",
+      "name": "poteto-mode",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-laziness-protocol/SKILL.md",
+      "name": "principle-laziness-protocol",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-foundational-thinking/SKILL.md",
+      "name": "principle-foundational-thinking",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-redesign-from-first-principles/SKILL.md",
+      "name": "principle-redesign-from-first-principles",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-subtract-before-you-add/SKILL.md",
+      "name": "principle-subtract-before-you-add",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-minimize-reader-load/SKILL.md",
+      "name": "principle-minimize-reader-load",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-outcome-oriented-execution/SKILL.md",
+      "name": "principle-outcome-oriented-execution",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-experience-first/SKILL.md",
+      "name": "principle-experience-first",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-exhaust-the-design-space/SKILL.md",
+      "name": "principle-exhaust-the-design-space",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-build-the-lever/SKILL.md",
+      "name": "principle-build-the-lever",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-model-the-domain/SKILL.md",
+      "name": "principle-model-the-domain",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-boundary-discipline/SKILL.md",
+      "name": "principle-boundary-discipline",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-type-system-discipline/SKILL.md",
+      "name": "principle-type-system-discipline",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-make-operations-idempotent/SKILL.md",
+      "name": "principle-make-operations-idempotent",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md",
+      "name": "principle-migrate-callers-then-delete-legacy-apis",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-separate-before-serializing-shared-state/SKILL.md",
+      "name": "principle-separate-before-serializing-shared-state",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-prove-it-works/SKILL.md",
+      "name": "principle-prove-it-works",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-fix-root-causes/SKILL.md",
+      "name": "principle-fix-root-causes",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-sequence-verifiable-units/SKILL.md",
+      "name": "principle-sequence-verifiable-units",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-guard-the-context-window/SKILL.md",
+      "name": "principle-guard-the-context-window",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-never-block-on-the-human/SKILL.md",
+      "name": "principle-never-block-on-the-human",
+      "source": "url"
+    },
+    {
+      "category": "pstack",
+      "identifier": "https://raw.githubusercontent.com/cursor/plugins/main/pstack/skills/principle-encode-lessons-in-structure/SKILL.md",
+      "name": "principle-encode-lessons-in-structure",
+      "source": "url"
+    }
+  ],
+  "taps": []
+}

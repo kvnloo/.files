@@ -1,11 +1,11 @@
 {
   "keys": [
-    "theme",
-    "cron.enabled",
-    "plugins",
-    "model",
-    "provider",
     "skills",
-    "cron.schedule"
+    "cron.schedule",
+    "plugins",
+    "cron.enabled",
+    "model",
+    "theme",
+    "provider"
   ]
 }

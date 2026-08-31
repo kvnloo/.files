@@ -29,6 +29,7 @@ MODULES=(
   core-links
   agent-skills
   agent-tools
+  hermes-portable
   tailnet-ssh
   nix-home
   audio-evolution
@@ -38,6 +39,7 @@ MODULE_HELP=(
   "core-links:Symlink shell, tmux, git, Hyprland, nvim, noctalia, and CLI helpers"
   "agent-skills:Install workspace-copilot skill into Claude/Codex/OpenCode/Gemini skill dirs"
   "agent-tools:Install Agent Reach, yt-dlp, and shared mcporter MCP config"
+  "hermes-portable:Link the sanitized Hermes bundle and import its public skill snapshot"
   "tailnet-ssh:Enable Tailscale + SSH for private remote access (Linux)"
   "nix-home:Bootstrap Nix + Home Manager on CachyOS/Arch hosts"
   "audio-evolution:Install PipeWire Aural Evolution headphone DSP chain"
@@ -286,12 +288,36 @@ run_audio_evolution() {
   printf 'audio-evolution complete.\n'
 }
 
+run_hermes_portable() {
+  local bundle="$REPO_ROOT/artifacts/hermes-portable"
+  local link="$HOME/.config/hermes-portable/kvnloo"
+  printf '\n==> hermes-portable\n'
+  if ! command -v hermes >/dev/null 2>&1; then
+    printf '  Hermes is required; install it from https://hermes-agent.nousresearch.com/docs/ first.\n' >&2
+    return 1
+  fi
+  if [[ ! -f "$bundle/skills.snapshot.json" ]]; then
+    printf '  missing sanitized skill snapshot: %s\n' "$bundle/skills.snapshot.json" >&2
+    return 1
+  fi
+  mkdir -p "$(dirname "$link")"
+  onboard_link "$bundle" "$link"
+  if [[ ! -L "$link" ]] || [[ "$(readlink -f "$link" 2>/dev/null || true)" != "$(readlink -f "$bundle")" ]]; then
+    printf '  Hermes portable link did not resolve to the sanitized bundle; refusing import.\n' >&2
+    return 1
+  fi
+  hermes skills snapshot import "$link/skills.snapshot.json"
+  onboard_mark_module "hermes-portable" "done"
+  printf 'hermes-portable complete. Credentials and live profile state were not imported.\n'
+}
+
 run_module() {
   local module="$1"
   case "$module" in
     core-links) run_core_links ;;
     agent-skills) run_agent_skills ;;
     agent-tools) run_agent_tools ;;
+    hermes-portable) run_hermes_portable ;;
     tailnet-ssh) run_tailnet_ssh ;;
     nix-home) run_nix_home ;;
     audio-evolution) run_audio_evolution ;;

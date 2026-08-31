@@ -67,7 +67,7 @@ ALLOWLISTED_KEYS = {
     },
 }
 
-FORBIDDEN_PATTERNS = [
+PRIVATE_VALUE_PATTERNS = [
     re.compile(r"/home/kvn"),
     re.compile(r"/workspace/hermes-home"),
     re.compile(r"/mnt/zer0models"),
@@ -78,9 +78,15 @@ FORBIDDEN_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
     re.compile(r"AIza[0-9A-Za-z\-_]{35}"),
     re.compile(r"(?i)(token|secret|api_key|apikey|auth)\s*[:=]"),
+]
+
+FORBIDDEN_PATTERNS = PRIVATE_VALUE_PATTERNS + [
     re.compile(r"\.env(/|\\|\b)"),
     re.compile(r"auth\.json(/|\\|\b)"),
-    re.compile(r"(state|session|log|cache)(/|\\|\b)"),
+    re.compile(
+        r"(?:^|[/\\])(?:state(?:\.db)?|sessions?|logs?|cache)(?:\.(?:db|sqlite|json))?(?=[/\\\"\s]|$)",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -99,7 +105,13 @@ def _build_allowlist() -> dict[str, Any]:
 def _assert_no_forbidden(value: str, context: str) -> None:
     for pattern in FORBIDDEN_PATTERNS:
         if pattern.search(value):
-            raise ValueError(f"forbidden content in {context}: {value}")
+            raise ValueError(f"forbidden content in {context}")
+
+
+def _assert_public_document(value: str, context: str) -> None:
+    for pattern in PRIVATE_VALUE_PATTERNS:
+        if pattern.search(value):
+            raise ValueError(f"forbidden content in {context}")
 
 
 def render_manifest(allowlist: dict[str, Any], output_dir: Path) -> Path:
@@ -123,16 +135,20 @@ def render_manifest(allowlist: dict[str, Any], output_dir: Path) -> Path:
 def write_artifacts(output_dir: Path, allowlist: dict[str, Any]) -> ExportResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
+    rendered: list[tuple[str, str]] = []
+    bundle_path = Path(__file__).resolve().parents[1] / "artifacts/hermes-portable"
+    snapshot_path = bundle_path / "skills.snapshot.json"
+    skill_snapshot = json.loads(snapshot_path.read_text())
+    readme_text = (bundle_path / "README.md").read_text()
 
     for rel, payload in (
         ("config/allowed-keys.json", allowlist["config"]),
         ("services/templates.json", allowlist["services"]),
         ("themes/registry.json", allowlist["themes"]),
         ("provenance.json", allowlist["provenance"]),
+        ("skills.snapshot.json", skill_snapshot),
         ("manifest.json", {}),
     ):
-        path = output_dir / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
         if rel == "manifest.json":
             text = json.dumps(
                 {
@@ -140,13 +156,12 @@ def write_artifacts(output_dir: Path, allowlist: dict[str, Any]) -> ExportResult
                     "profile": "portable-hermes",
                     "allowlist": allowlist,
                     "artifacts": [
-                        r
-                        for r in [
-                            "config/allowed-keys.json",
-                            "services/templates.json",
-                            "themes/registry.json",
-                        ]
-                        if (output_dir / r).exists()
+                        "README.md",
+                        "config/allowed-keys.json",
+                        "provenance.json",
+                        "services/templates.json",
+                        "skills.snapshot.json",
+                        "themes/registry.json",
                     ],
                 },
                 indent=2,
@@ -154,6 +169,16 @@ def write_artifacts(output_dir: Path, allowlist: dict[str, Any]) -> ExportResult
             ) + "\n"
         else:
             text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        _assert_no_forbidden(text, rel)
+
+        rendered.append((rel, text))
+
+    _assert_public_document(readme_text, "README.md")
+    rendered.append(("README.md", readme_text))
+
+    for rel, text in rendered:
+        path = output_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
     return ExportResult(

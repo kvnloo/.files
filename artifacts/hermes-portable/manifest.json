@@ -2,37 +2,37 @@
   "allowlist": {
     "config": {
       "keys": [
-        "theme",
-        "cron.enabled",
-        "plugins",
-        "model",
-        "provider",
         "skills",
-        "cron.schedule"
+        "cron.schedule",
+        "plugins",
+        "cron.enabled",
+        "model",
+        "theme",
+        "provider"
       ]
     },
     "provenance": {
       "plugins": [
         "browsermcp",
-        "web-search",
-        "file-organizer"
+        "file-organizer",
+        "web-search"
       ],
       "skills": [
-        "agent-tools",
-        "workspace-copilot",
+        "translation",
         "github-code-review",
-        "translation"
+        "workspace-copilot",
+        "agent-tools"
       ],
       "tools": [
-        "terminal",
-        "tool_search",
-        "tool_describe",
         "tool_call",
+        "tool_search",
         "read_file",
-        "execute_code",
-        "write_file",
+        "search",
         "patch",
-        "search"
+        "tool_describe",
+        "execute_code",
+        "terminal",
+        "write_file"
       ]
     },
     "services": {
@@ -44,15 +44,18 @@
       }
     },
     "themes": [
-      "liquid-glass",
+      "pywal",
       "default",
-      "noctalia",
-      "pywal"
+      "liquid-glass",
+      "noctalia"
     ]
   },
   "artifacts": [
+    "README.md",
     "config/allowed-keys.json",
+    "provenance.json",
     "services/templates.json",
+    "skills.snapshot.json",
     "themes/registry.json"
   ],
   "profile": "portable-hermes",

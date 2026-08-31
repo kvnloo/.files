@@ -1,24 +1,24 @@
 {
   "plugins": [
     "browsermcp",
-    "web-search",
-    "file-organizer"
+    "file-organizer",
+    "web-search"
   ],
   "skills": [
-    "agent-tools",
-    "workspace-copilot",
+    "translation",
     "github-code-review",
-    "translation"
+    "workspace-copilot",
+    "agent-tools"
   ],
   "tools": [
-    "terminal",
-    "tool_search",
-    "tool_describe",
     "tool_call",
+    "tool_search",
     "read_file",
-    "execute_code",
-    "write_file",
+    "search",
     "patch",
-    "search"
+    "tool_describe",
+    "execute_code",
+    "terminal",
+    "write_file"
   ]
 }
