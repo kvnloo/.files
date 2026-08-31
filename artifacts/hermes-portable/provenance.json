@@ -1,0 +1,24 @@
+{
+  "plugins": [
+    "browsermcp",
+    "web-search",
+    "file-organizer"
+  ],
+  "skills": [
+    "agent-tools",
+    "workspace-copilot",
+    "github-code-review",
+    "translation"
+  ],
+  "tools": [
+    "terminal",
+    "tool_search",
+    "tool_describe",
+    "tool_call",
+    "read_file",
+    "execute_code",
+    "write_file",
+    "patch",
+    "search"
+  ]
+}

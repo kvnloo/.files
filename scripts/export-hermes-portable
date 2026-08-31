@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Allowlist-based exporter for portable non-secret Hermes settings."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+ALLOWLISTED_KEYS = {
+    # Config domains allowed for export
+    "config": {
+        "keys": {
+            "theme",
+            "model",
+            "provider",
+            "skills",
+            "plugins",
+            "cron.enabled",
+            "cron.schedule",
+        },
+    },
+    # Provenance names for tools, skills, plugins
+    "provenance": {
+        "tools": {
+            "search",
+            "terminal",
+            "read_file",
+            "write_file",
+            "patch",
+            "execute_code",
+            "tool_search",
+            "tool_describe",
+            "tool_call",
+        },
+        "skills": {
+            "workspace-copilot",
+            "agent-tools",
+            "github-code-review",
+            "translation",
+        },
+        "plugins": {
+            "browsermcp",
+            "file-organizer",
+            "web-search",
+        },
+    },
+    # Theme names that are safe to export
+    "themes": {
+        "liquid-glass",
+        "noctalia",
+        "pywal",
+        "default",
+    },
+    # Service template placeholders
+    "services": {
+        "placeholders": {
+            "skills_dir": "<HERMES_SKILLS_DIR>",
+            "plugins_dir": "<HERMES_PLUGINS_DIR>",
+            "cron_dir": "<HERMES_CRON_DIR>",
+            "config_dir": "<HERMES_CONFIG_DIR>",
+        }
+    },
+}
+
+FORBIDDEN_PATTERNS = [
+    re.compile(r"/home/kvn"),
+    re.compile(r"/workspace/hermes-home"),
+    re.compile(r"/mnt/zer0models"),
+    re.compile(r"\bchat_?\d+\b", re.IGNORECASE),
+    re.compile(r"@[A-Za-z0-9_]{3,}"),
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+    re.compile(r"ghp_|github_pat_|gho_|ghu_|ghs_|ghr_|xox[baprs]-"),
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"AIza[0-9A-Za-z\-_]{35}"),
+    re.compile(r"(?i)(token|secret|api_key|apikey|auth)\s*[:=]"),
+    re.compile(r"\.env(/|\\|\b)"),
+    re.compile(r"auth\.json(/|\\|\b)"),
+    re.compile(r"(state|session|log|cache)(/|\\|\b)"),
+]
+
+
+@dataclass
+class ExportResult:
+    output_dir: Path
+    allowlist: dict[str, Any] = field(default_factory=dict)
+    manifest_path: Path | None = None
+    errors: list[str] = field(default_factory=list)
+
+
+def _build_allowlist() -> dict[str, Any]:
+    return json.loads(json.dumps(ALLOWLISTED_KEYS, sort_keys=True, default=list))
+
+
+def _assert_no_forbidden(value: str, context: str) -> None:
+    for pattern in FORBIDDEN_PATTERNS:
+        if pattern.search(value):
+            raise ValueError(f"forbidden content in {context}: {value}")
+
+
+def render_manifest(allowlist: dict[str, Any], output_dir: Path) -> Path:
+    manifest = {
+        "version": "1.0.0",
+        "profile": "portable-hermes",
+        "allowlist": allowlist,
+        "artifacts": [],
+    }
+    for rel in [
+        "config/allowed-keys.json",
+        "services/templates.json",
+        "themes/registry.json",
+    ]:
+        p = output_dir / rel
+        if p.exists():
+            manifest["artifacts"].append(rel)
+    return output_dir / "manifest.json"
+
+
+def write_artifacts(output_dir: Path, allowlist: dict[str, Any]) -> ExportResult:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    errors: list[str] = []
+
+    for rel, payload in (
+        ("config/allowed-keys.json", allowlist["config"]),
+        ("services/templates.json", allowlist["services"]),
+        ("themes/registry.json", allowlist["themes"]),
+        ("provenance.json", allowlist["provenance"]),
+        ("manifest.json", {}),
+    ):
+        path = output_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if rel == "manifest.json":
+            text = json.dumps(
+                {
+                    "version": "1.0.0",
+                    "profile": "portable-hermes",
+                    "allowlist": allowlist,
+                    "artifacts": [
+                        r
+                        for r in [
+                            "config/allowed-keys.json",
+                            "services/templates.json",
+                            "themes/registry.json",
+                        ]
+                        if (output_dir / r).exists()
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            ) + "\n"
+        else:
+            text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        path.write_text(text)
+
+    return ExportResult(
+        output_dir=output_dir,
+        allowlist=allowlist,
+        manifest_path=output_dir / "manifest.json",
+        errors=errors,
+    )
+
+
+def export_portable_hermes(output_dir: str | Path) -> ExportResult:
+    output_dir = Path(output_dir)
+    allowlist = _build_allowlist()
+    result = write_artifacts(output_dir, allowlist)
+    return result
+
+
+def _cli() -> int:
+    parser = argparse.ArgumentParser(description="Export portable Hermes config artifacts")
+    parser.add_argument("output_dir", help="Directory to write sanitized exports")
+    args = parser.parse_args()
+    result = export_portable_hermes(args.output_dir)
+    print(json.dumps({"output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "errors": result.errors}, indent=2))
+    return 1 if result.errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

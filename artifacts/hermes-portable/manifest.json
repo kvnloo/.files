@@ -1,0 +1,60 @@
+{
+  "allowlist": {
+    "config": {
+      "keys": [
+        "theme",
+        "cron.enabled",
+        "plugins",
+        "model",
+        "provider",
+        "skills",
+        "cron.schedule"
+      ]
+    },
+    "provenance": {
+      "plugins": [
+        "browsermcp",
+        "web-search",
+        "file-organizer"
+      ],
+      "skills": [
+        "agent-tools",
+        "workspace-copilot",
+        "github-code-review",
+        "translation"
+      ],
+      "tools": [
+        "terminal",
+        "tool_search",
+        "tool_describe",
+        "tool_call",
+        "read_file",
+        "execute_code",
+        "write_file",
+        "patch",
+        "search"
+      ]
+    },
+    "services": {
+      "placeholders": {
+        "config_dir": "<HERMES_CONFIG_DIR>",
+        "cron_dir": "<HERMES_CRON_DIR>",
+        "plugins_dir": "<HERMES_PLUGINS_DIR>",
+        "skills_dir": "<HERMES_SKILLS_DIR>"
+      }
+    },
+    "themes": [
+      "liquid-glass",
+      "default",
+      "noctalia",
+      "pywal"
+    ]
+  },
+  "artifacts": [
+    "config/allowed-keys.json",
+    "services/templates.json",
+    "themes/registry.json"
+  ],
+  "profile": "portable-hermes",
+  "version": "1.0.0"
+}

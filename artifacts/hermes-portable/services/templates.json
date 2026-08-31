@@ -1,0 +1,8 @@
+{
+  "placeholders": {
+    "config_dir": "<HERMES_CONFIG_DIR>",
+    "cron_dir": "<HERMES_CRON_DIR>",
+    "plugins_dir": "<HERMES_PLUGINS_DIR>",
+    "skills_dir": "<HERMES_SKILLS_DIR>"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "keys": [
+    "theme",
+    "cron.enabled",
+    "plugins",
+    "model",
+    "provider",
+    "skills",
+    "cron.schedule"
+  ]
+}
