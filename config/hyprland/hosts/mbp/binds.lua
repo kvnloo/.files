@@ -11,6 +11,8 @@ hl.bind("XF86LaunchB", hl.dsp.exec_cmd(noctCall .. "panel-toggle launcher"), { l
 hl.bind("XF86KbdBrightnessDown", hl.dsp.exec_cmd(brightnessControl .. "keyboard down"), { locked = true, repeating = true })
 hl.bind("XF86KbdBrightnessUp",   hl.dsp.exec_cmd(brightnessControl .. "keyboard up"),   { locked = true, repeating = true })
 
+hl.bind("SUPER + SHIFT + L", hl.dsp.exec_cmd("sleep 0.5 && noctalia msg dpms-off"), { locked = true })
+
 -- Depending on hid_apple fnmode, the media row may arrive as raw F7-F12.
 hl.bind("F7",  hl.dsp.exec_cmd(noctCall .. "media previous"), { locked = true })
 hl.bind("F8",  hl.dsp.exec_cmd(noctCall .. "media toggle"),   { locked = true })
