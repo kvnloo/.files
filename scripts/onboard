@@ -127,13 +127,19 @@ run_core_links() {
     onboard_link "$repo/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
     onboard_link "$repo/config/hyprland/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"
     onboard_link "$repo/config/hyprland/hypridle.conf" "$HOME/.config/hypr/hypridle.conf"
-    if [[ -d "$repo/config/hyprland/config" ]]; then
+    if [[ -f "$HOME/.config/hypr/hyprland.lua" ]]; then
+      mkdir -p "$HOME/.config/hypr/config"
+      onboard_link "$repo/config/hyprland/config/binds.lua" "$HOME/.config/hypr/config/binds.lua"
+      local host_binds="$repo/config/hyprland/hosts/$(hostname -s)/binds.lua"
+      [[ -f "$host_binds" ]] && onboard_link "$host_binds" "$HOME/.config/hypr/config/device-binds.lua"
+    elif [[ -d "$repo/config/hyprland/config" ]]; then
       onboard_link "$repo/config/hyprland/config" "$HOME/.config/hypr/config"
     fi
   fi
 
   onboard_link "$repo/config/nvim" "$HOME/.config/nvim"
   onboard_link "$repo/config/noctalia" "$HOME/.config/noctalia"
+  onboard_link "$repo/config/codexbar/config.json" "$HOME/.config/codexbar/config.json"
   onboard_link "$repo/config/waybar" "$HOME/.config/waybar"
   onboard_link "$repo/config/rofi" "$HOME/.config/rofi"
   onboard_link "$repo/config/dunst" "$HOME/.config/dunst"
@@ -167,7 +173,7 @@ run_core_links() {
 
   # CLI helpers on PATH
   local bin command_name
-  for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
+  for bin in workspace-copilot phone-display.sh audio-sink audio-evolve codexbar bar-mode.sh \
              desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
