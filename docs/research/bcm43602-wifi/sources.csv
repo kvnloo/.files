@@ -1,0 +1,9 @@
+id,slug,url,type,credibility,recency,bias,used_for
+01,archwiki-broadcom,https://wiki.archlinux.org/title/Broadcom_wireless,wiki,high,2026,community,H1
+02,bbs-298025,https://bbs.archlinux.org/viewtopic.php?id=298025,discussion,high,2024,users,H1
+03,cachyos-25459,https://discuss.cachyos.org/t/help-with-broadcom-43602/25459,discussion,high,2026,users,H1
+04,manjaro-asahi,https://forum.manjaro.org/t/2015-imac-27-and-brcmfmac-wifi-fix/184780,discussion,high,2026,users,H1
+05,endeavouros-iwd,https://forum.endeavouros.com/t/unable-to-connect-to-wifi-macbook-2015-broadcom/68434,discussion,med,2025,users,iwd alt
+06,gist-nvram,https://gist.github.com/MikeRatcliffe/9614c16a8ea09731a9d5e91685bd8c80,primary,med,n/a,community,H2
+07,bbs-313054,https://bbs.archlinux.org/viewtopic.php?id=313054,discussion,med,2026,users,H2
+08,ubuntu-discourse-clm,https://discourse.ubuntu.com/t/wifi-signal-strength-issue-with-macbook-pro/63705,discussion,med,2025,users,H2

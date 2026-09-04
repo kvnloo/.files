@@ -36,3 +36,4 @@ alias '`cdprojects`'='cd ~/GoogleDrive/Projects'
 # >>> grok installer >>>
 fish_add_path $HOME/.grok/bin
 # <<< grok installer <<<
+set -gx PATH $HOME/.npm-global/bin $PATH
