@@ -2,8 +2,6 @@
 
 Personal Linux/macOS dotfiles for Hyprland, tmux, shells, audio DSP, agent tooling, and related desktop helpers.
 
-Contact: [dev@ek.vin](mailto:dev@ek.vin)
-
 ## Setup (two methods)
 
 Both paths use the same modules. Full details: **[docs/SETUP.md](docs/SETUP.md)**.
@@ -54,3 +52,12 @@ Useful commands:
 - Day-to-day onboarding: `./install` or harness flow above
 - One-shot CachyOS rebuild scripts: [`migration/`](migration/)
 - Older `script.sh` now forwards to `./install`
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Third-party trees under `config/`, `.zsh/`, and similar keep their own licenses.
+Upstream audio assets (AutoEQ measurements, BRIRs, LV2/LADSPA plugins) remain
+under their respective terms; this grant covers this repository's code and
+configuration only.

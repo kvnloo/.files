@@ -1,7 +1,7 @@
 {
   "name": "aural",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "license": "MIT",
   "scripts": {
     "dev": "bun run --filter '*' dev",
     "dev:web": "bun run --filter web dev",
