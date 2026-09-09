@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Noctalia-facing CodexBar shim.
+#
+# The codexbar-meter plugin invokes:
+#   <codexbarPath> usage --format json --json-only
+#
+# That native call skips Linux-only provider routing (extra providers, oauth
+# source overrides, cache merge). For the aggregate JSON request we refresh the
+# Waybar adapter cache and emit ~/.cache/codexbar-waybar/full.json instead.
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+REAL_CODEXBAR="${CODEXBAR_REAL_BIN:-$HOME/.local/lib/codexbar-cli/codexbar}"
+
+is_aggregate_usage() {
+  [[ $# -ge 4 ]] || return 1
+  [[ "$1" == "usage" && "$2" == "--format" && "$3" == "json" ]] || return 1
+  for arg in "$@"; do
+    [[ "$arg" == "--json-only" ]] && return 0
+  done
+  return 1
+}
+
+emit_aggregate_json() {
+  local wrapper cache fallback
+  wrapper="${CODEXBAR_WAYBAR_WRAPPER:-$HOME/.config/waybar/scripts/codexbar.sh}"
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/codexbar-waybar/full.json"
+  fallback="${XDG_CACHE_HOME:-$HOME/.cache}/codexbar-waybar/last.json"
+
+  if [[ ! -x "$wrapper" ]]; then
+    printf '[]\n'
+    return 0
+  fi
+
+  "$wrapper" >/dev/null || true
+
+  if [[ -r "$cache" ]]; then
+    cat "$cache"
+    return 0
+  fi
+  if [[ -r "$fallback" ]]; then
+    cat "$fallback"
+    return 0
+  fi
+  printf '[]\n'
+}
+
+if is_aggregate_usage "$@"; then
+  emit_aggregate_json
+  exit 0
+fi
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/codexbar-env.sh"
+export LD_LIBRARY_PATH="$HOME/.local/lib/codexbar-compat/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$REAL_CODEXBAR" "$@"

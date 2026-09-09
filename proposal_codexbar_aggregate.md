@@ -23,10 +23,19 @@ Crush `providers.json` stores `$OPENROUTER_API_KEY` style references, not litera
 
 Upstream clone for future PR. Rebuild requires Swift (`swift-bin` AUR). Not required for runtime once secrets are set.
 
+## Noctalia integration
+
+`salemsayed/codexbar-meter` calls `codexbar usage --format json --json-only` directly,
+which skips Linux-only provider routing. Use the aggregate shim instead:
+
+- `scripts/codexbar-noctalia` — refreshes Waybar cache, emits `full.json`
+- `[plugins.settings."salemsayed/codexbar-meter"].codexbarPath` → `~/.local/bin/codexbar-noctalia`
+
 ## User action
 
 ```bash
-cp ~/workspace/.files/config/codexbar/secrets.env.example ~/.config/codexbar/secrets.env
-# fill in keys, then:
-~/.config/waybar/scripts/codexbar.sh >/dev/null
+~/workspace/.files/scripts/codexbar-sync-credentials.sh   # creates secrets.env
+# fill in API keys in ~/.config/codexbar/secrets.env, then:
+~/.local/bin/codexbar-noctalia usage --format json --json-only | jq '.[].provider'
+# sign into Cursor IDE for cursor usage; run `claude` for Claude OAuth
 ```

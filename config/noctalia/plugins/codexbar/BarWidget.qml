@@ -17,7 +17,8 @@ Item {
 
   readonly property var mainInstance: pluginApi?.mainInstance
   readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screen?.name)
-  readonly property int usedPercent: mainInstance?.maxUsedPercent ?? 0
+  readonly property int remainingPercent: mainInstance?.averageRemainingPercent ?? 100
+  readonly property int usedPercent: Math.max(0, 100 - remainingPercent)
   readonly property color statusColor: usedPercent >= 90 ? Color.mError : (usedPercent >= 70 ? Color.mTertiary : Color.mPrimary)
 
   implicitWidth: capsule.implicitWidth
@@ -47,7 +48,7 @@ Item {
       spacing: Style.marginXS
 
       NIcon {
-        icon: "brand-openai"
+        icon: "gauge"
         pointSize: Style.getBarFontSizeForScreen(root.screen?.name) * 1.25
         applyUiScale: false
         color: root.statusColor

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Emit CodexBar-compatible JSON for providers not covered by the Linux CLI."""
+"""Emit CodexBar-compatible JSON for Linux API-only provider tracking."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -24,8 +25,17 @@ def err(provider: str, message: str, *, source: str = "api") -> dict[str, Any]:
     }
 
 
-def ok(provider: str, *, source: str = "api", label: str, used_percent: float = 0.0) -> dict[str, Any]:
-    return {
+def ok_usage(
+    provider: str,
+    *,
+    source: str = "api",
+    label: str,
+    used_percent: float = 0.0,
+    credits: dict[str, Any] | None = None,
+    secondary_label: str | None = None,
+    secondary_used: float | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "provider": provider,
         "source": source,
         "usage": {
@@ -37,6 +47,15 @@ def ok(provider: str, *, source: str = "api", label: str, used_percent: float = 
             },
         },
     }
+    if secondary_label is not None and secondary_used is not None:
+        payload["usage"]["secondary"] = {
+            "usedPercent": secondary_used,
+            "windowMinutes": 43200,
+            "resetDescription": secondary_label,
+        }
+    if credits is not None:
+        payload["credits"] = credits
+    return payload
 
 
 def env_key(name: str) -> str:
@@ -58,10 +77,64 @@ def http_json(url: str, *, headers: dict[str, str], timeout: float = 15.0) -> tu
         return exc.code, payload
 
 
+def missing_key_message(env_name: str) -> str:
+    return (
+        f"Missing {env_name}. Add it to ~/.config/codexbar/secrets.env "
+        f"or run: scripts/codexbar-sync-credentials.sh"
+    )
+
+
+def fetch_openrouter() -> dict[str, Any]:
+    key = env_key("OPENROUTER_API_KEY")
+    if not key:
+        return err("openrouter", missing_key_message("OPENROUTER_API_KEY"))
+    base = os.environ.get("OPENROUTER_API_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "HTTP-Referer": os.environ.get("OPENROUTER_HTTP_REFERER", "https://codexbar.local"),
+        "X-Title": os.environ.get("OPENROUTER_X_TITLE", "CodexBar"),
+    }
+    status, payload = http_json(f"{base}/credits", headers=headers)
+    if status != 200 or not isinstance(payload, dict):
+        return err("openrouter", f"OpenRouter credits error: HTTP {status}")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return err("openrouter", "OpenRouter credits payload missing data object")
+    total = float(data.get("total_credits") or 0)
+    used = float(data.get("total_usage") or 0)
+    balance = max(0.0, total - used)
+    used_percent = 0.0 if total <= 0 else min(100.0, max(0.0, (used / total) * 100.0))
+    credits = {
+        "updatedAt": now_iso(),
+        "remaining": f"${balance:.2f}",
+        "remainingPercent": round(100.0 - used_percent, 1),
+        "events": [],
+    }
+    return ok_usage(
+        "openrouter",
+        label=f"${balance:.2f} credits left",
+        used_percent=round(used_percent, 1),
+        credits=credits,
+    )
+
+
+def fetch_groq() -> dict[str, Any]:
+    key = env_key("GROQ_API_KEY")
+    if not key:
+        return err("groq", missing_key_message("GROQ_API_KEY"))
+    headers = {"Authorization": f"Bearer {key}"}
+    status, payload = http_json("https://api.groq.com/openai/v1/models", headers=headers)
+    if status != 200:
+        return err("groq", f"Groq API error: HTTP {status}")
+    models = payload.get("data") if isinstance(payload, dict) else None
+    count = len(models) if isinstance(models, list) else 0
+    return ok_usage("groq", label=f"Connected · {count} models")
+
+
 def fetch_cerebras() -> dict[str, Any]:
     key = env_key("CEREBRAS_API_KEY")
     if not key:
-        return err("cerebras", "Missing CEREBRAS_API_KEY. Add it to ~/.config/codexbar/secrets.env")
+        return err("cerebras", missing_key_message("CEREBRAS_API_KEY"))
     status, payload = http_json(
         "https://api.cerebras.ai/v1/models",
         headers={"Authorization": f"Bearer {key}"},
@@ -70,42 +143,38 @@ def fetch_cerebras() -> dict[str, Any]:
         return err("cerebras", f"Cerebras API error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok("cerebras", label=f"Connected · {count} models")
+    return ok_usage("cerebras", label=f"Connected · {count} models")
 
 
 def fetch_vercel_gateway() -> dict[str, Any]:
     key = env_key("VERCEL_AI_GW_KEY") or env_key("VERCEL_API_KEY")
     if not key:
-        return err("vercel", "Missing VERCEL_AI_GW_KEY. Add it to ~/.config/codexbar/secrets.env")
+        return err("vercel", missing_key_message("VERCEL_AI_GW_KEY or VERCEL_API_KEY"))
     base = os.environ.get("VERCEL_AI_GW_URL", "https://ai-gateway.vercel.sh/v1").rstrip("/")
-    status, payload = http_json(
-        f"{base}/models",
-        headers={"Authorization": f"Bearer {key}"},
-    )
+    status, payload = http_json(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
     if status != 200:
         return err("vercel", f"Vercel AI Gateway error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok("vercel", label=f"Connected · {count} models")
+    return ok_usage("vercel", label=f"Connected · {count} models")
 
 
 def fetch_nous() -> dict[str, Any]:
     key = env_key("NOUS_API_KEY")
     if not key:
-        return err("nous", "Missing NOUS_API_KEY. Add it to ~/.config/codexbar/secrets.env")
+        return err("nous", missing_key_message("NOUS_API_KEY"))
     base = os.environ.get("NOUS_API_URL", "https://inference-api.nousresearch.com/v1").rstrip("/")
-    status, payload = http_json(
-        f"{base}/models",
-        headers={"Authorization": f"Bearer {key}"},
-    )
+    status, payload = http_json(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
     if status != 200:
         return err("nous", f"Nous Portal error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok("nous", label=f"Connected · {count} models")
+    return ok_usage("nous", label=f"Connected · {count} models")
 
 
 FETCHERS = {
+    "openrouter": fetch_openrouter,
+    "groq": fetch_groq,
     "cerebras": fetch_cerebras,
     "vercel": fetch_vercel_gateway,
     "nous": fetch_nous,
@@ -118,7 +187,10 @@ def main() -> int:
     if not requested:
         requested = [
             p.strip()
-            for p in os.environ.get("CODEXBAR_EXTRA_PROVIDERS", "cerebras vercel nous").split()
+            for p in os.environ.get(
+                "CODEXBAR_EXTRA_PROVIDERS",
+                "openrouter groq cerebras vercel nous",
+            ).split()
             if p.strip()
         ]
     out: list[dict[str, Any]] = []
@@ -129,7 +201,7 @@ def main() -> int:
             continue
         try:
             out.append(fetcher())
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - surface provider failures to the bar
             out.append(err(provider, str(exc)))
     json.dump(out, sys.stdout, separators=(",", ":"))
     return 0

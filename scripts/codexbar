@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Aggregate JSON (all enabled providers + Linux extras) for Noctalia/Waybar caches.
+if [[ $# -ge 4 && "$1" == "usage" && "$2" == "--format" && "$3" == "json" ]]; then
+  wants_json_only=0
+  has_provider=0
+  for arg in "$@"; do
+    [[ "$arg" == "--json-only" ]] && wants_json_only=1
+    [[ "$arg" == "--provider" ]] && has_provider=1
+  done
+  if (( wants_json_only && ! has_provider )); then
+    exec "$SCRIPT_DIR/codexbar-noctalia" "$@"
+  fi
+fi
+
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/codexbar-env.sh"
 export LD_LIBRARY_PATH="$HOME/.local/lib/codexbar-compat/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
