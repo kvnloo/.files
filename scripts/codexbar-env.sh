@@ -90,9 +90,12 @@ if not isinstance(providers, dict):
 
 nous = providers.get("nous")
 if isinstance(nous, dict) and not os.environ.get("NOUS_API_KEY"):
-    token = str(nous.get("agent_key") or nous.get("access_token") or "").strip()
+    token = str(nous.get("access_token") or nous.get("agent_key") or "").strip()
     if token:
         print(f"NOUS_API_KEY={token}")
+        portal = str(nous.get("portal_base_url") or "").strip()
+        if portal and not os.environ.get("NOUS_PORTAL_URL"):
+            print(f"NOUS_PORTAL_URL={portal}")
         base = str(nous.get("inference_base_url") or "").strip()
         if base and not os.environ.get("NOUS_API_URL"):
             print(f"NOUS_API_URL={base}")

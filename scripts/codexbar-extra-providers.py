@@ -163,13 +163,38 @@ def fetch_nous() -> dict[str, Any]:
     key = env_key("NOUS_API_KEY")
     if not key:
         return err("nous", missing_key_message("NOUS_API_KEY"))
-    base = os.environ.get("NOUS_API_URL", "https://inference-api.nousresearch.com/v1").rstrip("/")
-    status, payload = http_json(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
-    if status != 200:
-        return err("nous", f"Nous Portal error: HTTP {status}")
-    models = payload.get("data") if isinstance(payload, dict) else None
-    count = len(models) if isinstance(models, list) else 0
-    return ok_usage("nous", label=f"Connected · {count} models")
+    portal = os.environ.get("NOUS_PORTAL_URL", "https://portal.nousresearch.com").rstrip("/")
+    headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+    status, payload = http_json(f"{portal}/api/oauth/account", headers=headers)
+    if status != 200 or not isinstance(payload, dict):
+        return err("nous", f"Nous Portal account error: HTTP {status}")
+    paid = payload.get("paid_service_access")
+    paid = paid if isinstance(paid, dict) else {}
+    subscription = payload.get("subscription")
+    subscription = subscription if isinstance(subscription, dict) else {}
+    total = float(paid.get("total_usable_credits") or 0)
+    sub_remaining = float(paid.get("subscription_credits_remaining") or subscription.get("credits_remaining") or 0)
+    purchased = float(paid.get("purchased_credits_remaining") or payload.get("purchased_credits_remaining") or 0)
+    monthly = float(subscription.get("monthly_credits") or paid.get("subscription_monthly_charge") or 0)
+    plan = str(subscription.get("plan") or "Nous Portal").strip()
+    used_percent = 0.0
+    if monthly > 0:
+        used_percent = min(100.0, max(0.0, ((monthly - sub_remaining) / monthly) * 100.0))
+    credits = {
+        "updatedAt": now_iso(),
+        "remaining": f"${total:.2f}",
+        "remainingPercent": round(max(0.0, 100.0 - used_percent), 1) if monthly > 0 else None,
+        "events": [],
+    }
+    detail = f"${total:.2f} usable"
+    if purchased > 0:
+        detail += f" · ${purchased:.2f} purchased"
+    return ok_usage(
+        "nous",
+        label=f"{plan} · {detail}",
+        used_percent=round(used_percent, 1),
+        credits=credits,
+    )
 
 
 FETCHERS = {
