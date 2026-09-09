@@ -264,6 +264,10 @@ append_merged_entry() {
 merged="["
 first=1
 for p in "${PROVIDERS[@]}"; do
+    # LINUX_EXTRA_ONLY providers are fetched via codexbar-extra-providers.py below.
+    if [[ -n "${LINUX_EXTRA_ONLY[$p]:-}" ]]; then
+        continue
+    fi
     body="$(cat "$tmpdir/$p.json")"
     # CLI returns a JSON array; unwrap and append elements.
     if [[ -z "$body" ]]; then

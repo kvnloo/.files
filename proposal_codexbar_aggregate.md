@@ -13,7 +13,7 @@ Crush `providers.json` stores `$OPENROUTER_API_KEY` style references, not litera
 
 ## Dotfiles fix
 
-1. `scripts/codexbar-env.sh` — loads `~/.config/codexbar/secrets.env` and resolves Crush refs
+1. `scripts/codexbar-env.sh` — loads secrets.env, resolves Crush refs, and pulls Nous OAuth from `~/.hermes/auth.json`
 2. `scripts/codexbar` wrapper — sources env before exec
 3. `scripts/codexbar-extra-providers.py` — Cerebras, Vercel AI Gateway, Nous Portal (not in upstream enum)
 4. `config/waybar/scripts/codexbar.sh` — merges extra providers; writes `full.json` for Noctalia

@@ -2,6 +2,32 @@
 set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+EXTRA_ONLY_PROVIDERS=(openrouter groq cerebras vercel nous nousportal)
+
+is_extra_provider() {
+  local p="$1"
+  local candidate
+  for candidate in "${EXTRA_ONLY_PROVIDERS[@]}"; do
+    [[ "$candidate" == "$p" ]] && return 0
+  done
+  return 1
+}
+
+usage_provider=""
+if [[ $# -ge 2 && "$1" == "usage" ]]; then
+  local_i=0
+  while (( local_i < $# )); do
+    local_i=$((local_i + 1))
+    if [[ "${!local_i}" == "--provider" ]]; then
+      next=$((local_i + 1))
+      if (( next <= $# )); then
+        usage_provider="${!next}"
+      fi
+      break
+    fi
+  done
+fi
+
 # Aggregate JSON (all enabled providers + Linux extras) for Noctalia/Waybar caches.
 if [[ $# -ge 4 && "$1" == "usage" && "$2" == "--format" && "$3" == "json" ]]; then
   wants_json_only=0
@@ -17,5 +43,12 @@ fi
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/codexbar-env.sh"
+
+if [[ -n "$usage_provider" ]] && is_extra_provider "$usage_provider"; then
+  extra_script="$SCRIPT_DIR/codexbar-extra-providers.py"
+  if [[ -x "$extra_script" ]]; then
+    exec python3 "$extra_script" "$usage_provider"
+  fi
+fi
 export LD_LIBRARY_PATH="$HOME/.local/lib/codexbar-compat/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$HOME/.local/lib/codexbar-cli/codexbar" "$@"
