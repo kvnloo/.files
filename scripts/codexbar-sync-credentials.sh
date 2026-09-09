@@ -57,3 +57,8 @@ if ((${#missing[@]} > 0)); then
   printf '  - %s\n' "${missing[@]}"
   echo "Add them to $SECRETS_FILE"
 fi
+
+CURSOR_SYNC="${CODEXBAR_CURSOR_SYNC:-$SCRIPT_DIR/../config/codexbar/sync-cursor-auth.sh}"
+if [[ -x "$CURSOR_SYNC" ]]; then
+  "$CURSOR_SYNC" || echo "cursor-auth: skipped"
+fi

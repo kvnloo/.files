@@ -31,6 +31,32 @@ if [[ -z "$cookie" && -f "$CURSOR_DB" ]] && command -v sqlite3 >/dev/null 2>&1; 
   fi
 fi
 
+OMP_DB="${CODEXBAR_OMP_DB:-$HOME/.omp/agent/agent.db}"
+if [[ -z "$cookie" && -f "$OMP_DB" ]]; then
+  cookie="$(python3 - "$OMP_DB" <<'PY'
+import json, sqlite3, sys
+con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+row = con.execute(
+    "SELECT data FROM auth_credentials WHERE provider='cursor' AND disabled_cause IS NULL"
+).fetchone()
+if not row:
+    raise SystemExit(0)
+data = json.loads(row[0])
+token = str((data.get("access") or data.get("access_token") or "")).strip()
+if token.count(".") < 2:
+    raise SystemExit(0)
+import base64
+payload = token.split(".")[1]
+payload += "=" * ((4 - len(payload) % 4) % 4)
+claims = json.loads(base64.urlsafe_b64decode(payload.encode()))
+sub = str(claims.get("sub") or "")
+user_id = sub.split("|")[-1]
+if user_id and token:
+    print(f"WorkosCursorSessionToken={user_id}%3A%3A{token}", end="")
+PY
+)"
+fi
+
 if [[ -z "$cookie" ]]; then
   echo "cursor-auth: no session (sign into Cursor IDE or set CURSOR_COOKIE in $SECRETS_PATH)" >&2
   exit 1

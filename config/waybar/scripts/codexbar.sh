@@ -353,6 +353,14 @@ if [[ -n "$last_good_json" ]]; then
     ' <<< "$merged")"
 fi
 
+ANNOTATE_CURSOR="${CODEXBAR_ANNOTATE_CURSOR:-$REPO_SCRIPTS/codexbar-annotate-cursor.py}"
+if [[ -n "$merged" && "$merged" != "[]" && -x "$ANNOTATE_CURSOR" ]]; then
+    annotated="$(printf '%s' "$merged" | python3 "$ANNOTATE_CURSOR" 2>/dev/null || true)"
+    if [[ -n "$annotated" ]] && echo "$annotated" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        merged="$annotated"
+    fi
+fi
+
 FULL_SNAPSHOT="$CACHE_DIR/full.json"
 if [[ -n "$merged" ]]; then
     echo "$merged" > "$FULL_SNAPSHOT"

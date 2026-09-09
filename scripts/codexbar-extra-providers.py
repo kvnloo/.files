@@ -30,21 +30,26 @@ def ok_usage(
     *,
     source: str = "api",
     label: str,
-    used_percent: float = 0.0,
+    used_percent: float | None = 0.0,
     credits: dict[str, Any] | None = None,
     secondary_label: str | None = None,
     secondary_used: float | None = None,
+    quota: bool = True,
 ) -> dict[str, Any]:
+    primary: dict[str, Any] = {
+        "windowMinutes": 10080,
+        "resetDescription": label,
+    }
+    if used_percent is not None:
+        primary["usedPercent"] = used_percent
+    if not quota:
+        primary["quota"] = False
     payload: dict[str, Any] = {
         "provider": provider,
         "source": source,
         "usage": {
             "updatedAt": now_iso(),
-            "primary": {
-                "usedPercent": used_percent,
-                "windowMinutes": 10080,
-                "resetDescription": label,
-            },
+            "primary": primary,
         },
     }
     if secondary_label is not None and secondary_used is not None:
@@ -128,7 +133,7 @@ def fetch_groq() -> dict[str, Any]:
         return err("groq", f"Groq API error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok_usage("groq", label=f"Connected · {count} models")
+    return ok_usage("groq", label=f"Connected · {count} models", used_percent=None, quota=False)
 
 
 def fetch_cerebras() -> dict[str, Any]:
@@ -143,7 +148,7 @@ def fetch_cerebras() -> dict[str, Any]:
         return err("cerebras", f"Cerebras API error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok_usage("cerebras", label=f"Connected · {count} models")
+    return ok_usage("cerebras", label=f"Connected · {count} models", used_percent=None, quota=False)
 
 
 def fetch_vercel_gateway() -> dict[str, Any]:
@@ -156,7 +161,7 @@ def fetch_vercel_gateway() -> dict[str, Any]:
         return err("vercel", f"Vercel AI Gateway error: HTTP {status}")
     models = payload.get("data") if isinstance(payload, dict) else None
     count = len(models) if isinstance(models, list) else 0
-    return ok_usage("vercel", label=f"Connected · {count} models")
+    return ok_usage("vercel", label=f"Connected · {count} models", used_percent=None, quota=False)
 
 
 def fetch_nous() -> dict[str, Any]:

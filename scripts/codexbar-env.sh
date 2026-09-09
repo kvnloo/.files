@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Load CodexBar provider credentials for the Linux CLI wrapper.
-# Priority: existing env > secrets.env > Crush refs > Hermes auth (Nous OAuth).
+# Priority: existing env > secrets.env > Crush refs > Hermes auth > OMP agent.db.
 
 set -u
 
@@ -103,4 +103,15 @@ PY
   )
 fi
 
-unset _secrets_file _crush_file _hermes_auth
+_script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+_omp_loader="${CODEXBAR_OMP_LOADER:-$_script_dir/codexbar_credentials.py}"
+if [[ -f "$_omp_loader" ]] && command -v python3 >/dev/null 2>&1; then
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || -z "$value" ]] && continue
+    if [[ -z "${!key:-}" ]]; then
+      export "$key=$value"
+    fi
+  done < <(python3 "$_omp_loader")
+fi
+
+unset _secrets_file _crush_file _hermes_auth _script_dir _omp_loader

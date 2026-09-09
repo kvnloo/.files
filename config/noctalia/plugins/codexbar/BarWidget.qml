@@ -16,18 +16,50 @@ Item {
   property int sectionWidgetsCount: 0
 
   readonly property var mainInstance: pluginApi?.mainInstance
+  readonly property var providers: mainInstance?.providers || []
   readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screen?.name)
-  readonly property int remainingPercent: mainInstance?.averageRemainingPercent ?? 100
-  readonly property int usedPercent: Math.max(0, 100 - remainingPercent)
-  readonly property color statusColor: usedPercent >= 90 ? Color.mError : (usedPercent >= 70 ? Color.mTertiary : Color.mPrimary)
 
   implicitWidth: capsule.implicitWidth
   implicitHeight: capsuleHeight
 
+  function segmentFill(entry) {
+    if (entry?.error)
+      return Color.mError
+    const id = String(entry?.provider || "").toLowerCase()
+    if (id === "codex" || id === "openai")
+      return Color.mPrimary
+    if (id === "claude")
+      return Color.mTertiary
+    if (id === "cursor" || id === "gemini")
+      return Color.mSecondary
+    if (id === "grok")
+      return Color.mOnSurface
+    if (id === "groq")
+      return Qt.rgba(Color.mTertiary.r, Color.mTertiary.g, Color.mTertiary.b, 0.72)
+    if (id === "openrouter")
+      return Qt.rgba(Color.mPrimary.r, Color.mPrimary.g, Color.mPrimary.b, 0.55)
+    if (id === "cerebras")
+      return Qt.rgba(Color.mSecondary.r, Color.mSecondary.g, Color.mSecondary.b, 0.55)
+    if (id === "nous")
+      return Qt.rgba(Color.mPrimary.r, Color.mPrimary.g, Color.mPrimary.b, 0.35)
+    if (id === "vercel")
+      return Qt.rgba(Color.mOnSurface.r, Color.mOnSurface.g, Color.mOnSurface.b, 0.5)
+    return Color.mSecondary
+  }
+
+  function stackedProgress(entry) {
+    if (entry?.error)
+      return 1
+    const remaining = mainInstance?.providerRemainingPercent(entry)
+    if (remaining === undefined || remaining === null || isNaN(remaining))
+      return 0
+    return Math.max(0, Math.min(1, remaining / 100))
+  }
+
   Rectangle {
     id: capsule
     anchors.centerIn: parent
-    implicitWidth: content.implicitWidth + Style.margin2M
+    implicitWidth: Math.max(content.implicitWidth + Style.margin2M, Style.margin2M)
     width: implicitWidth
     height: root.capsuleHeight
     radius: Style.radiusL
@@ -42,26 +74,36 @@ Item {
       }
     }
 
-    RowLayout {
+    Row {
       id: content
+      objectName: "stackedBar"
       anchors.centerIn: parent
-      spacing: Style.marginXS
+      spacing: 1
+      height: Math.max(8, root.capsuleHeight * 0.36)
 
-      NIcon {
-        icon: "gauge"
-        pointSize: Style.getBarFontSizeForScreen(root.screen?.name) * 1.25
-        applyUiScale: false
-        color: root.statusColor
-        Layout.alignment: Qt.AlignVCenter
+      Repeater {
+        model: root.providers
+        delegate: Rectangle {
+          width: Math.max(6, Math.floor(160 / Math.max(root.providers.length, 1)))
+          height: content.height
+          radius: 4
+          color: Qt.rgba(Color.mOnSurface.r, Color.mOnSurface.g, Color.mOnSurface.b, 0.16)
+
+          Rectangle {
+            width: parent.width * root.stackedProgress(modelData)
+            height: parent.height
+            radius: parent.radius
+            color: root.segmentFill(modelData)
+          }
+        }
       }
 
-      NText {
-        text: root.mainInstance?.hasData ? root.usedPercent + "%" : "--"
-        pointSize: Style.getBarFontSizeForScreen(root.screen?.name)
-        applyUiScale: false
-        font.weight: Style.fontWeightSemiBold
-        color: Color.mOnSurface
-        Layout.alignment: Qt.AlignVCenter
+      Rectangle {
+        visible: root.providers.length === 0
+        width: 160
+        height: content.height
+        radius: 6
+        color: Qt.rgba(Color.mOnSurface.r, Color.mOnSurface.g, Color.mOnSurface.b, 0.16)
       }
     }
   }
