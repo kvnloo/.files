@@ -46,6 +46,8 @@ packages = [
     "waybar",
     "wofi",
     "dunst",
+    "sway",
+    "wtype",
     "swaylock",
     "swayidle",
     "swaybg",

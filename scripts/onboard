@@ -32,6 +32,8 @@ MODULES=(
   tailnet-ssh
   nix-home
   audio-evolution
+  nvidia-pair
+  ai-dev-tools
 )
 
 MODULE_HELP=(
@@ -41,6 +43,8 @@ MODULE_HELP=(
   "tailnet-ssh:Enable Tailscale + SSH for private remote access (Linux)"
   "nix-home:Bootstrap Nix + Home Manager on CachyOS/Arch hosts"
   "audio-evolution:Install PipeWire Aural Evolution headphone DSP chain"
+  "nvidia-pair:NVIDIA Personal AI Router (PAIR) — local AI inference router"
+  "ai-dev-tools:AI/ML development stack (ollama, cursor, opencode, docker, python-pipx, node)"
 )
 
 usage() {
@@ -171,6 +175,12 @@ run_core_links() {
     onboard_link "$repo/config/sunshine/sunshine.conf" "$HOME/.config/sunshine/sunshine.conf"
   fi
 
+  # Nested Sway agent canvas (named seats). Host compositor stays Hyprland.
+  if [[ -f "$repo/config/sway/agent-seat/config" ]]; then
+    mkdir -p "$HOME/.config/sway/agent-seat"
+    onboard_link "$repo/config/sway/agent-seat/config" "$HOME/.config/sway/agent-seat/config"
+  fi
+
   # CLI helpers on PATH
   local bin command_name
   for bin in workspace-copilot phone-display.sh audio-sink audio-evolve codexbar bar-mode.sh \
@@ -178,7 +188,7 @@ run_core_links() {
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh \
-             reload-desktop.sh keybind-cheatsheet.py; do
+             reload-desktop.sh keybind-cheatsheet.py agent-seat.sh; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"
       command_name="${command_name%.py}"
@@ -281,6 +291,22 @@ run_audio_evolution() {
   printf 'audio-evolution complete.\n'
 }
 
+run_nvidia_pair() {
+  printf '\n==> nvidia-pair\n'
+  "$REPO_ROOT/scripts/nvidia-pair-setup.sh"
+  onboard_mark_module "nvidia-pair" "done"
+  printf 'nvidia-pair complete.\n'
+}
+
+run_ai_dev_tools() {
+  printf '\n==> ai-dev-tools\n'
+  # Canonical AI/ML development stack is tracked in packages/packages.toml
+  # [dev]/[apps]: ollama-bin, cursor-bin, opencode, docker, python-pipx, node, npm, pnpm, nvm, bun, python, python-pip, neovim, tmux, jq, ripgrep, fd, fzf, bat, eza, zoxide, lazygit, github-cli.
+  echo "AI stack manifest: packages/packages.toml [dev]/[apps]"
+  onboard_mark_module "ai-dev-tools" "inferred"
+  printf 'ai-dev-tools complete (inferred from packages.toml).\n'
+}
+
 run_module() {
   local module="$1"
   case "$module" in
@@ -290,6 +316,8 @@ run_module() {
     tailnet-ssh) run_tailnet_ssh ;;
     nix-home) run_nix_home ;;
     audio-evolution) run_audio_evolution ;;
+    nvidia-pair) printf '\n==> nvidia-pair\n'; "$REPO_ROOT/scripts/nvidia-pair-setup.sh"; onboard_mark_module "nvidia-pair" "done"; printf 'nvidia-pair complete.\n' ;;
+    ai-dev-tools) printf '\n==> ai-dev-tools\n'; echo "AI stack: ollama, cursor, opencode, docker, python-pipx, node. Already tracked in packages/packages.toml [dev]/[apps]."; onboard_mark_module "ai-dev-tools" "inferred"; printf 'ai-dev-tools complete (inferred from packages.toml).\n' ;;
     *)
       printf 'Unknown module: %s\n' "$module" >&2
       return 1
