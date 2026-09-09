@@ -148,6 +148,19 @@ fi
 declare -A SOURCE_OVERRIDES=(
     [codex]=oauth
     [claude]=oauth
+    [openrouter]=api
+    [groq]=api
+)
+
+# Linux CLI cannot use browser/web fetch for these providers. Route them through
+# the Python extra-provider bridge instead of the upstream binary.
+declare -A LINUX_EXTRA_ONLY=(
+    [openrouter]=1
+    [groq]=1
+    [cerebras]=1
+    [vercel]=1
+    [nous]=1
+    [nousportal]=1
 )
 
 # If the primary source returns a provider-level error (e.g. Claude OAuth
@@ -225,8 +238,13 @@ run_codexbar() {
     fi
 }
 
+EXTRA_AUTO=()
 i=0
 for p in "${PROVIDERS[@]}"; do
+    if [[ -n "${LINUX_EXTRA_ONLY[$p]:-}" ]]; then
+        EXTRA_AUTO+=("$p")
+        continue
+    fi
     (( i > 0 )) && sleep "$STAGGER_SECS"
     fetch_provider "$p" > "$tmpdir/$p.json"
     i=$((i + 1))
@@ -264,7 +282,18 @@ for p in "${PROVIDERS[@]}"; do
     done <<< "$inner"
 done
 
-EXTRA_PROVIDERS=( ${CODEXBAR_EXTRA_PROVIDERS:-cerebras vercel nous} )
+declare -a EXTRA_PROVIDERS=()
+if [[ -n "${CODEXBAR_EXTRA_PROVIDERS:-}" ]]; then
+    # shellcheck disable=SC2206
+    EXTRA_PROVIDERS=( ${CODEXBAR_EXTRA_PROVIDERS} )
+else
+    EXTRA_PROVIDERS=( "${EXTRA_AUTO[@]}" )
+    for optional in cerebras vercel nous; do
+        if [[ " ${EXTRA_PROVIDERS[*]} " != *" $optional "* ]]; then
+            EXTRA_PROVIDERS+=("$optional")
+        fi
+    done
+fi
 EXTRA_SCRIPT="${CODEXBAR_EXTRA_SCRIPT:-$REPO_SCRIPTS/codexbar-extra-providers.py}"
 if [[ ${#EXTRA_PROVIDERS[@]} -gt 0 && -x "$EXTRA_SCRIPT" ]]; then
     extra_body="$(python3 "$EXTRA_SCRIPT" "${EXTRA_PROVIDERS[@]}" 2>/dev/null || true)"
