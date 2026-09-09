@@ -13,6 +13,11 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_SCRIPTS="${CODEXBAR_REPO_SCRIPTS:-$HOME/workspace/.files/scripts}"
+if [[ -f "$REPO_SCRIPTS/codexbar-env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$REPO_SCRIPTS/codexbar-env.sh"
+fi
 
 if [[ -n "${CODEXBAR_BIN:-}" ]]; then
     CODEXBAR="$CODEXBAR_BIN"
@@ -258,6 +263,18 @@ for p in "${PROVIDERS[@]}"; do
         append_merged_entry "$entry"
     done <<< "$inner"
 done
+
+EXTRA_PROVIDERS=( ${CODEXBAR_EXTRA_PROVIDERS:-cerebras vercel nous} )
+EXTRA_SCRIPT="${CODEXBAR_EXTRA_SCRIPT:-$REPO_SCRIPTS/codexbar-extra-providers.py}"
+if [[ ${#EXTRA_PROVIDERS[@]} -gt 0 && -x "$EXTRA_SCRIPT" ]]; then
+    extra_body="$(python3 "$EXTRA_SCRIPT" "${EXTRA_PROVIDERS[@]}" 2>/dev/null || true)"
+    if [[ -n "$extra_body" ]] && echo "$extra_body" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        while IFS= read -r entry; do
+            append_merged_entry "$entry"
+        done <<< "$(echo "$extra_body" | jq -c '.[]')"
+    fi
+fi
+
 merged+="]"
 
 last_good_json=""
@@ -303,6 +320,11 @@ if [[ -n "$last_good_json" ]]; then
     ' <<< "$merged")"
 fi
 
+FULL_SNAPSHOT="$CACHE_DIR/full.json"
+if [[ -n "$merged" ]]; then
+    echo "$merged" > "$FULL_SNAPSHOT"
+fi
+
 if [[ "$merged" == "[]" ]]; then
     printf '{"text":"","tooltip":"CodexBar: no provider data","class":"stale","percentage":0}\n'
     exit 0
@@ -316,7 +338,8 @@ echo "$merged" | jq -c \
     def provider_name(p):
         {codex:"Codex", claude:"Claude", gemini:"Gemini",
          copilot:"Copilot", openai:"OpenAI", cursor:"Cursor",
-         vertexai:"Vertex AI", openrouter:"OpenRouter",
+         vertexai:"Vertex AI", openrouter:"OpenRouter", groq:"Groq",
+         cerebras:"Cerebras", vercel:"Vercel AI", nous:"Nous Portal",
          antigravity:"Antigravity"}[p] // (p | ascii_upcase);
 
     # Insert spaces the providers omit. Claude OAuth gives "May 17 at 6:20AM"
