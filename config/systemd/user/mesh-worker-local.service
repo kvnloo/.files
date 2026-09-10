@@ -1,0 +1,22 @@
+[Unit]
+Description=Local mesh-worker pull loop (in-process FakeCoS, non-production)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/workspace/mesh-contract-harness/.venv/bin/python /home/kvn/.hermes/scratch/mesh_live_runner.py
+WorkingDirectory=/home/kvn/workspace/mesh-worker
+Environment=PATH=/home/kvn/workspace/mesh-contract-harness/.venv/bin:/usr/bin:/home/kvn/.local/bin:/usr/local/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

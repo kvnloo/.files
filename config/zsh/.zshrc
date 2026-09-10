@@ -89,3 +89,4 @@ autoload -Uz compinit && compinit -C
 # >>> Codex installer >>>
 export PATH="/home/kvn/.local/bin:$PATH"
 # <<< Codex installer <<<
+export PATH=$PATH:$HOME/.maestro/bin

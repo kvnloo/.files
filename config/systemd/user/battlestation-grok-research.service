@@ -1,0 +1,9 @@
+[Unit]
+Description=Bounded Battlestation Grok research
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kvn/workspace/battlestation-keyboard
+ExecStart=/home/kvn/workspace/battlestation/web/work/grok-research/run-grok-research.sh
+Environment=HERMES_HOME=/home/kvn/.hermes
+TimeoutStartSec=0

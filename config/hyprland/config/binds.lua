@@ -19,14 +19,27 @@ hl.bind(mainMod .. " + Left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + Right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + Up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + Down",  hl.dsp.focus({ direction = "down" }))
+-- Super+L stays lock on this laptop; Super+J stays togglesplit.
+hl.bind(mainMod .. " + H", hl.dsp.focus({ direction = "left" }))
+hl.bind(mainMod .. " + K", hl.dsp.focus({ direction = "up" }))
 hl.bind("ALT + Tab",           hl.dsp.window.cycle_next())
 hl.bind(mainMod .. " + Tab",   hl.dsp.exec_cmd(noctCall .. "window-switcher"))
 
+-- Native tab groups (same as desktop 0). Super+Shift+L is DPMS on mbp.
+hl.bind(mainMod .. " + W",           hl.dsp.group.toggle())
+hl.bind(mainMod .. " + G",           hl.dsp.exec_cmd(os.getenv("HOME") .. "/workspace/.files/scripts/hypr-group-workspace.sh"))
+hl.bind(mainMod .. " + bracketright", hl.dsp.group.next())
+hl.bind(mainMod .. " + bracketleft",  hl.dsp.group.prev())
+hl.bind(mainMod .. " + SHIFT + G",   hl.dsp.window.move({ out_of_group = true }))
+hl.bind(mainMod .. " + SHIFT + H",   hl.dsp.window.move({ direction = "l", group_aware = true }))
+hl.bind(mainMod .. " + SHIFT + J",   hl.dsp.window.move({ direction = "d", group_aware = true }))
+hl.bind(mainMod .. " + SHIFT + K",   hl.dsp.window.move({ direction = "u", group_aware = true }))
+
 -- Move active window around workspaces & monitors
-hl.bind(mainMod .. " + SHIFT + Up",                   hl.dsp.window.move({ direction = "u" }))
-hl.bind(mainMod .. " + SHIFT + Right",                hl.dsp.window.move({ direction = "r" }))
-hl.bind(mainMod .. " + SHIFT + Left",                 hl.dsp.window.move({ direction = "l" }))
-hl.bind(mainMod .. " + SHIFT + Down",                 hl.dsp.window.move({ direction = "d" }))
+hl.bind(mainMod .. " + SHIFT + Up",                   hl.dsp.window.move({ direction = "u", group_aware = true }))
+hl.bind(mainMod .. " + SHIFT + Right",                hl.dsp.window.move({ direction = "r", group_aware = true }))
+hl.bind(mainMod .. " + SHIFT + Left",                 hl.dsp.window.move({ direction = "l", group_aware = true }))
+hl.bind(mainMod .. " + SHIFT + Down",                 hl.dsp.window.move({ direction = "d", group_aware = true }))
 hl.bind(mainMod .. " + SHIFT + mouse_up",             hl.dsp.window.move({ monitor   = "+1" }))
 hl.bind(mainMod .. " + SHIFT + mouse_down",           hl.dsp.window.move({ monitor   = "-1" }))
 hl.bind(mainMod .. " + CONTROL + SHIFT + Right",      hl.dsp.window.move({ workspace = "r+1" }))
@@ -50,7 +63,7 @@ hl.bind(mainMod .. " + Return",     hl.dsp.exec_cmd(launchPrefix .. TERMINAL))
 hl.bind(mainMod .. " + E",          hl.dsp.exec_cmd(launchPrefix .. FILE_MANAGER))
 hl.bind(mainMod .. " + T",          hl.dsp.exec_cmd(launchPrefix .. EDITOR))
 hl.bind(mainMod .. " + C",          hl.dsp.exec_cmd(launchPrefix .. CALCULATOR))
-hl.bind(mainMod .. " + W",          hl.dsp.exec_cmd(launchPrefix .. BROWSER))
+hl.bind(mainMod .. " + B",          hl.dsp.exec_cmd(launchPrefix .. BROWSER))
 hl.bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(launchPrefix .. TERMINAL .. " -e btop"))
 hl.bind(mainMod .. " + Z",          hl.dsp.exec_cmd(noctCall .. "settings-toggle"))
 hl.bind(mainMod .. " + X",          hl.dsp.exec_cmd(noctCall .. "panel-toggle control-center"))
@@ -87,18 +100,28 @@ hl.bind("XF86AudioPause", hl.dsp.exec_cmd(noctCall .. "media toggle"),   { locke
 hl.bind("XF86AudioNext",  hl.dsp.exec_cmd(noctCall .. "media next"),     { locked = true })
 hl.bind("XF86AudioPrev",  hl.dsp.exec_cmd(noctCall .. "media previous"), { locked = true })
 
--- Home Manager selects this module per host. It is empty on desktop 0 and
--- contains the Apple function-row aliases only on the MacBook Pro.
+-- core-links / hostname selects this module. Empty on desktop 0; Apple
+-- function-row aliases only on the MacBook Pro.
 require("config.device-binds")
 
 -------------------
 ---- UTILITIES ----
 -------------------
 
--- Screen Capture
-hl.bind(mainMod .. " + P",     hl.dsp.exec_cmd("hyprpicker -a"))
-hl.bind("Print",               hl.dsp.exec_cmd(noctCall .. "screenshot-region"))
-hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd(noctCall .. "screenshot-fullscreen"))
+-- Screen Capture (same as desktop 0)
+-- Super+P        region → file
+-- Super+Shift+P  region → clipboard
+-- Super+Ctrl+P   full → file
+-- Super+Ctrl+Shift+P  full → clipboard
+local ssDir = os.getenv("HOME") .. "/Pictures/screenshots"
+local ssFile = ssDir .. "/screenshot-$(date +%Y%m%d-%H%M%S).png"
+hl.bind(mainMod .. " + P",                    hl.dsp.exec_cmd('grim -g "$(slurp)" ' .. ssFile))
+hl.bind(mainMod .. " + SHIFT + P",            hl.dsp.exec_cmd('grim -g "$(slurp)" - | wl-copy'))
+hl.bind(mainMod .. " + CONTROL + P",          hl.dsp.exec_cmd("grim " .. ssFile))
+hl.bind(mainMod .. " + CONTROL + SHIFT + P", hl.dsp.exec_cmd("grim - | wl-copy"))
+hl.bind(mainMod .. " + SHIFT + C",            hl.dsp.exec_cmd("hyprpicker -a"))
+hl.bind("Print",                             hl.dsp.exec_cmd('grim -g "$(slurp)" ' .. ssFile))
+hl.bind(mainMod .. " + Print",                hl.dsp.exec_cmd("grim " .. ssFile))
 
 -- Theming and Wallpaper
 hl.bind(mainMod .. " + SHIFT + W", hl.dsp.exec_cmd(noctCall .. "panel-toggle wallpaper"))
@@ -142,3 +165,6 @@ hl.bind(mainMod .. " + CONTROL + mouse_down", hl.dsp.focus({ workspace = "m-1" }
 -- Special workspace (scratchpad)
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special" }))
 hl.bind(mainMod .. " + S",         hl.dsp.workspace.toggle_special())
+
+-- Full Sway session on a spare VT (all connected outputs). Super+Shift+A flips Hyprland ↔ Sway.
+hl.bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/bin/agent-seat toggle"))
