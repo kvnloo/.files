@@ -21,6 +21,10 @@ require() {
   command -v "$1" >/dev/null 2>&1 || { printf '%s is required\n' "$1" >&2; exit 1; }
 }
 
+validate_scale() {
+  [[ $scale =~ ^[0-9]+([.][0-9]+)?$ ]] || { printf 'scale must be numeric\n' >&2; exit 2; }
+}
+
 resolve_hyprland() {
   "$HYPRCTL_BIN" -j monitors >/dev/null 2>&1 && return 0
   local signature wayland_display
@@ -63,6 +67,7 @@ present() {
 }
 
 start_display() {
+  validate_scale
   require "$HYPRCTL_BIN"
   require jq
   resolve_hyprland || { printf 'no live Hyprland instance found\n' >&2; exit 1; }

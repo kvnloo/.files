@@ -68,6 +68,14 @@ require_workspace_safe() {
   fi
 }
 
+validate_geometry() {
+  [[ $width =~ ^[1-9][0-9]*$ ]] || { printf 'width must be a positive integer\n' >&2; exit 2; }
+  [[ $height =~ ^[1-9][0-9]*$ ]] || { printf 'height must be a positive integer\n' >&2; exit 2; }
+  [[ $refresh =~ ^[0-9]+([.][0-9]+)?$ ]] || { printf 'refresh must be numeric\n' >&2; exit 2; }
+  [[ $scale =~ ^[0-9]+([.][0-9]+)?$ ]] || { printf 'scale must be numeric\n' >&2; exit 2; }
+  [[ $workspace =~ ^[0-9]+$ ]] || { printf 'workspace must be numeric\n' >&2; exit 2; }
+}
+
 lease_dir() {
   printf '%s/%s' "$LEASE_ROOT" "${lease_id:-default}"
 }
@@ -374,6 +382,7 @@ start_hypr_headless() {
 }
 
 start_display() {
+  validate_geometry
   case $tier in
     xvfb) start_xvfb ;;
     hypr-headless) start_hypr_headless ;;

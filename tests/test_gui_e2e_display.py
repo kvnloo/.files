@@ -139,6 +139,16 @@ def test_hypr_headless_dry_run_lease(lease_root: Path) -> None:
     assert "workspace ${workspace} silent" in script
 
 
+def test_hypr_headless_rejects_lua_scale_injection_before_lease(lease_root: Path) -> None:
+    completed = run(
+        "--tier", "hypr-headless", "--workspace", "97", "--scale", "1+2",
+        "--lease-id", "bad-scale", "start", lease_root=lease_root,
+    )
+    assert completed.returncode == 2
+    assert "scale" in completed.stderr
+    assert not (lease_root / "bad-scale" / "lease.json").exists()
+
+
 def test_stop_preserves_proof_evidence(lease_root: Path) -> None:
     run(
         "--lease-id",

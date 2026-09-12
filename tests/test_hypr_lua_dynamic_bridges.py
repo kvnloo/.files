@@ -139,6 +139,24 @@ def test_phone_display_and_gui_e2e_use_native_eval_with_lua_provider():
     assert "hyprctl keyword" in apply
 
 
+def test_phone_display_rejects_lua_scale_injection_before_hyprctl(tmp_path: Path):
+    log = tmp_path / "hyprctl-called"
+    fake = tmp_path / "hyprctl"
+    fake.write_text(f"#!/bin/sh\nprintf called > {log}\nexit 0\n")
+    fake.chmod(0o755)
+    result = subprocess.run(
+        [PHONE, "start"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PHONE_DISPLAY_HYPRCTL": str(fake),
+             "PHONE_DISPLAY_SYSTEMCTL": "/bin/true", "PHONE_DISPLAY_SCALE": "1+2"},
+    )
+    assert result.returncode == 2
+    assert "scale" in result.stderr
+    assert not log.exists()
+
+
 def test_legacy_startup_selection_is_unchanged():
     assert LIVE_LINK.is_symlink()
     assert LIVE_LINK.resolve() == HYPR / "hyprland.legacy.conf"
