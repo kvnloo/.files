@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Map every live hyprlang line and hyprctl helper to Lua ownership."""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LIVE_LINK = Path.home() / ".config/hypr/hyprland.conf"
+MONITORS_CONF = Path.home() / ".config/hypr/monitors.conf"
+OUT = ROOT / "config/hyprland/lua-ownership-map.json"
+
+ALLOWED = {
+    "hl.config",
+    "hl.monitor",
+    "hl.workspace_rule",
+    "hl.window_rule",
+    "hl.layer_rule",
+    "hl.bind",
+    "hl.on",
+    "require",
+    "generated Lua artifact",
+    "explicit bridge",
+}
+
+SCRIPT_COMMAND = re.compile(
+    r"""(?x)
+    (?:hyprctl|HYPRCTL_BIN|hypr)\s+
+    (?:keyword|dispatch)
+    |
+    ["']hyprctl["']\s*,\s*["'](?:keyword|dispatch)["']
+    |
+    hypr\(\s*["'](?:keyword|dispatch)["']
+    |
+    "\$HYPRCTL_BIN"\s+(?:keyword|dispatch)
+    """
+)
+
+OWNER_BY_API = {
+    "hl.monitor": "lua/monitors.lua",
+    "hl.workspace_rule": "lua/monitors.lua",
+    "hl.window_rule": "lua/rules.lua",
+    "hl.layer_rule": "lua/rules.lua",
+    "hl.bind": "lua/binds.lua",
+    "hl.on": "lua/autostart.lua",
+}
+
+
+def expand(raw: str) -> Path:
+    path = os.path.expandvars(os.path.expanduser(raw.strip()))
+    resolved = Path(path)
+    prefix = "/home/kvn/workspace/.files/"
+    if not resolved.exists() and path.startswith(prefix):
+        resolved = ROOT / path[len(prefix) :]
+    return resolved
+
+
+def split_comment(raw: str) -> tuple[str, str | None]:
+    if "#" not in raw:
+        return raw.rstrip(), None
+    code, comment = raw.split("#", 1)
+    return code.rstrip(), comment.strip()
+
+
+def display_file(path: Path) -> str:
+    real = path.resolve()
+    try:
+        return str(real.relative_to(ROOT))
+    except ValueError:
+        return str(real)
+
+
+def file_kind(path: Path) -> str:
+    name = path.name
+    if name == "colors-hyprland.conf":
+        return "pywal"
+    if name == "liquid-glass.conf":
+        return "liquid-glass"
+    if name == "monitors.conf":
+        return "monitors"
+    return "hyprlang"
+
+
+def keyword_of(text: str, stack: list[str]) -> str:
+    if text.endswith("{"):
+        return text[:-1].strip() or (stack[-1] if stack else "{")
+    if text == "}":
+        return stack[-1] if stack else "}"
+    name = text.split("=", 1)[0].strip()
+    if stack:
+        return stack[0]
+    return name
+
+
+def lua_api_for(keyword: str, text: str, kind: str) -> str:
+    if kind == "pywal":
+        return "generated Lua artifact"
+    if kind == "monitors":
+        return "generated Lua artifact"
+    if text.startswith("source") or keyword == "source":
+        if "colors-hyprland" in text:
+            return "generated Lua artifact"
+        return "explicit bridge"
+    if keyword == "monitor":
+        return "hl.monitor"
+    if keyword == "workspace":
+        return "hl.workspace_rule"
+    if keyword.startswith("windowrule"):
+        return "hl.window_rule"
+    if keyword.startswith("layerrule"):
+        return "hl.layer_rule"
+    if keyword.startswith("bind") or keyword in {"submap", "$mod"}:
+        return "hl.bind"
+    if keyword in {"exec-once", "exec"}:
+        return "hl.on"
+    if keyword == "plugin" and "=" in text and not text.endswith("{"):
+        return "require"
+    if keyword == "env":
+        return "hl.config"
+    return "hl.config"
+
+
+def owner_module(api: str, keyword: str) -> str:
+    if keyword == "env":
+        return "lua/environment.lua"
+    if api == "generated Lua artifact":
+        return "generated Lua artifact"
+    if api == "explicit bridge":
+        return "explicit bridge"
+    if api == "require":
+        return "lua/appearance.lua"
+    return OWNER_BY_API.get(api, "lua/appearance.lua")
+
+
+def walk_hyprlang(entry: Path) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    lines: list[dict] = []
+    comments: list[dict] = []
+    sourced: list[dict] = []
+    unclassified: list[dict] = []
+    seen: set[Path] = set()
+
+    def visit(path: Path, kind: str | None = None) -> None:
+        real = path.resolve()
+        if real in seen:
+            return
+        seen.add(real)
+        kind = kind or file_kind(path)
+        rel = display_file(path)
+        stack: list[str] = []
+        for number, raw in enumerate(path.read_text().splitlines(), 1):
+            code, comment = split_comment(raw)
+            stripped = code.strip()
+            if comment is not None and not stripped:
+                comments.append(
+                    {"file": rel, "line": number, "text": comment, "inline": False}
+                )
+                continue
+            if comment is not None:
+                comments.append(
+                    {"file": rel, "line": number, "text": comment, "inline": True}
+                )
+            if not stripped:
+                continue
+            if stripped.endswith("{"):
+                stack.append(stripped[:-1].strip())
+                key = stack[0]
+            elif stripped == "}":
+                key = stack[0] if stack else "}"
+                if stack:
+                    stack.pop()
+            else:
+                key = keyword_of(stripped, stack)
+            api = lua_api_for(key, stripped, kind)
+            item = {
+                "file": rel,
+                "line": number,
+                "text": stripped,
+                "keyword": key,
+                "lua_api": api,
+                "owner_module": owner_module(api, key),
+                "origin": "hyprlang",
+            }
+            if api not in ALLOWED:
+                unclassified.append(item)
+            lines.append(item)
+            if stripped.startswith("source") and "=" in stripped:
+                target = expand(stripped.split("=", 1)[1])
+                sourced.append(
+                    {
+                        "from": rel,
+                        "line": number,
+                        "path": str(target),
+                        "exists": target.exists(),
+                        "lua_api": api,
+                    }
+                )
+                if target.exists():
+                    visit(target)
+        if stack:
+            raise SystemExit(f"unclosed blocks in {rel}: {stack}")
+
+    visit(entry)
+    return lines, comments, sourced, unclassified
+
+
+def scan_runtime_bridges() -> list[dict]:
+    bridges: list[dict] = []
+    scripts = ROOT / "scripts"
+    for path in sorted(scripts.rglob("*")):
+        if not path.is_file() or path.suffix not in {".sh", ".py"}:
+            continue
+        if path.name.startswith("build-hypr-lua") or path.name.startswith("hypr_lua_"):
+            continue
+        try:
+            body = path.read_text()
+        except UnicodeDecodeError:
+            continue
+        rel = str(path.relative_to(ROOT))
+        for number, raw in enumerate(body.splitlines(), 1):
+            if raw.lstrip().startswith("#"):
+                continue
+            if not SCRIPT_COMMAND.search(raw):
+                continue
+            command = "keyword" if "keyword" in raw else "dispatch"
+            bridges.append(
+                {
+                    "file": rel,
+                    "line": number,
+                    "text": raw.strip(),
+                    "command": command,
+                    "lua_api": "explicit bridge",
+                    "owner_module": "explicit bridge",
+                }
+            )
+    return bridges
+
+
+def build() -> dict:
+    entry = LIVE_LINK.resolve()
+    lines, comments, sourced, unclassified = walk_hyprlang(entry)
+    bridges = scan_runtime_bridges()
+    generated = [
+        {
+            "path": str(MONITORS_CONF),
+            "lua_api": "generated Lua artifact",
+            "note": "Noctalia/persist-monitor-layout generated; not sourced by live hyprland.conf; do not hand-edit",
+            "active_source": False,
+        }
+    ]
+    return {
+        "hyprland_version_target": "0.56.1",
+        "live_config": str(LIVE_LINK),
+        "live_target": str(entry),
+        "entry": display_file(entry),
+        "sourced_files": sourced,
+        "lines": lines,
+        "comments": comments,
+        "runtime_bridges": bridges,
+        "generated_not_sourced": generated,
+        "unclassified": unclassified,
+        "counts": {
+            "lines": len(lines),
+            "comments": len(comments),
+            "runtime_bridges": len(bridges),
+            "sourced_files": len(sourced),
+            "unclassified": len(unclassified),
+        },
+        "allowed_lua_apis": sorted(ALLOWED),
+    }
+
+
+def main() -> int:
+    payload = build()
+    OUT.write_text(json.dumps(payload, indent=2) + "\n")
+    if payload["unclassified"]:
+        print(f"unclassified: {len(payload['unclassified'])}", file=sys.stderr)
+        return 1
+    print(
+        f"wrote {OUT} lines={payload['counts']['lines']} "
+        f"comments={payload['counts']['comments']} "
+        f"bridges={payload['counts']['runtime_bridges']}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

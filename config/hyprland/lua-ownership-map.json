@@ -1,0 +1,4989 @@
+{
+  "hyprland_version_target": "0.56.1",
+  "live_config": "/home/kvn/.config/hypr/hyprland.conf",
+  "live_target": "/workspace/.files/config/hyprland/hyprland.legacy.conf",
+  "entry": "config/hyprland/hyprland.legacy.conf",
+  "sourced_files": [
+    {
+      "from": "config/hyprland/hyprland.legacy.conf",
+      "line": 136,
+      "path": "/home/kvn/.cache/wal/colors-hyprland.conf",
+      "exists": true,
+      "lua_api": "generated Lua artifact"
+    },
+    {
+      "from": "config/hyprland/hyprland.legacy.conf",
+      "line": 375,
+      "path": "/home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "exists": true,
+      "lua_api": "explicit bridge"
+    }
+  ],
+  "lines": [
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 9,
+      "text": "plugin = /home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so",
+      "keyword": "plugin",
+      "lua_api": "require",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 18,
+      "text": "monitor = HDMI-A-1, 1920x1080@75, 0x420, 1",
+      "keyword": "monitor",
+      "lua_api": "hl.monitor",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 19,
+      "text": "monitor = DP-2, 1920x1080@240, 1920x0, 1, transform, 1",
+      "keyword": "monitor",
+      "lua_api": "hl.monitor",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 20,
+      "text": "monitor = DP-1, 1920x1080@540, 3000x420, 1",
+      "keyword": "monitor",
+      "lua_api": "hl.monitor",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 22,
+      "text": "monitor = PHONE, 3120x1440@120, 4920x420, 1",
+      "keyword": "monitor",
+      "lua_api": "hl.monitor",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 25,
+      "text": "monitor = , preferred, auto, 1",
+      "keyword": "monitor",
+      "lua_api": "hl.monitor",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 45,
+      "text": "workspace = 20, monitor:PHONE, default:true",
+      "keyword": "workspace",
+      "lua_api": "hl.workspace_rule",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 47,
+      "text": "workspace = 1, monitor:DP-1, default:true",
+      "keyword": "workspace",
+      "lua_api": "hl.workspace_rule",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 48,
+      "text": "workspace = 10, monitor:HDMI-A-1, default:true",
+      "keyword": "workspace",
+      "lua_api": "hl.workspace_rule",
+      "owner_module": "lua/monitors.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 54,
+      "text": "env = QT_QPA_PLATFORMTHEME,qt6ct",
+      "keyword": "env",
+      "lua_api": "hl.config",
+      "owner_module": "lua/environment.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 55,
+      "text": "env = QT_QPA_PLATFORM,wayland;xcb",
+      "keyword": "env",
+      "lua_api": "hl.config",
+      "owner_module": "lua/environment.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 56,
+      "text": "env = QT_WAYLAND_DISABLE_WINDOWDECORATION,1",
+      "keyword": "env",
+      "lua_api": "hl.config",
+      "owner_module": "lua/environment.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 57,
+      "text": "env = XCURSOR_THEME,capitaine-cursors",
+      "keyword": "env",
+      "lua_api": "hl.config",
+      "owner_module": "lua/environment.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 58,
+      "text": "env = XCURSOR_SIZE,24",
+      "keyword": "env",
+      "lua_api": "hl.config",
+      "owner_module": "lua/environment.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 64,
+      "text": "input {",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 65,
+      "text": "kb_layout = us",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 66,
+      "text": "follow_mouse = 1",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 67,
+      "text": "sensitivity = 0",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 68,
+      "text": "accel_profile = flat",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 70,
+      "text": "touchpad {",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 71,
+      "text": "natural_scroll = true",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 72,
+      "text": "}",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 73,
+      "text": "}",
+      "keyword": "input",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 77,
+      "text": "device {",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 78,
+      "text": "name = trackpad",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 79,
+      "text": "accel_profile = adaptive",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 80,
+      "text": "}",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 85,
+      "text": "device {",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 86,
+      "text": "name = pen-passthrough",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 87,
+      "text": "output = PHONE",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 88,
+      "text": "}",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 90,
+      "text": "device {",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 91,
+      "text": "name = touch-passthrough",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 92,
+      "text": "output = PHONE",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 93,
+      "text": "}",
+      "keyword": "device",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 99,
+      "text": "general {",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 100,
+      "text": "gaps_in = 18",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 101,
+      "text": "gaps_out = 8",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 102,
+      "text": "border_size = 4",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 105,
+      "text": "col.active_border = rgba(75A4CDff) rgba(BE78D1ff) 45deg",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 106,
+      "text": "col.inactive_border = rgba(2f343faa)",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 108,
+      "text": "layout = dwindle",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 109,
+      "text": "allow_tearing = false",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 110,
+      "text": "}",
+      "keyword": "general",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 113,
+      "text": "group {",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 114,
+      "text": "groupbar {",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 115,
+      "text": "height = 30",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 116,
+      "text": "font_size = 12",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 117,
+      "text": "font_family = JetBrainsMono Nerd Font",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 118,
+      "text": "font_weight_active = 600",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 119,
+      "text": "font_weight_inactive = 450",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 120,
+      "text": "gradients = true",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 121,
+      "text": "blur = true",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 122,
+      "text": "rounding = 12",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 123,
+      "text": "rounding_power = 2",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 124,
+      "text": "text_padding = 10",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 125,
+      "text": "indicator_gap = 2",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 126,
+      "text": "indicator_height = 2",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 127,
+      "text": "gaps_in = 6",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 128,
+      "text": "gaps_out = 8",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 129,
+      "text": "gradient_rounding = 12",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 130,
+      "text": "gradient_round_only_edges = true",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 131,
+      "text": "}",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 132,
+      "text": "}",
+      "keyword": "group",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 136,
+      "text": "source = ~/.cache/wal/colors-hyprland.conf",
+      "keyword": "source",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 2,
+      "text": "general:col.active_border = rgba(678C3Eff) rgba(6D8F57ff) rgba(99A362ff) rgba(C8BE72ff) rgba(4FA5B3ff) rgba(98B39Eff) 90deg",
+      "keyword": "general:col.active_border",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 3,
+      "text": "general:col.inactive_border = rgba(929b9866)",
+      "keyword": "general:col.inactive_border",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 4,
+      "text": "group:col.border_active = rgba(678C3Eff) rgba(6D8F57ff) rgba(99A362ff) rgba(C8BE72ff) rgba(4FA5B3ff) rgba(98B39Eff) 90deg",
+      "keyword": "group:col.border_active",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 5,
+      "text": "group:col.border_inactive = rgba(929b9866)",
+      "keyword": "group:col.border_inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 6,
+      "text": "group:col.border_locked_active = rgba(678C3Eff) rgba(6D8F57ff) rgba(99A362ff) rgba(C8BE72ff) rgba(4FA5B3ff) rgba(98B39Eff) 90deg",
+      "keyword": "group:col.border_locked_active",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 7,
+      "text": "group:col.border_locked_inactive = rgba(929b9855)",
+      "keyword": "group:col.border_locked_inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 8,
+      "text": "group:groupbar:col.active = rgba(181f23b8) rgba(C8BE7278) 90deg",
+      "keyword": "group:groupbar:col.active",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 9,
+      "text": "group:groupbar:col.inactive = rgba(181f23a8)",
+      "keyword": "group:groupbar:col.inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 10,
+      "text": "group:groupbar:col.locked_active = rgba(181f23b8) rgba(C8BE7278) 90deg",
+      "keyword": "group:groupbar:col.locked_active",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 11,
+      "text": "group:groupbar:col.locked_inactive = rgba(181f2398)",
+      "keyword": "group:groupbar:col.locked_inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 12,
+      "text": "plugin:hyprglass:tint_color = 0x181f2338",
+      "keyword": "plugin:hyprglass:tint_color",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 13,
+      "text": "group:groupbar:text_color = rgba(d1dedaff)",
+      "keyword": "group:groupbar:text_color",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 14,
+      "text": "group:groupbar:text_color_inactive = rgba(d1dedae6)",
+      "keyword": "group:groupbar:text_color_inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 15,
+      "text": "group:groupbar:text_color_locked_active = rgba(d1dedaff)",
+      "keyword": "group:groupbar:text_color_locked_active",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 16,
+      "text": "group:groupbar:text_color_locked_inactive = rgba(d1dedae6)",
+      "keyword": "group:groupbar:text_color_locked_inactive",
+      "lua_api": "generated Lua artifact",
+      "owner_module": "generated Lua artifact",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 142,
+      "text": "decoration {",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 143,
+      "text": "rounding = 12",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 146,
+      "text": "active_opacity = 1.0",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 147,
+      "text": "inactive_opacity = 0.95",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 149,
+      "text": "shadow {",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 150,
+      "text": "enabled = true",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 151,
+      "text": "range = 12",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 152,
+      "text": "offset = -12 -12",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 153,
+      "text": "render_power = 3",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 154,
+      "text": "color = rgba(00000080)",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 155,
+      "text": "}",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 157,
+      "text": "blur {",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 158,
+      "text": "enabled = true",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 159,
+      "text": "size = 6",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 160,
+      "text": "passes = 2",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 161,
+      "text": "new_optimizations = true",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 165,
+      "text": "ignore_opacity = true",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 166,
+      "text": "noise = 0.015",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 167,
+      "text": "vibrancy = 0.22",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 168,
+      "text": "contrast = 0.9",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 169,
+      "text": "brightness = 0.85",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 170,
+      "text": "}",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 171,
+      "text": "}",
+      "keyword": "decoration",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 177,
+      "text": "animations {",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 178,
+      "text": "enabled = true",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 181,
+      "text": "bezier = smoothOut, 0.36, 0, 0.66, -0.56",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 182,
+      "text": "bezier = smoothIn, 0.25, 1, 0.5, 1",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 183,
+      "text": "bezier = overshot, 0.4, 0.8, 0.2, 1.2",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 185,
+      "text": "animation = windows, 1, 5, overshot, slide",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 186,
+      "text": "animation = windowsOut, 1, 4, smoothOut, slide",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 187,
+      "text": "animation = windowsMove, 1, 4, smoothIn, slide",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 188,
+      "text": "animation = border, 1, 10, default",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 189,
+      "text": "animation = borderangle, 1, 40, default, loop",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 190,
+      "text": "animation = fade, 1, 5, smoothIn",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 191,
+      "text": "animation = fadeDim, 1, 5, smoothIn",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 192,
+      "text": "animation = workspaces, 1, 6, overshot, slidevert",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 193,
+      "text": "}",
+      "keyword": "animations",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 200,
+      "text": "plugin:hyprglass {",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 202,
+      "text": "enabled = 0",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 203,
+      "text": "default_theme = dark",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 204,
+      "text": "default_preset = flow",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 205,
+      "text": "preset = name:flow, blur_strength:1.10, blur_iterations:2, refraction_strength:0.42, chromatic_aberration:0.18, fresnel_strength:0.46, specular_strength:0.52, glass_opacity:0.88, edge_thickness:0.045, lens_distortion:0.30",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 206,
+      "text": "preset = name:flow:dark, brightness:0.88, contrast:0.96, saturation:0.92, vibrancy:0.18, adaptive_dim:0.20",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 208,
+      "text": "layers {",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 209,
+      "text": "enabled = 0",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 210,
+      "text": "namespaces = waybar",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 211,
+      "text": "preset = flow",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 212,
+      "text": "namespace_mask_thresholds = waybar=0.05",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 213,
+      "text": "}",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 214,
+      "text": "}",
+      "keyword": "plugin:hyprglass",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 220,
+      "text": "dwindle {",
+      "keyword": "dwindle",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 221,
+      "text": "preserve_split = true",
+      "keyword": "dwindle",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 222,
+      "text": "force_split = 2",
+      "keyword": "dwindle",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 223,
+      "text": "}",
+      "keyword": "dwindle",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 225,
+      "text": "master {",
+      "keyword": "master",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 226,
+      "text": "new_status = master",
+      "keyword": "master",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 227,
+      "text": "}",
+      "keyword": "master",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 282,
+      "text": "gestures {",
+      "keyword": "gestures",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 283,
+      "text": "workspace_swipe_distance = 300",
+      "keyword": "gestures",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 284,
+      "text": "workspace_swipe_create_new = true",
+      "keyword": "gestures",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 285,
+      "text": "}",
+      "keyword": "gestures",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 291,
+      "text": "misc {",
+      "keyword": "misc",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 292,
+      "text": "force_default_wallpaper = 0",
+      "keyword": "misc",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 293,
+      "text": "disable_hyprland_logo = true",
+      "keyword": "misc",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 294,
+      "text": "disable_splash_rendering = true",
+      "keyword": "misc",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 295,
+      "text": "}",
+      "keyword": "misc",
+      "lua_api": "hl.config",
+      "owner_module": "lua/appearance.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 302,
+      "text": "windowrule = match:class ^(Spotify|spotify)$, workspace 10",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 303,
+      "text": "windowrule = match:class ^(high-tide)$, workspace 10",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 304,
+      "text": "windowrule = match:class ^(kitty)$, workspace 1",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 305,
+      "text": "windowrule = match:class ^(google-chrome|google-chrome-unstable|Google-chrome)$, workspace 2 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 309,
+      "text": "windowrule = match:class ^(com\\.obsproject\\.Studio)$, workspace 8 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 310,
+      "text": "windowrule = match:class ^(com\\.obsproject\\.Studio)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 314,
+      "text": "windowrule = match:class ^(sway)$, workspace 9 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 315,
+      "text": "windowrule = match:class ^(sway)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 316,
+      "text": "windowrule = match:class ^(wlroots)$, workspace 9 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 317,
+      "text": "windowrule = match:class ^(wlroots)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 323,
+      "text": "windowrule = match:class ^(HermesE2E-[0-9]+)$, workspace special:hermes-tests silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 324,
+      "text": "windowrule = match:class ^(HermesE2E-[0-9]+)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 325,
+      "text": "windowrule = match:class ^(HermesE2E-[0-9]+)$, no_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 329,
+      "text": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, workspace 9 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 330,
+      "text": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 331,
+      "text": "windowrule = match:class ^(Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*)$, no_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 335,
+      "text": "windowrule = match:class ^(ZenCDAE2E.*)$, workspace 9 silent",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 336,
+      "text": "windowrule = match:class ^(ZenCDAE2E.*)$, no_initial_focus on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 339,
+      "text": "windowrule = tag +hyprglass_disabled, match:fullscreen true",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 340,
+      "text": "windowrule = tag +hyprglass_disabled, match:class ^(steam|Steam|Plex|linux-wallpaperengine)$",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 343,
+      "text": "windowrule = match:class ^(scratch_term)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 344,
+      "text": "windowrule = match:class ^(scratch_term)$, size 80% 70%",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 345,
+      "text": "windowrule = match:class ^(scratch_term)$, center on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 346,
+      "text": "windowrule = match:class ^(scratch_term)$, workspace special:scratch_term",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 349,
+      "text": "windowrule = match:class ^(pavucontrol)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 350,
+      "text": "windowrule = match:class ^(nm-connection-editor)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 351,
+      "text": "windowrule = match:class ^(blueman-manager)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 354,
+      "text": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 355,
+      "text": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, size 1700 900",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 356,
+      "text": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, center on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 357,
+      "text": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, pin on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 359,
+      "text": "windowrule = match:title ^(Picture-in-Picture)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 360,
+      "text": "windowrule = match:title ^(Picture-in-Picture)$, decorate off",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 361,
+      "text": "windowrule = match:title ^(Picture-in-Picture)$, pin on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 364,
+      "text": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 365,
+      "text": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, decorate off",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 366,
+      "text": "windowrule = match:class ^(google-chrome)$, match:title ^(Meet - [a-z]+-[a-z]+-[a-z]+)$, pin on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 368,
+      "text": "windowrule = match:title ^(Volume Control)$, float on",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 373,
+      "text": "windowrule = match:class ^(Alacritty)$, opacity 0.88 0.82",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 375,
+      "text": "source = /home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "keyword": "source",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 8,
+      "text": "windowrule = match:class ^(Hermes)$, opacity 1.0 1.0",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 376,
+      "text": "windowrule = match:class ^(agent-fleet-popup|agent-deck-popup)$, opacity 0.90 0.84",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 377,
+      "text": "windowrule = match:class ^(dev.warp.Warp)$, opacity 0.95 0.90",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 378,
+      "text": "windowrule = match:class ^(Code)$, opacity 0.95 0.90",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 379,
+      "text": "windowrule = match:class ^(org.telegram.desktop)$, opacity 0.88 0.82",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 382,
+      "text": "layerrule = match:namespace ^(noctalia-background-.*)$, blur on",
+      "keyword": "layerrule",
+      "lua_api": "hl.layer_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 383,
+      "text": "layerrule = match:namespace ^(noctalia-background-.*)$, ignore_alpha 0.18",
+      "keyword": "layerrule",
+      "lua_api": "hl.layer_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 386,
+      "text": "windowrule = idle_inhibit fullscreen",
+      "keyword": "windowrule",
+      "lua_api": "hl.window_rule",
+      "owner_module": "lua/rules.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 392,
+      "text": "$mod = SUPER",
+      "keyword": "$mod",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 395,
+      "text": "bind = $mod, Return, exec, kitty",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 396,
+      "text": "bind = $mod SHIFT, E, exec, nautilus",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 397,
+      "text": "bind = $mod SHIFT, Q, killactive",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 400,
+      "text": "bindl = $mod, N, exec, $HOME/workspace/.files/scripts/night-mode.sh off",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 403,
+      "text": "bind = $mod, space, exec, qs -c noctalia-shell ipc --any-display call launcher toggle",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 404,
+      "text": "bind = $mod SHIFT, space, exec, rofi -show run",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 405,
+      "text": "bind = $mod, Tab, exec, rofi -show window",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 406,
+      "text": "bind = $mod, slash, exec, $HOME/workspace/.files/scripts/keybind-cheatsheet.py",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 407,
+      "text": "bind = $mod, O, exec, $HOME/workspace/.files/scripts/workspace-atlas.py",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 408,
+      "text": "bind = $mod, V, exec, cliphist list | rofi -dmenu | cliphist decode | wl-copy",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 411,
+      "text": "bind = $mod, F, fullscreen, 0",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 412,
+      "text": "bind = $mod SHIFT, F, togglefloating",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 413,
+      "text": "bind = $mod SHIFT, F, resizewindowpixel, exact 960 540",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 414,
+      "text": "bind = $mod SHIFT, F, centerwindow",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 419,
+      "text": "bind = $mod, H, movefocus, l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 420,
+      "text": "bind = $mod, J, movefocus, d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 421,
+      "text": "bind = $mod, K, movefocus, u",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 422,
+      "text": "bind = $mod, L, movefocus, r",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 423,
+      "text": "bind = $mod, left, movefocus, l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 424,
+      "text": "bind = $mod, down, movefocus, d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 425,
+      "text": "bind = $mod, up, movefocus, u",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 426,
+      "text": "bind = $mod, right, movefocus, r",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 427,
+      "text": "bind = $mod SHIFT, H, movewindoworgroup, l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 428,
+      "text": "bind = $mod SHIFT, J, movewindoworgroup, d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 429,
+      "text": "bind = $mod SHIFT, K, movewindoworgroup, u",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 430,
+      "text": "bind = $mod SHIFT, L, movewindoworgroup, r",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 431,
+      "text": "bind = $mod SHIFT, left, movewindoworgroup, l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 432,
+      "text": "bind = $mod SHIFT, down, movewindoworgroup, d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 433,
+      "text": "bind = $mod SHIFT, up, movewindoworgroup, u",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 434,
+      "text": "bind = $mod SHIFT, right, movewindoworgroup, r",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 435,
+      "text": "bind = $mod, C, layoutmsg, preselect l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 436,
+      "text": "bind = $mod, V, layoutmsg, preselect d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 437,
+      "text": "bind = $mod, W, togglegroup",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 438,
+      "text": "bind = $mod, G, exec, $HOME/workspace/.files/scripts/hypr-group-workspace.sh",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 439,
+      "text": "bind = $mod, E, layoutmsg, togglesplit",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 440,
+      "text": "bind = $mod, bracketright, changegroupactive, f",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 441,
+      "text": "bind = $mod, bracketleft, changegroupactive, b",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 442,
+      "text": "bind = $mod SHIFT, G, moveoutofgroup",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 443,
+      "text": "bind = $mod, A, focuscurrentorlast",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 472,
+      "text": "bind = $mod, 1, workspace, 1",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 473,
+      "text": "bind = $mod, 2, workspace, 2",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 474,
+      "text": "bind = $mod, 3, workspace, 3",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 475,
+      "text": "bind = $mod, 4, workspace, 4",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 476,
+      "text": "bind = $mod, 5, workspace, 5",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 477,
+      "text": "bind = $mod, 6, workspace, 6",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 478,
+      "text": "bind = $mod, 7, workspace, 7",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 479,
+      "text": "bind = $mod, 8, workspace, 8",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 480,
+      "text": "bind = $mod, 9, workspace, 9",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 481,
+      "text": "bind = $mod, 0, workspace, 10",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 484,
+      "text": "bind = $mod SHIFT, 1, movetoworkspace, 1",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 485,
+      "text": "bind = $mod SHIFT, 2, movetoworkspace, 2",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 486,
+      "text": "bind = $mod SHIFT, 3, movetoworkspace, 3",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 487,
+      "text": "bind = $mod SHIFT, 4, movetoworkspace, 4",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 488,
+      "text": "bind = $mod SHIFT, 5, movetoworkspace, 5",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 489,
+      "text": "bind = $mod SHIFT, 6, movetoworkspace, 6",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 490,
+      "text": "bind = $mod SHIFT, 7, movetoworkspace, 7",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 491,
+      "text": "bind = $mod SHIFT, 8, movetoworkspace, 8",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 492,
+      "text": "bind = $mod SHIFT, 9, movetoworkspace, 9",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 493,
+      "text": "bind = $mod SHIFT, 0, movetoworkspace, 10",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 496,
+      "text": "bind = $mod SHIFT CTRL, H, movecurrentworkspacetomonitor, l",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 497,
+      "text": "bind = $mod SHIFT CTRL, L, movecurrentworkspacetomonitor, r",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 498,
+      "text": "bind = $mod SHIFT CTRL, K, movecurrentworkspacetomonitor, u",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 499,
+      "text": "bind = $mod SHIFT CTRL, J, movecurrentworkspacetomonitor, d",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 502,
+      "text": "bind = $mod SHIFT, minus, movetoworkspacesilent, special",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 503,
+      "text": "bind = $mod, minus, togglespecialworkspace",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 504,
+      "text": "bind = $mod, grave, togglespecialworkspace, scratch_term",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 507,
+      "text": "bind = $mod CTRL, equal, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh increase",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 508,
+      "text": "bind = $mod CTRL, minus, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh decrease",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 509,
+      "text": "bind = $mod CTRL, 0, exec, $HOME/workspace/.files/scripts/hypr-gaps.sh reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 512,
+      "text": "bind = $mod SHIFT, R, exec, $HOME/workspace/.files/scripts/reload-desktop.sh",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 515,
+      "text": "bind = $mod SHIFT, T, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-picker.sh",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 516,
+      "text": "bind = $mod SHIFT, comma, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py previous",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 517,
+      "text": "bind = $mod SHIFT, period, exec, $HOME/workspace/.files/scripts/desktop-wallpaper-step.py next",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 518,
+      "text": "bind = $mod CTRL, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh cycle",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 519,
+      "text": "bind = $mod ALT, W, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh toggle",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 520,
+      "text": "bind = $mod CTRL, B, exec, $HOME/workspace/.files/scripts/bar-mode.sh toggle",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 521,
+      "text": "bind = $mod ALT, P, exec, $HOME/workspace/.files/scripts/phone-display.sh toggle",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 522,
+      "text": "bind = $mod SHIFT, B, submap, wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 524,
+      "text": "submap = wallpaper \u00b7 a auto \u2502 s span \u2502 f fill \u2502 i fit \u2502 c center \u2502 t tile \u2502 x stretch",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 525,
+      "text": "bind = , A, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw auto",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 526,
+      "text": "bind = , A, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 527,
+      "text": "bind = , S, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw span",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 528,
+      "text": "bind = , S, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 529,
+      "text": "bind = , F, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fill",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 530,
+      "text": "bind = , F, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 531,
+      "text": "bind = , I, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw fit",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 532,
+      "text": "bind = , I, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 533,
+      "text": "bind = , C, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw center",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 534,
+      "text": "bind = , C, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 535,
+      "text": "bind = , T, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw tile",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 536,
+      "text": "bind = , T, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 537,
+      "text": "bind = , X, exec, $HOME/workspace/.files/scripts/wallpaper-mode.sh draw stretch",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 538,
+      "text": "bind = , X, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 539,
+      "text": "bind = , Return, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 540,
+      "text": "bind = , escape, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 541,
+      "text": "submap = reset",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 548,
+      "text": "bind = $mod, P, exec, grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 551,
+      "text": "bind = $mod SHIFT, P, exec, grim -g \"$(slurp)\" - | wl-copy",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 554,
+      "text": "bind = $mod CTRL, P, exec, grim ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 557,
+      "text": "bind = $mod CTRL SHIFT, P, exec, grim - | wl-copy",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 563,
+      "text": "bindel = , XF86AudioRaiseVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+      "keyword": "bindel",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 564,
+      "text": "bindel = , XF86AudioLowerVolume, exec, wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
+      "keyword": "bindel",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 565,
+      "text": "bindl = , XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 566,
+      "text": "bindl = , XF86AudioPlay, exec, playerctl play-pause",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 567,
+      "text": "bindl = , XF86AudioPause, exec, playerctl play-pause",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 568,
+      "text": "bindl = , XF86AudioNext, exec, playerctl next",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 569,
+      "text": "bindl = , XF86AudioPrev, exec, playerctl previous",
+      "keyword": "bindl",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 572,
+      "text": "bind = ALT, 1, exec, $HOME/.local/bin/audio-evolve select 1 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 573,
+      "text": "bind = ALT, 2, exec, $HOME/.local/bin/audio-evolve select 2 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 574,
+      "text": "bind = ALT, 3, exec, $HOME/.local/bin/audio-evolve select 3 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 575,
+      "text": "bind = ALT, 4, exec, $HOME/.local/bin/audio-evolve select 4 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 576,
+      "text": "bind = ALT, 5, exec, $HOME/.local/bin/audio-evolve select 5 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 577,
+      "text": "bind = ALT, 6, exec, $HOME/.local/bin/audio-evolve select 6 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 578,
+      "text": "bind = ALT, 7, exec, $HOME/.local/bin/audio-evolve select 7 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 579,
+      "text": "bind = ALT, 8, exec, $HOME/.local/bin/audio-evolve select 8 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 580,
+      "text": "bind = ALT, 9, exec, $HOME/.local/bin/audio-evolve select 9 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 581,
+      "text": "bind = ALT, 0, exec, $HOME/.local/bin/audio-evolve select 0 --notify",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 582,
+      "text": "bind = ALT, F12, exec, $HOME/.local/bin/audio-sink bitperfect",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 583,
+      "text": "bind = ALT, F11, exec, $HOME/.local/bin/audio-sink bs2b",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 584,
+      "text": "bind = ALT, F10, exec, $HOME/.local/bin/audio-sink room",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 585,
+      "text": "bind = ALT, F9, exec, $HOME/.local/bin/audio-sink aural",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 588,
+      "text": "bind = $mod SHIFT, A, exec, notify-send -u critical -t 5000 \"Audio restart in 3 seconds\" \"PipeWire will briefly interrupt active streams\" && sleep 3 && systemctl --user restart pipewire pipewire-pulse && notify-send \"PipeWire\" \"Audio stack restarted\"",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 591,
+      "text": "bind = $mod, S, exec, $HOME/workspace/.files/scripts/speak-selection.sh",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 597,
+      "text": "bind = $mod, R, submap, resize",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 599,
+      "text": "submap = resize",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 600,
+      "text": "binde = , H, resizeactive, -40 0",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 601,
+      "text": "binde = , J, resizeactive, 0 40",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 602,
+      "text": "binde = , K, resizeactive, 0 -40",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 603,
+      "text": "binde = , L, resizeactive, 40 0",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 604,
+      "text": "binde = , left, resizeactive, -40 0",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 605,
+      "text": "binde = , down, resizeactive, 0 40",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 606,
+      "text": "binde = , up, resizeactive, 0 -40",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 607,
+      "text": "binde = , right, resizeactive, 40 0",
+      "keyword": "binde",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 608,
+      "text": "bind = , Return, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 609,
+      "text": "bind = , escape, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 610,
+      "text": "submap = reset",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 616,
+      "text": "bind = $mod SHIFT, X, submap, system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 618,
+      "text": "submap = system \u00b7 l lock \u2502 n night \u2502 s suspend \u2502 S shutdown \u2502 r reboot \u2502 e exit",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 619,
+      "text": "bind = , L, exec, hyprlock",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 620,
+      "text": "bind = , L, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 621,
+      "text": "bind = , N, exec, $HOME/workspace/.files/scripts/night-mode.sh on",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 622,
+      "text": "bind = , N, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 623,
+      "text": "bind = , E, exit",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 624,
+      "text": "bind = , S, exec, systemctl suspend",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 625,
+      "text": "bind = , S, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 626,
+      "text": "bind = , R, exec, systemctl reboot",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 627,
+      "text": "bind = SHIFT, S, exec, systemctl poweroff",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 628,
+      "text": "bind = , Return, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 629,
+      "text": "bind = , escape, submap, reset",
+      "keyword": "bind",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 630,
+      "text": "submap = reset",
+      "keyword": "submap",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 636,
+      "text": "bindm = $mod, mouse:272, movewindow",
+      "keyword": "bindm",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 637,
+      "text": "bindm = $mod, mouse:273, resizewindow",
+      "keyword": "bindm",
+      "lua_api": "hl.bind",
+      "owner_module": "lua/binds.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 644,
+      "text": "exec-once = $HOME/workspace/.files/scripts/bar-mode.sh restore",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 647,
+      "text": "exec-once = $HOME/workspace/.files/scripts/wallpaper-mode.sh restore",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 648,
+      "text": "exec-once = /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 649,
+      "text": "exec-once = $HOME/workspace/.files/scripts/kdeconnect-tailnet.py --start",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 650,
+      "text": "exec-once = warp-terminal --class scratch_term",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 651,
+      "text": "exec-once = wl-paste --type text --watch cliphist store",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 652,
+      "text": "exec-once = wl-paste --type image --watch cliphist store",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 653,
+      "text": "exec-once = env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb WAYLAND_DISPLAY= rustdesk",
+      "keyword": "exec-once",
+      "lua_api": "hl.on",
+      "owner_module": "lua/autostart.lua",
+      "origin": "hyprlang"
+    }
+  ],
+  "comments": [
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 1,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 2,
+      "text": "HYPRLAND CONFIGURATION",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 3,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 4,
+      "text": "Translated from i3/picom/polybar dotfiles",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 5,
+      "text": "See: https://wiki.hyprland.org/Configuring/",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 6,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 7,
+      "text": "Built against this Hyprland release; loading before sourced colors lets the",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 8,
+      "text": "pywal generator update the glass tint without transient config errors.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 11,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 12,
+      "text": "SECTION 1: MONITORS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 13,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 14,
+      "text": "Verify connector names with: hyprctl monitors",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 15,
+      "text": "X11 -> Wayland mapping: HDMI-0 -> HDMI-A-1, DP-2 -> DP-2, DP-0 -> DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 16,
+      "text": "Layout: [Left 1080p] [Center portrait 1080x1920] [Right 1080p PRIMARY]",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 18,
+      "text": "Left - Dell S3222HN (was HDMI-0)",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 19,
+      "text": "Center portrait - AOP 25XV2Q F (was DP-2, rotated left)",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 20,
+      "text": "Right primary - ASUS ROG PG248QP (was DP-0)",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 21,
+      "text": "On-demand S25 Ultra canvas; created by scripts/phone-display.sh.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 24,
+      "text": "Fallback for any unmatched monitor",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 28,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 29,
+      "text": "SECTION 2: WORKSPACE ASSIGNMENTS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 30,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 31,
+      "text": "Workspace -> Monitor binding (from i3 config)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 33,
+      "text": "Workspace-monitor assignments removed \u2014 workspaces show on whichever monitor they're opened on",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 34,
+      "text": "To re-pin, uncomment:",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 35,
+      "text": "workspace = 1, monitor:DP-2         # Code -> center portrait",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 36,
+      "text": "workspace = 2, monitor:DP-1         # Browse -> right primary",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 37,
+      "text": "workspace = 3, monitor:DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 38,
+      "text": "workspace = 4, monitor:DP-2",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 39,
+      "text": "workspace = 5, monitor:DP-2",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 40,
+      "text": "workspace = 6, monitor:DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 41,
+      "text": "workspace = 7, monitor:DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 42,
+      "text": "workspace = 8, monitor:DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 43,
+      "text": "workspace = 9, monitor:DP-1",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 44,
+      "text": "workspace = 10, monitor:HDMI-A-1    # Music -> left",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 45,
+      "text": "S25 Ultra tldraw canvas",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 47,
+      "text": "-> right 540Hz (ASUS ROG)",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 48,
+      "text": "-> left 75Hz (Dell)",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 50,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 51,
+      "text": "SECTION 2.1: ENVIRONMENT VARIABLES",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 52,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 60,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 61,
+      "text": "SECTION 3: INPUT",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 62,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 75,
+      "text": "Preserve the global flat profile for the wired mouse, but let libinput apply",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 76,
+      "text": "its touchpad-specific adaptive curve to the Bluetooth Apple trackpad.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 82,
+      "text": "Sunshine creates these uinput devices when Moonlight sends native pen/touch",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 83,
+      "text": "packets. Pin their absolute coordinates to the streamed PHONE output so the",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 84,
+      "text": "S Pen never drives the desktop cursor on a physical monitor.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 95,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 96,
+      "text": "SECTION 4: GENERAL",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 97,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 104,
+      "text": "Pywal-compatible colors (fallback defaults)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 112,
+      "text": "Native groups: airy tabs with palette colors supplied by pywal below.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 134,
+      "text": "Generated active/inactive borders and group tabs. The active gradient rotates",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 135,
+      "text": "through the current wallpaper palette via the borderangle animation.",
+      "inline": false
+    },
+    {
+      "file": "/workspace/kvn-home/.cache/wal/colors-hyprland.conf",
+      "line": 1,
+      "text": "Generated by sync-pywal-theme.py; do not edit.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 138,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 139,
+      "text": "SECTION 5: DECORATION (from picom)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 140,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 143,
+      "text": "picom corner-radius = 12",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 145,
+      "text": "Opacity (from picom inactive-opacity/active-opacity)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 151,
+      "text": "picom shadow-radius = 12",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 152,
+      "text": "picom shadow-offset-x/y = -12",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 154,
+      "text": "picom shadow-opacity = 0.5",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 160,
+      "text": "dual_kawase approximation",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 162,
+      "text": "Critical for glass: sample wallpaper at full strength under translucent",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 163,
+      "text": "windows (Hermes/kitty/Alacritty). Without this, opacity just washes the",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 164,
+      "text": "UI gray instead of frosting the desktop.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 173,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 174,
+      "text": "SECTION 6: ANIMATIONS (from picom)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 175,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 180,
+      "text": "Translated from picom animation settings",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 195,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 196,
+      "text": "SECTION 6.1: LIQUID GLASS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 197,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 198,
+      "text": "Two-pass preset with visible edge refraction, still bounded for the 540 Hz",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 199,
+      "text": "display. Fullscreen and media workloads are excluded below.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 201,
+      "text": "Disabled: the plugin's framebuffer transform path corrupts rotated outputs.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 216,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 217,
+      "text": "SECTION 7: LAYOUTS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 218,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 222,
+      "text": "Always split to the right/bottom",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 229,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 230,
+      "text": "SECTION 7.1: HY3 PLUGIN (i3-style tiling)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 231,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 233,
+      "text": "plugin {",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 234,
+      "text": "hy3 {",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 235,
+      "text": "no_gaps_when_only = 0",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 236,
+      "text": "node_collapse_policy = 2",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 237,
+      "text": "group_inset = 10",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 238,
+      "text": "tab_first_window = false",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 239,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 240,
+      "text": "tabs {",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 241,
+      "text": "height = 22",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 242,
+      "text": "padding = 6",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 243,
+      "text": "from_top = false",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 244,
+      "text": "radius = 6",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 245,
+      "text": "border_width = 2",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 246,
+      "text": "render_text = true",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 247,
+      "text": "text_center = true",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 248,
+      "text": "text_font = Sans",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 249,
+      "text": "text_height = 8",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 250,
+      "text": "text_padding = 3",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 251,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 252,
+      "text": "col.active = rgba(75A4CD40)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 253,
+      "text": "col.active.border = rgba(75A4CDee)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 254,
+      "text": "col.active.text = rgba(ffffffff)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 255,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 256,
+      "text": "col.focused = rgba(60606040)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 257,
+      "text": "col.focused.border = rgba(808080ee)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 258,
+      "text": "col.focused.text = rgba(ffffffff)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 259,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 260,
+      "text": "col.inactive = rgba(30303020)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 261,
+      "text": "col.inactive.border = rgba(2f343faa)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 262,
+      "text": "col.inactive.text = rgba(ffffffaa)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 263,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 264,
+      "text": "col.urgent = rgba(ff223340)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 265,
+      "text": "col.urgent.border = rgba(ff2233ee)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 266,
+      "text": "col.urgent.text = rgba(ffffffff)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 267,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 268,
+      "text": "blur = true",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 269,
+      "text": "opacity = 1.0",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 270,
+      "text": "}",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 271,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 272,
+      "text": "autotile {",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 273,
+      "text": "enable = false",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 274,
+      "text": "}",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 275,
+      "text": "}",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 276,
+      "text": "}",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 278,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 279,
+      "text": "SECTION 8: GESTURES",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 280,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 287,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 288,
+      "text": "SECTION 9: MISC",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 289,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 297,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 298,
+      "text": "SECTION 10: WINDOW RULES",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 299,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 301,
+      "text": "Application -> workspace assignments (from i3 assign)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 307,
+      "text": "OBS is a background broadcast surface. It belongs on workspace 8 and must",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 308,
+      "text": "never pull Kevin away from the active workspace when launched or recovered.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 312,
+      "text": "Nested Sway agent-seat (Hyprland window, not VT flip). Super stays on Hyprland.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 313,
+      "text": "Workspace 9 = visible isolation. Never 1/2/8. silent = no focus steal.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 319,
+      "text": "Emergency containment for the exact app name assigned by Hermes Desktop's",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 320,
+      "text": "Playwright fixtures. Normal Hermes, browsers, terminals, and editors do not",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 321,
+      "text": "match. The nested-compositor harness is authoritative; these rules are the",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 322,
+      "text": "fail-closed host-compositor fallback if a test is launched without it.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 327,
+      "text": "Agent-owned native/UI probes must never open on Kevin's active workspace.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 328,
+      "text": "Workspace 9 is the visible isolation desktop (Super+9); silent preserves focus.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 333,
+      "text": "Agent-built Zen CDA candidates use an explicit class and remain isolated.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 334,
+      "text": "Normal signed-in Zen windows do not match this rule.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 338,
+      "text": "Preserve low-latency presentation paths for fullscreen and media workloads.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 342,
+      "text": "Scratchpad terminal",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 348,
+      "text": "Floating windows",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 353,
+      "text": "Agent fleet controllers open as centered transient tools, not tiled workspaces.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 358,
+      "text": "Chrome PIP (right-click video \u2192 Picture in Picture)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 363,
+      "text": "Google Meet PIP (title is \"Meet - xxx-xxxx-xxx\" without \" - Google Chrome\" suffix)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 370,
+      "text": "Opacity & blur overrides",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 371,
+      "text": "Kitty uses app-side background_opacity 0.65. Electron/Hermes has no Linux",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 372,
+      "text": "opacity API \u2014 compositor alpha + blur:ignore_opacity = real frost glass.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 374,
+      "text": "Hermes liquid-glass (pywal-aware package)",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 1,
+      "text": "Hermes Liquid Glass \u2014 Hyprland fragment",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 2,
+      "text": "Source from hyprland.conf:",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 3,
+      "text": "source = ~/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 4,
+      "text": "",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 5,
+      "text": "Hermes must stay compositor-opaque. Applying window opacity samples every",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 6,
+      "text": "window below Hermes, which can disclose application content through glass.",
+      "inline": false
+    },
+    {
+      "file": "/mnt/zer0models/workspace/zer0/oss/hermes-liquid-glass/hypr/liquid-glass.conf",
+      "line": 7,
+      "text": "The plugin renders verified wallpaper pixels inside the opaque window.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 381,
+      "text": "Frost the translucent Noctalia surface instead of tinting the whole monitor.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 385,
+      "text": "Inhibit idle when fullscreen",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 388,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 389,
+      "text": "SECTION 11: KEY BINDINGS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 390,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 394,
+      "text": "Core application shortcuts",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 399,
+      "text": "Night mode wake (locked bind \u2014 works even with DPMS off)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 402,
+      "text": "Noctalia owns the primary application launcher.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 410,
+      "text": "Fullscreen and floating",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 416,
+      "text": "-----------------------------------------------------",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 417,
+      "text": "DWINDLE BINDINGS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 418,
+      "text": "-----------------------------------------------------",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 445,
+      "text": "-----------------------------------------------------",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 446,
+      "text": "HY3 BINDINGS (i3-style tiling) \u2014 commented out, hy3 incompatible",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 447,
+      "text": "-----------------------------------------------------",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 448,
+      "text": "bind = $mod, H, hy3:movefocus, l",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 449,
+      "text": "bind = $mod, J, hy3:movefocus, d",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 450,
+      "text": "bind = $mod, K, hy3:movefocus, u",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 451,
+      "text": "bind = $mod, L, hy3:movefocus, r",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 452,
+      "text": "bind = $mod, left, hy3:movefocus, l",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 453,
+      "text": "bind = $mod, down, hy3:movefocus, d",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 454,
+      "text": "bind = $mod, up, hy3:movefocus, u",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 455,
+      "text": "bind = $mod, right, hy3:movefocus, r",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 456,
+      "text": "bind = $mod SHIFT, H, hy3:movewindow, l",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 457,
+      "text": "bind = $mod SHIFT, J, hy3:movewindow, d",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 458,
+      "text": "bind = $mod SHIFT, K, hy3:movewindow, u",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 459,
+      "text": "bind = $mod SHIFT, L, hy3:movewindow, r",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 460,
+      "text": "bind = $mod SHIFT, left, hy3:movewindow, l",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 461,
+      "text": "bind = $mod SHIFT, down, hy3:movewindow, d",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 462,
+      "text": "bind = $mod SHIFT, up, hy3:movewindow, u",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 463,
+      "text": "bind = $mod SHIFT, right, hy3:movewindow, r",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 464,
+      "text": "bind = $mod, W, hy3:changegroup, toggletab",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 465,
+      "text": "bind = $mod, E, hy3:changegroup, opposite",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 466,
+      "text": "bind = $mod, bracketright, hy3:focustab, r, wrap",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 467,
+      "text": "bind = $mod, bracketleft, hy3:focustab, l, wrap",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 468,
+      "text": "bind = $mod, S, hy3:expand, shrink",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 469,
+      "text": "bind = $mod, A, hy3:changefocus, raise",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 471,
+      "text": "Workspace switching",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 483,
+      "text": "Move container to workspace",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 495,
+      "text": "Move workspace to monitor",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 501,
+      "text": "Scratchpad",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 506,
+      "text": "Runtime spacing: Super+Ctrl +/- adjusts; Super+Ctrl+0 restores 18/8.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 511,
+      "text": "Reload config",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 514,
+      "text": "Desktop-shell-aware wallpaper picker and deterministic history navigation",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 518,
+      "text": "performance -> chill -> aesthetic",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 519,
+      "text": "pause/resume wallpaper engine",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 520,
+      "text": "Waybar <-> Noctalia",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 521,
+      "text": "S25 Ultra canvas + Sunshine",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 543,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 544,
+      "text": "SECTION 11.1: SCREENSHOT BINDINGS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 545,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 547,
+      "text": "Select area -> save to file",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 550,
+      "text": "Select area -> copy to clipboard",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 553,
+      "text": "Full screen -> save to file",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 556,
+      "text": "Full screen -> copy to clipboard",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 559,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 560,
+      "text": "SECTION 11.2: MEDIA KEYS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 561,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 571,
+      "text": "Aural Evolution: 1..9 and 0 select the ten live variants.",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 587,
+      "text": "Restart PipeWire + WirePlumber (WirePlumber auto-restarts via BindsTo=)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 590,
+      "text": "Kokoro TTS: speak selected text aloud (press again to stop)",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 593,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 594,
+      "text": "SECTION 11.3: RESIZE SUBMAP",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 595,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 612,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 613,
+      "text": "SECTION 11.4: SYSTEM SUBMAP",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 614,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 632,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 633,
+      "text": "SECTION 11.5: MOUSE BINDINGS",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 634,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 636,
+      "text": "Super + LMB to move",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 637,
+      "text": "Super + RMB to resize",
+      "inline": true
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 639,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 640,
+      "text": "SECTION 12: AUTOSTART",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 641,
+      "text": "=====================================================",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 643,
+      "text": "exec-once = hyprpm reload -n",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 645,
+      "text": "exec-once = swww-daemon && sleep 0.5 && wal -R",
+      "inline": false
+    },
+    {
+      "file": "config/hyprland/hyprland.legacy.conf",
+      "line": 646,
+      "text": "Wallpaper Engine \u2014 managed by wallpaper-mode.sh (performance/chill/aesthetic)",
+      "inline": false
+    }
+  ],
+  "runtime_bridges": [
+    {
+      "file": "scripts/apply-pywal-theme.sh",
+      "line": 34,
+      "text": "hyprctl keyword \"$key\" \"$val\" >/dev/null 2>&1 || true",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/export-website-wallpaper.sh",
+      "line": 77,
+      "text": "hyprctl dispatch workspace \"$CUR_WS\" >/dev/null 2>&1 || true",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/export-website-wallpaper.sh",
+      "line": 89,
+      "text": "hyprctl dispatch focusmonitor \"$SCREEN\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/export-website-wallpaper.sh",
+      "line": 91,
+      "text": "hyprctl dispatch workspace 99 >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/gui-e2e-display.sh",
+      "line": 321,
+      "text": "hypr keyword monitor \"$output_name,$mode,auto,$scale\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/gui-e2e-display.sh",
+      "line": 323,
+      "text": "hypr keyword workspace \"${workspace},monitor:${output_name},default:true\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/gui-e2e-display.sh",
+      "line": 324,
+      "text": "hypr dispatch moveworkspacetomonitor \"$workspace\" \"$output_name\" >/dev/null || true",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/gui-e2e-display.sh",
+      "line": 326,
+      "text": "hypr keyword windowrule \"match:class ^(${window_class})$, workspace ${workspace} silent\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-gaps.sh",
+      "line": 25,
+      "text": "hyprctl keyword general:gaps_in \"$inner\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-gaps.sh",
+      "line": 26,
+      "text": "hyprctl keyword general:gaps_out \"$outer\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-group-workspace.sh",
+      "line": 31,
+      "text": "hyprctl dispatch focuswindow \"address:$anchor\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-group-workspace.sh",
+      "line": 32,
+      "text": "hyprctl dispatch togglegroup >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-group-workspace.sh",
+      "line": 64,
+      "text": "hyprctl dispatch focuswindow \"address:$address\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-group-workspace.sh",
+      "line": 65,
+      "text": "hyprctl dispatch moveintogroup \"$direction\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/hypr-group-workspace.sh",
+      "line": 68,
+      "text": "hyprctl dispatch focuswindow \"address:$active\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/install-noctalia-audio-overlay.py",
+      "line": 447,
+      "text": "monitorApply.command = [\"hyprctl\", \"keyword\", \"monitor\", monitorRule(monitor, mode)];",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/night-mode.sh",
+      "line": 16,
+      "text": "hyprctl dispatch dpms off",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/night-mode.sh",
+      "line": 24,
+      "text": "hyprctl dispatch dpms on",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/performance-mode.sh",
+      "line": 46,
+      "text": "hyprctl keyword animations:enabled false >/dev/null 2>&1 || true",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/performance-mode.sh",
+      "line": 47,
+      "text": "hyprctl keyword decoration:blur:enabled false >/dev/null 2>&1 || true",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/performance-mode.sh",
+      "line": 48,
+      "text": "hyprctl keyword decoration:shadow:enabled false >/dev/null 2>&1 || true",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/performance-mode.sh",
+      "line": 69,
+      "text": "hyprctl keyword \"$option\" \"$value\" >/dev/null 2>&1 || true",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/phone-display.sh",
+      "line": 50,
+      "text": "\"$HYPRCTL_BIN\" keyword monitor \"$output,$mode,$position,$scale\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/phone-display.sh",
+      "line": 51,
+      "text": "\"$HYPRCTL_BIN\" keyword workspace \"$workspace,monitor:$output,default:true\" >/dev/null",
+      "command": "keyword",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/phone-display.sh",
+      "line": 70,
+      "text": "\"$HYPRCTL_BIN\" dispatch exec \"[workspace $workspace silent] $browser --user-data-dir=$chrome_profile --force-device-scale-factor=2 --no-first-run --app=https://www.tldraw.com\" >/dev/null",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/reload-desktop.sh",
+      "line": 31,
+      "text": "hyprctl dispatch exec waybar",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 84,
+      "text": "hypr(\"dispatch\", \"focusmonitor\", monitor_name)",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 85,
+      "text": "hypr(\"dispatch\", \"workspace\", str(workspace_id))",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 117,
+      "text": "hypr(\"dispatch\", \"focusmonitor\", monitor_name)",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 118,
+      "text": "hypr(\"dispatch\", \"workspace\", str(workspace_id))",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 120,
+      "text": "hypr(\"dispatch\", \"focusmonitor\", focused_monitor)",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    },
+    {
+      "file": "scripts/workspace-atlas.py",
+      "line": 239,
+      "text": "hypr(\"dispatch\", \"workspace\", value)",
+      "command": "dispatch",
+      "lua_api": "explicit bridge",
+      "owner_module": "explicit bridge"
+    }
+  ],
+  "generated_not_sourced": [
+    {
+      "path": "/home/kvn/.config/hypr/monitors.conf",
+      "lua_api": "generated Lua artifact",
+      "note": "Noctalia/persist-monitor-layout generated; not sourced by live hyprland.conf; do not hand-edit",
+      "active_source": false
+    }
+  ],
+  "unclassified": [],
+  "counts": {
+    "lines": 355,
+    "comments": 247,
+    "runtime_bridges": 32,
+    "sourced_files": 2,
+    "unclassified": 0
+  },
+  "allowed_lua_apis": [
+    "explicit bridge",
+    "generated Lua artifact",
+    "hl.bind",
+    "hl.config",
+    "hl.layer_rule",
+    "hl.monitor",
+    "hl.on",
+    "hl.window_rule",
+    "hl.workspace_rule",
+    "require"
+  ]
+}

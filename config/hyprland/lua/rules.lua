@@ -7,6 +7,9 @@ rule("kitty-workspace", {class="^(kitty)$"}, {workspace="1"})
 rule("chrome-workspace", {class="^(google-chrome|google-chrome-unstable|Google-chrome)$"}, {workspace="2 silent"})
 rule("obs-isolated", {class="^(com\\.obsproject\\.Studio)$"}, {workspace="8 silent",no_initial_focus=true})
 -- All agent GUI probes fail closed into the private headless workspace.
+-- Nested Sway/wlroots agent-seat: fail-closed onto the private headless special workspace.
+rule("nested-sway-isolation", {class="^(sway)$"}, {workspace="special:hermes-tests silent",no_initial_focus=true})
+rule("nested-wlroots-isolation", {class="^(wlroots)$"}, {workspace="special:hermes-tests silent",no_initial_focus=true})
 local agent="^(HermesE2E-[0-9]+|Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*|ZenCDAE2E.*)$"
 rule("agent-headless-isolation", {class=agent}, {workspace="special:hermes-tests silent",no_initial_focus=true,no_focus=true})
 rule("glass-fullscreen-off", {fullscreen=true}, {tag="+hyprglass_disabled"})

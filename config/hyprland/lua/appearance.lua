@@ -60,10 +60,11 @@ hl.animation({leaf="workspaces",enabled=true,speed=6,bezier="overshot",style="sl
 
 -- Pywal ownership: read its JSON palette directly, never source hyprlang.
 local colors = home .. "/.cache/wal/colors.json"
-local f = io.open(colors, "r")
-if f then
-  local body=f:read("*a"); f:close()
-  local palette={}
-  for hex in body:gmatch('"color%d+"%s*:%s*"#([0-9A-Fa-f]+)"') do table.insert(palette,hex) end
-  if #palette >= 6 then hl.config({general={col={active_border={colors={"rgba("..palette[5].."ff)","rgba("..palette[6].."ff)"},angle=45}}}}) end
-end
+-- Generated Lua overlay lives in lua/bridges.lua (fail-closed); do not open the pywal cache here.
+-- if f then
+--   local body=f:read("*a"); f:close()
+--   local palette={}
+--   for hex in body:gmatch('"color%d+"%s*:%s*"#([0-9A-Fa-f]+)"') do table.insert(palette,hex) end
+--   if #palette >= 6 then hl.config({general={col={active_border={colors={"rgba("..palette[5].."ff)","rgba("..palette[6].."ff)"},angle=45}}}}) end
+-- end
+

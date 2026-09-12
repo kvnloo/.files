@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Lua-compatible control path: hyprctl keyword monitor/workspace and
+# dispatch exec remain the runtime IPC for both hyprlang and Lua configs.
 set -euo pipefail
 
 output=PHONE

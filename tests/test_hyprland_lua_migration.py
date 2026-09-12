@@ -41,12 +41,12 @@ def test_entrypoint_is_modular_lua_and_legacy_sources_are_owned_by_lua():
     entrypoint = (HYPR / "hyprland.lua").read_text()
     required = set(re.findall(r'require\("([^"]+)"\)', entrypoint))
     assert required == {
-        "lua.monitors", "lua.environment", "lua.appearance", "lua.rules",
+        "lua.monitors", "lua.environment", "lua.bridges", "lua.appearance", "lua.rules",
         "lua.binds", "lua.autostart",
     }
     all_lua = "\n".join(path.read_text() for path in HYPR.glob("lua/*.lua"))
+    assert "source =" not in all_lua
     assert "colors-hyprland.conf" not in all_lua
-    assert "liquid-glass.conf" not in all_lua
 
 
 def test_lua_is_syntactically_valid():

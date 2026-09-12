@@ -3,6 +3,8 @@
 # Default: nested Xvfb. Optional: Hyprland true headless output.
 # Hard no-touch: workspaces 1, 2, and OBS workspace 8.
 # If isolation cannot be established, refuse launch.
+# Lua-compatible control path: hyprctl keyword monitor/workspace/windowrule
+# against the live instance (not the v2 windowrule keyword); never focusmonitor.
 set -euo pipefail
 
 SCRIPT_NAME=${0##*/}
@@ -321,7 +323,7 @@ start_hypr_headless() {
     hypr keyword workspace "${workspace},monitor:${output_name},default:true" >/dev/null
     hypr dispatch moveworkspacetomonitor "$workspace" "$output_name" >/dev/null || true
     if [[ -n $window_class ]]; then
-      hypr keyword windowrulev2 "workspace ${workspace} silent, class:^(${window_class})\$" >/dev/null || true
+      hypr keyword windowrule "match:class ^(${window_class})$, workspace ${workspace} silent" >/dev/null
     fi
   fi
   write_lease
