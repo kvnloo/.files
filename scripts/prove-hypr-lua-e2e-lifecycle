@@ -99,29 +99,105 @@ nested_has_output() {
   nested_hypr -j monitors all | jq -e --arg o "$1" 'any(.[]; .name == $o)' >/dev/null
 }
 
+nested_output_matches() {
+  local name=$1 width=$2 height=$3 refresh=$4 scale=$5 workspace=$6
+  local slug=${name//[^A-Za-z0-9_.-]/_}
+  nested_hypr -j monitors all >"$EVIDENCE/${slug}-monitors.json"
+  nested_hypr -j workspacerules >"$EVIDENCE/${slug}-workspacerules.json"
+  jq -e \
+    --arg name "$name" \
+    --argjson width "$width" \
+    --argjson height "$height" \
+    --argjson refresh "$refresh" \
+    --argjson scale "$scale" \
+    --arg workspace "$workspace" '
+      any(.[];
+        .name == $name
+        and .scale == $scale
+        and .activeWorkspace.name == $workspace
+        and any(.availableModes[]?;
+          startswith(($width | tostring) + "x" + ($height | tostring) + "@" + ($refresh | tostring))
+        )
+      )
+    ' "$EVIDENCE/${slug}-monitors.json" >/dev/null || return 1
+  jq -e \
+    --arg name "$name" --arg workspace "$workspace" '
+      any(.[];
+        .workspaceString == $workspace
+        and .monitor == $name
+        and .default == true
+      )
+    ' "$EVIDENCE/${slug}-workspacerules.json" >/dev/null || return 1
+}
+
 run_controller() {
   GUI_E2E_HYPRCTL=hyprctl HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" \
+    GUI_E2E_WIDTH=1920 GUI_E2E_HEIGHT=1080 GUI_E2E_REFRESH=60 \
     GUI_E2E_LEASE_DIR="$EVIDENCE/nested-leases" \
     "$CONTROLLER" --tier hypr-headless --workspace "$INNER_WS" --output "$INNER_OUTPUT" --lease-id inner "$1"
 }
 
 run_phone() {
   PHONE_DISPLAY_SYSTEMCTL=/bin/true HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" \
+    PHONE_DISPLAY_MODE=1920x1080@60 PHONE_DISPLAY_POSITION=auto \
     "$PHONE" "$1"
+}
+
+verify_controller_window_rule() {
+  local class command_lua matched=false
+  class=$(jq -r '.window_class' "$EVIDENCE/nested-leases/inner/lease.json")
+  command_lua=$(jq -Rrn --arg value "kitty --class $class --title HyprLuaRuleProbe sh -c 'sleep 1'" '$value | @json')
+  nested_hypr -r eval "hl.exec_cmd($command_lua)" >/dev/null
+  for _ in $(seq 1 30); do
+    nested_hypr -j clients >"$EVIDENCE/controller-rule-clients.json"
+    if jq -e --arg class "$class" --argjson workspace "$INNER_WS" \
+      'any(.[]; .class == $class and .workspace.id == $workspace)' \
+      "$EVIDENCE/controller-rule-clients.json" >/dev/null; then
+      matched=true
+      break
+    fi
+    sleep .1
+  done
+  [[ $matched == true ]] || { printf 'controller window rule did not route %s to workspace %s\n' "$class" "$INNER_WS" >&2; return 1; }
+  for _ in $(seq 1 30); do
+    nested_hypr -j clients | jq -e --arg class "$class" 'all(.[]; .class != $class)' >/dev/null && return 0
+    sleep .1
+  done
+  printf 'controller window-rule probe did not exit\n' >&2
+  return 1
 }
 
 lifecycle_output() {
   local tool=$1 name=$2 dest=$3
-  local start_fn=$4 stop_fn=$5
+  local start_fn=$4 stop_fn=$5 width height refresh scale workspace
+  local window_rule_verified=false
+  if [[ $tool == controller ]]; then
+    width=1920 height=1080 refresh=60 scale=1 workspace=$INNER_WS
+  else
+    width=1920 height=1080 refresh=60 scale=1 workspace=20
+  fi
   "$start_fn" start
   nested_has_output "$name" || { printf '%s did not add %s\n' "$tool" "$name" >&2; exit 1; }
+  nested_output_matches "$name" "$width" "$height" "$refresh" "$scale" "$workspace" \
+    || { printf '%s added %s without requested monitor/workspace semantics\n' "$tool" "$name" >&2; exit 1; }
+  if [[ $tool == controller ]]; then
+    verify_controller_window_rule
+    window_rule_verified=true
+  fi
   "$stop_fn" stop
   nested_has_output "$name" && { printf '%s did not remove %s\n' "$tool" "$name" >&2; exit 1; }
   "$start_fn" start
   nested_has_output "$name" || { printf '%s did not recover %s\n' "$tool" "$name" >&2; exit 1; }
+  nested_output_matches "$name" "$width" "$height" "$refresh" "$scale" "$workspace" \
+    || { printf '%s recovered %s without requested monitor/workspace semantics\n' "$tool" "$name" >&2; exit 1; }
+  if [[ $tool == controller ]]; then
+    verify_controller_window_rule
+    window_rule_verified=true
+  fi
   "$stop_fn" stop
   nested_has_output "$name" && { printf '%s leftover %s after recover-stop\n' "$tool" "$name" >&2; exit 1; }
-  jq -n --arg name "$name" '{name:$name,added:true,removed:true,recovered:true}' >"$dest"
+  jq -n --arg name "$name" --argjson window_rule_verified "$window_rule_verified" \
+    '{name:$name,added:true,removed:true,recovered:true,semantics_verified:true,window_rule_verified:$window_rule_verified,control_path:"native-eval"}' >"$dest"
 }
 
 visible_error() {

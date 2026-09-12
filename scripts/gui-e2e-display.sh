@@ -3,8 +3,8 @@
 # Default: nested Xvfb. Optional: Hyprland true headless output.
 # Hard no-touch: workspaces 1, 2, and OBS workspace 8.
 # If isolation cannot be established, refuse launch.
-# Lua-compatible control path: hyprctl keyword monitor/workspace/windowrule
-# against the live instance (not the v2 windowrule keyword); never focusmonitor.
+# Provider-adaptive control path: hyprlang uses keyword; Lua uses native
+# hyprctl eval with hl.monitor/hl.workspace_rule/hl.window_rule. Never focusmonitor.
 set -euo pipefail
 
 SCRIPT_NAME=${0##*/}
@@ -91,6 +91,39 @@ hypr() {
     return 0
   fi
   "$HYPRCTL_BIN" "$@"
+}
+
+lua_quote() {
+  jq -Rrn --arg value "$1" '$value | @json'
+}
+
+hypr_uses_lua() {
+  hypr systeminfo 2>/dev/null | grep -Fq 'configProvider: lua'
+}
+
+configure_hypr_headless() {
+  local mode=$1 class_pattern
+  if hypr_uses_lua; then
+    local lua_output lua_mode lua_workspace lua_class lua_rule_name lua_destination
+    lua_output=$(lua_quote "$output_name")
+    lua_mode=$(lua_quote "$mode")
+    lua_workspace=$(lua_quote "$workspace")
+    hypr -r eval "hl.monitor({output=$lua_output,mode=$lua_mode,position=\"auto\",scale=$scale})" >/dev/null
+    hypr -r eval "hl.workspace_rule({workspace=$lua_workspace,monitor=$lua_output,default=true})" >/dev/null
+    if [[ -n $window_class ]]; then
+      class_pattern="^(${window_class})$"
+      lua_class=$(lua_quote "$class_pattern")
+      lua_rule_name=$(lua_quote "gui-e2e-${lease_id:-$$}")
+      lua_destination=$(lua_quote "$workspace silent")
+      hypr -r eval "hl.window_rule({name=$lua_rule_name,match={class=$lua_class},workspace=$lua_destination})" >/dev/null
+    fi
+    return
+  fi
+  hypr keyword monitor "$output_name,$mode,auto,$scale" >/dev/null
+  hypr keyword workspace "${workspace},monitor:${output_name},default:true" >/dev/null
+  if [[ -n $window_class ]]; then
+    hypr keyword windowrule "match:class ^(${window_class})$, workspace ${workspace} silent" >/dev/null
+  fi
 }
 
 resolve_xvfb() {
@@ -314,17 +347,26 @@ start_hypr_headless() {
   fi
   write_proof before
   if [[ $dry_run != 1 ]]; then
-    if ! hypr -j monitors all 2>/dev/null | jq -e --arg o "$output_name" 'any(.[]; .name == $o)' >/dev/null; then
-      hypr output create headless "$output_name" >/dev/null
-    fi
     mode="${width}x${height}@${refresh}"
-    hypr keyword monitor "$output_name,$mode,auto,$scale" >/dev/null
-    # Bind workspace to headless output without focusing it or changing live WS.
-    hypr keyword workspace "${workspace},monitor:${output_name},default:true" >/dev/null
-    hypr dispatch moveworkspacetomonitor "$workspace" "$output_name" >/dev/null || true
-    if [[ -n $window_class ]]; then
-      hypr keyword windowrule "match:class ^(${window_class})$, workspace ${workspace} silent" >/dev/null
+    if ! hypr -j monitors all 2>/dev/null | jq -e --arg o "$output_name" 'any(.[]; .name == $o)' >/dev/null; then
+      if hypr_uses_lua; then
+        # Lua monitor rules are applied when the output appears; register first.
+        configure_hypr_headless "$mode" \
+          || { printf 'refusing launch: failed to register isolated Lua output\n' >&2; exit 1; }
+        hypr output create headless "$output_name" >/dev/null
+        configure_hypr_headless "$mode" \
+          || { hypr output remove "$output_name" >/dev/null 2>&1 || true; printf 'refusing launch: failed to refresh isolated Lua output\n' >&2; exit 1; }
+      else
+        hypr output create headless "$output_name" >/dev/null
+        configure_hypr_headless "$mode" \
+          || { hypr output remove "$output_name" >/dev/null 2>&1 || true; printf 'refusing launch: failed to configure isolated Hyprland output\n' >&2; exit 1; }
+      fi
+    elif ! configure_hypr_headless "$mode"; then
+      printf 'refusing launch: failed to configure existing isolated Hyprland output\n' >&2
+      exit 1
     fi
+    # Move without focusing; the provider-specific workspace rule is already installed.
+    hypr dispatch moveworkspacetomonitor "$workspace" "$output_name" >/dev/null || true
   fi
   write_lease
   write_proof after

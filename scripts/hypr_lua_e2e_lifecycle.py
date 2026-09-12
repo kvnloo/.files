@@ -28,6 +28,12 @@ def _lifecycle_ok(payload: dict | None, name: str) -> tuple[bool, str]:
     for key in ("added", "removed", "recovered"):
         if payload.get(key) is not True:
             return False, f"{name} {key} is not true"
+    if payload.get("semantics_verified") is not True:
+        return False, f"{name} runtime semantics are not verified"
+    if name == "E2E-INNER" and payload.get("window_rule_verified") is not True:
+        return False, f"{name} window rule is not verified"
+    if payload.get("control_path") != "native-eval":
+        return False, f"{name} control path is not native-eval"
     return True, ""
 
 
@@ -35,6 +41,8 @@ def compare(evidence: Path) -> dict:
     failures: list[str] = []
     controller = _load(evidence / "controller-lifecycle.json", {})
     phone = _load(evidence / "phone-lifecycle.json", {})
+    controller_data = controller if isinstance(controller, dict) else {}
+    phone_data = phone if isinstance(phone, dict) else {}
     sabotage = _load(evidence / "sabotage.json", {})
     rollback = _load(evidence / "rollback.json", {})
     result = _load(evidence / "result.json", {})
@@ -42,10 +50,10 @@ def compare(evidence: Path) -> dict:
     systeminfo = str(_load(evidence / "lua-systeminfo.txt", "") or "")
     errors = str(_load(evidence / "lua-configerrors.txt", "") or "")
 
-    ok, reason = _lifecycle_ok(controller, "E2E-INNER")
+    ok, reason = _lifecycle_ok(controller_data, "E2E-INNER")
     if not ok:
         failures.append(reason)
-    ok, reason = _lifecycle_ok(phone, "PHONE")
+    ok, reason = _lifecycle_ok(phone_data, "PHONE")
     if not ok:
         failures.append(reason)
 
@@ -100,14 +108,19 @@ def compare(evidence: Path) -> dict:
         "ok": not failures,
         "failures": failures,
         "controller": {
-            "added": bool((controller or {}).get("added")),
-            "removed": bool((controller or {}).get("removed")),
-            "recovered": bool((controller or {}).get("recovered")),
+            "added": bool(controller_data.get("added")),
+            "removed": bool(controller_data.get("removed")),
+            "recovered": bool(controller_data.get("recovered")),
+            "semantics_verified": bool(controller_data.get("semantics_verified")),
+            "window_rule_verified": bool(controller_data.get("window_rule_verified")),
+            "control_path": str(controller_data.get("control_path", "")),
         },
         "phone": {
-            "added": bool((phone or {}).get("added")),
-            "removed": bool((phone or {}).get("removed")),
-            "recovered": bool((phone or {}).get("recovered")),
+            "added": bool(phone_data.get("added")),
+            "removed": bool(phone_data.get("removed")),
+            "recovered": bool(phone_data.get("recovered")),
+            "semantics_verified": bool(phone_data.get("semantics_verified")),
+            "control_path": str(phone_data.get("control_path", "")),
         },
         "sabotage": {"all_recovered": sabotage_ok},
         "rollback": {"proven": rollback_proven, "target": target},

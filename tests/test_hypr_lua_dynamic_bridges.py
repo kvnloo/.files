@@ -119,19 +119,22 @@ def test_generated_monitors_artifact_does_not_edit_monitors_conf():
     assert "do not hand-edit" in text.lower() or "not sourced" in text.lower()
 
 
-def test_phone_display_and_gui_e2e_keep_lua_compatible_keyword_path():
+def test_phone_display_and_gui_e2e_use_native_eval_with_lua_provider():
     phone = PHONE.read_text()
     e2e = GUI_E2E.read_text()
     apply = APPLY_PYWAL.read_text()
     for body in (phone, e2e):
-        assert "Lua-compatible" in body or "lua-compatible" in body.lower()
-        assert "keyword monitor" in body
-        assert "keyword workspace" in body
+        assert "configProvider: lua" in body
+        assert "-r eval" in body
+        assert "hl.monitor" in body
+        assert "hl.workspace_rule" in body
+        assert "jq -Rrn" in body
         assert "dispatch focusmonitor" not in body
-    assert "windowrulev2" not in e2e
-    assert "keyword windowrule" in e2e
+    assert "hl.window_rule" in e2e
     assert "workspace ${workspace} silent" in e2e
-    assert "|| true" not in [line for line in e2e.splitlines() if "keyword windowrule" in line][0]
+    assert "keyword monitor" in phone and "keyword workspace" in phone
+    assert "PHONE_DISPLAY_MODE:-3120x1440@120" in phone
+    assert "keyword monitor" in e2e and "keyword workspace" in e2e
     assert "colors-hyprland.lua" in apply
     assert "hyprctl keyword" in apply
 

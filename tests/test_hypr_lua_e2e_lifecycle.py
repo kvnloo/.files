@@ -57,10 +57,13 @@ def test_lifecycle_report_requires_add_remove_recover_and_cleanup(tmp_path: Path
     (evidence / "lua-configerrors.txt").write_text("")
     (evidence / "lua-systeminfo.txt").write_text("configProvider: lua\nbackend: wayland\n")
     (evidence / "controller-lifecycle.json").write_text(
-        json.dumps({"name": "E2E-INNER", "added": True, "removed": True, "recovered": True})
+        json.dumps({"name": "E2E-INNER", "added": True, "removed": True, "recovered": True,
+                    "semantics_verified": True, "window_rule_verified": True,
+                    "control_path": "native-eval"})
     )
     (evidence / "phone-lifecycle.json").write_text(
-        json.dumps({"name": "PHONE", "added": True, "removed": True, "recovered": True})
+        json.dumps({"name": "PHONE", "added": True, "removed": True, "recovered": True,
+                    "semantics_verified": True, "control_path": "native-eval"})
     )
     (evidence / "sabotage.json").write_text(
         json.dumps(
@@ -93,7 +96,12 @@ def test_lifecycle_report_requires_add_remove_recover_and_cleanup(tmp_path: Path
     report = json.loads(report_path.read_text())
     assert report["ok"] is True
     assert report["controller"]["recovered"] is True
+    assert report["controller"]["semantics_verified"] is True
+    assert report["controller"]["window_rule_verified"] is True
+    assert report["controller"]["control_path"] == "native-eval"
     assert report["phone"]["recovered"] is True
+    assert report["phone"]["semantics_verified"] is True
+    assert report["phone"]["control_path"] == "native-eval"
     assert report["sabotage"]["all_recovered"] is True
     assert report["rollback"]["proven"] is True
     assert report["cleanup_complete"] is True
@@ -185,3 +193,17 @@ def test_migration_test_rollback_docs_exist():
         "independent reviewer",
     ):
         assert token in text, token
+
+
+def test_nested_lifecycle_proves_runtime_monitor_and_workspace_semantics():
+    body = HARNESS.read_text()
+    assert "nested_output_matches" in body
+    assert ".availableModes" in body and ".activeWorkspace" in body
+    assert ".scale" in body
+    assert ".workspaceString" in body and ".monitor" in body
+    assert body.count("|| return 1") >= 2
+    assert "GUI_E2E_WIDTH=1920" in body
+    assert "PHONE_DISPLAY_MODE=1920x1080@60" in body
+    assert "verify_controller_window_rule" in body
+    assert "window_rule_verified" in body
+    assert "control_path" in body

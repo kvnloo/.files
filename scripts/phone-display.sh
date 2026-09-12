@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Lua-compatible control path: hyprctl keyword monitor/workspace and
-# dispatch exec remain the runtime IPC for both hyprlang and Lua configs.
+# Provider-adaptive control path: hyprlang uses keyword; Lua uses native
+# hyprctl eval with hl.monitor and hl.workspace_rule.
 set -euo pipefail
 
-output=PHONE
-mode=3120x1440@120
-position=4920x420
-scale=1
-workspace=20
+output=${PHONE_DISPLAY_OUTPUT:-PHONE}
+mode=${PHONE_DISPLAY_MODE:-3120x1440@120}
+position=${PHONE_DISPLAY_POSITION:-4920x420}
+scale=${PHONE_DISPLAY_SCALE:-1}
+workspace=${PHONE_DISPLAY_WORKSPACE:-20}
 service=app-dev.lizardbyte.app.Sunshine.service
 chrome_profile=${XDG_DATA_HOME:-$HOME/.local/share}/tldraw-phone
 HYPRCTL_BIN=${PHONE_DISPLAY_HYPRCTL:-hyprctl}
@@ -34,6 +34,29 @@ resolve_hyprland() {
   return 1
 }
 
+lua_quote() {
+  jq -Rrn --arg value "$1" '$value | @json'
+}
+
+hypr_uses_lua() {
+  "$HYPRCTL_BIN" systeminfo 2>/dev/null | grep -Fq 'configProvider: lua'
+}
+
+configure_display() {
+  if hypr_uses_lua; then
+    local lua_output lua_mode lua_position lua_workspace
+    lua_output=$(lua_quote "$output")
+    lua_mode=$(lua_quote "$mode")
+    lua_position=$(lua_quote "$position")
+    lua_workspace=$(lua_quote "$workspace")
+    "$HYPRCTL_BIN" -r eval "hl.monitor({output=$lua_output,mode=$lua_mode,position=$lua_position,scale=$scale})" >/dev/null
+    "$HYPRCTL_BIN" -r eval "hl.workspace_rule({workspace=$lua_workspace,monitor=$lua_output,default=true})" >/dev/null
+    return
+  fi
+  "$HYPRCTL_BIN" keyword monitor "$output,$mode,$position,$scale" >/dev/null
+  "$HYPRCTL_BIN" keyword workspace "$workspace,monitor:$output,default:true" >/dev/null
+}
+
 present() {
   resolve_hyprland || return 1
   "$HYPRCTL_BIN" -j monitors all 2>/dev/null | jq -e --arg output "$output" 'any(.[]; .name == $output)' >/dev/null
@@ -45,10 +68,21 @@ start_display() {
   resolve_hyprland || { printf 'no live Hyprland instance found\n' >&2; exit 1; }
 
   if ! present; then
-    "$HYPRCTL_BIN" output create headless "$output" >/dev/null
+    if hypr_uses_lua; then
+      # Register Lua monitor/workspace rules before the headless output appears.
+      configure_display || { printf 'failed to register phone display for Lua provider\n' >&2; exit 1; }
+      "$HYPRCTL_BIN" output create headless "$output" >/dev/null
+      configure_display \
+        || { "$HYPRCTL_BIN" output remove "$output" >/dev/null 2>&1 || true; printf 'failed to refresh phone display for Lua provider\n' >&2; exit 1; }
+    else
+      "$HYPRCTL_BIN" output create headless "$output" >/dev/null
+      configure_display \
+        || { "$HYPRCTL_BIN" output remove "$output" >/dev/null 2>&1 || true; printf 'failed to configure phone display for hyprlang provider\n' >&2; exit 1; }
+    fi
+  elif ! configure_display; then
+    printf 'failed to configure existing phone display for active config provider\n' >&2
+    exit 1
   fi
-  "$HYPRCTL_BIN" keyword monitor "$output,$mode,$position,$scale" >/dev/null
-  "$HYPRCTL_BIN" keyword workspace "$workspace,monitor:$output,default:true" >/dev/null
   "$SYSTEMCTL_BIN" --user start "$service"
   notify 'S25 Ultra canvas ready' "$mode · workspace $workspace · Sunshine NVENC"
 }

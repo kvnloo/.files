@@ -4735,7 +4735,7 @@
     },
     {
       "file": "scripts/gui-e2e-display.sh",
-      "line": 321,
+      "line": 122,
       "text": "hypr keyword monitor \"$output_name,$mode,auto,$scale\" >/dev/null",
       "command": "keyword",
       "lua_api": "explicit bridge",
@@ -4743,7 +4743,7 @@
     },
     {
       "file": "scripts/gui-e2e-display.sh",
-      "line": 323,
+      "line": 123,
       "text": "hypr keyword workspace \"${workspace},monitor:${output_name},default:true\" >/dev/null",
       "command": "keyword",
       "lua_api": "explicit bridge",
@@ -4751,17 +4751,17 @@
     },
     {
       "file": "scripts/gui-e2e-display.sh",
-      "line": 324,
-      "text": "hypr dispatch moveworkspacetomonitor \"$workspace\" \"$output_name\" >/dev/null || true",
-      "command": "dispatch",
+      "line": 125,
+      "text": "hypr keyword windowrule \"match:class ^(${window_class})$, workspace ${workspace} silent\" >/dev/null",
+      "command": "keyword",
       "lua_api": "explicit bridge",
       "owner_module": "explicit bridge"
     },
     {
       "file": "scripts/gui-e2e-display.sh",
-      "line": 326,
-      "text": "hypr keyword windowrule \"match:class ^(${window_class})$, workspace ${workspace} silent\" >/dev/null",
-      "command": "keyword",
+      "line": 369,
+      "text": "hypr dispatch moveworkspacetomonitor \"$workspace\" \"$output_name\" >/dev/null || true",
+      "command": "dispatch",
       "lua_api": "explicit bridge",
       "owner_module": "explicit bridge"
     },
@@ -4879,7 +4879,7 @@
     },
     {
       "file": "scripts/phone-display.sh",
-      "line": 50,
+      "line": 56,
       "text": "\"$HYPRCTL_BIN\" keyword monitor \"$output,$mode,$position,$scale\" >/dev/null",
       "command": "keyword",
       "lua_api": "explicit bridge",
@@ -4887,7 +4887,7 @@
     },
     {
       "file": "scripts/phone-display.sh",
-      "line": 51,
+      "line": 57,
       "text": "\"$HYPRCTL_BIN\" keyword workspace \"$workspace,monitor:$output,default:true\" >/dev/null",
       "command": "keyword",
       "lua_api": "explicit bridge",
@@ -4895,7 +4895,7 @@
     },
     {
       "file": "scripts/phone-display.sh",
-      "line": 70,
+      "line": 104,
       "text": "\"$HYPRCTL_BIN\" dispatch exec \"[workspace $workspace silent] $browser --user-data-dir=$chrome_profile --force-device-scale-factor=2 --no-first-run --app=https://www.tldraw.com\" >/dev/null",
       "command": "dispatch",
       "lua_api": "explicit bridge",
