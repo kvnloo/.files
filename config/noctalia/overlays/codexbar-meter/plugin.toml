@@ -14,7 +14,7 @@ key             = "codexbarPath"
 type            = "string"
 label_key       = "settings.codexbar_path.label"
 description_key = "settings.codexbar_path.description"
-default         = "codexbar"
+default         = "~/.local/bin/codexbar-noctalia"
 
 [[setting]]
 key             = "refreshIntervalSec"

@@ -3,7 +3,11 @@ set -euo pipefail
 repo="${DOTFILES_REPO:-$HOME/workspace/.files}"
 overlay="$repo/config/noctalia/overlays/codexbar-meter"
 dest_dir="${NOCTALIA_CODEXBAR_METER_DIR:-$HOME/.local/state/noctalia/plugins/materialized/community/codexbar-meter}"
-mkdir -p "$dest_dir"
+shim_src="$repo/scripts/codexbar-noctalia"
+shim_dest="${CODEXBAR_NOCTALIA_BIN:-$HOME/.local/bin/codexbar-noctalia}"
+
+mkdir -p "$dest_dir" "$(dirname "$shim_dest")"
+install -m 0755 "$shim_src" "$shim_dest"
 install -m 0644 "$overlay/bar_widget.luau" "$dest_dir/bar_widget.luau"
 if [[ -f "$overlay/panel.luau" ]]; then
   install -m 0644 "$overlay/panel.luau" "$dest_dir/panel.luau"
