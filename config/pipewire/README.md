@@ -172,6 +172,10 @@ headphone-switch.sh eq monarch   # Switch to Monarch MKII IRs
 headphone-switch.sh              # Shows active sink and EQ profile
 ```
 
+### Oh My Pi `/live`
+Voice playback is Pulse-default and 24 kHz mono. Keep music on Room if you want; `pipewire-pulse.conf.d/40-omp-live-clean.conf` pins OMP streams to **Headphone DSP (clean)** so BRIR does not color speech. Capture: `wireplumber.conf.d/52-blue-snowball.conf` forces the Snowball `input:mono-fallback` profile (ACP otherwise leaves it Off).
+
+
 ## Verification
 
 ### Check DSP Chain is Loaded

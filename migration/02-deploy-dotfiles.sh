@@ -76,10 +76,14 @@ mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
 link "$DOTFILES/config/pipewire/pipewire.conf" "$HOME/.config/pipewire/pipewire.conf"
 link "$DOTFILES/config/pipewire/pipewire.conf.d/10-headphone-dsp.conf" \
      "$HOME/.config/pipewire/pipewire.conf.d/10-headphone-dsp.conf"
+link "$DOTFILES/config/pipewire/pipewire-pulse.conf.d/40-omp-live-clean.conf" \
+     "$HOME/.config/pipewire/pipewire-pulse.conf.d/40-omp-live-clean.conf"
 
 # WirePlumber 0.5 config (SPA-JSON format, deployed by setup-audio.sh)
 link "$DOTFILES/config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf" \
      "$HOME/.config/wireplumber/wireplumber.conf.d/51-topping-dx5.conf"
+link "$DOTFILES/config/wireplumber/wireplumber.conf.d/52-blue-snowball.conf" \
+     "$HOME/.config/wireplumber/wireplumber.conf.d/52-blue-snowball.conf"
 
 # -------------------------------------------------------
 # 4. Audio scripts (make executable)
