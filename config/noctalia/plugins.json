@@ -23,10 +23,6 @@
             "enabled": true,
             "sourceUrl": "local"
         },
-        "reforge-groot": {
-            "enabled": true,
-            "sourceUrl": "local"
-        },
         "color-scheme-creator": {
             "enabled": true,
             "sourceUrl": "https://github.com/noctalia-dev/noctalia-plugins"

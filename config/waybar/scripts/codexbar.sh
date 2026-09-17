@@ -13,11 +13,14 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_SCRIPTS="${CODEXBAR_REPO_SCRIPTS:-$HOME/workspace/.files/scripts}"
+if [[ -f "$REPO_SCRIPTS/codexbar-env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$REPO_SCRIPTS/codexbar-env.sh"
+fi
 
 if [[ -n "${CODEXBAR_BIN:-}" ]]; then
     CODEXBAR="$CODEXBAR_BIN"
-elif [[ -x "${HOME}/.local/bin/codexbar" ]]; then
-    CODEXBAR="${HOME}/.local/bin/codexbar"
 elif command -v codexbar >/dev/null 2>&1; then
     CODEXBAR="$(command -v codexbar)"
 else
@@ -145,6 +148,19 @@ fi
 declare -A SOURCE_OVERRIDES=(
     [codex]=oauth
     [claude]=oauth
+    [openrouter]=api
+    [groq]=api
+)
+
+# Linux CLI cannot use browser/web fetch for these providers. Route them through
+# the Python extra-provider bridge instead of the upstream binary.
+declare -A LINUX_EXTRA_ONLY=(
+    [openrouter]=1
+    [groq]=1
+    [cerebras]=1
+    [vercel]=1
+    [nous]=1
+    [nousportal]=1
 )
 
 # If the primary source returns a provider-level error (e.g. Claude OAuth
@@ -222,8 +238,13 @@ run_codexbar() {
     fi
 }
 
+EXTRA_AUTO=()
 i=0
 for p in "${PROVIDERS[@]}"; do
+    if [[ -n "${LINUX_EXTRA_ONLY[$p]:-}" ]]; then
+        EXTRA_AUTO+=("$p")
+        continue
+    fi
     (( i > 0 )) && sleep "$STAGGER_SECS"
     fetch_provider "$p" > "$tmpdir/$p.json"
     i=$((i + 1))
@@ -243,6 +264,10 @@ append_merged_entry() {
 merged="["
 first=1
 for p in "${PROVIDERS[@]}"; do
+    # LINUX_EXTRA_ONLY providers are fetched via codexbar-extra-providers.py below.
+    if [[ -n "${LINUX_EXTRA_ONLY[$p]:-}" ]]; then
+        continue
+    fi
     body="$(cat "$tmpdir/$p.json")"
     # CLI returns a JSON array; unwrap and append elements.
     if [[ -z "$body" ]]; then
@@ -260,16 +285,34 @@ for p in "${PROVIDERS[@]}"; do
         append_merged_entry "$entry"
     done <<< "$inner"
 done
+
+declare -a EXTRA_PROVIDERS=()
+if [[ -n "${CODEXBAR_EXTRA_PROVIDERS:-}" ]]; then
+    # shellcheck disable=SC2206
+    EXTRA_PROVIDERS=( ${CODEXBAR_EXTRA_PROVIDERS} )
+else
+    EXTRA_PROVIDERS=( "${EXTRA_AUTO[@]}" )
+    for optional in cerebras vercel nous; do
+        if [[ " ${EXTRA_PROVIDERS[*]} " != *" $optional "* ]]; then
+            EXTRA_PROVIDERS+=("$optional")
+        fi
+    done
+fi
+EXTRA_SCRIPT="${CODEXBAR_EXTRA_SCRIPT:-$REPO_SCRIPTS/codexbar-extra-providers.py}"
+if [[ ${#EXTRA_PROVIDERS[@]} -gt 0 && -x "$EXTRA_SCRIPT" ]]; then
+    extra_body="$(python3 "$EXTRA_SCRIPT" "${EXTRA_PROVIDERS[@]}" 2>/dev/null || true)"
+    if [[ -n "$extra_body" ]] && echo "$extra_body" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        while IFS= read -r entry; do
+            append_merged_entry "$entry"
+        done <<< "$(echo "$extra_body" | jq -c '.[]')"
+    fi
+fi
+
 merged+="]"
 
-providers_json="$(printf '%s\n' "${PROVIDERS[@]}" | jq -R . | jq -s .)"
 last_good_json=""
 if [[ -f "$LAST_GOOD" ]]; then
-    # Disabled providers must not survive indefinitely through the stale cache.
-    last_good_json="$(jq -c --argjson requested "$providers_json" '
-        select(type == "array")
-        | map(select(.provider as $pid | $requested | index($pid)))
-    ' "$LAST_GOOD" 2>/dev/null || true)"
+    last_good_json="$(jq -c 'select(type == "array")' "$LAST_GOOD" 2>/dev/null || true)"
 fi
 
 # Persist fresh successful provider snapshots without dropping older successful
@@ -310,6 +353,19 @@ if [[ -n "$last_good_json" ]]; then
     ' <<< "$merged")"
 fi
 
+ANNOTATE_CURSOR="${CODEXBAR_ANNOTATE_CURSOR:-$REPO_SCRIPTS/codexbar-annotate-cursor.py}"
+if [[ -n "$merged" && "$merged" != "[]" && -x "$ANNOTATE_CURSOR" ]]; then
+    annotated="$(printf '%s' "$merged" | python3 "$ANNOTATE_CURSOR" 2>/dev/null || true)"
+    if [[ -n "$annotated" ]] && echo "$annotated" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        merged="$annotated"
+    fi
+fi
+
+FULL_SNAPSHOT="$CACHE_DIR/full.json"
+if [[ -n "$merged" ]]; then
+    echo "$merged" > "$FULL_SNAPSHOT"
+fi
+
 if [[ "$merged" == "[]" ]]; then
     printf '{"text":"","tooltip":"CodexBar: no provider data","class":"stale","percentage":0}\n'
     exit 0
@@ -323,7 +379,8 @@ echo "$merged" | jq -c \
     def provider_name(p):
         {codex:"Codex", claude:"Claude", gemini:"Gemini",
          copilot:"Copilot", openai:"OpenAI", cursor:"Cursor",
-         vertexai:"Vertex AI", openrouter:"OpenRouter",
+         vertexai:"Vertex AI", openrouter:"OpenRouter", groq:"Groq",
+         cerebras:"Cerebras", vercel:"Vercel AI", nous:"Nous Portal",
          antigravity:"Antigravity"}[p] // (p | ascii_upcase);
 
     # Insert spaces the providers omit. Claude OAuth gives "May 17 at 6:20AM"
@@ -413,14 +470,14 @@ echo "$merged" | jq -c \
     # When the user has pinned a provider for the bar text, surface session
     # and weekly inline ("3% • 12%"). Otherwise emit the global max%.
     def bar_text(entry):
-        if entry == null or entry.error then "󰚩 ⚠"
+        if entry == null or entry.error then "🤖 ⚠"
         else
             [pct_or_null(entry.usage.primary),
              pct_or_null(entry.usage.secondary)]
             | map(select(. != null))
-            | if length == 0 then "󰚩 —"
-              elif length == 1 then "󰚩 \(.[0])%"
-              else "󰚩 \(.[0])% • \(.[1])%" end
+            | if length == 0 then "🤖 —"
+              elif length == 1 then "🤖 \(.[0])%"
+              else "🤖 \(.[0])% • \(.[1])%" end
         end;
 
     . as $all
@@ -432,8 +489,8 @@ echo "$merged" | jq -c \
        else ($all | map(select(.provider == $bar_provider)) | .[0]) end) as $pinned
     | {
         text: (if $pinned != null then bar_text($pinned)
-               elif $all_errored then "󰚩 ⚠"
-               else "󰚩 \($pct)%" end),
+               elif $all_errored then "🤖 ⚠"
+               else "🤖 \($pct)%" end),
         tooltip: ($lines | join("\n")),
         class: (if $all_errored then "stale"
                 elif $pct >= 90 then "critical"

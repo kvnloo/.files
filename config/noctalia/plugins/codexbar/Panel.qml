@@ -15,6 +15,7 @@ Item {
   property int selectedIndex: 0
   readonly property var selectedEntry: providers.length > 0 ? providers[Math.min(selectedIndex, providers.length - 1)] : null
   readonly property var selectedWindows: selectedEntry ? mainInstance.windowsFor(selectedEntry) : []
+  property bool modelsExpanded: true
 
   implicitWidth: Math.round(460 * Style.uiScaleRatio)
   implicitHeight: Math.round(570 * Style.uiScaleRatio)
@@ -106,6 +107,95 @@ Item {
     return percent >= 90 ? Color.mError : (percent >= 70 ? Color.mTertiary : Color.mPrimary);
   }
 
+  function modelTier(model) {
+    const title = String(model?.title || "").toLowerCase();
+    const windowKey = String(model?.key || "").toLowerCase();
+    if (title.indexOf("free") >= 0 || title.indexOf("trial") >= 0 || title.indexOf("sandbox") >= 0)
+      return "free";
+    if (windowKey.indexOf("free") >= 0 || windowKey.indexOf("trial") >= 0)
+      return "free";
+    return "paid";
+  }
+
+  function modelsFor(entry) {
+    const usage = entry?.usage || {};
+    const models = [];
+    const windows = mainInstance.windowsFor(entry);
+    const windowMap = {};
+    for (let i = 0; i < windows.length; i++)
+      windowMap[windows[i].key] = windows[i];
+
+    if (usage.models && Array.isArray(usage.models)) {
+      for (let j = 0; j < usage.models.length; j++) {
+        const m = usage.models[j];
+        const base = {
+          name: String(m.name || m.model || m.title || "Model"),
+          usedPercent: Number(m.usedPercent || m.percent || 0),
+          limit: Number(m.limit || m.max || 0),
+          used: Number(m.used || m.current || 0),
+          resetDescription: String(m.resetDescription || m.resetsAt || ""),
+          paceDescription: String(m.paceDescription || m.paceText || ""),
+          windowMinutes: Number(m.windowMinutes || 0),
+          tier: String(m.tier || m.plan || "unknown"),
+          isDefault: Boolean(m.isDefault || m.default)
+        };
+        models.push(base);
+      }
+    }
+
+    for (let k = 0; k < windows.length; k++) {
+      const w = windows[k];
+      if (!windowMap[w.key] && w.key !== "primary" && w.key !== "secondary" && w.key !== "tertiary") {
+        models.push({
+          name: w.title,
+          usedPercent: w.usedPercent,
+          limit: 0,
+          used: 0,
+          resetDescription: w.resetDescription,
+          paceDescription: w.paceDescription,
+          windowMinutes: w.windowMinutes,
+          tier: modelTier(w),
+          isDefault: false
+        });
+      }
+    }
+
+    const extras = Array.isArray(usage.extraRateWindows) ? usage.extraRateWindows : [];
+    for (let e = 0; e < extras.length; e++) {
+      const extra = extras[e] || {};
+      const ew = extra.window || extra;
+      const isModel = extra.model || extra.modelName || extra.title;
+      models.push({
+        name: String(isModel || extra.title || extra.name || "Additional limit"),
+        usedPercent: Number(ew.usedPercent || 0),
+        limit: 0,
+        used: 0,
+        resetDescription: String(ew.resetDescription || ""),
+        paceDescription: String(ew.paceDescription || ""),
+        windowMinutes: Number(ew.windowMinutes || 0),
+        tier: modelTier({ title: extra.title, key: extra.id }),
+        isDefault: false
+      });
+    }
+
+    return models;
+  }
+
+  function groupedModels(entry) {
+    const models = modelsFor(entry);
+    const groups = { free: [], paid: [], unknown: [] };
+    for (let i = 0; i < models.length; i++) {
+      const m = models[i];
+      const tier = m.tier === "free" ? "free" : (m.tier === "paid" ? "paid" : "unknown");
+      groups[tier].push(m);
+    }
+    return groups;
+  }
+
+  function tierLabel(tier) {
+    return tier === "free" ? "Free tier" : (tier === "paid" ? "Paid tier" : "Other limits");
+  }
+
   Connections {
     target: root.mainInstance
     function onProvidersChanged() {
@@ -186,7 +276,10 @@ Item {
             textColor: index === root.selectedIndex ? Color.mOnPrimary : Color.mOnSurface
             fontSize: Style.fontSizeS
             Layout.fillWidth: true
-            onClicked: root.selectedIndex = index
+            onClicked: {
+              root.selectedIndex = index;
+              root.modelsExpanded = true;
+            }
           }
         }
       }
@@ -301,6 +394,162 @@ Item {
               text: root.selectedEntry?.error?.message || "Provider refresh failed"
               color: Color.mError
               wrapMode: Text.WordWrap
+            }
+          }
+
+          NBox {
+            Layout.fillWidth: true
+            visible: root.selectedEntry !== null && root.selectedEntry?.error === undefined && modelsFor(root.selectedEntry).length > 0
+            implicitHeight: modelsContent.implicitHeight + Style.margin2L
+
+            ColumnLayout {
+              id: modelsContent
+              anchors.fill: parent
+              anchors.margins: Style.marginL
+              spacing: Style.marginS
+
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.marginS
+
+                NIconButton {
+                  icon: root.modelsExpanded ? "chevron-down" : "chevron-right"
+                  tooltipText: root.modelsExpanded ? "Collapse models" : "Expand models"
+                  baseSize: Style.baseWidgetSize
+                  onClicked: root.modelsExpanded = !root.modelsExpanded
+                }
+
+                NText {
+                  text: "Models & rate limits"
+                  pointSize: Style.fontSizeM
+                  font.weight: Style.fontWeightSemiBold
+                  color: Color.mOnSurface
+                  Layout.fillWidth: true
+                }
+              }
+
+              ColumnLayout {
+                visible: root.modelsExpanded
+                width: parent.width
+                spacing: Style.marginS
+
+                Repeater {
+                  model: ["free", "paid", "unknown"]
+                  delegate: NBox {
+                    Layout.fillWidth: true
+                    visible: groupedModels(root.selectedEntry)[modelData].length > 0
+                    implicitHeight: tierContent.implicitHeight + Style.marginS
+
+                    ColumnLayout {
+                      id: tierContent
+                      anchors.fill: parent
+                      anchors.margins: Style.marginS
+                      spacing: Style.marginXS
+
+                      NText {
+                        text: tierLabel(modelData) + " (" + groupedModels(root.selectedEntry)[modelData].length + ")"
+                        pointSize: Style.fontSizeS
+                        font.weight: Style.fontWeightBold
+                        color: modelData === "free" ? Color.mPrimary : (modelData === "paid" ? Color.mTertiary : Color.mOnSurfaceVariant)
+                      }
+
+                      Repeater {
+                        model: groupedModels(root.selectedEntry)[modelData]
+                        delegate: NBox {
+                          required property var modelData
+                          Layout.fillWidth: true
+                          implicitHeight: modelCard.implicitHeight + Style.marginXS
+
+                          Rectangle {
+                            id: modelCard
+                            anchors.fill: parent
+                            anchors.margins: 0
+                            radius: Style.radiusM
+                            color: Color.mSurfaceVariant
+                            border.color: Color.mOutline
+                            border.width: Style.borderWidthThin
+
+                            ColumnLayout {
+                              id: modelCard
+                              anchors.fill: parent
+                              anchors.margins: Style.marginS
+                              spacing: Style.marginXS
+
+                              RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Style.marginS
+
+                                NText {
+                                  text: modelData.name
+                                  pointSize: Style.fontSizeM
+                                  font.weight: Style.fontWeightSemiBold
+                                  color: Color.mOnSurface
+                                  Layout.fillWidth: true
+                                  elide: Text.ElideRight
+                                }
+
+                                NText {
+                                  text: Math.round(modelData.usedPercent) + "% used"
+                                  pointSize: Style.fontSizeS
+                                  font.weight: Style.fontWeightBold
+                                  color: usageColor(modelData.usedPercent)
+                                }
+                              }
+
+                              NLinearGauge {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.max(4, Math.round(4 * Style.uiScaleRatio))
+                                orientation: Qt.Horizontal
+                                ratio: Math.max(0, Math.min(1, modelData.usedPercent / 100))
+                                fillColor: usageColor(modelData.usedPercent)
+                              }
+
+                              RowLayout {
+                                Layout.fillWidth: true
+                                visible: modelData.resetDescription !== "" || modelData.paceDescription !== ""
+
+                                NText {
+                                  text: modelData.paceDescription
+                                  visible: text !== ""
+                                  pointSize: Style.fontSizeXS
+                                  color: Color.mOnSurfaceVariant
+                                  Layout.fillWidth: true
+                                  elide: Text.ElideRight
+                                }
+
+                                NText {
+                                  text: modelData.resetDescription === "" ? "" : "Resets " + modelData.resetDescription
+                                  visible: text !== ""
+                                  pointSize: Style.fontSizeXS
+                                  color: Color.mOnSurfaceVariant
+                                }
+                              }
+
+                              RowLayout {
+                                Layout.fillWidth: true
+                                visible: modelData.limit > 0
+
+                                NText {
+                                  text: "Limit: " + formatTokens(modelData.limit)
+                                  pointSize: Style.fontSizeXS
+                                  color: Color.mOnSurfaceVariant
+                                  Layout.fillWidth: true
+                                }
+
+                                NText {
+                                  text: "Used: " + formatTokens(modelData.used)
+                                  pointSize: Style.fontSizeXS
+                                  color: Color.mOnSurfaceVariant
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
 
