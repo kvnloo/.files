@@ -356,6 +356,59 @@ def semantic_state(
     return state
 
 
+def _parse_pr_number(text: str) -> int | None:
+    import re
+    if not text:
+        return None
+    for pat in (r"PR[#\s-]*(\d+)", r"#(\d+)\b", r"pull/(\d+)", r"per-(\d+)"):
+        m = re.search(pat, text, flags=re.IGNORECASE)
+        if m:
+            try:
+                return int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def z0int_context_snapshot(db: Any, *, tmux_focus_fn: Callable[[], dict[str, str]] | None = None) -> dict[str, Any]:
+    import subprocess
+    state = semantic_state(db, tmux_focus_fn=tmux_focus_fn)
+    project = str(state.get("project") or "").strip()
+    snap = {"schema": "workspace.context_snapshot.v1", "ts": _now(), "project": project,
+            "app": state.get("app") or "", "harness": state.get("harness") or "",
+            "harness_state": state.get("harness_state") or "", "session": state.get("session") or "",
+            "task": state.get("task") or "", "task_phase": state.get("task_phase") or "",
+            "objective": state.get("objective") or "", "context_id": state.get("context_id") or "",
+            "superseded": state.get("harness_state") == "superseded"}
+    blob = " ".join(str(state.get(k) or "") for k in ("task", "task_phase", "objective", "harness_state"))
+    pr = _parse_pr_number(blob)
+    if pr is not None:
+        snap["open_pr"] = pr
+        snap["rfc_revision"] = pr
+    project_path = Path(project).expanduser() if project else None
+    if project_path and project_path.is_dir() and (project_path / ".git").exists():
+        try:
+            head = subprocess.run(["git", "-C", str(project_path), "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=1.5, check=False)
+            if head.returncode == 0 and head.stdout.strip():
+                snap["repo_head"] = head.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        try:
+            proc = subprocess.run(["git", "-C", str(project_path), "status", "--porcelain", "-uno"], capture_output=True, text=True, timeout=1.5, check=False)
+            if proc.returncode == 0:
+                names = []
+                for line in (proc.stdout or "").splitlines()[:40]:
+                    line = line.rstrip()
+                    if len(line) < 4: continue
+                    path = line[3:].strip()
+                    if " -> " in path: path = path.split(" -> ", 1)[-1]
+                    names.append(path[:200])
+                if names: snap["changed_files"] = names
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return snap
+
+
 def _candidate_contexts(db: Any, state: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
