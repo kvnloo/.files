@@ -86,3 +86,35 @@ After apply or undo, rerun `workspace-copilot --json context` and verify the obs
 ## Preference learning
 
 Treat stored preference confidence as ranking evidence, not authority. Repeated acceptance may increase recommendation priority, but must never grant automatic execution permission. Rejections constrain future recommendations; explain any later proposal that appears to conflict with a recorded rejection.
+
+## Flow predictor (os.next_context.v0)
+
+Shadow next-context prediction runs on every semantic context change (not the
+5-minute suggestion loop).
+
+Invariant: **predict → prepare → user commits**. Never steal focus. Never
+auto-run consequential actions.
+
+```sh
+workspace-copilot --json predict          # force shadow prediction now
+workspace-copilot --json next-action      # single global surface (or idle)
+workspace-copilot --json commit-next      # reversible navigation only
+workspace-copilot --json dismiss-next     # suppress until evidence changes
+workspace-copilot --json shadow-stats     # top1/topk/latency/episodes
+workspace-copilot --json export-flow      # JSONL → ~/.z0int/episodes
+```
+
+Episodes join `state_before → actual action → state_after` with `context_id` /
+event references. Speculative prepare may pre-resolve pane/window/task packets
+into `prepare_cache` without committing.
+
+z0int import of the same sanitized rows:
+
+```sh
+z0int os-context stats
+z0int os-context import
+```
+
+Operator families (second head, coarse): `inspect_result`, `run_test`,
+`open_context`, `delegate`, `retrieve`, `resume_previous`, `noop`.
+

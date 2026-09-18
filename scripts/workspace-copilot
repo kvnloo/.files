@@ -22,8 +22,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import urlopen
 
+# Companion Flow predictor (episode stream + os.next_context.v0 shadow).
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+import workspace_flow  # noqa: E402
+
 APP = "workspace-copilot"
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 STATE_DIR = Path(os.environ.get("WORKSPACE_COPILOT_STATE_DIR", STATE_HOME / APP))
 DB_PATH = STATE_DIR / "workspace.db"
@@ -271,6 +277,10 @@ def initialize(db: sqlite3.Connection) -> None:
         ),
     )
     db.commit()
+    workspace_flow.ensure_flow_schema(db)
+    db.commit()
+
+
 
 
 def path_hash(db: sqlite3.Connection, value: Any) -> str:
@@ -293,8 +303,8 @@ def record_event(
     project: str = "",
     label: str = "",
     details: dict[str, Any] | None = None,
-) -> None:
-    db.execute(
+) -> int:
+    cur = db.execute(
         """INSERT INTO events(
                ts,source,kind,app,workspace,session,window,pane,project,label,details_json
            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
@@ -312,6 +322,7 @@ def record_event(
             json_text(details or {}),
         ),
     )
+    return int(cur.lastrowid)
 
 
 def process_for_pid(pid: Any) -> str:
@@ -353,10 +364,10 @@ def hypr_json(command: str) -> Any:
         return None
 
 
-def snapshot_hypr_active(db: sqlite3.Connection, kind: str, emit: bool = True) -> None:
+def snapshot_hypr_active(db: sqlite3.Connection, kind: str, emit: bool = True) -> int | None:
     data = hypr_json("activewindow")
     if not isinstance(data, dict) or not data.get("address"):
-        return
+        return None
     address = path_hash(db, data.get("address"))
     app = clean_token(data.get("class") or data.get("initialClass"), 96)
     workspace_data = data.get("workspace") if isinstance(data.get("workspace"), dict) else {}
@@ -390,8 +401,9 @@ def snapshot_hypr_active(db: sqlite3.Connection, kind: str, emit: bool = True) -
             focus_increment,
         ),
     )
+    event_id: int | None = None
     if emit:
-        record_event(
+        event_id = record_event(
             db,
             "hypr",
             kind,
@@ -405,6 +417,38 @@ def snapshot_hypr_active(db: sqlite3.Connection, kind: str, emit: bool = True) -
             },
         )
     db.commit()
+    return event_id
+
+
+def flow_tick(
+    db: sqlite3.Connection,
+    kind: str,
+    event_id: int | None = None,
+    *,
+    force: bool = False,
+) -> dict[str, Any] | None:
+    """Immediate shadow prediction on semantic context change (not the 5-min loop)."""
+    try:
+        result = workspace_flow.on_context_event(
+            db,
+            event_id=event_id,
+            kind=kind,
+            tmux_focus_fn=tmux_focus,
+            force=force,
+        )
+        if result is not None:
+            db.commit()
+        return result
+    except Exception as exc:  # never take down the daemon for predictor faults
+        try:
+            db.execute(
+                "INSERT OR REPLACE INTO flow_meta(key,value) VALUES('last_error',?)",
+                (f"{type(exc).__name__}: {exc}"[:300],),
+            )
+            db.commit()
+        except sqlite3.Error:
+            pass
+        return {"error": str(exc)}
 
 
 def handle_hypr_event(db: sqlite3.Connection, raw: str) -> None:
@@ -418,7 +462,10 @@ def handle_hypr_event(db: sqlite3.Connection, raw: str) -> None:
         record_event(db, "hypr", event)
         db.commit()
         return
-    snapshot_hypr_active(db, event)
+    event_id = snapshot_hypr_active(db, event)
+    if event.startswith("activewindow") or event.startswith("workspace") or event.startswith("movewindow"):
+        flow_tick(db, event, event_id)
+
 
 
 def tmux_rows() -> list[list[str]]:
@@ -670,7 +717,7 @@ def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
                updated_at=excluded.updated_at""",
         (pane or f"external:{harness}", harness, state, session, window, project, label, now()),
     )
-    record_event(
+    event_id = record_event(
         db,
         "harness",
         state,
@@ -682,6 +729,8 @@ def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
         label=label,
     )
     db.commit()
+    flow_tick(db, "harness", event_id)
+
 def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
     session = clean_token(args.session, 80)
     project = clean_token(args.project, 80)
@@ -756,7 +805,7 @@ def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
                updated_at=excluded.updated_at""",
         (session, project, objective, json_text(decisions), stamp),
     )
-    record_event(
+    event_id = record_event(
         db,
         "tasks",
         "synced",
@@ -767,6 +816,8 @@ def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
         details={"total": len(rows)},
     )
     db.commit()
+    flow_tick(db, "task-sync", event_id)
+
 def task_update(db: sqlite3.Connection, args: argparse.Namespace) -> None:
     session = clean_token(args.session, 80)
     task = clean_label(args.task, 240)
@@ -779,7 +830,17 @@ def task_update(db: sqlite3.Connection, args: argparse.Namespace) -> None:
     )
     if cursor.rowcount == 0:
         raise SystemExit("task-update did not match a published task")
+    event_id = record_event(
+        db,
+        "tasks",
+        "updated",
+        app="omp",
+        session=session,
+        label=f"{status}:{task}",
+    )
     db.commit()
+    flow_tick(db, "task-update", event_id)
+
 
 
 
@@ -1322,6 +1383,10 @@ def context_report(db: sqlite3.Connection) -> dict[str, Any]:
         "keybind_catalog": keybinds,
         "preferences": preferences,
         "suggestions": suggestion_rows(db),
+        "flow": {
+            "surface": workspace_flow.show_next_action(db),
+            "shadow": workspace_flow.shadow_stats(db, limit_hours=24.0),
+        },
     }
 
 
@@ -1343,7 +1408,9 @@ def cleanup(db: sqlite3.Connection) -> None:
     cutoff = now() - RETENTION_DAYS * 86400
     db.execute("DELETE FROM events WHERE ts<?", (cutoff,))
     db.execute("DELETE FROM harness_context WHERE updated_at<? AND state IN ('completed','failed','stopped')", (cutoff,))
+    workspace_flow.cleanup_flow(db, cutoff)
     db.commit()
+
 
 
 def notify_suggestions(count: int) -> None:
@@ -1358,7 +1425,9 @@ def daemon() -> None:
     snapshot_tmux(db)
     snapshot_hypr_active(db, "daemon-start", emit=False)
     cleanup(db)
+    flow_tick(db, "daemon-start", force=True)
     notify_suggestions(generate_suggestions(db))
+
     last_maintenance = now()
     buffer = b""
     while True:
@@ -1414,6 +1483,22 @@ def doctor(db: sqlite3.Connection) -> dict[str, Any]:
         "forbidden_columns": forbidden_columns,
         "privacy_policy": db.execute("SELECT value FROM meta WHERE key='privacy_policy'").fetchone()[0],
         "tables": schema,
+        "schema_version": db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0],
+        "flow": {
+            "schema": workspace_flow.SCHEMA,
+            "operator_schema": workspace_flow.OPERATOR_SCHEMA,
+            "tables_present": all(
+                name in schema
+                for name in (
+                    "context_episodes",
+                    "shadow_predictions",
+                    "next_action_surface",
+                    "prepare_cache",
+                    "flow_meta",
+                )
+            ),
+            "shadow": workspace_flow.shadow_stats(db, limit_hours=24.0),
+        },
     }
 
 
@@ -1477,6 +1562,17 @@ def parser() -> argparse.ArgumentParser:
     undo.add_argument("id", type=int)
     commands.add_parser("doctor", help="verify privacy and integration boundaries")
     commands.add_parser("purge", help="apply the retention policy now")
+    # Flow predictor surface (shadow → prepare → commit)
+    commands.add_parser("predict", help="run os.next_context.v0 shadow prediction now")
+    commands.add_parser("next-action", help="show the single global next-action surface")
+    commands.add_parser("commit-next", help="commit prepared reversible navigation only")
+    commands.add_parser("dismiss-next", help="suppress current next-action until evidence changes")
+    shadow = commands.add_parser("shadow-stats", help="os.next_context.v0 shadow metrics")
+    shadow.add_argument("--hours", type=float, default=24.0)
+    export = commands.add_parser("export-flow", help="export episodes/shadow JSONL for z0int")
+    export.add_argument("--dest", default="", help="directory (default ~/.z0int/episodes)")
+    export.add_argument("--limit", type=int, default=50000)
+
     return root
 
 
@@ -1497,10 +1593,12 @@ def main() -> None:
         print_data(context_report(db), args.json)
     elif args.command == "record-tmux":
         snapshot_tmux(db, clean_token(args.kind, 64), clean_token(args.pane, 32), emit=True)
+        flow_tick(db, clean_token(args.kind, 64) or "tmux")
     elif args.command == "record-keybind":
         upsert_keybind(db, args.source, args.chord, args.action)
-        record_event(db, "keybind", "invoked", app=args.source, label=f"{args.chord} {args.action}")
+        event_id = record_event(db, "keybind", "invoked", app=args.source, label=f"{args.chord} {args.action}")
         db.commit()
+        flow_tick(db, "keybind", event_id)
     elif args.command == "harness-event":
         harness_event(db, args)
     elif args.command == "task-sync":
@@ -1528,6 +1626,36 @@ def main() -> None:
     elif args.command == "purge":
         cleanup(db)
         print_data({"retention_days": RETENTION_DAYS}, args.json)
+    elif args.command == "predict":
+        result = flow_tick(db, "manual-predict", force=True)
+        print_data(result or {}, True if args.json else True)
+    elif args.command == "next-action":
+        print_data(workspace_flow.show_next_action(db), True if args.json else True)
+    elif args.command == "commit-next":
+        result = workspace_flow.commit_next_action(db, run_fn=run, tmux_args_fn=tmux_args)
+        if result.get("ok"):
+            record_event(
+                db,
+                "flow",
+                "commit-next",
+                label=result.get("result") or "",
+                details={"pred_id": result.get("pred_id")},
+            )
+            db.commit()
+        print_data(result, True if args.json else True)
+        raise SystemExit(0 if result.get("ok") else 1)
+    elif args.command == "dismiss-next":
+        result = workspace_flow.dismiss_next_action(db)
+        db.commit()
+        print_data(result, True if args.json else True)
+    elif args.command == "shadow-stats":
+        print_data(workspace_flow.shadow_stats(db, limit_hours=args.hours), True if args.json else True)
+    elif args.command == "export-flow":
+        dest_root = Path(args.dest).expanduser() if args.dest else Path.home() / ".z0int" / "episodes"
+        ep = workspace_flow.export_episodes_jsonl(db, dest_root / "os_next_context_episodes.jsonl", limit=args.limit)
+        sh = workspace_flow.export_shadow_jsonl(db, dest_root / "os_next_context_shadow.jsonl", limit=args.limit)
+        print_data({"episodes": ep, "shadow": sh}, True if args.json else True)
+
 
 
 if __name__ == "__main__":
