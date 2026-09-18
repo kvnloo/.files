@@ -106,6 +106,7 @@ STAY_LABEL = "stay"
 NOOP_LABEL = "noop"
 Z0INT_STREAM_NAME = "os_next_context.jsonl"
 Z0INT_RECEIPT_NAME = "flow_predictions.jsonl"
+PREPARE_EVENTS_NAME = "prepare_events.jsonl"  # under ~/.z0int/tokenomics/
 Z0INT_HORIZON_NAME = "flow_horizons.jsonl"
 
 
@@ -671,6 +672,113 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
             fh.write(_json_text(row) + "\n")
     except OSError:
         return
+
+
+def emit_prepare_event(
+    *,
+    outcome: str,
+    prepare: dict[str, Any],
+    pred_id: str | None = None,
+    context_id: str | None = None,
+    time_to_commit_ms: float | None = None,
+    latency_hidden_ms: float | None = None,
+    frontier_tokens_replaced: int | None = None,
+    manual_equivalent: bool | None = None,
+    ts: float | None = None,
+) -> dict[str, Any]:
+    """Append flow.prepare.v1 lifecycle row for Tokenomics.
+
+    Accounting:
+      prepare_created → speculation cost only (tokens_saved=0)
+      prepare_consumed → may credit latency_hidden; tokens only if frontier_tokens_replaced
+      prepare_expired / prepare_invalidated → cost already paid, no savings
+    """
+    stamp = ts if ts is not None else _now()
+    row = {
+        "schema": "flow.prepare.v1",
+        "prepare_outcome": outcome,
+        "ts": stamp,
+        "prediction_id": pred_id or prepare.get("prediction_id"),
+        "context_id": context_id or prepare.get("context_id"),
+        "operator_family": prepare.get("operator_family") or prepare.get("provider"),
+        "capability_id": prepare.get("operator_family") or prepare.get("provider") or "flow.prepare",
+        "prepare_provider": prepare.get("provider") or prepare.get("operator_family") or prepare.get("kind"),
+        "prepare_cost_ms": prepare.get("cost_ms"),
+        "prepare_bytes": prepare.get("bytes"),
+        "cache_key": prepare.get("cache_key"),
+        "kind": prepare.get("kind"),
+        "started_at": prepare.get("started_at"),
+        "ready_at": prepare.get("ready_at"),
+        "time_to_commit_ms": time_to_commit_ms,
+        "latency_hidden_ms": latency_hidden_ms,
+        "frontier_tokens_replaced": frontier_tokens_replaced,
+        "manual_equivalent": manual_equivalent,
+    }
+    # Strip Nones for compact JSONL
+    row = {k: v for k, v in row.items() if v is not None}
+    _append_jsonl(_z0int_dir("tokenomics", PREPARE_EVENTS_NAME), row)
+    return row
+
+
+def sweep_prepare_cache(db: Any, *, reason: str = "expire") -> int:
+    """Delete expired prepares; emit prepare_expired for unused ones."""
+    stamp = _now()
+    rows = db.execute(
+        "SELECT cache_key, kind, created_at, expires_at, payload_json FROM prepare_cache WHERE expires_at<?",
+        (stamp,),
+    ).fetchall()
+    n = 0
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if not payload.get("consumed_at") and not payload.get("invalidated_at"):
+            emit_prepare_event(
+                outcome="prepare_expired",
+                prepare=payload,
+                pred_id=payload.get("prediction_id"),
+                context_id=payload.get("context_id"),
+                ts=stamp,
+            )
+            n += 1
+        db.execute("DELETE FROM prepare_cache WHERE cache_key=?", (row["cache_key"],))
+    return n
+
+
+def invalidate_open_prepares(
+    db: Any,
+    *,
+    reason: str = "context_changed",
+    keep_cache_key: str | None = None,
+) -> int:
+    """Mark unused prepare_cache rows invalidated when context moves on."""
+    stamp = _now()
+    rows = db.execute("SELECT cache_key, payload_json FROM prepare_cache").fetchall()
+    n = 0
+    for row in rows:
+        key = row["cache_key"]
+        if keep_cache_key and key == keep_cache_key:
+            continue
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if payload.get("consumed_at") or payload.get("invalidated_at"):
+            continue
+        payload["invalidated_at"] = stamp
+        payload["invalidate_reason"] = reason
+        emit_prepare_event(
+            outcome="prepare_invalidated",
+            prepare=payload,
+            pred_id=payload.get("prediction_id"),
+            context_id=payload.get("context_id"),
+            ts=stamp,
+        )
+        db.execute("DELETE FROM prepare_cache WHERE cache_key=?", (key,))
+        n += 1
+    return n
+
 
 
 def build_receipt(
@@ -1409,11 +1517,12 @@ def speculative_prepare(
     *,
     prediction: dict[str, Any],
     current: dict[str, Any],
+    pred_id: str | None = None,
 ) -> dict[str, Any]:
     """Cheap prepare-only work via PrepareProviders. Never focuses, never mutates UI."""
     stamp = _now()
     t0 = time.perf_counter()
-    db.execute("DELETE FROM prepare_cache WHERE expires_at<?", (stamp,))
+    sweep_prepare_cache(db, reason="expire")
     family = prediction.get("family") or ""
     target = prediction.get("target") or ""
     cid = prediction.get("context_id") or ""
@@ -1428,13 +1537,19 @@ def speculative_prepare(
         "family": family,
         "target": target,
         "operator_family": op,
+        "prediction_id": pred_id,
         "resolved": {},
         "artifacts": {},
         "task_summary": None,
         "harness": None,
         "eligible": True,
+        "outcome": "prepare_created",
         "started_at": stamp,
         "cache_hit": False,
+        "consumed_at": None,
+        "invalidated_at": None,
+        "frontier_tokens_replaced": None,
+        "latency_hidden_ms": None,
     }
 
     if op == "inspect_result":
@@ -1473,6 +1588,14 @@ def speculative_prepare(
     )
     payload["cache_key"] = key
     payload["expires_at"] = stamp + PREPARE_TTL_S
+    # Tokenomics: create earns speculation cost only — never token savings.
+    emit_prepare_event(
+        outcome="prepare_created",
+        prepare=payload,
+        pred_id=pred_id,
+        context_id=cid,
+        ts=ready_at,
+    )
     return payload
 
 
@@ -1522,7 +1645,15 @@ def update_next_action_surface(
                 receipt = json.loads(row["receipt_json"] or "{}")
             except json.JSONDecodeError:
                 receipt = {}
-            receipt["prepare"] = prepare or receipt.get("prepare")
+            if prepare:
+                # Keep full prepare economics on the flow receipt for Tokenomics lift.
+                receipt["prepare"] = {
+                    **(receipt.get("prepare") or {}),
+                    **prepare,
+                    "eligible": True,
+                    "outcome": prepare.get("outcome") or "prepare_created",
+                }
+            # else keep existing prepare block
             receipt["surface"] = {
                 "eligible": eligible,
                 "arm": arm,
@@ -1762,6 +1893,56 @@ def commit_next_action(
                 "source": source,
                 "committed_at": stamp,
             }
+            # Prepare consume economics — latency hidden only; tokens only if replaced frontier.
+            prep_block = dict(receipt.get("prepare") or prepare or {})
+            started = prep_block.get("started_at")
+            ttc = None
+            if started is not None:
+                try:
+                    ttc = max(0.0, (stamp - float(started)) * 1000.0)
+                except (TypeError, ValueError):
+                    ttc = None
+            # inspect_result prepare is local recap — does NOT replace frontier tokens by default.
+            frontier_replaced = prep_block.get("frontier_tokens_replaced")  # explicit only
+            hidden = prep_block.get("cost_ms")
+            prep_block["outcome"] = "prepare_consumed"
+            prep_block["consumed_at"] = stamp
+            prep_block["time_to_commit_ms"] = ttc
+            prep_block["latency_hidden_ms"] = hidden
+            receipt["prepare"] = prep_block
+            emit_prepare_event(
+                outcome="prepare_consumed",
+                prepare=prep_block,
+                pred_id=pred_id,
+                context_id=receipt.get("context_id") or prep_block.get("context_id"),
+                time_to_commit_ms=ttc,
+                latency_hidden_ms=float(hidden) if hidden is not None else None,
+                frontier_tokens_replaced=int(frontier_replaced) if frontier_replaced else None,
+                ts=stamp,
+            )
+            # Mark cache consumed so expire/invalidate skip it.
+            ck = prep_block.get("cache_key")
+            if ck:
+                try:
+                    crow = db.execute(
+                        "SELECT payload_json FROM prepare_cache WHERE cache_key=?", (ck,)
+                    ).fetchone()
+                    if crow:
+                        cp = json.loads(crow["payload_json"] or "{}")
+                        cp.update(
+                            {
+                                "outcome": "prepare_consumed",
+                                "consumed_at": stamp,
+                                "time_to_commit_ms": ttc,
+                                "latency_hidden_ms": hidden,
+                            }
+                        )
+                        db.execute(
+                            "UPDATE prepare_cache SET payload_json=? WHERE cache_key=?",
+                            (_json_text(cp), ck),
+                        )
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
             db.execute(
                 "UPDATE shadow_predictions SET receipt_json=? WHERE pred_id=?",
                 (_json_text(receipt), pred_id),
@@ -1831,6 +2012,9 @@ def on_context_event(
             opened = open_episode(db, state=state, open_event_id=event_id)
             result["opened_episode"] = opened
 
+        # Prior unused prepares die with the context move (not savings).
+        invalidate_open_prepares(db, reason="context_changed")
+
         # PREDICT — always
         topk, latency_ms = predict_next_context_v0(db, state)
         topk = boost_inspect_result(db, state, topk)
@@ -1854,7 +2038,9 @@ def on_context_event(
         prep_ok, prep_reason = gate_prepare(topk)
         prepare = None
         if prep_ok:
-            prepare = speculative_prepare(db, prediction=topk[0], current=state)
+            prepare = speculative_prepare(
+                db, prediction=topk[0], current=state, pred_id=pred.get("pred_id")
+            )
         result["gates"]["prepare"] = {
             "eligible": prep_ok,
             "reason": prep_reason,
@@ -2106,4 +2292,4 @@ def cleanup_flow(db: Any, cutoff: float) -> None:
         (cutoff,),
     )
     db.execute("DELETE FROM shadow_predictions WHERE ts<?", (cutoff,))
-    db.execute("DELETE FROM prepare_cache WHERE expires_at<?", (_now(),))
+    sweep_prepare_cache(db, reason="expire")
