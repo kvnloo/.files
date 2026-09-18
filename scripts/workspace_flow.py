@@ -88,7 +88,9 @@ SURFACE_MIN_P = 0.82          # surface rarely
 SURFACE_MIN_MARGIN = 0.12     # top1 - top2
 SURFACE_MAX_ENTROPY = 1.35    # nats over top-k; high entropy → silence
 WITHHOLD_RATE = 0.10          # eligible surface → 10% silent counterfactual arm
+PREPARE_WITHHOLD_RATE = 0.08   # eligible prepare → 8% withhold cache (causal arm)
 PREPARE_TTL_S = 180.0
+PRIMARY_HORIZON_MS = 2000     # primary bucket for prepare economics reporting
 
 # PrepareProviders: operator → cheap discardable artifact builders (no focus steal).
 # inspect_result is the first serious target (agent completed/waiting → inspect).
@@ -737,6 +739,9 @@ def emit_prepare_event(
     latency_hidden_ms: float | None = None,
     frontier_tokens_replaced: int | None = None,
     manual_equivalent: bool | None = None,
+    commit_setup_ms: float | None = None,
+    counterfactual_blocking_ms: float | None = None,
+    test_execution_ms: float | None = None,
     ts: float | None = None,
 ) -> dict[str, Any]:
     """Append flow.prepare.v1 lifecycle row for Tokenomics.
@@ -766,6 +771,12 @@ def emit_prepare_event(
         "latency_hidden_ms": latency_hidden_ms,
         "frontier_tokens_replaced": frontier_tokens_replaced,
         "manual_equivalent": manual_equivalent,
+        "prepare_arm": prepare.get("prepare_arm"),
+        "horizon_ms": prepare.get("horizon_ms"),
+        "p_confidence": prepare.get("p_confidence"),
+        "commit_setup_ms": commit_setup_ms,
+        "counterfactual_blocking_ms": counterfactual_blocking_ms,
+        "test_execution_ms": test_execution_ms,
     }
     # Strip Nones for compact JSONL
     row = {k: v for k, v in row.items() if v is not None}
@@ -916,23 +927,35 @@ def build_receipt(
     }
 
 
-def gate_prepare(topk: list[dict[str, Any]]) -> tuple[bool, str]:
-    """PREPARE gate: often. Stay/noop never prepares."""
+def gate_prepare(topk: list[dict[str, Any]]) -> tuple[bool, str, str]:
+    """PREPARE gate: often. Returns (eligible, reason, arm).
+
+    arm: prepared | withheld | ineligible
+    """
     if not topk:
-        return False, "empty"
+        return False, "empty", "ineligible"
     top = topk[0]
     if top.get("family") in {STAY_LABEL, NOOP_LABEL} or top.get("operator_family") == "noop":
-        return False, "noop_top"
+        return False, "noop_top", "ineligible"
     conf = float(top.get("p") or 0.0)
     mar = _margin(topk)
-    # inspect_result is the high-value prepare family — lower bar
+    eligible = False
+    reason = "eligible"
     if top.get("operator_family") == "inspect_result" and conf >= 0.18:
-        return True, "inspect_result"
-    if conf < PREPARE_MIN_P:
-        return False, f"p<{PREPARE_MIN_P}"
-    if mar < PREPARE_MIN_MARGIN and conf < 0.55:
-        return False, "low_margin"
-    return True, "eligible"
+        eligible, reason = True, "inspect_result"
+    elif top.get("operator_family") == "run_test" and conf >= 0.28:
+        eligible, reason = True, "run_test"
+    elif conf < PREPARE_MIN_P:
+        return False, f"p<{PREPARE_MIN_P}", "ineligible"
+    elif mar < PREPARE_MIN_MARGIN and conf < 0.55:
+        return False, "low_margin", "ineligible"
+    else:
+        eligible, reason = True, "eligible"
+    if not eligible:
+        return False, reason, "ineligible"
+    if random.random() < PREPARE_WITHHOLD_RATE:
+        return True, "withhold_arm", "withheld"
+    return True, reason, "prepared"
 
 
 def gate_surface(topk: list[dict[str, Any]], *, suppress_fp: str = "") -> tuple[bool, str, str]:
@@ -1442,6 +1465,118 @@ def _prepare_open_context(
             }
 
 
+
+
+def _git_repo_head(project_path: Path) -> str | None:
+    import subprocess
+
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(project_path), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        if head.returncode == 0 and head.stdout.strip():
+            return head.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None
+
+
+def _git_changed_paths(project_path: Path, *, limit: int = 40) -> list[str]:
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(project_path), "status", "--porcelain", "-uno"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return []
+        names: list[str] = []
+        for line in (proc.stdout or "").splitlines()[:limit]:
+            line = line.rstrip()
+            if len(line) < 4:
+                continue
+            path = line[3:].strip()
+            if " -> " in path:
+                path = path.split(" -> ", 1)[-1]
+            names.append(path[:200])
+        return names
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
+def _resolve_pytest_plan(project_path: Path, changed: list[str]) -> tuple[str, str, list[str]]:
+    """Return (target_label, command, affected_files) without executing."""
+    affected = list(changed[:20])
+    tests = [p for p in changed if p.endswith(".py") and ("test" in p or p.startswith("tests/"))]
+    if tests:
+        target = tests[0]
+        return target, f"pytest -q {target}", affected
+    for src in changed:
+        if not src.endswith(".py") or src.startswith("tests/"):
+            continue
+        stem = Path(src).stem
+        guess = Path("tests") / f"test_{stem}.py"
+        if (project_path / guess).exists():
+            rel = str(guess)
+            return rel, f"pytest -q {rel}", affected
+    return "project", "pytest -q", affected
+
+
+def _prepare_run_test(
+    db: Any,
+    *,
+    prediction: dict[str, Any],
+    current: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """PrepareProviders[run_test]: compile command metadata only — never execute."""
+    target_state = prediction.get("state") or {}
+    project = (
+        current.get("project")
+        or target_state.get("project")
+        or prediction.get("target")
+        or ""
+    )
+    project_path = Path(str(project)).expanduser() if project else None
+    payload["artifacts"] = payload.get("artifacts") or {}
+    if not project_path or not project_path.is_dir():
+        payload["eligible"] = False
+        payload["reason"] = "missing_project_path"
+        payload["kind"] = "run_test"
+        return
+
+    changed = _git_changed_paths(project_path)
+    target, command, affected = _resolve_pytest_plan(project_path, changed)
+    head = _git_repo_head(project_path)
+    payload["artifacts"]["test_plan"] = {
+        "operator": "run_test",
+        "cwd": str(project_path),
+        "target": target,
+        "command": command,
+        "verifier": "pytest_exit_and_assertions",
+        "dependencies": ["repo_head", "changed_files", "pytest_config"],
+        "repo_head": head,
+        "changed_files": affected,
+        "expected_affected_files": affected[:8],
+    }
+    payload["resolved"]["dispatch"] = {
+        "action": "run_test",
+        "command": command,
+        "cwd": str(project_path),
+        "target": target,
+    }
+    payload["kind"] = "run_test"
+    payload["eligible"] = True
+
+
 def _prepare_inspect_result(
     db: Any,
     *,
@@ -1565,12 +1700,61 @@ def _prepare_inspect_result(
     payload["eligible"] = True
 
 
+
+
+def record_would_prepare(
+    db: Any,
+    *,
+    prediction: dict[str, Any],
+    current: dict[str, Any],
+    pred_id: str | None = None,
+) -> dict[str, Any]:
+    """Counterfactual arm: eligible for PREPARE but cache/work deferred until commit."""
+    stamp = _now()
+    family = prediction.get("family") or ""
+    target = prediction.get("target") or ""
+    cid = prediction.get("context_id") or ""
+    op = prediction.get("operator_family") or _operator_family(
+        family, prediction.get("state") or {}, current
+    )
+    conf = float(prediction.get("p") or 0.0)
+    payload: dict[str, Any] = {
+        "kind": op,
+        "provider": op,
+        "context_id": cid,
+        "family": family,
+        "target": target,
+        "operator_family": op,
+        "prediction_id": pred_id,
+        "eligible": True,
+        "outcome": "would_prepare",
+        "prepare_arm": "withheld",
+        "started_at": stamp,
+        "ready_at": stamp,
+        "cost_ms": 0.0,
+        "bytes": 0,
+        "horizon_ms": PRIMARY_HORIZON_MS,
+        "p_confidence": round(conf, 6),
+        "cache_hit": False,
+    }
+    emit_prepare_event(
+        outcome="would_prepare",
+        prepare=payload,
+        pred_id=pred_id,
+        context_id=cid,
+        ts=stamp,
+    )
+    return payload
+
+
 def speculative_prepare(
     db: Any,
     *,
     prediction: dict[str, Any],
     current: dict[str, Any],
     pred_id: str | None = None,
+    write_cache: bool = True,
+    prepare_arm: str = "prepared",
 ) -> dict[str, Any]:
     """Cheap prepare-only work via PrepareProviders. Never focuses, never mutates UI."""
     stamp = _now()
@@ -1582,6 +1766,7 @@ def speculative_prepare(
     op = prediction.get("operator_family") or _operator_family(
         family, prediction.get("state") or {}, current
     )
+    conf = float(prediction.get("p") or 0.0)
 
     payload: dict[str, Any] = {
         "kind": "context_resolve",
@@ -1603,10 +1788,15 @@ def speculative_prepare(
         "invalidated_at": None,
         "frontier_tokens_replaced": None,
         "latency_hidden_ms": None,
+        "prepare_arm": prepare_arm,
+        "horizon_ms": PRIMARY_HORIZON_MS,
+        "p_confidence": round(conf, 6),
     }
 
     if op == "inspect_result":
         _prepare_inspect_result(db, prediction=prediction, current=current, payload=payload)
+    elif op == "run_test":
+        _prepare_run_test(db, prediction=prediction, current=current, payload=payload)
     else:
         _prepare_open_context(db, prediction=prediction, current=current, payload=payload)
         if current.get("task") or (prediction.get("state") or {}).get("task"):
@@ -1630,17 +1820,20 @@ def speculative_prepare(
     payload["bytes"] = len(blob)
 
     key = f"prep:{op}:{cid}:{family}:{target}"[:200]
-    db.execute(
-        """INSERT INTO prepare_cache(cache_key, kind, created_at, expires_at, payload_json)
-           VALUES (?,?,?,?,?)
-           ON CONFLICT(cache_key) DO UPDATE SET
-               created_at=excluded.created_at,
-               expires_at=excluded.expires_at,
-               payload_json=excluded.payload_json""",
-        (key, payload.get("kind") or "context_resolve", stamp, stamp + PREPARE_TTL_S, blob),
-    )
-    payload["cache_key"] = key
-    payload["expires_at"] = stamp + PREPARE_TTL_S
+    if write_cache:
+        db.execute(
+            """INSERT INTO prepare_cache(cache_key, kind, created_at, expires_at, payload_json)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   created_at=excluded.created_at,
+                   expires_at=excluded.expires_at,
+                   payload_json=excluded.payload_json""",
+            (key, payload.get("kind") or "context_resolve", stamp, stamp + PREPARE_TTL_S, blob),
+        )
+        payload["cache_key"] = key
+        payload["expires_at"] = stamp + PREPARE_TTL_S
+    else:
+        payload["cache_key"] = None
     # Tokenomics: create earns speculation cost only — never token savings.
     emit_prepare_event(
         outcome="prepare_created",
@@ -1799,6 +1992,7 @@ def show_next_action(db: Any) -> dict[str, Any]:
             "surface_min_p": SURFACE_MIN_P,
             "surface_min_margin": SURFACE_MIN_MARGIN,
             "withhold_rate": WITHHOLD_RATE,
+            "prepare_withhold_rate": PREPARE_WITHHOLD_RATE,
             "commit": "explicit-only",
         },
     }
@@ -1853,24 +2047,174 @@ def dismiss_next_action(db: Any) -> dict[str, Any]:
     return show_next_action(db)
 
 
+def _load_prediction_for_commit(db: Any, pred_id: str) -> dict[str, Any] | None:
+    if not pred_id:
+        return None
+    row = db.execute(
+        "SELECT topk_json, state_json FROM shadow_predictions WHERE pred_id=?",
+        (pred_id,),
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        topk = json.loads(row["topk_json"] or "[]")
+    except json.JSONDecodeError:
+        topk = []
+    if not topk:
+        return None
+    pred = dict(topk[0])
+    try:
+        state = json.loads(row["state_json"] or "{}")
+    except json.JSONDecodeError:
+        state = {}
+    pred.setdefault("context_id", state.get("context_id"))
+    return pred
+
+
+def _finalize_prepare_consume(
+    db: Any,
+    *,
+    pred_id: str,
+    prepare: dict[str, Any],
+    receipt: dict[str, Any],
+    stamp: float,
+    source: str,
+    commit_setup_ms: float | None = None,
+    counterfactual_blocking_ms: float | None = None,
+    test_execution_ms: float | None = None,
+) -> dict[str, Any]:
+    """Mark prepare consumed and emit Tokenomics lifecycle row."""
+    prep_block = dict(receipt.get("prepare") or prepare or {})
+    started = prep_block.get("started_at")
+    ttc = None
+    if started is not None:
+        try:
+            ttc = max(0.0, (stamp - float(started)) * 1000.0)
+        except (TypeError, ValueError):
+            ttc = None
+    frontier_replaced = prep_block.get("frontier_tokens_replaced")
+    hidden = prep_block.get("cost_ms")
+    if counterfactual_blocking_ms is not None:
+        hidden = 0.0
+    prep_block["outcome"] = "prepare_consumed"
+    prep_block["consumed_at"] = stamp
+    prep_block["time_to_commit_ms"] = ttc
+    prep_block["latency_hidden_ms"] = hidden
+    if commit_setup_ms is not None:
+        prep_block["commit_setup_ms"] = round(commit_setup_ms, 3)
+    if counterfactual_blocking_ms is not None:
+        prep_block["counterfactual_blocking_ms"] = round(counterfactual_blocking_ms, 3)
+    if test_execution_ms is not None:
+        prep_block["test_execution_ms"] = round(test_execution_ms, 3)
+    receipt["prepare"] = prep_block
+    receipt["commit"] = {
+        "committed": True,
+        "source": source,
+        "committed_at": stamp,
+    }
+    emit_prepare_event(
+        outcome="prepare_consumed",
+        prepare=prep_block,
+        pred_id=pred_id,
+        context_id=receipt.get("context_id") or prep_block.get("context_id"),
+        time_to_commit_ms=ttc,
+        latency_hidden_ms=float(hidden) if hidden is not None else None,
+        frontier_tokens_replaced=int(frontier_replaced) if frontier_replaced else None,
+        commit_setup_ms=commit_setup_ms,
+        counterfactual_blocking_ms=counterfactual_blocking_ms,
+        test_execution_ms=test_execution_ms,
+        ts=stamp,
+    )
+    ck = prep_block.get("cache_key")
+    if ck:
+        try:
+            crow = db.execute(
+                "SELECT payload_json FROM prepare_cache WHERE cache_key=?", (ck,)
+            ).fetchone()
+            if crow:
+                cp = json.loads(crow["payload_json"] or "{}")
+                cp.update(
+                    {
+                        "outcome": "prepare_consumed",
+                        "consumed_at": stamp,
+                        "time_to_commit_ms": ttc,
+                        "latency_hidden_ms": hidden,
+                    }
+                )
+                db.execute(
+                    "UPDATE prepare_cache SET payload_json=? WHERE cache_key=?",
+                    (_json_text(cp), ck),
+                )
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    db.execute(
+        "UPDATE shadow_predictions SET receipt_json=? WHERE pred_id=?",
+        (_json_text(receipt), pred_id),
+    )
+    _append_jsonl(_z0int_dir("receipts", Z0INT_RECEIPT_NAME), receipt)
+    return prep_block
+
+
 def commit_next_action(
     db: Any,
     *,
     run_fn: Callable[[list[str]], Any],
     tmux_args_fn: Callable[..., list[str]],
     source: str = "flow",
+    execute_tests: bool = True,
 ) -> dict[str, Any]:
-    """COMMIT gate: explicit only. Reversible navigation from prepared surface."""
+    """COMMIT gate: explicit only. May consume PREPARE without SURFACE."""
     surface = show_next_action(db)
-    if surface.get("status") != "ready":
-        return {"ok": False, "error": "no ready next-action", "surface": surface}
-
     prepare = surface.get("prepare") or {}
+    has_prepare = bool(
+        prepare.get("cache_key")
+        or prepare.get("outcome") in {"prepare_created", "would_prepare"}
+    )
+    if surface.get("status") != "ready" and not has_prepare:
+        return {"ok": False, "error": "no ready next-action or prepared artifact", "surface": surface}
+
+    pred_id = surface.get("pred_id") or ""
+    counterfactual_blocking_ms = None
+    commit_setup_ms = None
+
+    # Withhold arm: run the same provider synchronously at commit and measure blocking.
+    if prepare.get("outcome") == "would_prepare" or prepare.get("prepare_arm") == "withheld":
+        prediction = _load_prediction_for_commit(db, pred_id) or {
+            "family": prepare.get("family"),
+            "target": prepare.get("target"),
+            "operator_family": prepare.get("operator_family"),
+            "context_id": prepare.get("context_id"),
+            "state": {},
+        }
+        try:
+            state = json.loads(
+                db.execute(
+                    "SELECT state_json FROM shadow_predictions WHERE pred_id=?",
+                    (pred_id,),
+                ).fetchone()["state_json"]
+                or "{}"
+            )
+        except (TypeError, AttributeError, json.JSONDecodeError):
+            state = {}
+        t0 = time.perf_counter()
+        prepare = speculative_prepare(
+            db,
+            prediction=prediction,
+            current=state,
+            pred_id=pred_id,
+            write_cache=False,
+            prepare_arm="withheld",
+        )
+        counterfactual_blocking_ms = (time.perf_counter() - t0) * 1000.0
+        commit_setup_ms = counterfactual_blocking_ms
+
     resolved = prepare.get("resolved") or {}
+    inspect = resolved.get("inspect") or {}
     dispatch = resolved.get("dispatch") or {}
-    action = dispatch.get("action")
+    action = dispatch.get("action") or inspect.get("action")
     message = ""
     undo: dict[str, Any] = {"action": "none"}
+    test_execution_ms = None
 
     cur = db.execute(
         """SELECT app, workspace FROM hypr_windows WHERE focused=1
@@ -1879,7 +2223,38 @@ def commit_next_action(
     if cur:
         undo = {"action": "focus_app", "app": cur["app"], "workspace": cur["workspace"]}
 
-    if action == "focus_workspace":
+    if action == "inspect_harness":
+        message = "prepared inspect artifacts ready"
+    elif action == "run_test":
+        cmd = str(dispatch.get("command") or "")
+        cwd = str(dispatch.get("cwd") or "")
+        if not cmd:
+            return {"ok": False, "error": "missing test command", "surface": surface}
+        if execute_tests:
+            import subprocess
+
+            t0 = time.perf_counter()
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=cwd or None,
+                capture_output=True,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+            test_execution_ms = (time.perf_counter() - t0) * 1000.0
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "error": (result.stderr or result.stdout or "test failed")[:500],
+                    "surface": surface,
+                    "test_execution_ms": test_execution_ms,
+                }
+            message = f"ran prepared test: {cmd}"
+        else:
+            message = f"prepared test ready: {cmd}"
+    elif action == "focus_workspace":
         ws = str(dispatch.get("workspace") or "")
         if not ws:
             return {"ok": False, "error": "missing workspace", "surface": surface}
@@ -1931,7 +2306,6 @@ def commit_next_action(
         """UPDATE next_action_surface SET status='committed', updated_at=? WHERE id=1""",
         (stamp,),
     )
-    pred_id = surface.get("pred_id") or ""
     if pred_id:
         r = db.execute(
             "SELECT receipt_json FROM shadow_predictions WHERE pred_id=?", (pred_id,)
@@ -1941,66 +2315,17 @@ def commit_next_action(
                 receipt = json.loads(r["receipt_json"] or "{}")
             except json.JSONDecodeError:
                 receipt = {}
-            receipt["commit"] = {
-                "committed": True,
-                "source": source,
-                "committed_at": stamp,
-            }
-            # Prepare consume economics — latency hidden only; tokens only if replaced frontier.
-            prep_block = dict(receipt.get("prepare") or prepare or {})
-            started = prep_block.get("started_at")
-            ttc = None
-            if started is not None:
-                try:
-                    ttc = max(0.0, (stamp - float(started)) * 1000.0)
-                except (TypeError, ValueError):
-                    ttc = None
-            # inspect_result prepare is local recap — does NOT replace frontier tokens by default.
-            frontier_replaced = prep_block.get("frontier_tokens_replaced")  # explicit only
-            hidden = prep_block.get("cost_ms")
-            prep_block["outcome"] = "prepare_consumed"
-            prep_block["consumed_at"] = stamp
-            prep_block["time_to_commit_ms"] = ttc
-            prep_block["latency_hidden_ms"] = hidden
-            receipt["prepare"] = prep_block
-            emit_prepare_event(
-                outcome="prepare_consumed",
-                prepare=prep_block,
+            _finalize_prepare_consume(
+                db,
                 pred_id=pred_id,
-                context_id=receipt.get("context_id") or prep_block.get("context_id"),
-                time_to_commit_ms=ttc,
-                latency_hidden_ms=float(hidden) if hidden is not None else None,
-                frontier_tokens_replaced=int(frontier_replaced) if frontier_replaced else None,
-                ts=stamp,
+                prepare=prepare,
+                receipt=receipt,
+                stamp=stamp,
+                source=source,
+                commit_setup_ms=commit_setup_ms,
+                counterfactual_blocking_ms=counterfactual_blocking_ms,
+                test_execution_ms=test_execution_ms,
             )
-            # Mark cache consumed so expire/invalidate skip it.
-            ck = prep_block.get("cache_key")
-            if ck:
-                try:
-                    crow = db.execute(
-                        "SELECT payload_json FROM prepare_cache WHERE cache_key=?", (ck,)
-                    ).fetchone()
-                    if crow:
-                        cp = json.loads(crow["payload_json"] or "{}")
-                        cp.update(
-                            {
-                                "outcome": "prepare_consumed",
-                                "consumed_at": stamp,
-                                "time_to_commit_ms": ttc,
-                                "latency_hidden_ms": hidden,
-                            }
-                        )
-                        db.execute(
-                            "UPDATE prepare_cache SET payload_json=? WHERE cache_key=?",
-                            (_json_text(cp), ck),
-                        )
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    pass
-            db.execute(
-                "UPDATE shadow_predictions SET receipt_json=? WHERE pred_id=?",
-                (_json_text(receipt), pred_id),
-            )
-            _append_jsonl(_z0int_dir("receipts", Z0INT_RECEIPT_NAME), receipt)
 
     return {
         "ok": True,
@@ -2009,6 +2334,9 @@ def commit_next_action(
         "source": source,
         "surface": show_next_action(db),
         "pred_id": pred_id,
+        "prepare_consumed": True,
+        "counterfactual_blocking_ms": counterfactual_blocking_ms,
+        "test_execution_ms": test_execution_ms,
     }
 
 
@@ -2087,16 +2415,26 @@ def on_context_event(
             "entropy": pred["entropy"],
         }
 
-        # PREPARE — often
-        prep_ok, prep_reason = gate_prepare(topk)
+        # PREPARE — often (+ withhold counterfactual arm)
+        prep_ok, prep_reason, prep_arm = gate_prepare(topk)
         prepare = None
         if prep_ok:
-            prepare = speculative_prepare(
-                db, prediction=topk[0], current=state, pred_id=pred.get("pred_id")
-            )
+            if prep_arm == "withheld":
+                prepare = record_would_prepare(
+                    db, prediction=topk[0], current=state, pred_id=pred.get("pred_id")
+                )
+            else:
+                prepare = speculative_prepare(
+                    db,
+                    prediction=topk[0],
+                    current=state,
+                    pred_id=pred.get("pred_id"),
+                    prepare_arm="prepared",
+                )
         result["gates"]["prepare"] = {
             "eligible": prep_ok,
             "reason": prep_reason,
+            "arm": prep_arm,
             "cost_ms": (prepare or {}).get("cost_ms"),
         }
 
