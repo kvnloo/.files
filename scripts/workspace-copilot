@@ -730,16 +730,18 @@ def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
         project=project,
         label=label,
     )
+    terminal = state in {"completed", "waiting", "blocked", "failed"}
     workspace_routines.record_semantic_action(
         db,
-        family="inspect_result" if state in {"completed", "waiting", "blocked"} else "open_context",
+        family="inspect_result" if terminal else "open_context",
         target=label or harness or project,
         source="agent",
         project=project,
         details={"harness": harness, "state": state, "via": "harness-event"},
     )
     db.commit()
-    flow_tick(db, "harness", event_id)
+    # Force PREDICT/PREPARE on terminal harness even if context_id unchanged.
+    flow_tick(db, "harness", event_id, force=terminal)
 
 def task_sync(db: sqlite3.Connection, args: argparse.Namespace) -> None:
     session = clean_token(args.session, 80)

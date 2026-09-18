@@ -90,6 +90,18 @@ SURFACE_MAX_ENTROPY = 1.35    # nats over top-k; high entropy → silence
 WITHHOLD_RATE = 0.10          # eligible surface → 10% silent counterfactual arm
 PREPARE_TTL_S = 180.0
 
+# PrepareProviders: operator → cheap discardable artifact builders (no focus steal).
+# inspect_result is the first serious target (agent completed/waiting → inspect).
+PREPARE_PROVIDERS = (
+    "inspect_result",
+    "open_context",
+    "resume_previous",
+    "retrieve",
+    "run_test",
+    "delegate",
+)
+
+
 STAY_LABEL = "stay"
 NOOP_LABEL = "noop"
 Z0INT_STREAM_NAME = "os_next_context.jsonl"
@@ -545,23 +557,104 @@ def predict_next_context_v0(
 
 
 def _operator_family(context_family: str, target_state: dict[str, Any], current: dict[str, Any]) -> str:
+    """Map navigation/context family → os.next_operator.v0 label.
+
+    inspect_result is first-class: agent completed/waiting/blocked → inspect.
+    """
     if context_family in {STAY_LABEL, NOOP_LABEL}:
         return "noop"
     if context_family == "resume_previous":
         return "resume_previous"
-    if context_family == "harness" or target_state.get("harness_state") in {
-        "completed",
-        "waiting",
-        "blocked",
+    # Target OR current harness terminal states → inspect (strongest label)
+    terminal = {"completed", "waiting", "blocked", "failed"}
+    if context_family == "harness" or target_state.get("harness_state") in terminal:
+        return "inspect_result"
+    if current.get("harness_state") in terminal and context_family in {
+        "switch_app", "switch_pane", "open_context", "harness"
     }:
         return "inspect_result"
     if context_family == "task":
         return "open_context"
     if target_state.get("harness") and target_state.get("harness") != current.get("harness"):
         return "inspect_result"
+    if context_family in {"run_test", "test"}:
+        return "run_test"
+    if context_family == "delegate":
+        return "delegate"
+    if context_family == "retrieve":
+        return "retrieve"
     if context_family in {"switch_app", "switch_workspace", "switch_pane", "switch_project"}:
         return "open_context"
     return "open_context"
+
+
+def boost_inspect_result(
+    db: Any,
+    state: dict[str, Any],
+    topk: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """When a harness just finished, inject/boost inspect_result as top-1 candidate.
+
+    Does not invent context — uses live harness_context rows. PREDICT-only boost;
+    SURFACE still gated separately.
+    """
+    terminal = {"completed", "waiting", "blocked", "failed"}
+    rows = list(
+        db.execute(
+            """SELECT pane_id, harness, state, session, project, label, updated_at
+               FROM harness_context
+               WHERE state IN ('completed','waiting','blocked','failed')
+               ORDER BY updated_at DESC LIMIT 5"""
+        )
+    )
+    if not rows:
+        return topk
+    # Prefer freshest terminal harness within last 15 minutes
+    stamp = _now()
+    fresh = [r for r in rows if stamp - float(r["updated_at"] or 0) <= 900.0]
+    if not fresh:
+        return topk
+    h = fresh[0]
+    label = (h["label"] or h["harness"] or h["project"] or "agent")[:80]
+    # Build synthetic candidate
+    st = {
+        k: state.get(k, "") for k in STATE_KEYS
+    }
+    st["harness"] = h["harness"] or ""
+    st["harness_state"] = h["state"] or ""
+    st["project"] = h["project"] or state.get("project") or ""
+    st["session"] = h["session"] or state.get("session") or ""
+    st["pane"] = h["pane_id"] or ""
+    try:
+        cid = context_id_of(st)
+    except Exception:
+        cid = hashlib.sha256(
+            f"inspect|{h['pane_id']}|{h['state']}|{label}".encode()
+        ).hexdigest()[:16]
+
+    cand = {
+        "context_id": cid,
+        "p": 0.92,  # strong prior while harness terminal is fresh
+        "family": "harness",
+        "target": label,
+        "operator_family": "inspect_result",
+        "state": st,
+        "boost": "harness_terminal",
+    }
+    # Drop competing inspect duplicates; put cand first
+    rest = [
+        x for x in topk
+        if not (
+            x.get("operator_family") == "inspect_result"
+            and (x.get("target") or "") == label
+        )
+    ]
+    merged = [cand] + rest
+    mass = sum(float(x.get("p") or 0) for x in merged) or 1.0
+    for x in merged:
+        x["p"] = round(float(x.get("p") or 0) / mass, 6)
+    merged.sort(key=lambda x: float(x.get("p") or 0), reverse=True)
+    return merged[:PRED_TOP_K]
 
 
 def _z0int_dir(*parts: str) -> Path:
@@ -671,6 +764,9 @@ def gate_prepare(topk: list[dict[str, Any]]) -> tuple[bool, str]:
         return False, "noop_top"
     conf = float(top.get("p") or 0.0)
     mar = _margin(topk)
+    # inspect_result is the high-value prepare family — lower bar
+    if top.get("operator_family") == "inspect_result" and conf >= 0.18:
+        return True, "inspect_result"
     if conf < PREPARE_MIN_P:
         return False, f"p<{PREPARE_MIN_P}"
     if mar < PREPARE_MIN_MARGIN and conf < 0.55:
@@ -1128,35 +1224,17 @@ def open_episode(
     return {"episode_id": int(cur.lastrowid), "context_id": cid, "ts_before": ts}
 
 
-def speculative_prepare(
+def _prepare_open_context(
     db: Any,
     *,
     prediction: dict[str, Any],
     current: dict[str, Any],
-) -> dict[str, Any]:
-    """Cheap prepare-only work. Never focuses, never mutates the desktop."""
-    stamp = _now()
-    t0 = time.perf_counter()
-    db.execute("DELETE FROM prepare_cache WHERE expires_at<?", (stamp,))
+    payload: dict[str, Any],
+) -> None:
+    """Resolve focus targets only — never dispatch."""
     target_state = prediction.get("state") or {}
     family = prediction.get("family") or ""
     target = prediction.get("target") or ""
-    cid = prediction.get("context_id") or ""
-
-    payload: dict[str, Any] = {
-        "kind": "context_resolve",
-        "context_id": cid,
-        "family": family,
-        "target": target,
-        "operator_family": prediction.get("operator_family") or "",
-        "resolved": {},
-        "task_summary": None,
-        "harness": None,
-        "eligible": True,
-        "started_at": stamp,
-        "cache_hit": False,
-    }
-
     app = target_state.get("app") or (target if family == "switch_app" else "")
     workspace = target_state.get("workspace") or (target if family == "switch_workspace" else "")
     if app:
@@ -1173,17 +1251,18 @@ def speculative_prepare(
                 "app": row["app"],
                 "workspace": row["workspace"],
             }
-
     if workspace and "dispatch" not in payload["resolved"]:
         payload["resolved"]["dispatch"] = {
             "action": "focus_workspace",
             "workspace": workspace,
         }
-
     session = target_state.get("session") or ""
     pane = target_state.get("pane") or ""
     if session or pane:
-        q = "SELECT pane_id, session, window_id, window_index, window_name, command, project, active FROM tmux_panes WHERE 1=1"
+        q = (
+            "SELECT pane_id, session, window_id, window_index, window_name, "
+            "command, project, active FROM tmux_panes WHERE 1=1"
+        )
         params: list[Any] = []
         if pane:
             q += " AND pane_id=?"
@@ -1201,29 +1280,188 @@ def speculative_prepare(
                 "session": row["session"],
             }
 
-    if current.get("task") or target_state.get("task"):
-        task_row = db.execute(
-            """SELECT session, phase, task, status, project, updated_at
-               FROM task_context
-               ORDER BY updated_at DESC LIMIT 3"""
-        ).fetchall()
-        payload["task_summary"] = [dict(r) for r in task_row]
 
-    harness_rows = db.execute(
-        """SELECT pane_id, harness, state, session, project, label, updated_at
-           FROM harness_context ORDER BY updated_at DESC LIMIT 5"""
-    ).fetchall()
-    if harness_rows:
-        payload["harness"] = [dict(r) for r in harness_rows]
+def _prepare_inspect_result(
+    db: Any,
+    *,
+    prediction: dict[str, Any],
+    current: dict[str, Any],
+    payload: dict[str, Any],
+) -> None:
+    """PrepareProviders[inspect_result]: agent done → recap artifacts, no focus steal.
+
+    Speculative bundle (all optional, all local/sanitized):
+      - harness recap (label/state/project/session)
+      - recent task rows
+      - recent copilot events for this harness/project
+      - git changed-file names only (no diffs/content) if project looks like a path
+    Nothing moves. No model round-trip.
+    """
+    target_state = prediction.get("state") or {}
+    harness_rows = list(
+        db.execute(
+            """SELECT pane_id, harness, state, session, window, project, label, updated_at
+               FROM harness_context ORDER BY updated_at DESC LIMIT 8"""
+        )
+    )
+    payload["harness"] = [dict(r) for r in harness_rows]
+    primary = None
+    want = (prediction.get("target") or "").lower()
+    for r in harness_rows:
+        if r["state"] in {"completed", "waiting", "blocked", "failed"}:
+            if not want or want in (r["label"] or "").lower() or want in (r["harness"] or "").lower():
+                primary = dict(r)
+                break
+    if primary is None and harness_rows:
+        primary = dict(harness_rows[0])
+    payload["artifacts"] = payload.get("artifacts") or {}
+    if primary:
+        payload["artifacts"]["recap"] = {
+            "harness": primary.get("harness"),
+            "state": primary.get("state"),
+            "label": primary.get("label"),
+            "project": primary.get("project"),
+            "session": primary.get("session"),
+            "pane_id": primary.get("pane_id"),
+            "updated_at": primary.get("updated_at"),
+        }
+        # resolve pane for later explicit commit only
+        if primary.get("pane_id"):
+            payload["resolved"]["dispatch"] = {
+                "action": "select_tmux_pane",
+                "pane_id": primary["pane_id"],
+                "session": primary.get("session") or "",
+            }
+            payload["resolved"]["inspect"] = {
+                "action": "inspect_harness",
+                "harness": primary.get("harness"),
+                "pane_id": primary.get("pane_id"),
+            }
+
+    tasks = list(
+        db.execute(
+            """SELECT session, phase, task, status, project, updated_at
+               FROM task_context ORDER BY updated_at DESC LIMIT 5"""
+        )
+    )
+    payload["task_summary"] = [dict(r) for r in tasks]
+    if tasks:
+        payload["artifacts"]["previous_task_context"] = [dict(r) for r in tasks[:3]]
+
+    # Recent semantic events (labels only — already sanitized)
+    proj = (primary or {}).get("project") or current.get("project") or target_state.get("project") or ""
+    ev_q = """SELECT ts, kind, label, app, project FROM events
+              WHERE ts>=? ORDER BY ts DESC LIMIT 12"""
+    events = [dict(r) for r in db.execute(ev_q, (_now() - 3600.0,))]
+    if proj:
+        filtered = [e for e in events if (e.get("project") or "") == proj] or events
+    else:
+        filtered = events
+    payload["artifacts"]["recent_events"] = filtered[:8]
+
+    # Cheap git name-status only (no patch body) if project is a real directory
+    project_path = Path(proj).expanduser() if proj else None
+    if project_path and project_path.is_dir() and (project_path / ".git").exists():
+        try:
+            import subprocess
+
+            proc = subprocess.run(
+                ["git", "-C", str(project_path), "status", "--porcelain", "-uno"],
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+                check=False,
+            )
+            if proc.returncode == 0:
+                names = []
+                for line in (proc.stdout or "").splitlines()[:40]:
+                    line = line.rstrip()
+                    if len(line) < 4:
+                        continue
+                    # XY PATH or XY ORIG -> PATH
+                    path = line[3:].strip()
+                    if " -> " in path:
+                        path = path.split(" -> ", 1)[-1]
+                    # path only, no content
+                    names.append({"status": line[:2].strip(), "path": path[:200]})
+                payload["artifacts"]["changed_files"] = names
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    # Linked issue/PR ids from task labels only (no network)
+    linked = []
+    for trow in (payload.get("task_summary") or []):
+        blob = " ".join(str(trow.get(k) or "") for k in ("task", "phase", "project"))
+        for token in blob.replace(",", " ").split():
+            if token.startswith("#") and token[1:].isdigit():
+                linked.append({"kind": "issue_ref", "id": token})
+            elif token.upper().startswith("PER-") or token.upper().startswith("PR-"):
+                linked.append({"kind": "ticket_ref", "id": token[:32]})
+    if linked:
+        payload["artifacts"]["linked_refs"] = linked[:8]
+
+    payload["kind"] = "inspect_result"
+    payload["eligible"] = True
+
+
+def speculative_prepare(
+    db: Any,
+    *,
+    prediction: dict[str, Any],
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    """Cheap prepare-only work via PrepareProviders. Never focuses, never mutates UI."""
+    stamp = _now()
+    t0 = time.perf_counter()
+    db.execute("DELETE FROM prepare_cache WHERE expires_at<?", (stamp,))
+    family = prediction.get("family") or ""
+    target = prediction.get("target") or ""
+    cid = prediction.get("context_id") or ""
+    op = prediction.get("operator_family") or _operator_family(
+        family, prediction.get("state") or {}, current
+    )
+
+    payload: dict[str, Any] = {
+        "kind": "context_resolve",
+        "provider": op if op in PREPARE_PROVIDERS else "open_context",
+        "context_id": cid,
+        "family": family,
+        "target": target,
+        "operator_family": op,
+        "resolved": {},
+        "artifacts": {},
+        "task_summary": None,
+        "harness": None,
+        "eligible": True,
+        "started_at": stamp,
+        "cache_hit": False,
+    }
+
+    if op == "inspect_result":
+        _prepare_inspect_result(db, prediction=prediction, current=current, payload=payload)
+    else:
+        _prepare_open_context(db, prediction=prediction, current=current, payload=payload)
+        if current.get("task") or (prediction.get("state") or {}).get("task"):
+            task_row = db.execute(
+                """SELECT session, phase, task, status, project, updated_at
+                   FROM task_context ORDER BY updated_at DESC LIMIT 3"""
+            ).fetchall()
+            payload["task_summary"] = [dict(r) for r in task_row]
+        harness_rows = db.execute(
+            """SELECT pane_id, harness, state, session, project, label, updated_at
+               FROM harness_context ORDER BY updated_at DESC LIMIT 5"""
+        ).fetchall()
+        if harness_rows:
+            payload["harness"] = [dict(r) for r in harness_rows]
 
     cost_ms = (time.perf_counter() - t0) * 1000.0
     ready_at = _now()
-    blob = _json_text(payload)
     payload["ready_at"] = ready_at
     payload["cost_ms"] = round(cost_ms, 3)
+    blob = _json_text(payload)
     payload["bytes"] = len(blob)
 
-    key = f"prep:{cid}:{family}:{target}"[:200]
+    key = f"prep:{op}:{cid}:{family}:{target}"[:200]
     db.execute(
         """INSERT INTO prepare_cache(cache_key, kind, created_at, expires_at, payload_json)
            VALUES (?,?,?,?,?)
@@ -1231,7 +1469,7 @@ def speculative_prepare(
                created_at=excluded.created_at,
                expires_at=excluded.expires_at,
                payload_json=excluded.payload_json""",
-        (key, "context_resolve", stamp, stamp + PREPARE_TTL_S, blob),
+        (key, payload.get("kind") or "context_resolve", stamp, stamp + PREPARE_TTL_S, blob),
     )
     payload["cache_key"] = key
     payload["expires_at"] = stamp + PREPARE_TTL_S
@@ -1560,7 +1798,17 @@ def on_context_event(
     last_cid = last["value"] if last else ""
     cid = state["context_id"]
 
-    transitioned = force or (last_cid and last_cid != cid) or not last_cid
+    # Harness terminal states must re-run PREDICT/PREPARE even if context_id stable
+    # (agent finished in the same pane/app you already occupy).
+    harness_terminal = kind == "harness" and (
+        (state.get("harness_state") or "") in {"completed", "waiting", "blocked", "failed"}
+    )
+    transitioned = (
+        force
+        or harness_terminal
+        or (last_cid and last_cid != cid)
+        or not last_cid
+    )
     result: dict[str, Any] = {
         "context_id": cid,
         "transitioned": bool(transitioned),
@@ -1585,6 +1833,7 @@ def on_context_event(
 
         # PREDICT — always
         topk, latency_ms = predict_next_context_v0(db, state)
+        topk = boost_inspect_result(db, state, topk)
         pred = record_shadow_prediction(
             db,
             state=state,

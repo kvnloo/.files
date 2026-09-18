@@ -170,3 +170,23 @@ workspace-copilot --json export-flow   # + os_automation_receipts.jsonl
 Generated Hypr binds call `run-routine`, which records `source=keyboard` semantic
 actions and `invoked`/`completed` receipts — no raw keylogging.
 Do not accept one-step focus shortcuts merely because the miner found them.
+
+## os.next_operator + PrepareProviders (P4)
+
+Operator vocab (inspect_result first):
+
+```text
+inspect_result | resume_previous | open_context | retrieve | run_test | delegate | noop
+```
+
+On harness `completed|waiting|blocked|failed`, Flow forces PREDICT and boosts
+`inspect_result`. PrepareProviders build a discardable artifact bundle (recap,
+tasks, recent events, changed-file names only) — **nothing moves**, no model call.
+
+```sh
+workspace-copilot --json harness-event completed --harness omp --label "…"
+workspace-copilot --json predict
+workspace-copilot --json next-action
+```
+
+SURFACE stays rare (p≥0.82). COMMIT remains explicit only.
