@@ -29,7 +29,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import workspace_flow  # noqa: E402
 
 APP = "workspace-copilot"
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 STATE_DIR = Path(os.environ.get("WORKSPACE_COPILOT_STATE_DIR", STATE_HOME / APP))
 DB_PATH = STATE_DIR / "workspace.db"
@@ -1429,6 +1429,7 @@ def daemon() -> None:
     notify_suggestions(generate_suggestions(db))
 
     last_maintenance = now()
+    last_horizon = now()
     buffer = b""
     while True:
         path = discover_hypr_socket()
@@ -1449,7 +1450,21 @@ def daemon() -> None:
                             line, buffer = buffer.split(b"\n", 1)
                             handle_hypr_event(db, line.decode(errors="replace"))
                     except socket.timeout:
-                        pass
+                        # ~5s idle: close matured prediction horizons as noop.
+                        try:
+                            workspace_flow.horizon_sweep(db)
+                            db.commit()
+                            last_horizon = now()
+                        except Exception:
+                            pass
+                    # Also sweep if maintenance path skipped timeouts.
+                    if now() - last_horizon >= 5:
+                        try:
+                            workspace_flow.horizon_sweep(db)
+                            db.commit()
+                            last_horizon = now()
+                        except Exception:
+                            pass
                     if now() - last_maintenance >= 300:
                         snapshot_tmux(db)
                         cleanup(db)
@@ -1632,7 +1647,7 @@ def main() -> None:
     elif args.command == "next-action":
         print_data(workspace_flow.show_next_action(db), True if args.json else True)
     elif args.command == "commit-next":
-        result = workspace_flow.commit_next_action(db, run_fn=run, tmux_args_fn=tmux_args)
+        result = workspace_flow.commit_next_action(db, run_fn=run, tmux_args_fn=tmux_args, source="flow")
         if result.get("ok"):
             record_event(
                 db,

@@ -90,29 +90,39 @@ Treat stored preference confidence as ranking evidence, not authority. Repeated 
 ## Flow predictor (os.next_context.v0)
 
 Shadow next-context prediction runs on every semantic context change (not the
-5-minute suggestion loop).
+5-minute suggestion loop). Schema **v5**.
 
-Invariant: **predict → prepare → user commits**. Never steal focus. Never
-auto-run consequential actions.
+Four separate gates (never one confidence knob):
+
+| Gate | Policy |
+|---|---|
+| **PREDICT** | Always. <1ms. Training data. |
+| **PREPARE** | Often (`p≥0.28`). Discardable, no side effects. |
+| **SURFACE** | Rarely (`p≥0.82` + margin/entropy). 10% withhold arm. |
+| **COMMIT** | Explicit only (`commit-next` / Super+Space). |
+
+Multi-horizon labels (500ms / 2s / 10s / 60s): if nothing relevant happens,
+`actual_family=noop`. Canonical receipt `flow_prediction.v1` dual-writes to
+`~/.z0int/receipts/flow_predictions.jsonl`.
+
+Invariant: **never steal focus**. Never auto-run consequential actions.
+Correct prediction ≠ useful intervention (keyboard-fast → silence).
 
 ```sh
 workspace-copilot --json predict          # force shadow prediction now
 workspace-copilot --json next-action      # single global surface (or idle)
 workspace-copilot --json commit-next      # reversible navigation only
 workspace-copilot --json dismiss-next     # suppress until evidence changes
-workspace-copilot --json shadow-stats     # top1/topk/latency/episodes
+workspace-copilot --json shadow-stats     # top1/topk/noop/horizons/gates
 workspace-copilot --json export-flow      # JSONL → ~/.z0int/episodes
 ```
 
-Episodes join `state_before → actual action → state_after` with `context_id` /
-event references. Speculative prepare may pre-resolve pane/window/task packets
-into `prepare_cache` without committing.
-
-z0int import of the same sanitized rows:
+z0int vault + skeptic (no promote):
 
 ```sh
 z0int os-context stats
 z0int os-context import
+z0int os-context skeptic --horizon-ms 2000
 ```
 
 Operator families (second head, coarse): `inspect_result`, `run_test`,
