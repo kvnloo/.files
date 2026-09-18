@@ -149,3 +149,24 @@ ratio, existing shortcut, reversibility, source mix). No fake seconds-saved.
 
 Modality sources: `keyboard|mouse|voice|flow|agent|unknown` — never raw keys.
 Keyboard-optimal single actions with an existing chord are suppressed.
+
+## Automation utility receipts (P3d)
+
+Acceptance is not proof of value. Track lifecycle:
+
+```text
+suggested → accepted → installed → invoked → completed
+                 ↘ rejected
+installed → opportunity + manual_equivalent (sequence still done by hand)
+installed → unused_after_N_opportunities (default N=12, zero invokes)
+invoked → immediate_reversal (user leaves target within ~8s)
+```
+
+```sh
+workspace-copilot --json utility-stats
+workspace-copilot --json export-flow   # + os_automation_receipts.jsonl
+```
+
+Generated Hypr binds call `run-routine`, which records `source=keyboard` semantic
+actions and `invoked`/`completed` receipts — no raw keylogging.
+Do not accept one-step focus shortcuts merely because the miner found them.

@@ -7,6 +7,7 @@ Does not invent a second automation framework.
 P3a: semantic action_source (keyboard|mouse|voice|flow|agent|unknown)
 P3b: mine 1–4 step sequences from context_episodes
 P3c: install reversible hypr/tmux binds after explicit accept+apply
+P3d: automation utility receipts (suggested→…→invoked→completed / unused)
 """
 
 from __future__ import annotations
@@ -53,6 +54,11 @@ GAP_S = 45.0              # max gap between steps in a sequence chain
 LOOKBACK_DAYS = 21
 SUGGEST_KIND = "routine-shortcut"
 SCHEMA_CANDIDATE = "os.routine_candidate.v0"
+SCHEMA_UTILITY = "os.automation_utility.v0"
+SCHEMA_RECEIPT = "os.automation_receipt.v0"
+UNUSED_AFTER_OPPORTUNITIES = 12
+MANUAL_MATCH_WINDOW_S = 90.0
+REVERSAL_WINDOW_S = 8.0
 FLOW_BINDS_NAME = "flow-routines.conf"
 
 
@@ -116,6 +122,55 @@ def ensure_routine_schema(db: Any) -> None:
         );
         CREATE INDEX IF NOT EXISTS routine_candidates_score
             ON routine_candidates(automation_score DESC, updated_at DESC);
+        """
+    )
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS automation_receipts (
+            id INTEGER PRIMARY KEY,
+            ts REAL NOT NULL,
+            fingerprint TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            suggestion_id INTEGER,
+            ok INTEGER,
+            details_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS automation_receipts_fp_ts
+            ON automation_receipts(fingerprint, ts DESC);
+        CREATE INDEX IF NOT EXISTS automation_receipts_phase
+            ON automation_receipts(phase, ts DESC);
+
+        CREATE TABLE IF NOT EXISTS automation_utility (
+            fingerprint TEXT PRIMARY KEY,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL,
+            suggested_at REAL,
+            accepted_at REAL,
+            rejected_at REAL,
+            installed_at REAL,
+            uninstalled_at REAL,
+            last_invoked_at REAL,
+            last_completed_at REAL,
+            last_failed_at REAL,
+            last_manual_at REAL,
+            last_opportunity_at REAL,
+            n_suggested INTEGER NOT NULL DEFAULT 0,
+            n_accepted INTEGER NOT NULL DEFAULT 0,
+            n_rejected INTEGER NOT NULL DEFAULT 0,
+            n_installed INTEGER NOT NULL DEFAULT 0,
+            n_uninstalled INTEGER NOT NULL DEFAULT 0,
+            n_invoked INTEGER NOT NULL DEFAULT 0,
+            n_completed INTEGER NOT NULL DEFAULT 0,
+            n_failed INTEGER NOT NULL DEFAULT 0,
+            n_manual_equivalent INTEGER NOT NULL DEFAULT 0,
+            n_opportunities INTEGER NOT NULL DEFAULT 0,
+            n_immediate_reversal INTEGER NOT NULL DEFAULT 0,
+            unused_after_n INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'none',
+            notes_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS automation_utility_status
+            ON automation_utility(status, updated_at DESC);
         """
     )
     cols = {row[1] for row in db.execute("PRAGMA table_info(context_episodes)")}
@@ -558,6 +613,474 @@ def propose_chord(db: Any, sequence: list[str]) -> dict[str, str]:
     return {"mods": "SUPER ALT SHIFT", "key": "R", "hypr": "SUPER_ALT_SHIFT,R"}
 
 
+
+def _ensure_utility_row(db: Any, fingerprint: str) -> None:
+    ensure_routine_schema(db)
+    fp = (fingerprint or "").strip()
+    if not fp:
+        return
+    row = db.execute(
+        "SELECT fingerprint FROM automation_utility WHERE fingerprint=?", (fp,)
+    ).fetchone()
+    if row:
+        return
+    stamp = _now()
+    db.execute(
+        """INSERT INTO automation_utility(fingerprint, created_at, updated_at, status)
+           VALUES (?,?,?,?)""",
+        (fp, stamp, stamp, "none"),
+    )
+
+
+def note_automation_receipt(
+    db: Any,
+    *,
+    fingerprint: str,
+    phase: str,
+    suggestion_id: int | None = None,
+    ok: bool | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """P3d: append one lifecycle receipt and update utility rollup.
+
+    Phases: suggested|accepted|rejected|installed|uninstalled|
+            invoked|completed|failed|manual_equivalent|opportunity|immediate_reversal
+    Observed facts only — no invented seconds-saved.
+    """
+    ensure_routine_schema(db)
+    fp = (fingerprint or "").strip()
+    if not fp:
+        return {"ok": False, "error": "missing fingerprint"}
+    phase = (phase or "").strip().lower()
+    allowed = {
+        "suggested",
+        "accepted",
+        "rejected",
+        "installed",
+        "uninstalled",
+        "invoked",
+        "completed",
+        "failed",
+        "manual_equivalent",
+        "opportunity",
+        "immediate_reversal",
+    }
+    if phase not in allowed:
+        return {"ok": False, "error": f"bad phase {phase}"}
+    stamp = _now()
+    _ensure_utility_row(db, fp)
+    cur = db.execute(
+        """INSERT INTO automation_receipts(
+               ts, fingerprint, phase, suggestion_id, ok, details_json
+           ) VALUES (?,?,?,?,?,?)""",
+        (
+            stamp,
+            fp,
+            phase,
+            suggestion_id,
+            None if ok is None else (1 if ok else 0),
+            _json(details or {}),
+        ),
+    )
+    receipt_id = int(cur.lastrowid)
+
+    # Counter + timestamp map
+    counter_col = {
+        "suggested": "n_suggested",
+        "accepted": "n_accepted",
+        "rejected": "n_rejected",
+        "installed": "n_installed",
+        "uninstalled": "n_uninstalled",
+        "invoked": "n_invoked",
+        "completed": "n_completed",
+        "failed": "n_failed",
+        "manual_equivalent": "n_manual_equivalent",
+        "opportunity": "n_opportunities",
+        "immediate_reversal": "n_immediate_reversal",
+    }[phase]
+    ts_col = {
+        "suggested": "suggested_at",
+        "accepted": "accepted_at",
+        "rejected": "rejected_at",
+        "installed": "installed_at",
+        "uninstalled": "uninstalled_at",
+        "invoked": "last_invoked_at",
+        "completed": "last_completed_at",
+        "failed": "last_failed_at",
+        "manual_equivalent": "last_manual_at",
+        "opportunity": "last_opportunity_at",
+        "immediate_reversal": None,
+    }[phase]
+
+    sets = [f"{counter_col}={counter_col}+1", "updated_at=?"]
+    params: list[Any] = [stamp]
+    if ts_col:
+        sets.append(f"{ts_col}=?")
+        params.append(stamp)
+
+    # status transitions (observed lifecycle, not marketing)
+    if phase == "suggested":
+        sets.append("status=CASE WHEN status IN ('installed','earning','unused') THEN status ELSE 'suggested' END")
+    elif phase == "accepted":
+        sets.append("status=CASE WHEN status='installed' THEN status ELSE 'accepted' END")
+    elif phase == "rejected":
+        sets.append("status='rejected'")
+    elif phase == "installed":
+        sets.append("status='installed'")
+    elif phase == "uninstalled":
+        sets.append("status='uninstalled'")
+    elif phase in {"invoked", "completed"}:
+        sets.append("status='earning'")
+    elif phase == "opportunity":
+        # mark unused when enough opportunities and zero invokes
+        sets.append(
+            f"""unused_after_n=CASE
+                  WHEN n_invoked=0 AND (n_opportunities+1)>={UNUSED_AFTER_OPPORTUNITIES}
+                  THEN {UNUSED_AFTER_OPPORTUNITIES} ELSE unused_after_n END"""
+        )
+        sets.append(
+            f"""status=CASE
+                  WHEN n_invoked=0 AND (n_opportunities+1)>={UNUSED_AFTER_OPPORTUNITIES}
+                  THEN 'unused'
+                  WHEN status IN ('installed','earning','unused') THEN status
+                  ELSE status END"""
+        )
+
+    params.append(fp)
+    db.execute(
+        f"UPDATE automation_utility SET {', '.join(sets)} WHERE fingerprint=?",
+        tuple(params),
+    )
+    return {
+        "ok": True,
+        "receipt_id": receipt_id,
+        "fingerprint": fp,
+        "phase": phase,
+        "ts": stamp,
+        "schema": SCHEMA_RECEIPT,
+    }
+
+
+def note_routine_decision(
+    db: Any,
+    *,
+    suggestion_id: int,
+    decision: str,
+    kind: str | None = None,
+    proposal: dict[str, Any] | None = None,
+) -> None:
+    """Hook from decide() for routine-shortcut lifecycle."""
+    if kind and kind != SUGGEST_KIND:
+        return
+    fp = ""
+    if proposal:
+        fp = str(proposal.get("fingerprint") or "")
+    if not fp:
+        row = db.execute(
+            "SELECT kind, proposal_json FROM suggestions WHERE id=?", (suggestion_id,)
+        ).fetchone()
+        if not row or row["kind"] != SUGGEST_KIND:
+            return
+        try:
+            prop = json.loads(row["proposal_json"] or "{}")
+        except json.JSONDecodeError:
+            prop = {}
+        fp = str(prop.get("fingerprint") or "")
+    if not fp:
+        return
+    phase = "accepted" if decision == "accept" else "rejected"
+    note_automation_receipt(
+        db, fingerprint=fp, phase=phase, suggestion_id=suggestion_id, ok=True,
+        details={"decision": decision},
+    )
+    if phase == "rejected":
+        db.execute(
+            "UPDATE routine_candidates SET status='rejected', updated_at=? WHERE fingerprint=?",
+            (_now(), fp),
+        )
+
+
+def observe_manual_equivalents(db: Any, *, lookback_s: float = 3600.0) -> dict[str, Any]:
+    """When an installed routine's sequence still happens via non-automation path.
+
+    Marks opportunity + manual_equivalent. No keylogging — uses closed episodes /
+    semantic_actions already recorded.
+    """
+    ensure_routine_schema(db)
+    stamp = _now()
+    installed = list(
+        db.execute(
+            """SELECT fingerprint, sequence_json
+               FROM routine_candidates WHERE status='installed'"""
+        )
+    )
+    if not installed:
+        return {"checked": 0, "manual": 0, "opportunities": 0}
+
+    # Recent closed episode tokens ordered by ts
+    eps = list(
+        db.execute(
+            """SELECT id, ts_after AS ts, action_family, action_target, action_source
+               FROM context_episodes
+               WHERE closed=1 AND ts_after>=?
+               ORDER BY ts_after ASC""",
+            (stamp - lookback_s,),
+        )
+    )
+    tokens = [
+        {
+            "id": r["id"],
+            "ts": float(r["ts"]),
+            "token": token_of(r["action_family"] or "", r["action_target"] or ""),
+            "source": r["action_source"] or "unknown",
+        }
+        for r in eps
+    ]
+
+    # Recent automation invokes (to avoid double-counting automation as manual)
+    invokes = {
+        r["fingerprint"]: float(r["ts"])
+        for r in db.execute(
+            """SELECT fingerprint, MAX(ts) AS ts FROM automation_receipts
+               WHERE phase='invoked' AND ts>=? GROUP BY fingerprint""",
+            (stamp - lookback_s,),
+        )
+    }
+
+    # Last opportunity receipt per fp so we don't spam
+    last_opp = {
+        r["fingerprint"]: float(r["ts"])
+        for r in db.execute(
+            """SELECT fingerprint, MAX(ts) AS ts FROM automation_receipts
+               WHERE phase IN ('opportunity','manual_equivalent') AND ts>=?
+               GROUP BY fingerprint""",
+            (stamp - lookback_s,),
+        )
+    }
+
+    n_manual = 0
+    n_opp = 0
+    checked = 0
+    for row in installed:
+        checked += 1
+        fp = row["fingerprint"]
+        try:
+            seq = tuple(json.loads(row["sequence_json"] or "[]"))
+        except json.JSONDecodeError:
+            continue
+        if not seq:
+            continue
+        n = len(seq)
+        # Scan for exact n-gram matches not covered by a nearby invoke
+        for i in range(0, len(tokens) - n + 1):
+            window = tokens[i : i + n]
+            if tuple(w["token"] for w in window) != seq:
+                continue
+            end_ts = window[-1]["ts"]
+            # skip if invoke within window of this match
+            inv_ts = invokes.get(fp)
+            if inv_ts is not None and abs(inv_ts - end_ts) <= MANUAL_MATCH_WINDOW_S:
+                continue
+            # skip if all steps already tagged via run-routine keyboard details
+            # (source=keyboard alone is not enough — natural binds also keyboard)
+            # We treat as manual when no invoke receipt nearby.
+            last = last_opp.get(fp, 0.0)
+            if end_ts - last < 30.0:
+                continue  # debounce
+            # opportunity always when installed sequence reappears
+            note_automation_receipt(
+                db,
+                fingerprint=fp,
+                phase="opportunity",
+                ok=True,
+                details={
+                    "match_ts": end_ts,
+                    "episode_ids": [w["id"] for w in window],
+                    "sources": [w["source"] for w in window],
+                },
+            )
+            note_automation_receipt(
+                db,
+                fingerprint=fp,
+                phase="manual_equivalent",
+                ok=True,
+                details={
+                    "match_ts": end_ts,
+                    "episode_ids": [w["id"] for w in window],
+                    "sources": [w["source"] for w in window],
+                },
+            )
+            last_opp[fp] = end_ts
+            n_opp += 1
+            n_manual += 1
+            break  # one match per fingerprint per call
+    return {"checked": checked, "manual": n_manual, "opportunities": n_opp}
+
+
+def utility_stats(db: Any) -> dict[str, Any]:
+    """Observed automation utility — no fake seconds saved."""
+    ensure_routine_schema(db)
+    rows = []
+    for r in db.execute(
+        """SELECT u.*, c.sequence_json, c.automation_score, c.status AS candidate_status,
+                  c.proposal_json
+           FROM automation_utility u
+           LEFT JOIN routine_candidates c ON c.fingerprint=u.fingerprint
+           ORDER BY u.updated_at DESC LIMIT 50"""
+    ):
+        d = dict(r)
+        seq = []
+        label = None
+        try:
+            seq = json.loads(d.pop("sequence_json", None) or "[]")
+        except json.JSONDecodeError:
+            seq = []
+        try:
+            label = (json.loads(d.pop("proposal_json", None) or "{}") or {}).get("label")
+        except json.JSONDecodeError:
+            label = None
+        n_inv = int(d.get("n_invoked") or 0)
+        n_opp = int(d.get("n_opportunities") or 0)
+        n_man = int(d.get("n_manual_equivalent") or 0)
+        n_comp = int(d.get("n_completed") or 0)
+        invoke_rate = round(n_inv / n_opp, 4) if n_opp else None
+        complete_rate = round(n_comp / n_inv, 4) if n_inv else None
+        rows.append(
+            {
+                "fingerprint": d["fingerprint"],
+                "label": label,
+                "sequence": seq,
+                "status": d["status"],
+                "candidate_status": d.get("candidate_status"),
+                "automation_score": d.get("automation_score"),
+                "n_suggested": d["n_suggested"],
+                "n_accepted": d["n_accepted"],
+                "n_rejected": d["n_rejected"],
+                "n_installed": d["n_installed"],
+                "n_uninstalled": d["n_uninstalled"],
+                "n_invoked": n_inv,
+                "n_completed": n_comp,
+                "n_failed": d["n_failed"],
+                "n_manual_equivalent": n_man,
+                "n_opportunities": n_opp,
+                "n_immediate_reversal": d["n_immediate_reversal"],
+                "unused_after_n": d["unused_after_n"],
+                "invoke_rate_given_opportunity": invoke_rate,
+                "complete_rate_given_invoke": complete_rate,
+                "suggested_at": d["suggested_at"],
+                "accepted_at": d["accepted_at"],
+                "installed_at": d["installed_at"],
+                "last_invoked_at": d["last_invoked_at"],
+                "last_manual_at": d["last_manual_at"],
+            }
+        )
+    phases = [
+        dict(r)
+        for r in db.execute(
+            """SELECT phase, COUNT(*) AS n FROM automation_receipts
+               GROUP BY phase ORDER BY n DESC"""
+        )
+    ]
+    unused = [r for r in rows if r["status"] == "unused"]
+    earning = [r for r in rows if r["status"] == "earning"]
+    return {
+        "schema": SCHEMA_UTILITY,
+        "receipt_schema": SCHEMA_RECEIPT,
+        "gates": {
+            "unused_after_opportunities": UNUSED_AFTER_OPPORTUNITIES,
+            "manual_match_window_s": MANUAL_MATCH_WINDOW_S,
+            "reversal_window_s": REVERSAL_WINDOW_S,
+        },
+        "phase_counts": phases,
+        "n_tracked": len(rows),
+        "n_earning": len(earning),
+        "n_unused": len(unused),
+        "automations": rows,
+    }
+
+
+def export_utility_jsonl(db: Any, dest: Path) -> dict[str, Any]:
+    ensure_routine_schema(db)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with dest.open("w", encoding="utf-8") as fh:
+        for r in db.execute(
+            "SELECT * FROM automation_receipts ORDER BY id ASC"
+        ):
+            rec = {
+                "schema": SCHEMA_RECEIPT,
+                "id": r["id"],
+                "ts": r["ts"],
+                "fingerprint": r["fingerprint"],
+                "phase": r["phase"],
+                "suggestion_id": r["suggestion_id"],
+                "ok": None if r["ok"] is None else bool(r["ok"]),
+                "details": json.loads(r["details_json"] or "{}"),
+            }
+            fh.write(_json(rec) + "\n")
+            n += 1
+    util_dest = dest.with_name("os_automation_utility.jsonl")
+    n_u = 0
+    stats = utility_stats(db)
+    with util_dest.open("w", encoding="utf-8") as fh:
+        for row in stats["automations"]:
+            fh.write(_json({"schema": SCHEMA_UTILITY, **row}) + "\n")
+            n_u += 1
+    return {
+        "receipts": {"path": str(dest), "n": n, "schema": SCHEMA_RECEIPT},
+        "utility": {"path": str(util_dest), "n": n_u, "schema": SCHEMA_UTILITY},
+    }
+
+
+def detect_immediate_reversal(
+    db: Any,
+    *,
+    fingerprint: str,
+    completed_ts: float | None = None,
+) -> bool:
+    """If user undoes the automation effect within REVERSAL_WINDOW_S, note it."""
+    ensure_routine_schema(db)
+    row = db.execute(
+        "SELECT sequence_json FROM routine_candidates WHERE fingerprint=?",
+        (fingerprint,),
+    ).fetchone()
+    if not row:
+        return False
+    try:
+        seq = json.loads(row["sequence_json"] or "[]")
+    except json.JSONDecodeError:
+        return False
+    if not seq:
+        return False
+    # For single-step switch_app:X completed, reversal = switch away from X quickly
+    fam, tgt = parse_token(seq[0])
+    if fam not in {"switch_app", "focus_app"} or not tgt:
+        return False
+    t0 = completed_ts or _now()
+    # look for a different switch_app soon after
+    later = db.execute(
+        """SELECT action_target, ts_after FROM context_episodes
+           WHERE closed=1 AND action_family='switch_app'
+             AND ts_after>? AND ts_after<=?
+           ORDER BY ts_after ASC LIMIT 1""",
+        (t0, t0 + REVERSAL_WINDOW_S),
+    ).fetchone()
+    if later and (later["action_target"] or "") != tgt:
+        note_automation_receipt(
+            db,
+            fingerprint=fingerprint,
+            phase="immediate_reversal",
+            ok=True,
+            details={
+                "from": tgt,
+                "to": later["action_target"],
+                "delta_s": float(later["ts_after"]) - t0,
+            },
+        )
+        return True
+    return False
+
+
 def persist_candidates(db: Any, candidates: list[dict[str, Any]]) -> int:
     """Upsert mined candidates into routine_candidates table."""
     ensure_routine_schema(db)
@@ -678,11 +1201,30 @@ def suggest_routines(
             ev,
             c["proposal"],
         )
+        # First-time utility "suggested" even if suggestion row already existed
+        util = db.execute(
+            "SELECT n_suggested FROM automation_utility WHERE fingerprint=?",
+            (c["fingerprint"],),
+        ).fetchone()
+        first_suggest = (not util) or int(util["n_suggested"] or 0) == 0
         if new:
             created += 1
+        if new or first_suggest:
+            note_automation_receipt(
+                db,
+                fingerprint=c["fingerprint"],
+                phase="suggested",
+                ok=True,
+                details={
+                    "score": c["automation_score"],
+                    "support": c["support"],
+                    "sessions": c["sessions"],
+                    "fresh_suggestion_row": bool(new),
+                },
+            )
         # Link suggestion id regardless of insert/update
         sid = db.execute(
-            """SELECT id FROM suggestions WHERE kind=? AND status='pending'
+            """SELECT id FROM suggestions WHERE kind=? AND status IN ('pending','accepted')
                AND proposal_json LIKE ? ORDER BY id DESC LIMIT 1""",
             (SUGGEST_KIND, f'%{c["fingerprint"]}%'),
         ).fetchone()
@@ -691,6 +1233,16 @@ def suggest_routines(
                 "UPDATE routine_candidates SET suggestion_id=? WHERE fingerprint=?",
                 (sid["id"], c["fingerprint"]),
             )
+            if new or first_suggest:
+                db.execute(
+                    """UPDATE automation_receipts SET suggestion_id=?
+                       WHERE id=(
+                         SELECT id FROM automation_receipts
+                         WHERE fingerprint=? AND phase='suggested'
+                         ORDER BY id DESC LIMIT 1
+                       )""",
+                    (sid["id"], c["fingerprint"]),
+                )
     return created
 
 
@@ -711,21 +1263,36 @@ def run_routine(
         (fingerprint,),
     ).fetchone()
     if not row:
-        return {"ok": False, "error": f"unknown routine {fingerprint}"}
+        return {"ok": False, "error": f"unknown routine {fingerprint}"}  # no invoke yet
     try:
         proposal = json.loads(row["proposal_json"] or "{}")
     except json.JSONDecodeError:
         return {"ok": False, "error": "bad proposal"}
     steps = proposal.get("steps") or []
+    note_automation_receipt(
+        db,
+        fingerprint=fingerprint,
+        phase="invoked",
+        ok=True,
+        details={"via": "run-routine", "n_steps": len(steps)},
+    )
     results = []
     for step in steps:
         action = step.get("action")
         if action == "focus_workspace":
             ws = str(step.get("workspace") or "")
             if not ws:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "missing workspace", "done": results},
+                )
                 return {"ok": False, "error": "missing workspace", "done": results}
             r = run_fn(["hyprctl", "dispatch", "workspace", ws])
             if getattr(r, "returncode", 1) != 0:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "hyprctl workspace failed", "done": results},
+                )
                 return {"ok": False, "error": "hyprctl workspace failed", "done": results}
             results.append(f"workspace {ws}")
             record_semantic_action(
@@ -735,12 +1302,20 @@ def run_routine(
         elif action == "focus_app":
             app = str(step.get("app") or "")
             if not app:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "missing app", "done": results},
+                )
                 return {"ok": False, "error": "missing app", "done": results}
             r = run_fn(["hyprctl", "dispatch", "focuswindow", f"class:^{re.escape(app)}$"])
             if getattr(r, "returncode", 1) != 0:
                 # soft: try without anchors
                 r = run_fn(["hyprctl", "dispatch", "focuswindow", f"class:{app}"])
             if getattr(r, "returncode", 1) != 0:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": f"focuswindow {app} failed", "done": results},
+                )
                 return {"ok": False, "error": f"focuswindow {app} failed", "done": results}
             results.append(f"app {app}")
             record_semantic_action(
@@ -750,9 +1325,17 @@ def run_routine(
         elif action == "select_tmux_pane":
             pane = str(step.get("pane_id") or "")
             if not pane or pane == "pane":
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "pane id unstable/missing", "done": results},
+                )
                 return {"ok": False, "error": "pane id unstable/missing", "done": results}
             r = run_fn(tmux_args_fn("select-pane", "-t", pane))
             if getattr(r, "returncode", 1) != 0:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "tmux select-pane failed", "done": results},
+                )
                 return {"ok": False, "error": "tmux select-pane failed", "done": results}
             results.append(f"pane {pane}")
             record_semantic_action(
@@ -766,6 +1349,10 @@ def run_routine(
                    WHERE closed=1 ORDER BY id DESC LIMIT 1"""
             ).fetchone()
             if not prev:
+                note_automation_receipt(
+                    db, fingerprint=fingerprint, phase="failed", ok=False,
+                    details={"error": "no previous context", "done": results},
+                )
                 return {"ok": False, "error": "no previous context", "done": results}
             try:
                 st = json.loads(prev["state_before_json"])
@@ -780,7 +1367,18 @@ def run_routine(
                     details={"via": "run-routine", "fingerprint": fingerprint},
                 )
         else:
+            note_automation_receipt(
+                db, fingerprint=fingerprint, phase="failed", ok=False,
+                details={"error": f"step not allowlisted: {action}", "done": results},
+            )
             return {"ok": False, "error": f"step not allowlisted: {action}", "done": results}
+    note_automation_receipt(
+        db,
+        fingerprint=fingerprint,
+        phase="completed",
+        ok=True,
+        details={"results": results, "source": "keyboard"},
+    )
     return {"ok": True, "fingerprint": fingerprint, "results": results, "source": "keyboard"}
 
 
@@ -853,6 +1451,18 @@ def install_flow_bind(
            ON CONFLICT(source,chord,action) DO UPDATE SET last_seen=excluded.last_seen""",
         ("hypr-flow", chord_display, f"run-routine:{fp}", _now(), _now()),
     )
+    note_automation_receipt(
+        db,
+        fingerprint=fp,
+        phase="installed",
+        ok=True,
+        details={
+            "chord": chord,
+            "label": proposal.get("label"),
+            "live_bind": live_ok,
+            "path": str(path),
+        },
+    )
     return {
         "ok": True,
         "fingerprint": fp,
@@ -907,6 +1517,13 @@ def uninstall_flow_bind(
         "DELETE FROM keybind_catalog WHERE source='hypr-flow' AND action=?",
         (f"run-routine:{fingerprint}",),
     )
+    note_automation_receipt(
+        db,
+        fingerprint=fingerprint,
+        phase="uninstalled",
+        ok=True,
+        details={"hypr_chord": hypr_chord},
+    )
     return {"ok": True, "fingerprint": fingerprint, "removed": True}
 
 
@@ -942,6 +1559,7 @@ def routine_stats(db: Any) -> dict[str, Any]:
                FROM semantic_actions GROUP BY action_source ORDER BY n DESC"""
         )
     ]
+    util = utility_stats(db)
     return {
         "schema": SCHEMA_CANDIDATE,
         "by_status": rows,
@@ -953,5 +1571,13 @@ def routine_stats(db: Any) -> dict[str, Any]:
             "min_sessions": MIN_SESSIONS,
             "min_same_ratio": MIN_SAME_RATIO,
             "max_ngram": MAX_NGRAM,
+        },
+        "utility": {
+            "schema": util["schema"],
+            "n_tracked": util["n_tracked"],
+            "n_earning": util["n_earning"],
+            "n_unused": util["n_unused"],
+            "phase_counts": util["phase_counts"],
+            "automations": util["automations"][:10],
         },
     }
