@@ -128,3 +128,24 @@ z0int os-context skeptic --horizon-ms 2000
 Operator families (second head, coarse): `inspect_result`, `run_test`,
 `open_context`, `delegate`, `retrieve`, `resume_previous`, `noop`.
 
+## Routine Suggestion Miner (P3)
+
+Mine 1–4 step semantic sequences from the episode stream. Reuses the existing
+suggestions / decide / apply / undo substrate — no second automation framework.
+
+```sh
+workspace-copilot --json record-action --family switch_app --target kitty --source keyboard
+workspace-copilot --json mine-routines --suggest
+workspace-copilot --json routine-stats
+workspace-copilot --json suggestions --status pending   # kind=routine-shortcut
+# after explicit accept:
+workspace-copilot --json decide <id> accept
+workspace-copilot --json apply <id>     # installs Super+Alt bind → run-routine
+workspace-copilot --json undo <id>      # removes exactly that bind
+```
+
+Evidence is observed facts only (count, sessions, median duration, same-sequence
+ratio, existing shortcut, reversibility, source mix). No fake seconds-saved.
+
+Modality sources: `keyboard|mouse|voice|flow|agent|unknown` — never raw keys.
+Keyboard-optimal single actions with an existing chord are suppressed.

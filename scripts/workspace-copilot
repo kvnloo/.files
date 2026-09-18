@@ -27,9 +27,10 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 import workspace_flow  # noqa: E402
+import workspace_routines  # noqa: E402
 
 APP = "workspace-copilot"
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
 STATE_DIR = Path(os.environ.get("WORKSPACE_COPILOT_STATE_DIR", STATE_HOME / APP))
 DB_PATH = STATE_DIR / "workspace.db"
@@ -278,6 +279,7 @@ def initialize(db: sqlite3.Connection) -> None:
     )
     db.commit()
     workspace_flow.ensure_flow_schema(db)
+    workspace_routines.ensure_routine_schema(db)
     db.commit()
 
 
@@ -728,6 +730,14 @@ def harness_event(db: sqlite3.Connection, args: argparse.Namespace) -> None:
         project=project,
         label=label,
     )
+    workspace_routines.record_semantic_action(
+        db,
+        family="inspect_result" if state in {"completed", "waiting", "blocked"} else "open_context",
+        target=label or harness or project,
+        source="agent",
+        project=project,
+        details={"harness": harness, "state": state, "via": "harness-event"},
+    )
     db.commit()
     flow_tick(db, "harness", event_id)
 
@@ -1035,6 +1045,7 @@ def generate_suggestions(db: sqlite3.Connection) -> int:
                 {"action": "advisory"},
             )
     created += generate_ui_flow_suggestions(db, transitions)
+    created += workspace_routines.suggest_routines(db, upsert_suggestion=upsert_suggestion)
     db.commit()
     return created
 
@@ -1082,6 +1093,16 @@ def apply_suggestion(db: sqlite3.Connection, suggestion_id: int) -> str:
             raise SystemExit(result.stderr.strip() or "tmux rename failed")
         message = f"renamed tmux session {target} to {name}"
         undo = {"action": "rename_tmux_session", "target": name, "name": target}
+    elif action == "install_flow_bind":
+        out = workspace_routines.install_flow_bind(db, proposal=proposal, run_fn=run)
+        if not out.get("ok"):
+            raise SystemExit(out.get("error") or "install_flow_bind failed")
+        message = f"installed flow bind {out.get('chord')} → {out.get('label')}"
+        undo = out.get("undo") or {
+            "action": "uninstall_flow_bind",
+            "fingerprint": proposal.get("fingerprint"),
+            "hypr_chord": (proposal.get("chord") or {}).get("hypr") or "",
+        }
     else:
         raise SystemExit("this suggestion is advisory; let the copilot propose an exact action")
     db.execute(
@@ -1100,14 +1121,25 @@ def undo_suggestion(db: sqlite3.Connection, suggestion_id: int) -> str:
     if row["status"] != "applied":
         raise SystemExit("only an applied suggestion can be undone")
     undo = json.loads(row["undo_json"])
-    if undo.get("action") != "rename_tmux_session":
+    if undo.get("action") == "rename_tmux_session":
+        target = clean_token(undo.get("target"), 80)
+        name = re.sub(r"[^A-Za-z0-9_-]", "-", undo.get("name", ""))[:80]
+        result = run(tmux_args("rename-session", "-t", f"={target}", name))
+        if result.returncode != 0:
+            raise SystemExit(result.stderr.strip() or "tmux rename undo failed")
+        message = f"renamed tmux session {target} back to {name}"
+    elif undo.get("action") == "uninstall_flow_bind":
+        out = workspace_routines.uninstall_flow_bind(
+            db,
+            fingerprint=str(undo.get("fingerprint") or ""),
+            hypr_chord=str(undo.get("hypr_chord") or ""),
+            run_fn=run,
+        )
+        if not out.get("ok"):
+            raise SystemExit(out.get("error") or "uninstall_flow_bind failed")
+        message = f"removed flow bind {undo.get('fingerprint')}"
+    else:
         raise SystemExit("this suggestion has no allowlisted undo action")
-    target = clean_token(undo.get("target"), 80)
-    name = re.sub(r"[^A-Za-z0-9_-]", "-", undo.get("name", ""))[:80]
-    result = run(tmux_args("rename-session", "-t", f"={target}", name))
-    if result.returncode != 0:
-        raise SystemExit(result.stderr.strip() or "tmux rename undo failed")
-    message = f"renamed tmux session {target} back to {name}"
     db.execute("UPDATE suggestions SET status='undone',updated_at=? WHERE id=?", (now(), suggestion_id))
     record_event(db, "copilot", "undone", label=message, details={"suggestion_id": suggestion_id})
     db.commit()
@@ -1584,9 +1616,27 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("dismiss-next", help="suppress current next-action until evidence changes")
     shadow = commands.add_parser("shadow-stats", help="os.next_context.v0 shadow metrics")
     shadow.add_argument("--hours", type=float, default=24.0)
-    export = commands.add_parser("export-flow", help="export episodes/shadow JSONL for z0int")
+    export = commands.add_parser("export-flow", help="export episodes/shadow/routines JSONL for z0int")
     export.add_argument("--dest", default="", help="directory (default ~/.z0int/episodes)")
     export.add_argument("--limit", type=int, default=50000)
+    # P3 modality + routine miner
+    rec = commands.add_parser(
+        "record-action",
+        help="record semantic action with modality source (no raw keys)",
+    )
+    rec.add_argument("--family", required=True)
+    rec.add_argument("--target", default="")
+    rec.add_argument(
+        "--source",
+        default="keyboard",
+        choices=sorted(workspace_routines.ACTION_SOURCES),
+    )
+    rec.add_argument("--project", default="")
+    mine = commands.add_parser("mine-routines", help="mine routine candidates from episode stream")
+    mine.add_argument("--suggest", action="store_true", help="also upsert pending suggestions")
+    runr = commands.add_parser("run-routine", help="execute an installed/allowlisted routine")
+    runr.add_argument("fingerprint")
+    commands.add_parser("routine-stats", help="routine candidate + modality source stats")
 
     return root
 
@@ -1611,7 +1661,22 @@ def main() -> None:
         flow_tick(db, clean_token(args.kind, 64) or "tmux")
     elif args.command == "record-keybind":
         upsert_keybind(db, args.source, args.chord, args.action)
-        event_id = record_event(db, "keybind", "invoked", app=args.source, label=f"{args.chord} {args.action}")
+        # Map catalog action → semantic family without recording raw keys.
+        act = str(args.action or "")
+        fam, tgt = "open_context", act
+        if act.startswith("workspace:"):
+            fam, tgt = "switch_workspace", act.split(":", 1)[1]
+        elif act.startswith("exec:"):
+            fam, tgt = "switch_app", act.split(":", 1)[1]
+        workspace_routines.record_semantic_action(
+            db, family=fam, target=tgt, source="keyboard",
+            details={"chord": args.chord, "catalog_action": act, "via": "record-keybind"},
+        )
+        event_id = record_event(
+            db, "keybind", "invoked", app=args.source,
+            label=f"{args.chord} {args.action}",
+            details={"action_source": "keyboard", "family": fam, "target": tgt},
+        )
         db.commit()
         flow_tick(db, "keybind", event_id)
     elif args.command == "harness-event":
@@ -1647,14 +1712,24 @@ def main() -> None:
     elif args.command == "next-action":
         print_data(workspace_flow.show_next_action(db), True if args.json else True)
     elif args.command == "commit-next":
-        result = workspace_flow.commit_next_action(db, run_fn=run, tmux_args_fn=tmux_args, source="flow")
+        result = workspace_flow.commit_next_action(
+            db, run_fn=run, tmux_args_fn=tmux_args, source="flow"
+        )
         if result.get("ok"):
+            surface = result.get("surface") or {}
+            workspace_routines.record_semantic_action(
+                db,
+                family=str(surface.get("action_family") or "open_context"),
+                target=str(surface.get("action_target") or ""),
+                source="flow",
+                details={"pred_id": result.get("pred_id"), "via": "commit-next"},
+            )
             record_event(
                 db,
                 "flow",
                 "commit-next",
                 label=result.get("result") or "",
-                details={"pred_id": result.get("pred_id")},
+                details={"pred_id": result.get("pred_id"), "action_source": "flow"},
             )
             db.commit()
         print_data(result, True if args.json else True)
@@ -1664,13 +1739,81 @@ def main() -> None:
         db.commit()
         print_data(result, True if args.json else True)
     elif args.command == "shadow-stats":
-        print_data(workspace_flow.shadow_stats(db, limit_hours=args.hours), True if args.json else True)
+        print_data(
+            workspace_flow.shadow_stats(db, limit_hours=args.hours),
+            True if args.json else True,
+        )
     elif args.command == "export-flow":
-        dest_root = Path(args.dest).expanduser() if args.dest else Path.home() / ".z0int" / "episodes"
-        ep = workspace_flow.export_episodes_jsonl(db, dest_root / "os_next_context_episodes.jsonl", limit=args.limit)
-        sh = workspace_flow.export_shadow_jsonl(db, dest_root / "os_next_context_shadow.jsonl", limit=args.limit)
-        print_data({"episodes": ep, "shadow": sh}, True if args.json else True)
-
+        dest_root = (
+            Path(args.dest).expanduser()
+            if args.dest
+            else Path.home() / ".z0int" / "episodes"
+        )
+        ep = workspace_flow.export_episodes_jsonl(
+            db, dest_root / "os_next_context_episodes.jsonl", limit=args.limit
+        )
+        sh = workspace_flow.export_shadow_jsonl(
+            db, dest_root / "os_next_context_shadow.jsonl", limit=args.limit
+        )
+        rt = workspace_routines.export_candidates_jsonl(
+            db, dest_root / "os_routine_candidates.jsonl"
+        )
+        print_data(
+            {"episodes": ep, "shadow": sh, "routines": rt},
+            True if args.json else True,
+        )
+    elif args.command == "record-action":
+        row = workspace_routines.record_semantic_action(
+            db,
+            family=clean_token(args.family, 64),
+            target=clean_token(args.target, 96),
+            source=args.source,
+            project=clean_token(args.project, 80),
+        )
+        record_event(
+            db,
+            "semantic",
+            "action",
+            label=row["token"],
+            project=clean_token(args.project, 80),
+            details={
+                "action_source": row["source"],
+                "family": row["family"],
+                "target": row["target"],
+            },
+        )
+        db.commit()
+        print_data(row, True if args.json else True)
+    elif args.command == "mine-routines":
+        cands = workspace_routines.mine_routine_candidates(db)
+        n = workspace_routines.persist_candidates(db, cands)
+        created = 0
+        if args.suggest:
+            created = workspace_routines.suggest_routines(
+                db, upsert_suggestion=upsert_suggestion
+            )
+        db.commit()
+        print_data(
+            {
+                "mined": len(cands),
+                "persisted": n,
+                "suggestions_created": created,
+                "top": cands[:5],
+            },
+            True if args.json else True,
+        )
+    elif args.command == "run-routine":
+        result = workspace_routines.run_routine(
+            db,
+            clean_token(args.fingerprint, 64),
+            run_fn=run,
+            tmux_args_fn=tmux_args,
+        )
+        db.commit()
+        print_data(result, True if args.json else True)
+        raise SystemExit(0 if result.get("ok") else 1)
+    elif args.command == "routine-stats":
+        print_data(workspace_routines.routine_stats(db), True if args.json else True)
 
 
 if __name__ == "__main__":

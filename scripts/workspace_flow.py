@@ -1055,10 +1055,23 @@ def close_open_episode(
     family, target = action_from_transition(before, after_state)
     ts_after = _now()
     horizon_ms = max(0.0, (ts_after - float(open_ep["ts_before"])) * 1000.0)
+    # Prefer explicit source from caller; default unknown (no keylogging inference).
+    action_source = "unknown"
+    try:
+        recent = db.execute(
+            """SELECT action_source FROM semantic_actions
+               WHERE ts>=? AND action_family=? AND action_target=?
+               ORDER BY id DESC LIMIT 1""",
+            (ts_after - 2.0, family, target),
+        ).fetchone()
+        if recent and recent["action_source"]:
+            action_source = recent["action_source"]
+    except Exception:
+        pass
     db.execute(
         """UPDATE context_episodes SET
                close_event_id=?, ts_after=?, action_family=?, action_target=?,
-               state_after_json=?, horizon_ms=?, closed=1
+               state_after_json=?, horizon_ms=?, closed=1, action_source=?
            WHERE id=?""",
         (
             close_event_id,
@@ -1067,6 +1080,7 @@ def close_open_episode(
             target,
             _json_text({k: after_state.get(k, "") for k in (*STATE_KEYS, "context_id")}),
             horizon_ms,
+            action_source,
             open_ep["id"],
         ),
     )
