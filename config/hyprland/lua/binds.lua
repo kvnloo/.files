@@ -75,6 +75,7 @@ hl.bind("SUPER + SHIFT + period", hl.dsp.exec_raw("exec", "$HOME/workspace/.file
 hl.bind("SUPER + CTRL + W", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/wallpaper-mode.sh cycle"))
 hl.bind("SUPER + ALT + W", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/wallpaper-mode.sh toggle"))
 hl.bind("SUPER + CTRL + B", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/bar-mode.sh toggle"))
+hl.bind("SUPER + ALT + M", hl.dsp.exec_raw("exec", "$HOME/.local/bin/performance-mode toggle"))
 hl.bind("SUPER + ALT + P", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/phone-display.sh toggle"))
 hl.bind("SUPER + SHIFT + B", hl.dsp.exec_raw("submap", "wallpaper · a auto │ s span │ f fill │ i fit │ c center │ t tile │ x stretch"))
 hl.bind("SUPER + P", hl.dsp.exec_raw("exec", "grim -g \"$(slurp)\" ~/Pictures/screenshots/screenshot-$(date +%Y%m%d-%H%M%S).png"))

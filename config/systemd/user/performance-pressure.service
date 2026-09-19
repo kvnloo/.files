@@ -1,7 +1,10 @@
 [Unit]
 Description=Suggest unified desktop performance mode under sustained pressure
+Documentation=file://%h/workspace/.files/scripts/performance-pressure.py
 After=graphical-session.target
 PartOf=graphical-session.target
+# Opt in: mkdir -p ~/.config/performance-pressure && touch ~/.config/performance-pressure/enabled
+ConditionPathExists=%h/.config/performance-pressure/enabled
 
 [Service]
 Type=simple
