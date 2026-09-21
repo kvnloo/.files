@@ -1,0 +1,65 @@
+# Agent-seat Sway session (own VT, all connected outputs).
+# Not nested in Hyprland. Super+Shift+A flips back.
+
+font pango:monospace 11
+floating_modifier Mod1
+focus_follows_mouse no
+mouse_warping output
+workspace_layout default
+
+default_border pixel 2
+default_floating_border pixel 2
+gaps inner 6
+gaps outer 4
+client.focused          #7aa2f7 #1a1b26 #c0caf5 #7aa2f7 #7aa2f7
+client.unfocused        #414868 #1a1b26 #565f89 #414868 #414868
+client.focused_inactive #414868 #1a1b26 #a9b1d6 #414868 #414868
+
+# Every DRM output Sway sees. Count/layout is not hardcoded (MBP=1, node0=2).
+output * bg #1a1b26 solid_color
+
+seat seat0 fallback true
+seat seat-agent1 fallback false
+seat seat-agent1 hide_cursor 0
+
+set $mod Mod4
+bindsym $mod+Return exec kitty
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+
+# Same chord as Hyprland: leave Sway, Hyprland comes back.
+bindsym $mod+Shift+a exec $HOME/.local/bin/agent-seat to-hyprland
+bindsym Control+Mod1+Escape exec $HOME/.local/bin/agent-seat to-hyprland
+
+xwayland enable
+
+bar {
+    position top
+    swaybar_command swaybar
+    status_command while printf 'agent-seat  |  Super+Shift+A → Hyprland  |  %s  |  %s\n' "$(hostname)" "$(date +%H:%M:%S)"; do sleep 2; done
+    colors {
+        background #1a1b26
+        statusline #c0caf5
+        focused_workspace #7aa2f7 #7aa2f7 #1a1b26
+        inactive_workspace #1a1b26 #1a1b26 #565f89
+    }
+}
+
+exec $HOME/.local/bin/agent-seat on-sway-start
+exec kitty --title agent-seat-shell

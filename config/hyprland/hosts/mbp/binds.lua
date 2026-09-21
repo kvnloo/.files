@@ -4,12 +4,16 @@ local brightnessControl = os.getenv("HOME") .. "/workspace/.files/scripts/macboo
 -- 2015 MacBook Pro function row.
 hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd(brightnessControl .. "display down"), { locked = true, repeating = true })
 hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd(brightnessControl .. "display up"),   { locked = true, repeating = true })
+hl.bind("F1", hl.dsp.exec_cmd(brightnessControl .. "display down"), { locked = true, repeating = true })
+hl.bind("F2", hl.dsp.exec_cmd(brightnessControl .. "display up"),   { locked = true, repeating = true })
 
 hl.bind("XF86LaunchA", hl.dsp.exec_cmd(noctCall .. "window-switcher"),        { locked = true })
 hl.bind("XF86LaunchB", hl.dsp.exec_cmd(noctCall .. "panel-toggle launcher"), { locked = true })
 
 hl.bind("XF86KbdBrightnessDown", hl.dsp.exec_cmd(brightnessControl .. "keyboard down"), { locked = true, repeating = true })
 hl.bind("XF86KbdBrightnessUp",   hl.dsp.exec_cmd(brightnessControl .. "keyboard up"),   { locked = true, repeating = true })
+
+hl.bind("SUPER + SHIFT + L", hl.dsp.exec_cmd("sleep 0.5 && noctalia msg dpms-off"), { locked = true })
 
 -- Depending on hid_apple fnmode, the media row may arrive as raw F7-F12.
 hl.bind("F7",  hl.dsp.exec_cmd(noctCall .. "media previous"), { locked = true })

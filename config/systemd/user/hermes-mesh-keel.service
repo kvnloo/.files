@@ -1,0 +1,18 @@
+[Unit]
+Description=Keel-bound Hermes Mesh worker
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/workspace/hermes-mesh-keel/.venv/bin/hermes-mesh-keel run --state /home/kvn/.local/state/hermes-mesh-keel --config /home/kvn/.config/hermes-mesh-keel/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/kvn/.local/state/hermes-mesh-keel /home/kvn/.hermes /home/kvn/workspace
+UMask=0077
+
+[Install]
+WantedBy=default.target

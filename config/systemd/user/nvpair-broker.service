@@ -1,0 +1,17 @@
+[Unit]
+Description=NVIDIA PAIR ui-broker (mbp headless) — ollama-proxy prefers :11440
+After=network-online.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kvn/workspace/hermes-jobs/mesh-velocity/pair-staging
+Environment=PATH=/usr/bin:/bin:/home/kvn/.local/bin
+# Hold 11435-11439 so broker fallback (11434 busy) lands on 11440; release after proxy ready
+ExecStartPre=/usr/bin/bash -c 'rm -f logs/nvpair-broker.stdin; mkfifo logs/nvpair-broker.stdin; mkdir -p logs; CFG="$HOME/.config/Nvidia Corporation/Personal AI Router"; mkdir -p "$CFG"; printf "%s\n" "{\"port\":11440}" > "$CFG/proxy-port.json"'
+ExecStart=/usr/bin/bash -c 'set -e; for p in 11435 11436 11437 11438 11439; do python3 -c "import socket,time;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind((\"127.0.0.1\",$p));s.listen(1);time.sleep(90)" & done; sleep infinity > logs/nvpair-broker.stdin & exec ./nvpair-ui-broker -log-level info < logs/nvpair-broker.stdin 2> >(tee -a logs/nvpair-broker-mbp.log >&2)'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

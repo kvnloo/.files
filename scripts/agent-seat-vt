@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Privileged VT helper for agent-seat. sudoers allows only this file.
+# Usage: agent-seat-vt {start|stop|chvt <n>}
+#
+# Sway cannot TakeControl of the existing Hyprland logind session (EBUSY).
+# start creates a *new* PAM login session on the spare VT, then runs
+# ~/.local/bin/agent-seat launch-on-vt there.
+set -euo pipefail
+
+VT=${AGENT_SEAT_VT:-3}
+TARGET_USER=${SUDO_USER:-kvn}
+TARGET_UID=$(id -u "$TARGET_USER")
+TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+RUNTIME=/run/user/$TARGET_UID/agent-seat
+LAUNCH=$TARGET_HOME/.local/bin/agent-seat
+UNIT=agent-seat-sway
+
+if [[ $EUID -ne 0 ]]; then
+  printf 'agent-seat-vt must run as root\n' >&2
+  exit 1
+fi
+
+mkdir -p "$RUNTIME"
+chown "$TARGET_USER:$TARGET_USER" "$RUNTIME"
+
+active_vt() {
+  cat /sys/class/tty/tty0/active 2>/dev/null | tr -dc '0-9'
+  printf '\n'
+}
+
+sway_pids() {
+  pgrep -u "$TARGET_UID" -x sway || true
+}
+
+stop_unit() {
+  systemctl stop "${UNIT}.service" 2>/dev/null || true
+  systemctl reset-failed "${UNIT}.service" 2>/dev/null || true
+}
+
+case ${1:-} in
+  start)
+    if [[ ! -x $LAUNCH ]]; then
+      printf 'missing %s\n' "$LAUNCH" >&2
+      exit 1
+    fi
+    if [[ ! -s $RUNTIME/hyprland.vt ]]; then
+      active_vt >"$RUNTIME/hyprland.vt" || true
+      chown "$TARGET_USER:$TARGET_USER" "$RUNTIME/hyprland.vt" 2>/dev/null || true
+    fi
+    prev=$(tr -dc '0-9' <"$RUNTIME/hyprland.vt" 2>/dev/null || true)
+    [[ $prev =~ ^[0-9]+$ ]] || prev=$(active_vt)
+    systemctl stop "getty@tty${VT}.service" 2>/dev/null || true
+    # Runtime mask only: logind NAutoVTs would otherwise spawn getty on this VT
+    # and fight Sway for the TTY. --runtime so a crash does not persist across reboot.
+    systemctl --runtime mask "getty@tty${VT}.service" 2>/dev/null || true
+    stop_unit
+    # Hyprland must leave the VT before the new session can take DRM.
+    chvt "$VT"
+    if ! systemd-run --collect --unit="$UNIT" --quiet \
+      --property=Type=simple \
+      --property=PAMName=login \
+      --property=User="$TARGET_USER" \
+      --property=TTYPath="/dev/tty${VT}" \
+      --property=StandardInput=tty \
+      --property=StandardOutput="append:${RUNTIME}/sway.log" \
+      --property=StandardError="append:${RUNTIME}/sway.log" \
+      --property=WorkingDirectory="$TARGET_HOME" \
+      --property=Environment="XDG_SESSION_TYPE=wayland" \
+      --property=Environment="XDG_SESSION_CLASS=user" \
+      --property=Environment="XDG_RUNTIME_DIR=/run/user/${TARGET_UID}" \
+      --property=Environment="HOME=${TARGET_HOME}" \
+      --property=Environment="LIBSEAT_BACKEND=logind" \
+      --property=UnsetEnvironment=DISPLAY \
+      --property=UnsetEnvironment=WAYLAND_DISPLAY \
+      --property=UnsetEnvironment=SWAYSOCK \
+      --property=UnsetEnvironment=HYPRLAND_INSTANCE_SIGNATURE \
+      --property=UnsetEnvironment=XDG_SESSION_ID \
+      -- "$LAUNCH" launch-on-vt
+    then
+      chvt "$prev" || true
+      printf 'systemd-run failed; restored VT %s\n' "$prev" >&2
+      exit 1
+    fi
+    ;;
+  stop)
+    stop_unit
+    for pid in $(sway_pids); do
+      kill "$pid" 2>/dev/null || true
+    done
+    sleep 0.3
+    for pid in $(sway_pids); do
+      kill -9 "$pid" 2>/dev/null || true
+    done
+    systemctl --runtime unmask "getty@tty${VT}.service" 2>/dev/null || true
+    systemctl start "getty@tty${VT}.service" 2>/dev/null || true
+    ;;
+  chvt)
+    n=${2:-}
+    [[ $n =~ ^[0-9]+$ ]] || { printf 'chvt needs a VT number\n' >&2; exit 2; }
+    chvt "$n"
+    ;;
+  *)
+    printf 'usage: agent-seat-vt {start|stop|chvt <n>}\n' >&2
+    exit 2
+    ;;
+esac
