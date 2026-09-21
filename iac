@@ -1,4 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$repo_root/scripts/iac/collect.py" "$@"
+
+cmd="${1:-}"
+case "$cmd" in
+  collect)
+    exec python3 "$repo_root/scripts/iac/collect.py" "$@"
+    ;;
+  links)
+    shift
+    exec python3 "$repo_root/scripts/iac/links.py" "$@"
+    ;;
+  ""|-h|--help|help)
+    cat <<'EOF'
+usage: ./iac <command> [options]
+
+commands:
+  collect        collect read-only live machine state
+  links scan     inventory .files-owned symlinks and generate rollout scripts
+
+No mutating apply command exists in Phase 1.
+EOF
+    ;;
+  *)
+    printf 'unknown iac command: %s\n' "$cmd" >&2
+    exit 2
+    ;;
+esac
