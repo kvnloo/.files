@@ -9,7 +9,8 @@ platform = "cachyos"
 package_groups = ["core", "nvidia", "desktop", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
 system_services = ["docker.service", "tailscaled.service"]
-user_services = ["hermes-gateway.service", "bws-secrets-sync.timer"]
+user_services = ["hermes-gateway.service"]
+user_timers = ["bws-secrets-sync.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
@@ -20,6 +21,7 @@ package_groups = ["core", "desktop", "dev", "shell", "fonts"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
 system_services = ["tailscaled.service"]
 user_services = []
+user_timers = []
 nix_profile = "mbp"
 hypr_host = "mbp"
 
