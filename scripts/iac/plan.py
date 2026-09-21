@@ -72,16 +72,24 @@ def build_plan(fleet: dict[str, Any], packages: dict[str, Any], observed: dict[s
 
     enabled_system = _unit_names((obs.get("system_services_enabled") or {}).get("data") or [])
     enabled_user = _unit_names((obs.get("user_services_enabled") or {}).get("data") or [])
+    enabled_system_timers = _unit_names((obs.get("system_timers_enabled") or {}).get("data") or [])
+    enabled_user_timers = _unit_names((obs.get("user_timers_enabled") or {}).get("data") or [])
 
     desired_system = set(host.get("system_services") or [])
     desired_user = set(host.get("user_services") or [])
+    desired_system_timers = set(host.get("system_timers") or [])
+    desired_user_timers = set(host.get("user_timers") or [])
 
     return {
         "schema_version": 1,
         "host_id": host_id,
         "hostname": hostname,
         "status": "DRIFT" if (
-            wanted - installed or desired_system - enabled_system or desired_user - enabled_user
+            wanted - installed
+            or desired_system - enabled_system
+            or desired_user - enabled_user
+            or desired_system_timers - enabled_system_timers
+            or desired_user_timers - enabled_user_timers
         ) else "MATCH",
         "packages": {
             "groups": groups,
@@ -95,6 +103,14 @@ def build_plan(fleet: dict[str, Any], packages: dict[str, Any], observed: dict[s
         "user_services": {
             "missing_enabled": sorted(desired_user - enabled_user),
             "observed_unmanaged_count": len(enabled_user - desired_user),
+        },
+        "system_timers": {
+            "missing_enabled": sorted(desired_system_timers - enabled_system_timers),
+            "observed_unmanaged_count": len(enabled_system_timers - desired_system_timers),
+        },
+        "user_timers": {
+            "missing_enabled": sorted(desired_user_timers - enabled_user_timers),
+            "observed_unmanaged_count": len(enabled_user_timers - desired_user_timers),
         },
         "notes": [
             "Observed unmanaged items are informational, not removal candidates.",
@@ -130,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(f"{result['status']} host={result['host_id']} hostname={result['hostname']}")
-        for section in ("packages", "system_services", "user_services"):
+        for section in ("packages", "system_services", "user_services", "system_timers", "user_timers"):
             data = result[section]
             missing = data.get("missing") or data.get("missing_enabled") or []
             print(f"{section}: missing={len(missing)} unmanaged_observed={data['observed_unmanaged_count']}")
