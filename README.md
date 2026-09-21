@@ -1,63 +1,80 @@
 # .files
 
-Personal Linux/macOS dotfiles for Hyprland, tmux, shells, audio DSP, agent tooling, and related desktop helpers.
+Personal Linux/macOS dotfiles and fleet IaC for Hyprland, shells, audio DSP,
+agent tooling, Hermes experiments, and related workstation helpers.
 
-## Setup (two methods)
+## Setup
 
-Both paths use the same modules. Full details: **[docs/SETUP.md](docs/SETUP.md)**.
+Both setup paths call the same modules. Full details: **[docs/SETUP.md](docs/SETUP.md)**.
 
-### 1. LLM harness (interactive through chat)
+### LLM harness
 
-Open this repo in Cursor, Claude Code, Codex, OpenCode, or similar. Agents read
-[`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md), run
-`./scripts/onboard status --json`, and ask:
+Open this repo in Cursor, Claude Code, Codex, OpenCode, Hermes, or similar.
+Agents read [`AGENTS.md`](AGENTS.md), run:
 
-> Want to run onboarding setup?
+```sh
+./scripts/onboard status --json
+```
 
-Say yes and walk the modules in chat, or ask the agent to launch the TTY installer.
+and ask before changing the machine.
 
-### 2. Interactive installer (terminal)
+### Terminal installer
 
 ```sh
 git clone https://github.com/kvnloo/.files.git ~/workspace/.files
 cd ~/workspace/.files
+git switch dev
 ./install
 ```
+
+The active machine configuration currently lives on `dev`; see issue #18 for
+making the default GitHub branch match this disaster-recovery source of truth.
 
 Useful commands:
 
 ```sh
 ./scripts/onboard status --json
 ./scripts/onboard doctor
-./scripts/onboard list-modules
-./scripts/onboard install --module core-links --module agent-skills --yes
+./iac collect
+./iac plan
 ```
+
+## Fleet IaC
+
+`.files` describes a fleet of hosts. One computer is a **host**; Kubernetes
+clusters/workloads are a separate layer that can run on one or more hosts.
+
+See **[docs/iac.md](docs/iac.md)** for ownership and design rules and
+**[docs/iac-rollout.md](docs/iac-rollout.md)** before merging repository path
+moves into a live symlinked checkout.
 
 ## What this repo configures
 
-- **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
+- **Desktop**: Hyprland, Noctalia, Waybar, Rofi, Sunshine helpers
 - **Shell / editors**: zsh, fish, tmux, nvim
 - **Audio**: PipeWire headphone DSP + optional Aural Evolution chain
-- **Agents**: shared skills, Agent Reach, mcporter MCP config, workspace-copilot
-- **Optional**: Tailscale SSH, Nix Home Manager on CachyOS (`config/nix/`)
+- **Agents**: shared skills, Agent Reach, mcporter, Hermes helpers
+- **Fleet**: package/service intent, host identity, restore/transition metadata
+- **Optional**: Tailscale SSH, Nix Home Manager, local Kubernetes lab
 
-## Safety notes (public repo)
+## Safety notes
 
-- Sunshine **credentials / state / logs** stay in `~/.config/sunshine` and are not tracked.
-- Agent Reach state lives in `~/.agent-reach` (not tracked).
-- Onboarding state lives in `~/.local/state/dotfiles/onboard.json` (not tracked).
+- Sunshine credentials/state/logs stay outside Git.
+- Agent Reach state stays outside Git.
+- Onboarding and IaC observed state live under `~/.local/state/dotfiles/`.
+- Secret manifests contain references only, never credential values.
+- Normal IaC convergence must never execute destructive transitions.
 
-## Legacy / deep migration
+## Legacy / transitions
 
-- Day-to-day onboarding: `./install` or harness flow above
-- One-shot CachyOS rebuild scripts: [`migration/`](migration/)
-- Older `script.sh` now forwards to `./install`
+- Day-to-day onboarding: `./install` or the harness flow
+- Canonical transition history: [`transitions/`](transitions/)
+- The root `migration` path is a compatibility symlink during rollout.
+- Older `script.sh` forwards to `./install`.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
 Third-party trees under `config/`, `.zsh/`, and similar keep their own licenses.
-Upstream audio assets (AutoEQ measurements, BRIRs, LV2/LADSPA plugins) remain
-under their respective terms; this grant covers this repository's code and
-configuration only.
+Upstream audio assets remain under their respective terms.

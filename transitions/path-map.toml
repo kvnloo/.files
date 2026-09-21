@@ -1,0 +1,18 @@
+# Repository path moves for the fleet-IaC future-state rollout.
+# Consumed by: ./iac links scan --map transitions/path-map.toml ...
+
+[[move]]
+from = "migration"
+to = "transitions/legacy/cachyos-migration"
+
+[[move]]
+from = "claudedocs"
+to = "docs/archive/claude"
+
+[[move]]
+from = "POLYBAR_PYWAL_USAGE.md"
+to = "docs/legacy/POLYBAR_PYWAL_USAGE.md"
+
+[[move]]
+from = "proposal_codexbar_aggregate.md"
+to = "docs/proposals/codexbar-aggregate.md"

@@ -7,6 +7,10 @@ case "$cmd" in
   collect)
     exec python3 "$repo_root/scripts/iac/collect.py" "$@"
     ;;
+  plan)
+    shift
+    exec python3 "$repo_root/scripts/iac/plan.py" "$@"
+    ;;
   links)
     shift
     exec python3 "$repo_root/scripts/iac/links.py" "$@"
@@ -17,9 +21,11 @@ usage: ./iac <command> [options]
 
 commands:
   collect        collect read-only live machine state
+  plan           compare observed state with fleet.toml
   links scan     inventory .files-owned symlinks and generate rollout scripts
 
-No mutating apply command exists in Phase 1.
+No mutating apply command exists yet. Destructive transitions are never part of
+normal convergence.
 EOF
     ;;
   *)
