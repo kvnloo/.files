@@ -26,8 +26,14 @@ except ModuleNotFoundError:  # pragma: no cover - current CachyOS Python has tom
 
 
 def _under(path: Path, root: Path) -> bool:
+    """True when path is lexically inside root.
+
+    Do not resolve path. Resolving a symlink follows it, which made every
+    external link into old-root look like it lived inside the repo and got
+    dropped by the exclude check.
+    """
     try:
-        path.relative_to(root)
+        path.absolute().relative_to(root.absolute())
         return True
     except ValueError:
         return False
@@ -60,7 +66,7 @@ def _iter_symlinks(root: Path, *, excludes: list[Path], errors: list[str]):
         kept_dirs: list[str] = []
         for name in dirs:
             path = base_path / name
-            if any(_under(path.resolve(strict=False), ex) for ex in excludes):
+            if any(_under(path, ex) for ex in excludes):
                 continue
             try:
                 mode = path.lstat().st_mode
@@ -68,6 +74,7 @@ def _iter_symlinks(root: Path, *, excludes: list[Path], errors: list[str]):
                 errors.append(f"{path}: {exc}")
                 continue
             if stat.S_ISLNK(mode):
+                # Record the directory symlink, but do not walk through it.
                 yield path
                 continue
             try:
@@ -80,7 +87,7 @@ def _iter_symlinks(root: Path, *, excludes: list[Path], errors: list[str]):
 
         for name in files:
             path = base_path / name
-            if any(_under(path.resolve(strict=False), ex) for ex in excludes):
+            if any(_under(path, ex) for ex in excludes):
                 continue
             try:
                 if path.is_symlink():
@@ -122,6 +129,45 @@ def _map_relative(rel: str, moves: list[dict[str, str]]) -> str:
             tail = rel_path[len(prefix):]
             return str(Path(row["to"]) / tail)
     return rel_path
+
+
+def classify_move(src: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    """Desired location is not permission to migrate.
+
+    UNKNOWN evidence fails closed as DEFER. ELIGIBLE requires every gate.
+    mtime is only a ranking signal carried in evidence['recent_writes'].
+    """
+    reasons: list[str] = []
+    if not evidence.get("present", False):
+        return {"path": src, "classification": "NOT_PRESENT", "reasons": ["path is not on the live checkout"]}
+    if evidence.get("inspection_gap"):
+        reasons.append("process or service inspection is incomplete")
+    if evidence.get("process_refs"):
+        reasons.append("observed process references")
+    if evidence.get("service_refs"):
+        reasons.append("service or unit references")
+    if evidence.get("dirty"):
+        reasons.append("dirty git state underneath")
+    if evidence.get("hot_writes"):
+        reasons.append("content changed within 7 days")
+    if evidence.get("warm_writes"):
+        reasons.append("content changed within 60 days")
+    if evidence.get("unresolved_symlink_deps"):
+        reasons.append("unresolved symlink dependency")
+    if not evidence.get("content_understood", False):
+        reasons.append("candidate and live contents are not understood")
+    if evidence.get("compatibility_required") and not evidence.get("compatibility_preserved", False):
+        reasons.append("compatibility pathname would not be preserved")
+    if not evidence.get("rollback_possible", False):
+        reasons.append("independent rollback is not established")
+
+    if evidence.get("process_refs") or evidence.get("service_refs") or evidence.get("dirty") or evidence.get("hot_writes"):
+        classification = "BLOCKED"
+    elif reasons:
+        classification = "DEFER"
+    else:
+        classification = "ELIGIBLE"
+    return {"path": src, "classification": classification, "reasons": reasons}
 
 
 def build_plan(
@@ -170,6 +216,7 @@ def build_plan(
                 "final_target": str(final_target),
                 "stage_target_exists": str(stage_target.exists()).lower(),
                 "final_target_exists_now": str(final_target.exists()).lower(),
+                "dangling": str(not link.exists()).lower(),
             })
 
     records.sort(key=lambda row: row["link"])

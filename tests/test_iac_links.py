@@ -88,3 +88,74 @@ def test_scan_excludes_links_inside_the_repo(tmp_path):
     plan = links.build_plan(old, new, [old, external])
 
     assert [Path(row["link"]).name for row in plan["links"]] == ["external"]
+
+
+def test_relative_directory_space_and_dangling_links(tmp_path):
+    old = tmp_path / "old"
+    new = tmp_path / "new"
+    external = tmp_path / "home"
+    (old / "dir with space").mkdir(parents=True)
+    (new / "dir with space").mkdir(parents=True)
+    (old / "dir with space" / "file").write_text("x")
+    (new / "dir with space" / "file").write_text("x")
+    external.mkdir()
+    (external / "rel").symlink_to(Path("..") / "old" / "dir with space" / "file")
+    (external / "dirlink").symlink_to(old / "dir with space")
+    (external / "gone").symlink_to(old / "missing-target")
+    nested = old / "chain-dir"
+    nested.mkdir()
+    (nested / "leaf").write_text("leaf")
+    (external / "mid").symlink_to(old / "chain-dir" / "leaf")
+    (external / "chain").symlink_to(external / "mid")
+
+    plan = links.build_plan(old, new, [external])
+    by_name = {Path(row["link"]).name: row for row in plan["links"]}
+
+    assert by_name["rel"]["old_relative"] == "dir with space/file"
+    assert by_name["dirlink"]["old_relative"] == "dir with space"
+    assert by_name["gone"]["old_relative"] == "missing-target"
+    assert by_name["gone"]["dangling"] == "true"
+    assert by_name["chain"]["old_relative"] == "chain-dir/leaf"
+    assert os.readlink(external / "chain") == str(external / "mid")
+
+
+def test_hyprland_legacy_contract_shape(tmp_path):
+    old = tmp_path / "workspace" / ".files"
+    new = tmp_path / "workspace" / ".files-rollout"
+    home = tmp_path / "home" / ".config" / "hypr"
+    legacy = old / "config" / "hyprland" / "hyprland.legacy.conf"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("live\n")
+    (new / "config" / "hyprland").mkdir(parents=True)
+    (new / "config" / "hyprland" / "hyprland.legacy.conf").write_text("live\n")
+    home.mkdir(parents=True)
+    link = home / "hyprland.conf"
+    link.symlink_to(legacy)
+
+    plan = links.build_plan(old, new, [tmp_path / "home"])
+
+    assert len(plan["links"]) == 1
+    row = plan["links"][0]
+    assert row["old_relative"] == "config/hyprland/hyprland.legacy.conf"
+    assert os.readlink(link) == str(legacy)
+
+
+def test_move_classifier_matches_live_evidence():
+    blocked = links.classify_move("migration", {
+        "present": True, "hot_writes": True, "content_understood": True, "rollback_possible": True,
+    })
+    eligible = links.classify_move("idle", {
+        "present": True, "content_understood": True, "rollback_possible": True,
+    })
+    polybar = links.classify_move("POLYBAR_PYWAL_USAGE.md", {
+        "present": True, "warm_writes": True, "content_understood": True, "rollback_possible": True,
+    })
+    claude = links.classify_move("claudedocs", {
+        "present": True, "inspection_gap": True, "content_understood": True, "rollback_possible": True,
+    })
+    missing = links.classify_move("proposal_codexbar_aggregate.md", {"present": False})
+    assert blocked["classification"] == "BLOCKED"
+    assert polybar["classification"] == "DEFER"
+    assert claude["classification"] == "DEFER"
+    assert missing["classification"] == "NOT_PRESENT"
+    assert eligible["classification"] == "ELIGIBLE"
