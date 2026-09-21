@@ -30,6 +30,7 @@ def test_plan_reports_missing_without_scheduling_removals():
                 "package_groups": ["core"],
                 "system_services": ["docker.service"],
                 "user_services": [],
+                "user_timers": ["bws-secrets-sync.timer"],
             }
         }
     }
@@ -44,6 +45,8 @@ def test_plan_reports_missing_without_scheduling_removals():
             "pacman_foreign": {"data": []},
             "system_services_enabled": {"data": ["NetworkManager.service enabled enabled"]},
             "user_services_enabled": {"data": []},
+            "system_timers_enabled": {"data": []},
+            "user_timers_enabled": {"data": ["other.timer enabled enabled"]},
         },
     }
 
@@ -53,6 +56,8 @@ def test_plan_reports_missing_without_scheduling_removals():
     assert result["packages"]["missing"] == ["docker"]
     assert result["packages"]["observed_unmanaged_count"] == 1
     assert result["system_services"]["missing_enabled"] == ["docker.service"]
+    assert result["user_timers"]["missing_enabled"] == ["bws-secrets-sync.timer"]
+    assert result["user_timers"]["observed_unmanaged_count"] == 1
 
 
 def test_arch_override_resolves_package_name():
