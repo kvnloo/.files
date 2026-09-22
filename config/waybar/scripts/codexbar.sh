@@ -42,6 +42,14 @@ STATE_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/codexbar-waybar/state.json"
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/codexbar-waybar"
 mkdir -p "$CACHE_DIR"
 
+# Keep Cursor enabled with a fresh session cookie from the IDE / OMP auth store.
+REPO_ROOT="${CODEXBAR_REPO_ROOT:-$(dirname "$REPO_SCRIPTS")}"
+SYNC_CURSOR="${CODEXBAR_CURSOR_SYNC:-$REPO_ROOT/config/codexbar/sync-cursor-auth.sh}"
+if [[ -f "$CONFIG_PATH" && -x "$SYNC_CURSOR" ]]; then
+    "$SYNC_CURSOR" >/dev/null 2>&1 || true
+fi
+
+
 # Per-instance bar provider selection (written by the popup's Settings view).
 # `null` (or unset) means "show the highest used% across providers".
 BAR_PROVIDER=""

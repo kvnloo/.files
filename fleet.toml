@@ -1,0 +1,35 @@
+schema = 1
+
+# Stable logical host ids. Host-specific implementation layers should use these
+# names where practical; match_hostnames keeps older/live hostnames compatible.
+
+[hosts.desktop]
+match_hostnames = ["0", "groot"]
+platform = "cachyos"
+package_groups = ["core", "nvidia", "desktop", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
+onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
+system_services = ["docker.service", "tailscaled.service"]
+user_services = ["hermes-gateway.service"]
+user_timers = ["bws-secrets-sync.timer"]
+nix_profile = "desktop"
+hypr_host = "0"
+
+[hosts.mbp]
+match_hostnames = ["mbp"]
+platform = "cachyos"
+package_groups = ["core", "desktop", "dev", "shell", "fonts"]
+onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
+system_services = ["tailscaled.service"]
+user_services = []
+user_timers = []
+nix_profile = "mbp"
+hypr_host = "mbp"
+
+# Workload ownership stays in the workload repo. This declaration only says
+# where the local lab belongs once the repo URL is published.
+[clusters.hermes-lab]
+enabled = false
+host = "desktop"
+distribution = "kind"
+owner_repo = "hermes-k8s-lab"
+purpose = "local-hermes-experimentation"

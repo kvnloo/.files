@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Build the auditable legacy-directive-to-Lua ownership inventory."""
+import json
+from pathlib import Path
+from hypr_lua_semantics import extract
+
+root = Path(__file__).resolve().parents[1]
+legacy = root / "config/hyprland/hyprland.legacy.conf"
+out = root / "config/hyprland/migration-inventory.json"
+stack = []
+directives = []
+semantics = []
+for number, raw in enumerate(legacy.read_text().splitlines(), 1):
+    text = raw.split("#", 1)[0].strip()
+    if not text:
+        continue
+    if text.endswith("{"):
+        stack.append(text[:-1].strip())
+        key = stack[0]
+    elif text == "}":
+        key = stack[0]
+        stack.pop()
+    else:
+        key = stack[0] if stack else text.split("=", 1)[0].strip()
+    if key in {"monitor", "workspace"}:
+        owner = "lua/monitors.lua"
+    elif key == "env":
+        owner = "lua/environment.lua"
+    elif key in {"windowrule", "layerrule"} or (key == "source" and "liquid-glass" in text):
+        owner = "lua/rules.lua"
+    elif key.startswith("bind") or key in {"submap", "$mod"}:
+        owner = "lua/binds.lua"
+    elif key == "exec-once":
+        owner = "lua/autostart.lua"
+    else:
+        owner = "lua/appearance.lua"
+    directives.append({"line": number, "directive": text, "owner": owner})
+    if "=" in text and not text.endswith("{"):
+        name, value = (part.strip() for part in text.split("=", 1))
+        path = ".".join([*stack, name]) if stack else name
+        semantics.append({"line": number, "path": path, "value": value, "owner": owner})
+if stack:
+    raise SystemExit(f"unclosed blocks: {stack}")
+for item in semantics:
+    expected = f'{item["path"]}={item["value"]}'
+    owner = root / "config/hyprland" / item["owner"]
+    item["proof"] = {"expected": expected, **extract(owner, item["path"], item["value"])}
+out.write_text(json.dumps({"legacy": legacy.name, "directives": directives, "semantics": semantics, "unclassified": []}, indent=2) + "\n")

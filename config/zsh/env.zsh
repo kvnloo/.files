@@ -23,6 +23,10 @@ export PATH="~/.npm-global/bin:$PATH"             # Global npm packages
 export PATH="$PATH:$HOME/.rvm/bin"                # Ruby Version Manager
 export PATH="$HOME/Library/Python/3.9/bin:$PATH"  # Python 3.9 user packages
 
+# Hermes profile tools (bws, hermes-with-secrets, …). HERMES_HOME set in ~/.zshenv.
+: "${HERMES_HOME:=$HOME/.hermes/profiles/chiefstaff}"
+[ -d "$HERMES_HOME/bin" ] && [[ ":$PATH:" != *":$HERMES_HOME/bin:"* ]] && export PATH="$HERMES_HOME/bin:$PATH"
+
 # Language-Specific Paths
 # Note: fnm, Cargo, and other runtime managers are loaded in external.zsh
 # to avoid conflicts with their initialization scripts

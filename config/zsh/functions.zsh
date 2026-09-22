@@ -44,3 +44,53 @@ tm() {
     tmux new-session -A -s "$name" -c "$PWD"
   fi
 }
+
+# Start tmux with a writable runtime directory and explicit socket path.
+tmuxr() {
+  local runtime_dir="" socket_file="" stale dir rc
+  local -a candidate_dirs=(/tmp "/run/user/$UID" "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}" "$HOME/.tmux")
+
+  for dir in $candidate_dirs; do
+    [[ -z "$dir" ]] && continue
+    [[ -d "$dir" ]] || continue
+    [[ -w "$dir" ]] || continue
+
+    mkdir -p "$dir"
+    runtime_dir="$dir"
+    socket_file="$runtime_dir/tmux-repair-$$-socket"
+
+    for stale in "$runtime_dir"/tmux-repair*(N); do
+      [[ -S "$stale" ]] && rm -f -- "$stale"
+    done
+
+    if (( $# > 0 )); then
+      TMUX_TMPDIR="$runtime_dir" XDG_RUNTIME_DIR="$runtime_dir" \
+        command tmux -S "$socket_file" "$@"
+    else
+      TMUX_TMPDIR="$runtime_dir" XDG_RUNTIME_DIR="$runtime_dir" \
+        command tmux -S "$socket_file" new-session
+    fi
+    rc=$?
+    if (( rc == 0 )); then
+      return 0
+    fi
+    print -u2 "tmuxr: socket in ${runtime_dir} failed (exit $rc), trying next candidate"
+  done
+
+  print -u2 "tmuxr: no writable runtime directory worked"
+  return 1
+}
+
+tmux() {
+  if [[ -n "${TMUX:-}" ]]; then
+    command tmux "$@"
+    return $?
+  fi
+
+  command tmux "$@" && return 0
+
+  TMUX_RECOVERY_MODE=1 tmuxr "$@" && return 0
+
+  print -u2 "tmux: recovery with default runtime failed; retrying plain tmux"
+  TMUX_RECOVERY_MODE=1 command tmux "$@"
+}

@@ -86,3 +86,107 @@ After apply or undo, rerun `workspace-copilot --json context` and verify the obs
 ## Preference learning
 
 Treat stored preference confidence as ranking evidence, not authority. Repeated acceptance may increase recommendation priority, but must never grant automatic execution permission. Rejections constrain future recommendations; explain any later proposal that appears to conflict with a recorded rejection.
+
+## Flow predictor (os.next_context.v0)
+
+Shadow next-context prediction runs on every semantic context change (not the
+5-minute suggestion loop). Schema **v5**.
+
+Four separate gates (never one confidence knob):
+
+| Gate | Policy |
+|---|---|
+| **PREDICT** | Always. <1ms. Training data. |
+| **PREPARE** | Often (`p≥0.28`). Discardable, no side effects. |
+| **SURFACE** | Rarely (`p≥0.82` + margin/entropy). 10% withhold arm. |
+| **COMMIT** | Explicit only (`commit-next` / Super+Space). |
+
+Multi-horizon labels (500ms / 2s / 10s / 60s): if nothing relevant happens,
+`actual_family=noop`. Canonical receipt `flow_prediction.v1` dual-writes to
+`~/.z0int/receipts/flow_predictions.jsonl`.
+
+Invariant: **never steal focus**. Never auto-run consequential actions.
+Correct prediction ≠ useful intervention (keyboard-fast → silence).
+
+```sh
+workspace-copilot --json predict          # force shadow prediction now
+workspace-copilot --json next-action      # single global surface (or idle)
+workspace-copilot --json commit-next      # reversible navigation only
+workspace-copilot --json dismiss-next     # suppress until evidence changes
+workspace-copilot --json shadow-stats     # top1/topk/noop/horizons/gates
+workspace-copilot --json export-flow      # JSONL → ~/.z0int/episodes
+```
+
+z0int vault + skeptic (no promote):
+
+```sh
+z0int os-context stats
+z0int os-context import
+z0int os-context skeptic --horizon-ms 2000
+```
+
+Operator families (second head, coarse): `inspect_result`, `run_test`,
+`open_context`, `delegate`, `retrieve`, `resume_previous`, `noop`.
+
+## Routine Suggestion Miner (P3)
+
+Mine 1–4 step semantic sequences from the episode stream. Reuses the existing
+suggestions / decide / apply / undo substrate — no second automation framework.
+
+```sh
+workspace-copilot --json record-action --family switch_app --target kitty --source keyboard
+workspace-copilot --json mine-routines --suggest
+workspace-copilot --json routine-stats
+workspace-copilot --json suggestions --status pending   # kind=routine-shortcut
+# after explicit accept:
+workspace-copilot --json decide <id> accept
+workspace-copilot --json apply <id>     # installs Super+Alt bind → run-routine
+workspace-copilot --json undo <id>      # removes exactly that bind
+```
+
+Evidence is observed facts only (count, sessions, median duration, same-sequence
+ratio, existing shortcut, reversibility, source mix). No fake seconds-saved.
+
+Modality sources: `keyboard|mouse|voice|flow|agent|unknown` — never raw keys.
+Keyboard-optimal single actions with an existing chord are suppressed.
+
+## Automation utility receipts (P3d)
+
+Acceptance is not proof of value. Track lifecycle:
+
+```text
+suggested → accepted → installed → invoked → completed
+                 ↘ rejected
+installed → opportunity + manual_equivalent (sequence still done by hand)
+installed → unused_after_N_opportunities (default N=12, zero invokes)
+invoked → immediate_reversal (user leaves target within ~8s)
+```
+
+```sh
+workspace-copilot --json utility-stats
+workspace-copilot --json export-flow   # + os_automation_receipts.jsonl
+```
+
+Generated Hypr binds call `run-routine`, which records `source=keyboard` semantic
+actions and `invoked`/`completed` receipts — no raw keylogging.
+Do not accept one-step focus shortcuts merely because the miner found them.
+
+## os.next_operator + PrepareProviders (P4)
+
+Operator vocab (inspect_result first):
+
+```text
+inspect_result | resume_previous | open_context | retrieve | run_test | delegate | noop
+```
+
+On harness `completed|waiting|blocked|failed`, Flow forces PREDICT and boosts
+`inspect_result`. PrepareProviders build a discardable artifact bundle (recap,
+tasks, recent events, changed-file names only) — **nothing moves**, no model call.
+
+```sh
+workspace-copilot --json harness-event completed --harness omp --label "…"
+workspace-copilot --json predict
+workspace-copilot --json next-action
+```
+
+SURFACE stays rare (p≥0.82). COMMIT remains explicit only.

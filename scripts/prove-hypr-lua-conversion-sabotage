@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Sabotage representative Lua conversions in a copy; never touch live selection.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+CHECKER="$ROOT/scripts/check-hypr-lua-parity"
+HYPR="$ROOT/config/hyprland"
+
+usage() {
+  printf '%s\n' \
+    'usage: prove-hypr-lua-conversion-sabotage [--help]' \
+    'Copies Lua owners, sabotages representative monitor, window, bind, and' \
+    'source conversions, and proves check-hypr-lua-parity / verify-config fail' \
+    'with visible errors. Original files and the live compositor are untouched.'
+}
+[[ ${1:-} == --help ]] && { usage; exit 0; }
+
+command -v python3 >/dev/null
+command -v Hyprland >/dev/null
+[[ -x $CHECKER ]]
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/lua"
+cp -a "$HYPR/lua/." "$work/lua/"
+
+fail_checker() {
+  local label=$1 rel=$2 old=$3 new=$4
+  local file="$work/lua/$rel"
+  local original="$HYPR/lua/$rel"
+  python3 - "$file" "$old" "$new" <<'PY'
+from pathlib import Path
+import sys
+path, old, new = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+body = path.read_text()
+if old not in body:
+    raise SystemExit(f"sabotage token missing in {path}: {old}")
+path.write_text(body.replace(old, new, 1))
+PY
+  if "$CHECKER" --lua-root "$work/lua" >/dev/null 2>"$work/$label.err"; then
+    printf 'expected parity mismatch for %s sabotage\n' "$label" >&2
+    exit 1
+  fi
+  grep -q 'parity mismatch' "$work/$label.err" || {
+    printf 'checker did not report parity mismatch for %s\n' "$label" >&2
+    cat "$work/$label.err" >&2
+    exit 1
+  }
+  cp "$original" "$file"
+  printf 'sabotage %s: visible and recoverable\n' "$label"
+}
+
+fail_checker monitor monitors.lua 'mode="1920x1080@540"' 'mode="1920x1080@539"'
+fail_checker window rules.lua 'workspace="10"' 'workspace="11"'
+fail_checker bind binds.lua '"SUPER + Return"' '"SUPER + Backspace"'
+
+# Source conversion: missing generated pywal artifact must fail closed, then recover.
+missing="$work/missing-pywal.lua"
+set +e
+HYPR_LUA_PYWAL_LUA="$missing" Hyprland --verify-config -c "$HYPR/hyprland.lua" >"$work/source.out" 2>&1
+source_st=$?
+set -e
+if [[ $source_st -eq 0 ]] && ! grep -qiE 'error|missing|pywal' "$work/source.out"; then
+  printf 'expected visible source conversion error when pywal artifact is missing\n' >&2
+  cat "$work/source.out" >&2
+  exit 1
+fi
+Hyprland --verify-config -c "$HYPR/hyprland.lua" >"$work/source-recovered.out" 2>&1
+grep -qi 'config ok' "$work/source-recovered.out" || {
+  printf 'source conversion did not recover with a valid pywal artifact\n' >&2
+  cat "$work/source-recovered.out" >&2
+  exit 1
+}
+printf 'sabotage source: visible and recoverable\n'
+
+cp "$HYPR/lua/bridges.lua" "$work/lua/bridges.lua"
+cmp -s "$HYPR/lua/monitors.lua" "$work/lua/monitors.lua"
+cmp -s "$HYPR/lua/rules.lua" "$work/lua/rules.lua"
+cmp -s "$HYPR/lua/binds.lua" "$work/lua/binds.lua"
+cmp -s "$HYPR/lua/bridges.lua" "$work/lua/bridges.lua"
+printf 'conversion sabotage recovered; live Lua files unchanged\n'

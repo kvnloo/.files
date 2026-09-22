@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Fail closed unless every inventoried semantic has its audited Lua owner."""
+import argparse
+import json
+import sys
+from pathlib import Path
+from hypr_lua_semantics import extract
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT = ROOT / "config/hyprland/lua"
+INVENTORY = ROOT / "config/hyprland/migration-inventory.json"
+
+CHECKS = {
+    "monitors.lua": (
+        'output="DP-1"', 'mode="1920x1080@540"', 'position="3000x420"',
+        'output="PHONE"', 'workspace="20"',
+    ),
+    "rules.lua": (
+        'class="^(Spotify|spotify)$"', 'workspace="10"',
+        'special:hermes-tests', 'hyprglass_disabled',
+    ),
+    "binds.lua": (
+        '"SUPER + Return"', '"SUPER + SHIFT + B"', 'hl.define_submap(',
+        'phone-display.sh toggle',
+    ),
+    "appearance.lua": (
+        'hl.plugin.hyprglass', 'enabled=false', 'default_theme="dark"',
+        'default_preset="flow"', 'blur_strength=1.10', 'brightness=0.88',
+        'hg.layer("waybar", {preset="flow",mask_threshold=0.05})', 'colors.json',
+    ),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lua-root", type=Path, default=DEFAULT)
+    args = parser.parse_args()
+    failures = []
+    inventory = json.loads(INVENTORY.read_text())
+    for item in inventory.get("semantics", []):
+        proof = item.get("proof", {})
+        expected = f'{item["path"]}={item["value"]}'
+        if proof.get("expected") != expected:
+            failures.append(f"line {item['line']} {item['path']}: semantic proof mismatch")
+        owner = Path(item["owner"]).name
+        candidate = args.lua_root / owner
+        source = candidate if candidate.exists() else DEFAULT / owner
+        try:
+            actual = extract(source, item["path"], item["value"])
+        except ValueError as error:
+            failures.append(f"line {item['line']} {error}")
+            continue
+        if proof.get("source_tokens") != actual["source_tokens"] or proof.get("actual") != actual["actual"]:
+            failures.append(f"line {item['line']} {item['path']}: implementation mismatch")
+    if not inventory.get("semantics"):
+        failures.append("inventory has no semantics")
+    for name, tokens in CHECKS.items():
+        candidate = args.lua_root / name
+        source = candidate if candidate.exists() else DEFAULT / name
+        body = source.read_text()
+        for token in tokens:
+            if token not in body:
+                failures.append(f"{name}: missing {token}")
+    if failures:
+        print("parity mismatch: " + "; ".join(failures), file=sys.stderr)
+        return 1
+    print("semantic parity sentinels ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

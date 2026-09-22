@@ -1,0 +1,29 @@
+local function rule(name, match, props)
+  props.name=name; props.match=match; hl.window_rule(props)
+end
+rule("spotify-workspace", {class="^(Spotify|spotify)$"}, {workspace="10"})
+rule("high-tide-workspace", {class="^(high-tide)$"}, {workspace="10"})
+rule("kitty-workspace", {class="^(kitty)$"}, {workspace="1"})
+rule("chrome-workspace", {class="^(google-chrome|google-chrome-unstable|Google-chrome)$"}, {workspace="2 silent"})
+rule("obs-isolated", {class="^(com\\.obsproject\\.Studio)$"}, {workspace="8 silent",no_initial_focus=true})
+-- All agent GUI probes fail closed into the private headless workspace.
+-- Nested Sway/wlroots agent-seat: fail-closed onto the private headless special workspace.
+rule("nested-sway-isolation", {class="^(sway)$"}, {workspace="special:hermes-tests silent",no_initial_focus=true})
+rule("nested-wlroots-isolation", {class="^(wlroots)$"}, {workspace="special:hermes-tests silent",no_initial_focus=true})
+local agent="^(HermesE2E-[0-9]+|Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*|ZenCDAE2E.*)$"
+rule("agent-headless-isolation", {class=agent}, {workspace="special:hermes-tests silent",no_initial_focus=true,no_focus=true})
+rule("glass-fullscreen-off", {fullscreen=true}, {tag="+hyprglass_disabled"})
+rule("glass-media-off", {class="^(steam|Steam|Plex|linux-wallpaperengine)$"}, {tag="+hyprglass_disabled"})
+rule("scratch", {class="^(scratch_term)$"}, {float=true,size="80% 70%",center=true,workspace="special:scratch_term"})
+for _,class in ipairs({"^(pavucontrol)$","^(nm-connection-editor)$","^(blueman-manager)$"}) do rule("float-"..class,{class=class},{float=true}) end
+rule("agent-fleet-popup",{class="^(agent-fleet-popup|agent-deck-popup)$"},{float=true,size="1700 900",center=true,pin=true,opacity="0.90 0.84"})
+rule("chrome-pip",{title="^(Picture-in-Picture)$"},{float=true,decorate=false,pin=true})
+rule("meet-pip",{class="^(google-chrome)$",title="^(Meet - [a-z]+-[a-z]+-[a-z]+)$"},{float=true,decorate=false,pin=true})
+rule("volume",{title="^(Volume Control)$"},{float=true})
+rule("alacritty-opacity",{class="^(Alacritty)$"},{opacity="0.88 0.82"})
+rule("hermes-opaque",{class="^(Hermes)$"},{opacity="1.0 1.0"})
+rule("warp-opacity",{class="^(dev.warp.Warp)$"},{opacity="0.95 0.90"})
+rule("code-opacity",{class="^(Code)$"},{opacity="0.95 0.90"})
+rule("telegram-opacity",{class="^(org.telegram.desktop)$"},{opacity="0.88 0.82"})
+rule("fullscreen-idle",{fullscreen=true},{idle_inhibit="fullscreen"})
+hl.layer_rule({name="noctalia-blur",match={namespace="^(noctalia-background-.*)$"},blur=true,ignore_alpha=0.18})

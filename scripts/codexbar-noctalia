@@ -11,6 +11,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 REAL_CODEXBAR="${CODEXBAR_REAL_BIN:-$HOME/.local/lib/codexbar-cli/codexbar}"
+if [[ ! -x "$REAL_CODEXBAR" ]]; then
+  REAL_CODEXBAR="$(command -v codexbar 2>/dev/null || echo "$HOME/.local/bin/codexbar")"
+fi
 
 is_aggregate_usage() {
   [[ $# -ge 4 ]] || return 1

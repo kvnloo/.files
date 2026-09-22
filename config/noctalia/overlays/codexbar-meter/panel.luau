@@ -9,6 +9,31 @@ local providers = {}
 local errorMsg = ""
 local panelOpen = false
 local refreshIntervalSec = tonumber(noctalia.getConfig("refreshIntervalSec")) or 60
+local cachePath = noctalia.expandPath("~/.cache/codexbar-waybar/full.json")
+
+local function shellQuote(value)
+    return "'" .. string.gsub(tostring(value), "'", "'\\''") .. "'"
+end
+
+local function decodeProviders(stdout)
+    local decoded = noctalia.json.decode(stdout or "")
+    if type(decoded) ~= "table" then return nil end
+    if type(decoded.providers) == "table" then return decoded.providers end
+    if decoded.provider ~= nil or decoded.error ~= nil then return { decoded } end
+
+    local result = {}
+    for _, provider in ipairs(decoded) do
+        if type(provider) == "table" then result[#result + 1] = provider end
+    end
+    return result
+end
+
+local function loadCache(callback)
+    noctalia.runAsync("cat " .. shellQuote(cachePath), function(result)
+        callback(result)
+    end, 5000)
+end
+
 
 local PROVIDER_META = {
     codex = { label = "Codex", glyph = "brand-openai", color = "primary", source = "OpenAI" },
@@ -434,10 +459,23 @@ end)
 function onOpen(_context)
     panelOpen = true
     local existing = noctalia.state.get("providers")
-    if type(existing) == "table" then providers = existing end
+    if type(existing) == "table" and #existing > 0 then providers = existing end
     local existingError = noctalia.state.get("error")
     if type(existingError) == "string" then errorMsg = existingError end
     render()
+
+    if #providers == 0 then
+        loadCache(function(result)
+            if not panelOpen then return end
+            local decoded = result ~= nil and decodeProviders(result.stdout) or nil
+            if decoded ~= nil and #decoded > 0 then
+                providers = decoded
+                render()
+            end
+        end)
+    end
+
+    noctalia.state.set("command", { action = "refresh" })
 end
 
 function onClose()

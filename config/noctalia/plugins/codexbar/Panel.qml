@@ -470,7 +470,6 @@ Item {
                             border.width: Style.borderWidthThin
 
                             ColumnLayout {
-                              id: modelCard
                               anchors.fill: parent
                               anchors.margins: Style.marginS
                               spacing: Style.marginXS

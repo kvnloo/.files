@@ -77,11 +77,6 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 # kimi-code
 export PATH="/home/kvn/.kimi-code/bin:$PATH"
 
-# >>> grok installer >>>
-export PATH="$HOME/.grok/bin:$PATH"
-fpath=(~/.grok/completions/zsh $fpath)
-autoload -Uz compinit && compinit -C
-# <<< grok installer <<<
 
 # bun completions
 [ -s "/home/kvn/.bun/_bun" ] && source "/home/kvn/.bun/_bun"
@@ -89,4 +84,15 @@ autoload -Uz compinit && compinit -C
 # >>> Codex installer >>>
 export PATH="/home/kvn/.local/bin:$PATH"
 # <<< Codex installer <<<
-export PATH=$PATH:$HOME/.maestro/bin
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<
+
+# Added by cua-driver-rs installer — see https://github.com/trycua/cua
+export PATH="/home/kvn/.local/bin:$PATH"
+
+# Added by cua-driver-rs installer — see https://github.com/trycua/cua
+export PATH="/home/kvn/.local/bin:$PATH"

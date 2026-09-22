@@ -59,7 +59,7 @@ current_mode() {
   elif pgrep -x noctalia >/dev/null 2>&1 || pgrep -x quickshell >/dev/null 2>&1 || pgrep -x qs >/dev/null 2>&1; then
     printf 'noctalia\n'
   else
-    cat "$STATE_FILE" 2>/dev/null || printf 'waybar\n'
+    cat "$STATE_FILE" 2>/dev/null || printf 'noctalia\n'
   fi
 }
 
@@ -74,10 +74,10 @@ case "${1:-status}" in
     fi
     ;;
   restore)
-    if [[ $(cat "$STATE_FILE" 2>/dev/null || printf 'waybar') == noctalia ]]; then
-      start_noctalia || start_waybar
-    else
+    if [[ $(cat "$STATE_FILE" 2>/dev/null || printf 'noctalia') == waybar ]]; then
       start_waybar
+    else
+      start_noctalia
     fi
     ;;
   status) current_mode ;;
