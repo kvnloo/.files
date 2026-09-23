@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import tomllib
 
@@ -5,20 +6,26 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_deferred_moves_keep_the_live_path_canonical():
-    """Desired destinations are recorded, but the material move is not applied."""
-    expected = {
-        "migration": "transitions/legacy/cachyos-migration",
+def test_resolved_path_moves_match_current_evidence():
+    """Hot migration stays put. Cold, unreferenced docs are compatibility symlinks."""
+    migration = ROOT / "migration"
+    assert migration.is_dir()
+    assert not migration.is_symlink()
+    assert not (ROOT / "transitions/legacy/cachyos-migration").exists()
+
+    applied = {
         "claudedocs": "docs/archive/claude",
         "POLYBAR_PYWAL_USAGE.md": "docs/legacy/POLYBAR_PYWAL_USAGE.md",
     }
-    for old, new in expected.items():
+    for old, new in applied.items():
         path = ROOT / old
-        assert path.exists(), old
-        assert not path.is_symlink(), old
-        assert not (ROOT / new).exists(), new
-    proposal = ROOT / "proposal_codexbar_aggregate.md"
-    assert not proposal.exists()
+        assert path.is_symlink(), old
+        assert os.readlink(path) == new
+        canonical = ROOT / new
+        assert canonical.exists(), new
+        assert not canonical.is_symlink(), new
+
+    assert not (ROOT / "proposal_codexbar_aggregate.md").exists()
     assert not (ROOT / "docs/proposals/codexbar-aggregate.md").exists()
 
 
