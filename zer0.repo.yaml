@@ -1,0 +1,89 @@
+version: 1
+repo: kvnloo/.files
+id: flow
+component: flow
+kind: component
+summary: Workspace-Copilot predictive desktop layer that learns semantic context transitions, predicts across multiple horizons, prepares discardable artifacts, surfaces only high-confidence suggestions, and requires explicit user commit.
+
+architecture:
+  subsystems:
+    - id: semantic-episodes
+      name: Semantic context episodes
+      kind: observation
+      summary: Records privacy-preserving semantic desktop/harness/task state transitions without capturing keystrokes, titles, pane text, clipboard contents, or screenshots.
+      paths:
+        - scripts/workspace_flow.py
+
+    - id: predictor
+      name: Multi-horizon predictor
+      kind: prediction
+      summary: Produces shadow next-context and next-operator predictions over censored 0.5s, 2s, 10s, and 60s horizons and records ranked outcomes for learning.
+      paths:
+        - scripts/workspace_flow.py
+      depends_on: [semantic-episodes]
+
+    - id: prepare-cache
+      name: Prepare cache
+      kind: efficiency
+      summary: Builds cheap, discardable, side-effect-free artifacts behind an independent probability/margin gate before any user-visible suggestion.
+      paths:
+        - scripts/workspace_flow.py
+        - tests/test_flow_prepare_e2e.py
+      depends_on: [predictor]
+
+    - id: surface-gate
+      name: User-visible surface gate
+      kind: interaction
+      summary: Surfaces suggestions only above strict probability, margin, and entropy thresholds with silent counterfactual withholding and never steals focus.
+      paths:
+        - scripts/workspace_flow.py
+      depends_on: [predictor, prepare-cache]
+
+    - id: routine-miner
+      name: Routine miner
+      kind: learning
+      summary: Mines repeated semantic workflows into inspectable routine/shortcut candidates rather than silently automating them.
+      paths:
+        - scripts/workspace_routines.py
+      depends_on: [semantic-episodes]
+
+    - id: explicit-commit
+      name: Explicit commit boundary
+      kind: authority
+      summary: Keeps actual action commitment behind explicit keyboard, mouse, voice, or Flow interaction rather than predictor authority.
+      paths:
+        - scripts/workspace_flow.py
+      depends_on: [surface-gate]
+
+  provides_interfaces:
+    - flow_prediction.v1
+    - os.next_context.v0
+
+  consumes_interfaces:
+    - tokenomics.event.v0
+    - z0int.decision_receipt.v1
+
+  produces_representations: []
+  consumes_representations: []
+
+  boundaries:
+    owns:
+      - semantic desktop prediction
+      - prepare cache
+      - user-visible suggestion gating
+      - routine mining
+      - explicit desktop commit surface
+    not_here:
+      - agent runtime execution
+      - token measurement semantics
+      - z0intelligence decision authority
+      - autonomous focus stealing
+      - raw private desktop content capture
+
+  evidence:
+    docs:
+      - scripts/workspace_flow.py
+      - scripts/workspace_routines.py
+    tests:
+      - tests/test_flow_prepare_e2e.py
+    schemas: []
