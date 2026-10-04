@@ -18,7 +18,7 @@ The repo already has useful sources of truth and should extend them instead of d
 - `config/` — topic-oriented editable configuration and unit files
 - `config/nix/` — optional Home Manager layer for portable user-space state
 - `scripts/onboard` — normal human/agent onboarding UX
-- `migration/` — existing one-time migration history, to be retired gradually
+- `transitions/legacy/cachyos-migration/` — one-time CachyOS migration history. `migration/` is a compatibility symlink
 - workload repositories such as `hermes-k8s-lab` — Kubernetes manifests and workload-specific tests
 
 ## First-principles rules
@@ -47,9 +47,9 @@ The intended steady state stays small:
 ├── config/                    # canonical topic-oriented config
 ├── scripts/onboard            # onboarding/module implementation
 ├── scripts/iac/               # collect / plan / apply / verify
-├── transitions/               # explicit destructive one-offs
+├── transitions/               # explicit destructive one-offs and retired migration
 ├── restore/p0.toml            # metadata only; no private data
-└── migration/                 # legacy until migrated safely
+└── migration/                 # compatibility symlink to transitions/legacy/cachyos-migration
 ```
 
 There is intentionally no generic `roles/`, `services/`, or per-host copy of `config/` until real repetition justifies one.

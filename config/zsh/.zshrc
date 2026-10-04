@@ -96,3 +96,5 @@ export PATH="/home/kvn/.local/bin:$PATH"
 
 # Added by cua-driver-rs installer — see https://github.com/trycua/cua
 export PATH="/home/kvn/.local/bin:$PATH"
+
+export PATH="$PATH:$HOME/.maestro/bin"

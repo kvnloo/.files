@@ -37,7 +37,7 @@ Useful commands:
 ./scripts/onboard status --json
 ./scripts/onboard doctor
 ./scripts/onboard list-modules
-./scripts/onboard install --module core-links --module agent-skills --yes
+./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
 ## What this repo configures
@@ -71,5 +71,5 @@ This tree is public. Treat anything that can authenticate as **out of band**:
 ## Legacy / deep migration
 
 - Day-to-day onboarding: `./install` or harness flow above
-- One-shot CachyOS rebuild scripts: [`migration/`](migration/)
+- One-shot CachyOS rebuild scripts: [`transitions/legacy/cachyos-migration/`](transitions/legacy/cachyos-migration/) (`migration/` remains a compatibility symlink)
 - Older `script.sh` now forwards to `./install`

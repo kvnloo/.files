@@ -15,7 +15,7 @@ Environment="HERMES_SUPERVISED_CHILD=1"
 Restart=always
 RestartSec=5
 RestartForceExitStatus=75
-RestartPreventExitStatus=78
+SuccessExitStatus=75
 KillMode=mixed
 KillSignal=SIGTERM
 ExecReload=/bin/kill -USR1 $MAINPID

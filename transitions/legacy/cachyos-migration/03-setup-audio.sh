@@ -18,7 +18,10 @@ set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-DOTFILES="$(dirname "$SCRIPT_DIR")"
+DOTFILES="$SCRIPT_DIR"
+while [[ "$DOTFILES" != "/" && ! -e "$DOTFILES/.git" ]]; do
+  DOTFILES="$(dirname "$DOTFILES")"
+done
 LOG_DIR="$DOTFILES/logs"
 DATE=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="$LOG_DIR/setup-audio-$DATE.log"

@@ -6,7 +6,10 @@ set -euo pipefail
 # Run AFTER 02-deploy-dotfiles.sh (which creates the symlinks)
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-DOTFILES="$(dirname "$SCRIPT_DIR")"
+DOTFILES="$SCRIPT_DIR"
+while [[ "$DOTFILES" != "/" && ! -e "$DOTFILES/.git" ]]; do
+  DOTFILES="$(dirname "$DOTFILES")"
+done
 
 # Colors and logging
 RED='\033[0;31m'

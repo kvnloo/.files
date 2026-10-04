@@ -73,6 +73,7 @@ Non-interactive examples:
 | Module | What it does |
 |--------|----------------|
 | `core-links` | Symlinks shell, tmux, git, Hyprland, nvim, noctalia, PipeWire fragments, Sunshine config (no credentials), and common CLI helpers into `~` / `~/.local/bin` |
+| `fonts` | Installs Nerd Fonts from [`packages/packages.toml`](../packages/packages.toml) (`scripts/install-fonts.sh`) |
 | `agent-skills` | Links `workspace-copilot` into Claude, Codex, OpenCode, Gemini, Cursor, OMP, and Agents skill directories |
 | `agent-tools` | Runs [`scripts/setup-agent-tools.sh`](../scripts/setup-agent-tools.sh) (Agent Reach, yt-dlp, mcporter) |
 | `tailnet-ssh` | Runs [`scripts/setup-tailnet-ssh.sh`](../scripts/setup-tailnet-ssh.sh) (Linux Tailscale + SSH) |
@@ -101,8 +102,9 @@ cd ~/workspace/.files
 # or open the repo in Cursor/Claude/Codex and accept harness onboarding
 ```
 
-3. Optional deeper CachyOS migration (packages, full desktop bring-up) still lives
-   under [`migration/`](../migration/) and is separate from day-to-day onboarding.
+3. Optional deeper CachyOS migration scripts live at
+   [`transitions/legacy/cachyos-migration/`](../transitions/legacy/cachyos-migration/).
+   [`migration/`](../migration/) is a compatibility symlink.
 
 4. Optional Home Manager details: [`config/nix/README.md`](../config/nix/README.md)
 
@@ -117,7 +119,7 @@ cd ~/workspace/.files
 ## Legacy entry points
 
 - [`script.sh`](../script.sh) now forwards to `./install` (old macOS/Ubuntu menu is retired).
-- [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path.
+- [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path. It resolves the repo root by walking to `.git`, so the compatibility symlink is safe.
 
 ## Safety
 

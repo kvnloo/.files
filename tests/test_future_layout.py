@@ -7,11 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_resolved_path_moves_match_current_evidence():
-    """Hot migration stays put. Cold, unreferenced docs are compatibility symlinks."""
+    """Cold docs and the CachyOS migration tree are compatibility symlinks."""
     migration = ROOT / "migration"
-    assert migration.is_dir()
-    assert not migration.is_symlink()
-    assert not (ROOT / "transitions/legacy/cachyos-migration").exists()
+    assert migration.is_symlink()
+    assert os.readlink(migration) == "transitions/legacy/cachyos-migration"
+    canonical = ROOT / "transitions/legacy/cachyos-migration"
+    assert canonical.is_dir()
+    assert not canonical.is_symlink()
 
     applied = {
         "claudedocs": "docs/archive/claude",

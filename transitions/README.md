@@ -10,8 +10,9 @@ boundary.
 - `workspace-xfs-bcachefs.toml` describes the planned filesystem transition.
 - `claudedocs` and `POLYBAR_PYWAL_USAGE.md` are compatibility symlinks to
   `docs/archive/claude` and `docs/legacy/POLYBAR_PYWAL_USAGE.md`.
-- `migration/` stays the canonical directory while `02-deploy-dotfiles.sh`
-  is inside the 7-day hot window (content commit 2026-09-17). Its mapped
-  destination `legacy/cachyos-migration/` is not created until that clears.
+- `migration/` is a compatibility symlink to `legacy/cachyos-migration/`.
+  The 7-day hot window on `02-deploy-dotfiles.sh` (content commit 2026-09-17)
+  cleared before 2026-10-04. Active scripts walk to `.git` for the repo root
+  so `readlink -f` through the symlink does not retarget `DOTFILES`.
 - `proposal_codexbar_aggregate.md` is not in this tree, so its mapped
   proposal path is not created.

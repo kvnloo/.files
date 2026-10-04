@@ -27,6 +27,7 @@ export ONBOARD_REPO_ROOT="$REPO_ROOT"
 
 MODULES=(
   core-links
+  fonts
   agent-skills
   agent-tools
   tailnet-ssh
@@ -36,6 +37,7 @@ MODULES=(
 
 MODULE_HELP=(
   "core-links:Symlink shell, tmux, git, Hyprland, nvim, noctalia, and CLI helpers"
+  "fonts:Install Nerd Fonts and the base families desktop configs name"
   "agent-skills:Install workspace-copilot skill into Claude/Codex/OpenCode/Gemini skill dirs"
   "agent-tools:Install Agent Reach, yt-dlp, and shared mcporter MCP config"
   "tailnet-ssh:Enable Tailscale + SSH for private remote access (Linux)"
@@ -124,16 +126,31 @@ run_core_links() {
 
   if [[ -d "$repo/config/hyprland" ]]; then
     mkdir -p "$HOME/.config/hypr"
-    onboard_link "$repo/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
     onboard_link "$repo/config/hyprland/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"
     onboard_link "$repo/config/hyprland/hypridle.conf" "$HOME/.config/hypr/hypridle.conf"
-    if [[ -d "$repo/config/hyprland/config" ]]; then
-      onboard_link "$repo/config/hyprland/config" "$HOME/.config/hypr/config"
+    if [[ -f "$HOME/.config/hypr/hyprland.lua" ]]; then
+      mkdir -p "$HOME/.config/hypr/config"
+      onboard_link "$repo/config/hyprland/config/binds.lua" "$HOME/.config/hypr/config/binds.lua"
+      local host_binds="$repo/config/hyprland/hosts/$(hostname -s)/binds.lua"
+      [[ -f "$host_binds" ]] && onboard_link "$host_binds" "$HOME/.config/hypr/config/device-binds.lua"
+      # CachyOS Lua compositor owns monitors, decorations, and the stub
+      # hyprland.conf. Do not replace it with the desktop 3-monitor conf.
+    else
+      onboard_link "$repo/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
+      if [[ -d "$repo/config/hyprland/config" ]]; then
+        onboard_link "$repo/config/hyprland/config" "$HOME/.config/hypr/config"
+      fi
     fi
   fi
 
   onboard_link "$repo/config/nvim" "$HOME/.config/nvim"
-  onboard_link "$repo/config/noctalia" "$HOME/.config/noctalia"
+  if [[ -d "$HOME/.config/noctalia" && ! -L "$HOME/.config/noctalia" ]]; then
+    # Keep the live CachyOS/Noctalia directory (look/settings) and only
+    # share the tracked config.toml fragment.
+    onboard_link "$repo/config/noctalia/config.toml" "$HOME/.config/noctalia/config.toml"
+  else
+    onboard_link "$repo/config/noctalia" "$HOME/.config/noctalia"
+  fi
   onboard_link "$repo/config/waybar" "$HOME/.config/waybar"
   onboard_link "$repo/config/rofi" "$HOME/.config/rofi"
   onboard_link "$repo/config/dunst" "$HOME/.config/dunst"
@@ -286,10 +303,22 @@ run_audio_evolution() {
   printf 'audio-evolution complete.\n'
 }
 
+run_fonts() {
+  printf '\n==> fonts\n'
+  if [[ ! -x "$REPO_ROOT/scripts/install-fonts.sh" ]]; then
+    printf '  install-fonts.sh missing\n' >&2
+    return 1
+  fi
+  "$REPO_ROOT/scripts/install-fonts.sh"
+  onboard_mark_module "fonts" "done"
+  printf 'fonts complete.\n'
+}
+
 run_module() {
   local module="$1"
   case "$module" in
     core-links) run_core_links ;;
+    fonts) run_fonts ;;
     agent-skills) run_agent_skills ;;
     agent-tools) run_agent_tools ;;
     tailnet-ssh) run_tailnet_ssh ;;
@@ -309,12 +338,26 @@ run_module() {
 links_look_configured() {
   local repo="$REPO_ROOT"
   local link target
-  for link in "$HOME/.tmux.conf" "$HOME/.zshrc" "$HOME/.config/hypr/hyprland.conf"; do
+  for link in "$HOME/.tmux.conf" "$HOME/.zshrc"; do
     [[ -L "$link" ]] || return 1
     target="$(readlink -f "$link" 2>/dev/null || true)"
     [[ -n "$target" && "$target" == "$repo"* ]] || return 1
   done
-  return 0
+  if [[ -f "$HOME/.config/hypr/hyprland.lua" ]]; then
+    link="$HOME/.config/hypr/config/binds.lua"
+  else
+    link="$HOME/.config/hypr/hyprland.conf"
+  fi
+  [[ -L "$link" ]] || return 1
+  target="$(readlink -f "$link" 2>/dev/null || true)"
+  [[ -n "$target" && "$target" == "$repo"* ]]
+}
+
+fonts_look_installed() {
+  command -v fc-list >/dev/null 2>&1 || return 1
+  local families
+  families="$(fc-list : family 2>/dev/null || true)"
+  [[ "$families" == *"JetBrainsMono Nerd Font"* && "$families" == *"Roboto Mono"* ]]
 }
 
 skills_look_configured() {
@@ -342,7 +385,7 @@ skills_look_configured() {
 recommended_done() {
   local m status
   local state_ok=1
-  for m in core-links agent-skills; do
+  for m in core-links fonts agent-skills; do
     status="$(onboard_module_status "$m")"
     if [[ "$status" != "done" ]]; then
       state_ok=0
@@ -353,7 +396,7 @@ recommended_done() {
     return 0
   fi
   # Heuristic for machines configured before onboard state existed
-  if links_look_configured && skills_look_configured; then
+  if links_look_configured && skills_look_configured && fonts_look_installed; then
     return 0
   fi
   if links_look_configured; then
@@ -368,22 +411,23 @@ cmd_status() {
   [[ "${1:-}" == "--json" ]] && json=1
 
   local harness state_file complete=false inferred=false
-  local links_ok=false skills_ok=false
+  local links_ok=false skills_ok=false fonts_ok=false
   harness="$(onboard_detect_harness)"
   state_file="$(onboard_state_file)"
   if links_look_configured; then links_ok=true; fi
   if skills_look_configured; then skills_ok=true; fi
+  if fonts_look_installed; then fonts_ok=true; fi
   if recommended_done; then
     complete=true
-    if [[ "$(onboard_module_status core-links)" != "done" || "$(onboard_module_status agent-skills)" != "done" ]]; then
-      if [[ "$links_ok" == "true" ]]; then
+    if [[ "$(onboard_module_status core-links)" != "done" || "$(onboard_module_status fonts)" != "done" || "$(onboard_module_status agent-skills)" != "done" ]]; then
+      if [[ "$links_ok" == "true" && "$fonts_ok" == "true" ]]; then
         inferred=true
       fi
     fi
   fi
 
   if [[ "$json" -eq 1 ]]; then
-    python3 - "$state_file" "$harness" "$complete" "$inferred" "$links_ok" "$skills_ok" "$REPO_ROOT" "${MODULES[@]}" <<'PY'
+    python3 - "$state_file" "$harness" "$complete" "$inferred" "$links_ok" "$skills_ok" "$fonts_ok" "$REPO_ROOT" "${MODULES[@]}" <<'PY'
 import json, pathlib, sys
 state_file = pathlib.Path(sys.argv[1])
 harness = sys.argv[2]
@@ -391,8 +435,9 @@ complete = sys.argv[3] == "true"
 inferred = sys.argv[4] == "true"
 links_ok = sys.argv[5] == "true"
 skills_ok = sys.argv[6] == "true"
-repo = sys.argv[7]
-modules = sys.argv[8:]
+fonts_ok = sys.argv[7] == "true"
+repo = sys.argv[8]
+modules = sys.argv[9:]
 stored = {}
 if state_file.exists():
     try:
@@ -406,6 +451,8 @@ for name in modules:
     if name == "core-links" and links_ok and status == "pending":
         status = "done-inferred"
     if name == "agent-skills" and skills_ok and status == "pending":
+        status = "done-inferred"
+    if name == "fonts" and fonts_ok and status == "pending":
         status = "done-inferred"
     out_modules[name] = {
         "status": status,
@@ -458,12 +505,15 @@ PY
     if [[ "$m" == "agent-skills" && "$skills_ok" == "true" && "$status" == "pending" ]]; then
       status="done-inferred"
     fi
+    if [[ "$m" == "fonts" && "$fonts_ok" == "true" && "$status" == "pending" ]]; then
+      status="done-inferred"
+    fi
     printf '  %-18s %s\n' "$m" "$status"
   done
   if [[ "$complete" != "true" ]]; then
     printf '\nRecommended: ask whether to run onboarding, then:\n'
     printf '  ./scripts/onboard install --interactive\n'
-    printf '  # or guided: ./scripts/onboard run core-links && ./scripts/onboard run agent-skills\n'
+    printf '  # or guided: ./scripts/onboard run core-links && ./scripts/onboard run fonts && ./scripts/onboard run agent-skills\n'
   fi
 }
 
@@ -481,8 +531,12 @@ cmd_doctor() {
     fi
   done
   printf '\nlinks:\n'
-  local link
-  for link in "$HOME/.tmux.conf" "$HOME/.zshrc" "$HOME/.config/hypr/hyprland.conf" "$HOME/.config/nvim"; do
+  local link hypr_link
+  hypr_link="$HOME/.config/hypr/hyprland.conf"
+  if [[ -f "$HOME/.config/hypr/hyprland.lua" ]]; then
+    hypr_link="$HOME/.config/hypr/config/binds.lua"
+  fi
+  for link in "$HOME/.tmux.conf" "$HOME/.zshrc" "$hypr_link" "$HOME/.config/nvim"; do
     if [[ -L "$link" ]]; then
       printf '  ok   %s -> %s\n' "$link" "$(readlink "$link")"
     elif [[ -e "$link" ]]; then
@@ -491,6 +545,12 @@ cmd_doctor() {
       printf '  miss %s\n' "$link"
     fi
   done
+  printf '\nfonts:\n'
+  if fonts_look_installed; then
+    printf '  ok   JetBrainsMono Nerd Font, Roboto Mono\n'
+  else
+    printf '  miss JetBrainsMono Nerd Font or Roboto Mono\n'
+  fi
 }
 
 # --- interactive installer --------------------------------------------------
@@ -506,7 +566,7 @@ interactive_menu() {
   detected harness: $(onboard_detect_harness)
   repo: $REPO_ROOT
 
-  1) Recommended setup (core-links + agent-skills)
+  1) Recommended setup (core-links + fonts + agent-skills)
   2) Full guided setup (all modules, prompted)
   3) Pick modules
   4) Status / doctor
@@ -519,6 +579,7 @@ EOF
     case "${choice:-}" in
       1)
         run_module core-links
+        run_module fonts
         run_module agent-skills
         if onboard_prompt_yn "Also install shared agent research tools?" default_y; then
           run_module agent-tools
@@ -580,7 +641,7 @@ cmd_offer() {
   if [[ "${ONBOARD_NONINTERACTIVE:-0}" == "1" ]] || ! onboard_is_tty; then
     printf 'Offer pending: ask the user whether to run .files onboarding setup.\n'
     printf 'If yes: ./scripts/onboard install --interactive\n'
-    printf '   or: ./scripts/onboard run core-links && ./scripts/onboard run agent-skills\n'
+    printf '   or: ./scripts/onboard run core-links && ./scripts/onboard run fonts && ./scripts/onboard run agent-skills\n'
     return 0
   fi
 
@@ -652,6 +713,7 @@ cmd_install() {
 
   # Non-TTY default: recommended modules only
   run_module core-links
+  run_module fonts
   run_module agent-skills
 }
 

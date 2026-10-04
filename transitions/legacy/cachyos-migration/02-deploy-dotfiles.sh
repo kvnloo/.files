@@ -5,7 +5,10 @@ set -euo pipefail
 # Creates all symlinks from the dotfiles repo to their proper locations
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-DOTFILES="$(dirname "$SCRIPT_DIR")"
+DOTFILES="$SCRIPT_DIR"
+while [[ "$DOTFILES" != "/" && ! -e "$DOTFILES/.git" ]]; do
+  DOTFILES="$(dirname "$DOTFILES")"
+done
 
 # Ensure ~/workspace exists (CachyOS mounts workspace at /workspace)
 if [[ -d "/workspace" && ! -e "$HOME/workspace" ]]; then

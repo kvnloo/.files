@@ -222,6 +222,8 @@ packages = [
     "ttf-jetbrains-mono-nerd",
     "ttf-firacode-nerd",
     "ttf-iosevka-nerd",
+    "ttf-meslo-nerd",
+    "ttf-fantasque-nerd",
     "noto-fonts",
     "noto-fonts-cjk",
     "noto-fonts-emoji",
