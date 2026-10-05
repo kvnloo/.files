@@ -222,6 +222,11 @@ run_core_links() {
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done
 
+  if [[ -d "$repo/config/omp/extensions/z0-continuity" ]]; then
+    mkdir -p "$HOME/.omp/agent/extensions"
+    onboard_link "$repo/config/omp/extensions/z0-continuity" "$HOME/.omp/agent/extensions/z0-continuity"
+  fi
+
   chmod +x "$repo"/scripts/* 2>/dev/null || true
   onboard_mark_module "core-links" "done"
   printf 'core-links complete.\n'
