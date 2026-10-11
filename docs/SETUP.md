@@ -140,6 +140,22 @@ applies when normal Chrome starts before the Netflix shortcut. A browser already
 running must exit normally and start again to pick up a changed startup flag;
 opening another app window alone does not change its process flags.
 
+Netflix app windows share Google Chrome's PulseAudio identity. The Google Chrome
+rule in `config/pipewire/pipewire-pulse.conf.d/20-browser-bypass-brir.conf`
+routes them to `effect_input.headphone_dsp_movie`, the same Movie DSP configured
+for Plex, then to the Topping DX5. This also affects other Google Chrome audio;
+Chromium, Firefox, and Brave retain their existing Aural Evolution route.
+Movie DSP applies headphone EQ and a limiter without Room's BRIR, loudness, or
+multiband-compressor stages. The desktop's default sink is independent of this
+per-application rule.
+
+Application volume is separate from sink volume. A Chrome stream at 0% remains
+silent even when the DAC is at 100%. Inspect the current stream with
+`pactl --format=json list sink-inputs`; stream IDs change when playback resumes.
+WirePlumber saves application volume. Changing the browser routing rule requires
+a `pipewire-pulse` service restart, which briefly interrupts PulseAudio clients;
+moving one live stream alone does not change the rule for subsequent streams.
+
 ## Noctalia group colors
 
 `config/noctalia/user-templates.toml` registers the native
