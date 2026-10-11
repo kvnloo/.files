@@ -33,7 +33,7 @@ hl.config({
   decoration = { rounding=12, active_opacity=1.0, inactive_opacity=0.95, shadow={enabled=true, range=12, offset="-12 -12", render_power=3, color="rgba(00000080)"}, blur={enabled=true,size=6,passes=2,new_optimizations=true,ignore_opacity=true,noise=0.015,vibrancy=0.22,contrast=0.9,brightness=0.85} },
   animations={enabled=true},
   dwindle={preserve_split=true,force_split=2}, master={new_status="master"},
-  gestures={workspace_swipe_distance=300,workspace_swipe_create_new=true},
+  gestures={workspace_swipe_distance=300,workspace_swipe_invert=true,workspace_swipe_create_new=false},
   misc={force_default_wallpaper=0,disable_hyprland_logo=true,disable_splash_rendering=true},
 })
 
@@ -42,7 +42,19 @@ if os.getenv("HYPR_LUA_TEST_MODE") == "1" then
   hl.config({xwayland={enabled=false}})
 end
 
-hl.device({name="trackpad", accel_profile="adaptive"})
+hl.device({
+  name="apple-inc.-magic-trackpad", accel_profile="adaptive",
+  natural_scroll=true, scroll_method="2fg", clickfinger_behavior=true,
+  tap_to_click=true, tap_button_map="lrm", tap_and_drag=true,
+  drag_lock=0, drag_3fg=0,
+})
+-- Native gestures: leave two-finger scroll/pinch to applications.
+hl.gesture({fingers=3, direction="horizontal", action="workspace"})
+hl.gesture({fingers=3, direction="up", action=function() hl.dispatch(hl.dsp.exec_raw("exec", "rofi -show window")) end})
+hl.gesture({fingers=4, direction="left", action=function() hl.dispatch(hl.dsp.exec_raw("changegroupactive", "b")) end})
+hl.gesture({fingers=4, direction="right", action=function() hl.dispatch(hl.dsp.exec_raw("changegroupactive", "f")) end})
+hl.gesture({fingers=4, direction="up", action=function() hl.dispatch(hl.dsp.exec_raw("exec", "qs -c noctalia-shell ipc --any-display call launcher toggle")) end})
+hl.gesture({fingers=4, direction="down", action="special", workspace_name="scratch_term"})
 hl.device({name="pen-passthrough", output="PHONE"})
 hl.device({name="touch-passthrough", output="PHONE"})
 
@@ -56,7 +68,7 @@ hl.animation({leaf="border",enabled=true,speed=10,bezier="default"})
 hl.animation({leaf="borderangle",enabled=true,speed=40,bezier="default",style="loop"})
 hl.animation({leaf="fade",enabled=true,speed=5,bezier="smoothIn"})
 hl.animation({leaf="fadeDim",enabled=true,speed=5,bezier="smoothIn"})
-hl.animation({leaf="workspaces",enabled=true,speed=6,bezier="overshot",style="slidevert"})
+hl.animation({leaf="workspaces",enabled=true,speed=6,bezier="overshot",style="slide"})
 
 -- Pywal ownership: read its JSON palette directly, never source hyprlang.
 local colors = home .. "/.cache/wal/colors.json"

@@ -116,6 +116,40 @@ cd ~/workspace/.files
 ./scripts/onboard status --json
 ```
 
+## Apple Magic Trackpad
+
+Hyprland matches the connected device as `apple-inc.-magic-trackpad`.
+The legacy config, canonical mirror, and Lua candidate use adaptive pointer
+acceleration for this device; the wired mouse keeps the global flat profile.
+Natural two-finger scrolling, tap-to-click, clickfinger buttons, and tap-drag
+are enabled. Three-finger drag is disabled to preserve workspace swipes.
+
+| Gesture | Action |
+| --- | --- |
+| Two-finger scroll / pinch | Application-native scrolling / zoom |
+| Three-finger horizontal swipe | Finger-following workspace switch |
+| Three-finger up | Rofi window picker |
+| Four-finger left / right | Previous / next window in the active group |
+| Four-finger up | Noctalia launcher |
+| Four-finger down | Toggle `scratch_term` |
+
+Workspace motion is horizontal; swipes do not create empty workspaces.
+This uses Hyprland's native gestures, not a separate input daemon or raw-input
+logging. Window picking is not a macOS Mission Control thumbnail overview.
+
+Workspace Copilot remains advisory: prepare without focus changes, surface
+rarely, commit only by explicit invocation (`Super+Space`). Predictive navigation
+is not bound to a swipe. The existing Workspace Atlas capture switches
+workspaces and is deliberately not used as the window-picker gesture.
+
+Validate with `Hyprland --verify-config -c config/hyprland/hyprland.legacy.conf`
+and the equivalent `hyprland.conf` / `hyprland.lua` paths. Reload the active
+legacy config with `hyprctl reload`; do not activate or restart into Lua as part
+of gesture setup. Lua uses underscore device fields, callback gesture actions,
+and `workspace_name` with Hyprland 0.56.2.
+Physical swipe direction, cancellation, app zoom, and click feel still require
+a trackpad check; parsing and reload receipts do not prove those interactions.
+
 ## Legacy entry points
 
 - [`script.sh`](../script.sh) now forwards to `./install` (old macOS/Ubuntu menu is retired).
