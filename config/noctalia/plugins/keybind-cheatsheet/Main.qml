@@ -1161,6 +1161,7 @@ Item {
     var currentCategory = null;
     var hasCategories = false; // Track if we found any category headers
     var skippedNoDesc = 0;
+    var currentSubmap = "";
 
     var modVar = pluginApi?.pluginSettings?.modKeyVariable || "$mod";
     var modVarUpper = modVar.toUpperCase();
@@ -1168,6 +1169,12 @@ Item {
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
+      var submapMatch = line.match(/^submap\s*=\s*([^#]+)/);
+      if (submapMatch) {
+        var name = submapMatch[1].trim();
+        currentSubmap = name === "reset" ? "" : name;
+        continue;
+      }
 
       // Category header: # 1. Category Name
       if (line.startsWith("#") && line.match(/#\s*\d+\./)) {
@@ -1241,6 +1248,7 @@ Item {
               "desc": description,
               "_verb": verb,
               "_param": param,
+              "_submap": currentSubmap,
               "_mods": mods.join("+"),
               "_mainKey": rawKey
             });

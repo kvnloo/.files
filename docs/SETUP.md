@@ -196,8 +196,10 @@ require a compositor or shell restart.
 
 `config/noctalia/plugins/keybind-cheatsheet` vendors upstream 3.7.4 from
 [`noctalia-dev/legacy-v4-plugins` at `aa30139`](https://github.com/noctalia-dev/legacy-v4-plugins/commit/aa30139adf4691a284cd44ed5020ac631039efd9),
-with a narrow native Super press/hold/release integration. It replaces the
-custom three-file renderer; the upstream panel, search, and settings remain.
+with native Super press/hold/release integration and a refined presentation
+based on macOS CheatSheet's grouped-column layout. The upstream plugin
+structure, search, and settings remain; this is not app-specific macOS menu
+discovery.
 
 The existing `down-left`, `down-right`, `show-left`, and `show-right` global
 bindings are retained. A hold-opened panel is nonexclusive and closes after
@@ -205,10 +207,24 @@ the last held Super key is released; a manually opened panel keeps search
 focus and survives that release. Late screen-detection callbacks cannot
 reopen a panel after release. `Super+/` keeps the existing manual launcher.
 
+`Presentation.js` groups desktop actions and supplies readable labels while
+retaining raw commands for search and tooltips. Unknown commands stay visible.
+The conf parser records submap context so mode-only keys are not presented as
+global shortcuts. Noto Sans body text, standard modifier/arrow glyphs, and
+existing Noctalia icons avoid a dependency on a particular Nerd Font family.
+Columns fit the available screen width without horizontal scrolling, and
+search results rebalance and reduce the panel height.
+
+Native Sway checks covered 1440×1000 and 900×800 outputs, all 128 current
+bindings, raw-command search, held-panel keyboard pass-through, and both-key
+release behavior. Reference: [Media Atelier CheatSheet screenshot and review](https://www.macstories.net/mac/cheatsheet-quickly-lists-an-apps-keyboard-shortcuts/).
+
 Run `scripts/install-noctalia-audio-overlay.py` after updating the shell
 overlay: it forwards the plugin's keyboard policy and clears stale keyboard
 initialization. Reload Noctalia to activate both changes together; no
 Hyprland reload or Lua configuration migration is required.
+Refresh the cached binding metadata after upgrading the parser with
+`qs -c noctalia-shell ipc --any-display call plugin:keybind-cheatsheet refresh`.
 
 The real upstream parser rendered the legacy configuration, and native
 keyboard/focus and release-state checks passed on owned headless Sway.

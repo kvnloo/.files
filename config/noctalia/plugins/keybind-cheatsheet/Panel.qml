@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Services.UI
 import qs.Services.Compositor
 import qs.Widgets
+import "Presentation.js" as Presentation
 
 Item {
   id: root
@@ -22,6 +23,18 @@ Item {
   property int settingsHeight: cfg.windowHeight ?? defaults.windowHeight ?? 0
   property bool autoHeight: cfg.autoHeight ?? defaults.autoHeight ?? true
   property int columnCount: cfg.columnCount ?? defaults.columnCount ?? 3
+  readonly property real minimumColumnWidth: 280 * Style.uiScaleRatio
+  readonly property real availableWidth: panelOpenScreen ? Math.max(1, panelOpenScreen.width - 40 * Style.uiScaleRatio) : settingsWidth
+  readonly property int effectiveColumnCount: {
+    var requested = Math.max(1, Math.min(4, columnCount));
+    var columnGap = 14 * Style.uiScaleRatio;
+    var horizontalPadding = 36 * Style.uiScaleRatio;
+    var fitCount = Math.floor((Math.min(settingsWidth, availableWidth) - horizontalPadding + columnGap) /
+                              (minimumColumnWidth + columnGap));
+    if (requested === 1 || fitCount < 2)
+      return 1;
+    return Math.max(2, Math.min(requested, fitCount, 4));
+  }
 
   // Bug 4 fix: re-evaluate rawCategories whenever Main.qml increments cheatsheetDataVersion
   property int _dataVersion: pluginApi?.mainInstance?.cheatsheetDataVersion ?? 0
@@ -47,7 +60,7 @@ Item {
   }
 
   Component.onCompleted: {
-    categories = processCategories(rawCategories);
+    categories = processCategories(Presentation.prepareCategories(rawCategories));
     // Start timeout timer if we have no data yet
     if (root.isLoading) {
       loadingTimeoutTimer.start();
@@ -76,7 +89,7 @@ Item {
   }
 
   onRawCategoriesChanged: {
-    categories = processCategories(rawCategories);
+    categories = processCategories(Presentation.prepareCategories(rawCategories));
     updateColumnItems();
   }
 
@@ -86,6 +99,15 @@ Item {
   }
 
   onColumnCountChanged: {
+    updateColumnItems();
+    contentPreferredHeight = calculateDynamicHeight();
+  }
+  onSettingsWidthChanged: {
+    updateColumnItems();
+    contentPreferredHeight = calculateDynamicHeight();
+  }
+
+  onEffectiveColumnCountChanged: {
     updateColumnItems();
     contentPreferredHeight = calculateDynamicHeight();
   }
@@ -127,7 +149,7 @@ Item {
     columnItems = []; // Clear old items explicitly
     var assignments = distributeCategories();
     var items = [];
-    for (var i = 0; i < columnCount; i++) {
+    for (var i = 0; i < effectiveColumnCount; i++) {
       items.push(buildColumnItems(assignments[i] || []));
     }
     columnItems = items;
@@ -138,8 +160,12 @@ Item {
   property real maxScreenHeight: panelOpenScreen ? panelOpenScreen.height * 0.9 : 800
 
   property string searchText: ""
+  onSearchTextChanged: {
+    updateColumnItems();
+    contentPreferredHeight = calculateDynamicHeight();
+  }
 
-  property real contentPreferredWidth: settingsWidth
+  property real contentPreferredWidth: Math.min(settingsWidth, availableWidth)
   property real contentPreferredHeight: calculateDynamicHeight()
   readonly property var geometryPlaceholder: panelContainer
   readonly property bool allowAttach: false
@@ -147,24 +173,22 @@ Item {
   readonly property bool panelAnchorVerticalCenter: true
   anchors.fill: parent
 
-  // Key badge colors — read from settings with manifest defaults as fallback
-  readonly property color keyColorAlt:     cfg.keyColorAlt     || defaults.keyColorAlt     || "#FF6B6B"
-  readonly property color keyColorXF86:    cfg.keyColorXF86    || defaults.keyColorXF86    || "#4ECDC4"
-  readonly property color keyColorPrint:   cfg.keyColorPrint   || defaults.keyColorPrint   || "#95E1D3"
-  readonly property color keyColorNumeric: cfg.keyColorNumeric || defaults.keyColorNumeric || "#A8DADC"
-  readonly property color keyColorMouse:   cfg.keyColorMouse   || defaults.keyColorMouse   || "#F38181"
-  // Empty string = use theme color (mPrimary/mSecondary/mTertiary)
+  // Explicit key colors remain available as text tints; defaults use the theme.
+  readonly property string keyColorAltOverride: cfg.keyColorAlt ?? ""
+  readonly property string keyColorXF86Override: cfg.keyColorXF86 ?? ""
+  readonly property string keyColorPrintOverride: cfg.keyColorPrint ?? ""
+  readonly property string keyColorNumericOverride: cfg.keyColorNumeric ?? ""
+  readonly property string keyColorMouseOverride: cfg.keyColorMouse ?? ""
   readonly property string keyColorSuperOverride: cfg.keyColorSuper ?? defaults.keyColorSuper ?? ""
   readonly property string keyColorCtrlOverride:  cfg.keyColorCtrl  ?? defaults.keyColorCtrl  ?? ""
   readonly property string keyColorShiftOverride: cfg.keyColorShift ?? defaults.keyColorShift ?? ""
-  readonly property color keyColorDefault: cfg.keyColorDefault || defaults.keyColorDefault || "#6C757D"
-  readonly property color keyLabelColor:   cfg.keyLabelColor   || defaults.keyLabelColor   || "#FFFFFF"
-  // Empty string = theme-aware fallback (Color.mOnSurface). Any non-empty
-  // value is treated as an explicit user override.
+  readonly property string keyColorDefaultOverride: cfg.keyColorDefault ?? ""
+  readonly property string keyLabelColorOverride: cfg.keyLabelColor ?? ""
+  // Empty string = theme-aware fallback (Color.mOnSurface).
   readonly property string descriptionColorOverride: cfg.descriptionTextColor || defaults.descriptionTextColor || ""
   readonly property color descriptionTextColor: descriptionColorOverride !== "" ? descriptionColorOverride : Color.mOnSurface
 
-  // Per-category text color overrides (empty = fall back to keyLabelColor)
+  // Per-key text colors; empty uses the global label tint or the key tint.
   readonly property string keyTextSuperOverride:   cfg.keyTextSuper   ?? defaults.keyTextSuper   ?? ""
   readonly property string keyTextCtrlOverride:    cfg.keyTextCtrl    ?? defaults.keyTextCtrl    ?? ""
   readonly property string keyTextShiftOverride:   cfg.keyTextShift   ?? defaults.keyTextShift   ?? ""
@@ -175,10 +199,8 @@ Item {
   readonly property string keyTextMouseOverride:   cfg.keyTextMouse   ?? defaults.keyTextMouse   ?? ""
   readonly property string keyTextDefaultOverride: cfg.keyTextDefault ?? defaults.keyTextDefault ?? ""
 
-  // The generic X11 mods (Mod2/Mod3/Mod5) are first-class, customizable keys:
-  // background colour, text colour, and a display-label override that renames
-  // them to something meaningful (e.g. Mod3 -> "Hyper" for caps:hyper). Empty
-  // colour = fall back to the default key colour; empty label = raw mod name.
+  // Generic X11 modifiers also support text color and display-label overrides.
+  // Empty color uses the subdued theme treatment; empty label keeps the raw token.
   readonly property string keyColorMod2Override: cfg.keyColorMod2 ?? defaults.keyColorMod2 ?? ""
   readonly property string keyColorMod3Override: cfg.keyColorMod3 ?? defaults.keyColorMod3 ?? ""
   readonly property string keyColorMod5Override: cfg.keyColorMod5 ?? defaults.keyColorMod5 ?? ""
@@ -197,41 +219,30 @@ Item {
   property bool isLoading: rawCategories.length === 0
 
   function calculateDynamicHeight() {
-    // If auto height is disabled, use manual height (but still respect screen limit)
-    if (!autoHeight && settingsHeight > 0) {
+    if (!autoHeight && settingsHeight > 0)
       return Math.min(settingsHeight, maxScreenHeight);
-    }
 
-    if (categories.length === 0) return Math.min(400, maxScreenHeight);
+    var scale = Style.uiScaleRatio;
+    if (categories.length === 0)
+      return Math.min(400 * scale, maxScreenHeight);
 
     var assignments = distributeCategories();
     var maxColumnHeight = 0;
-
-    for (var col = 0; col < columnCount; col++) {
+    for (var col = 0; col < effectiveColumnCount; col++) {
       var colHeight = 0;
-      var catIndices = assignments[col] || [];
-
-      for (var i = 0; i < catIndices.length; i++) {
-        var catIndex = catIndices[i];
-        if (catIndex >= categories.length) continue;
-
-        var cat = categories[catIndex];
-        colHeight += 26; // Header
-        colHeight += cat.binds.length * 20; // Binds
-        if (i < catIndices.length - 1) {
-          colHeight += 6; // Spacer
-        }
+      var sections = assignments[col] || [];
+      for (var i = 0; i < sections.length; i++) {
+        var section = sections[i];
+        colHeight += 40 * scale; // Section heading and divider
+        colHeight += Math.max(0, section.weight - 2) * 24 * scale;
+        if (i < sections.length - 1)
+          colHeight += 10 * scale;
       }
-
-      if (colHeight > maxColumnHeight) {
-        maxColumnHeight = colHeight;
-      }
+      maxColumnHeight = Math.max(maxColumnHeight, colHeight);
     }
 
-    // header (45) + content + margins (16)
-    var totalHeight = 45 + maxColumnHeight + 16 + 15 + 15;
-    // Limit to 80% of screen height
-    return Math.max(300, Math.min(totalHeight, maxScreenHeight));
+    var totalHeight = 48 * scale + maxColumnHeight + 34 * scale;
+    return Math.max(300 * scale, Math.min(totalHeight, maxScreenHeight));
   }
 
   // ========== UI ==========
@@ -247,8 +258,8 @@ Item {
       anchors.top: parent.top
       anchors.left: parent.left
       anchors.right: parent.right
-      height: 45
-      color: Color.mSurfaceVariant
+      height: 48 * Style.uiScaleRatio
+      color: "transparent"
       radius: Style.radiusL
 
       RowLayout {
@@ -257,26 +268,28 @@ Item {
         anchors.rightMargin: Style.marginM
         spacing: Style.marginS
 
-        // Title section (centered)
         Item { Layout.fillWidth: true }
 
         NIcon {
           icon: "keyboard"
-          pointSize: Style.fontSizeM
-          color: Color.mPrimary
+          pointSize: 15 * Style.uiScaleRatio
+          color: Color.mOnSurfaceVariant
         }
         NText {
           text: CompositorService.isHyprland ? pluginApi?.tr("panel.title-hyprland") :
                 CompositorService.isNiri     ? pluginApi?.tr("panel.title-niri") :
                 CompositorService.isMango    ? pluginApi?.tr("panel.title-mango") :
                                                pluginApi?.tr("panel.title")
-          font.pointSize: Style.fontSizeM
-          font.weight: Font.Bold
-          color: Color.mPrimary
+          family: "Noto Sans"
+          pointSize: 11.25
+          font.weight: Font.DemiBold
+          color: Color.mOnSurface
         }
 
         NTextInput {
           id: searchInput
+          Layout.preferredWidth: Math.min(280 * Style.uiScaleRatio, Math.max(120 * Style.uiScaleRatio, root.settingsWidth * 0.22))
+          Layout.minimumWidth: 110 * Style.uiScaleRatio
           placeholderText: pluginApi?.tr("panel.search-placeholder")
           text: root.searchText
 
@@ -288,17 +301,21 @@ Item {
 
         Item { Layout.fillWidth: true }
 
-        // Refresh button
         NIconButton {
           icon: "refresh"
+          Layout.preferredWidth: 28 * Style.uiScaleRatio
+          Layout.preferredHeight: 28 * Style.uiScaleRatio
+          opacity: 0.72
           onClicked: {
             pluginApi?.mainInstance?.refresh();
           }
         }
 
-        // Settings button
         NIconButton {
           icon: "settings"
+          Layout.preferredWidth: 28 * Style.uiScaleRatio
+          Layout.preferredHeight: 28 * Style.uiScaleRatio
+          opacity: 0.72
           onClicked: {
             var screen = pluginApi?.panelOpenScreen;
             if (screen && pluginApi?.manifest) {
@@ -327,23 +344,26 @@ Item {
       anchors.left: parent.left
       anchors.right: parent.right
       clip: true
-      leftPadding: 35
-      rightPadding: -10
-      topPadding: 15
-      bottomPadding: 15
+      contentWidth: availableWidth
+      leftPadding: 18 * Style.uiScaleRatio
+      rightPadding: 18 * Style.uiScaleRatio
+      topPadding: 12 * Style.uiScaleRatio
+      bottomPadding: 14 * Style.uiScaleRatio
 
       RowLayout {
         id: mainLayout
-        width: scrollView.availableWidth - Style.marginS
-        spacing: Style.marginS
+        width: Math.max(0, scrollView.availableWidth)
+        spacing: 14 * Style.uiScaleRatio
 
         Repeater {
           model: root.columnItems.length
 
           ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: Math.max(0, (mainLayout.width - mainLayout.spacing * (root.effectiveColumnCount - 1)) / root.effectiveColumnCount)
             Layout.alignment: Qt.AlignTop
-            spacing: 2
+            spacing: 0
 
             property var colItems: root.columnItems[index] || []
 
@@ -351,11 +371,11 @@ Item {
               model: colItems
               Loader {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 sourceComponent: modelData.type === "header" ? headerComponent :
                                (modelData.type === "spacer" ? spacerComponent : bindComponent)
                 property var itemData: modelData
 
-                // Memory leak prevention: explicit cleanup
                 Component.onDestruction: {
                   active = false;
                   sourceComponent = undefined;
@@ -371,31 +391,46 @@ Item {
   Component {
     id: headerComponent
     ColumnLayout {
-      Layout.preferredWidth: 300
-      Layout.topMargin: Style.marginM
-      Layout.bottomMargin: 4
-      spacing: 0
+      Layout.fillWidth: true
+      Layout.minimumWidth: 0
+      Layout.topMargin: 13 * Style.uiScaleRatio
+      Layout.bottomMargin: 4 * Style.uiScaleRatio
+      spacing: 5 * Style.uiScaleRatio
 
-      Item { Layout.fillWidth: true; height: 1 }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: 6 * Style.uiScaleRatio
 
-      NText {
-        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-        x: parent.width - implicitWidth
-        text: itemData.title
-        font.pointSize: Style.fontSizeM
-        font.weight: Font.Bold
-        color: Color.mPrimary
+        NIcon {
+          icon: itemData.icon || "keyboard"
+          pointSize: 13 * Style.uiScaleRatio
+          color: Color.mOnSurfaceVariant
+        }
+
+        NText {
+          Layout.fillWidth: true
+          text: itemData.title
+          family: "Noto Sans"
+          pointSize: 9
+          font.weight: Font.DemiBold
+          color: Color.mOnSurfaceVariant
+          elide: Text.ElideRight
+        }
       }
 
-      Item { Layout.fillWidth: true; height: 1 }
+      Rectangle {
+        Layout.fillWidth: true
+        height: 1
+        color: Color.mOnSurfaceVariant
+        opacity: 0.2
+      }
     }
   }
-
 
   Component {
     id: spacerComponent
     Item {
-      height: 10
+      height: 10 * Style.uiScaleRatio
       Layout.fillWidth: true
     }
   }
@@ -404,53 +439,63 @@ Item {
     id: bindComponent
     RowLayout {
       id: bindRow
-      spacing: Style.marginS
-      height: 22
-      Layout.bottomMargin: 1
+      Layout.fillWidth: true
+      Layout.minimumWidth: 0
+      Layout.minimumHeight: 24 * Style.uiScaleRatio
+      Layout.preferredHeight: Math.max(24 * Style.uiScaleRatio,
+                                       keyFlow.implicitHeight + 2 * Style.uiScaleRatio,
+                                       bindRow.editing ? Style.baseWidgetSize : 0)
+      spacing: 5 * Style.uiScaleRatio
 
       property bool editing: false
 
       Flow {
-        Layout.preferredWidth: 220
+        id: keyFlow
+        Layout.preferredWidth: Math.min(190 * Style.uiScaleRatio,
+                                       Math.max(105 * Style.uiScaleRatio, parent.width * 0.44))
+        Layout.minimumWidth: 100 * Style.uiScaleRatio
         Layout.alignment: Qt.AlignVCenter
-        spacing: 3
+        spacing: 2 * Style.uiScaleRatio
+
         Repeater {
-          model: itemData.keys.split(" + ")
-          Rectangle {
-            width: keyText.implicitWidth + 10
-            height: 18
-            color: getKeyColor(modelData)
-            radius: 3
-            NText {
-              id: keyText
-              anchors.centerIn: parent
-              text: getKeyLabel(modelData)
-              font.pointSize: text.length > 12 ? 7 : 8
-              font.weight: Font.Bold
-              color: getKeyTextColor(modelData)
-            }
+          model: String(itemData.keys || "").split(" + ")
+          NText {
+            text: (index > 0 ? " + " : "") + root.formatKeyLabel(modelData)
+            family: "Noto Sans"
+            pointSize: 9.75
+            color: root.getKeyTextColor(modelData)
           }
         }
       }
 
-      // Described bind: plain text (unchanged behaviour)
       NText {
         visible: !itemData.undescribed
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         Layout.alignment: Qt.AlignVCenter
-        text: itemData.desc
-        font.pointSize: Style.fontSizeXS
+        text: itemData.desc || ""
+        family: "Noto Sans"
+        pointSize: 9.75
         color: root.descriptionTextColor
         elide: Text.ElideRight
+        wrapMode: Text.NoWrap
+        ToolTip.text: itemData.rawDesc || itemData.desc || ""
+        ToolTip.visible: descriptionHover.hovered && !!(itemData.rawDesc || itemData.desc)
+        ToolTip.delay: 350
+
+        HoverHandler {
+          id: descriptionHover
+        }
       }
 
-      // Undescribed bind: placeholder + add-description / hide actions
       NText {
         visible: itemData.undescribed && !bindRow.editing
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         Layout.alignment: Qt.AlignVCenter
         text: pluginApi?.tr("panel.no-description")
-        font.pointSize: Style.fontSizeXS
+        family: "Noto Sans"
+        pointSize: 9.75
         font.italic: true
         color: Color.mOnSurfaceVariant
         elide: Text.ElideRight
@@ -466,13 +511,16 @@ Item {
         id: descInput
         visible: itemData.undescribed && bindRow.editing
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         Layout.preferredHeight: Style.baseWidgetSize
         placeholderText: pluginApi?.tr("panel.add-description-placeholder")
       }
 
       NIconButton {
         visible: itemData.undescribed && bindRow.editing
-        Layout.preferredHeight: 18
+        Layout.preferredWidth: 20 * Style.uiScaleRatio
+        Layout.preferredHeight: 20 * Style.uiScaleRatio
+        opacity: 0.72
         icon: "check"
         tooltipText: pluginApi?.tr("panel.save-description")
         onClicked: {
@@ -483,7 +531,9 @@ Item {
 
       NIconButton {
         visible: itemData.undescribed && bindRow.editing
-        Layout.preferredHeight: 18
+        Layout.preferredWidth: 20 * Style.uiScaleRatio
+        Layout.preferredHeight: 20 * Style.uiScaleRatio
+        opacity: 0.72
         icon: "close"
         tooltipText: pluginApi?.tr("panel.cancel")
         onClicked: { bindRow.editing = false; }
@@ -491,7 +541,9 @@ Item {
 
       NIconButton {
         visible: itemData.undescribed && !bindRow.editing
-        Layout.preferredHeight: 18
+        Layout.preferredWidth: 20 * Style.uiScaleRatio
+        Layout.preferredHeight: 20 * Style.uiScaleRatio
+        opacity: 0.72
         icon: "edit"
         tooltipText: pluginApi?.tr("panel.add-description")
         onClicked: { bindRow.editing = true; descInput.text = ""; descInput.inputItem.forceActiveFocus(); }
@@ -499,7 +551,9 @@ Item {
 
       NIconButton {
         visible: itemData.undescribed && !bindRow.editing
-        Layout.preferredHeight: 18
+        Layout.preferredWidth: 20 * Style.uiScaleRatio
+        Layout.preferredHeight: 20 * Style.uiScaleRatio
+        opacity: 0.72
         icon: "eye-off"
         tooltipText: pluginApi?.tr("panel.hide-bind")
         onClicked: { root.hideBind(itemData.bindId); }
@@ -508,33 +562,33 @@ Item {
   }
 
   function getKeyColor(keyName) {
-    if (keyName === "Super") return root.keyColorSuperOverride || Color.mPrimary;
-    if (keyName === "Ctrl")  return root.keyColorCtrlOverride  || Color.mSecondary;
-    if (keyName === "Shift") return root.keyColorShiftOverride || Color.mTertiary;
-    if (keyName === "Alt") return root.keyColorAlt;
-    if (keyName.startsWith("XF86")) return root.keyColorXF86;
-    if (keyName === "PRINT" || keyName === "Print") return root.keyColorPrint;
-    if (keyName.match(/^[0-9]$/)) return root.keyColorNumeric;
-    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyColorMouse;
-    if (keyName === "Mod2") return root.keyColorMod2Override || root.keyColorDefault;
-    if (keyName === "Mod3") return root.keyColorMod3Override || root.keyColorDefault;
-    if (keyName === "Mod5") return root.keyColorMod5Override || root.keyColorDefault;
-    return root.keyColorDefault;
+    if (keyName === "Super") return root.keyColorSuperOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Ctrl") return root.keyColorCtrlOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Shift") return root.keyColorShiftOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Alt") return root.keyColorAltOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName.startsWith("XF86")) return root.keyColorXF86Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "PRINT" || keyName === "Print") return root.keyColorPrintOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName.match(/^[0-9]$/)) return root.keyColorNumericOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyColorMouseOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Mod2") return root.keyColorMod2Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Mod3") return root.keyColorMod3Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Mod5") return root.keyColorMod5Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    return root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
   }
 
   function getKeyTextColor(keyName) {
-    if (keyName === "Super") return root.keyTextSuperOverride || root.keyLabelColor;
-    if (keyName === "Ctrl")  return root.keyTextCtrlOverride  || root.keyLabelColor;
-    if (keyName === "Shift") return root.keyTextShiftOverride || root.keyLabelColor;
-    if (keyName === "Alt") return root.keyTextAltOverride || root.keyLabelColor;
-    if (keyName.startsWith("XF86")) return root.keyTextXF86Override || root.keyLabelColor;
-    if (keyName === "PRINT" || keyName === "Print") return root.keyTextPrintOverride || root.keyLabelColor;
-    if (keyName.match(/^[0-9]$/)) return root.keyTextNumericOverride || root.keyLabelColor;
-    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyTextMouseOverride || root.keyLabelColor;
-    if (keyName === "Mod2") return root.keyTextMod2Override || root.keyLabelColor;
-    if (keyName === "Mod3") return root.keyTextMod3Override || root.keyLabelColor;
-    if (keyName === "Mod5") return root.keyTextMod5Override || root.keyLabelColor;
-    return root.keyTextDefaultOverride || root.keyLabelColor;
+    if (keyName === "Super") return root.keyTextSuperOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Ctrl") return root.keyTextCtrlOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Shift") return root.keyTextShiftOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Alt") return root.keyTextAltOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName.startsWith("XF86")) return root.keyTextXF86Override || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "PRINT" || keyName === "Print") return root.keyTextPrintOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName.match(/^[0-9]$/)) return root.keyTextNumericOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyTextMouseOverride || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Mod2") return root.keyTextMod2Override || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Mod3") return root.keyTextMod3Override || root.keyLabelColorOverride || getKeyColor(keyName);
+    if (keyName === "Mod5") return root.keyTextMod5Override || root.keyLabelColorOverride || getKeyColor(keyName);
+    return root.keyTextDefaultOverride || root.keyLabelColorOverride || getKeyColor(keyName);
   }
 
   // Display label for a key token. Lets users rename the generic X11 modifier
@@ -545,6 +599,10 @@ Item {
     if (keyName === "Mod3" && root.keyLabelMod3Override) return root.keyLabelMod3Override;
     if (keyName === "Mod5" && root.keyLabelMod5Override) return root.keyLabelMod5Override;
     return keyName;
+  }
+  function formatKeyLabel(keyName) {
+    var label = Presentation.keyLabel(root.getKeyLabel(keyName));
+    return label === "Return" ? "↵" : label;
   }
 
   // ===== Bind override helpers (shared keyed map in plugin settings) =====
@@ -580,33 +638,56 @@ Item {
     pluginApi.mainInstance?.refresh();
   }
 
-  function buildColumnItems(categoryIndices) {
+  function bindingMatches(binding) {
+    var term = root.searchText.toLowerCase();
+    if (!term) return true;
+    var override = root.pluginApi?.pluginSettings?.bindOverrides?.[binding.bindId || ""];
+    return String(override?.desc || binding.desc || "").toLowerCase().includes(term) ||
+           String(binding.rawDesc || "").toLowerCase().includes(term) ||
+           String(binding.keys || "").toLowerCase().includes(term);
+  }
+
+  function buildColumnItems(sections) {
     var result = [];
-    if (!categoryIndices) return result;
+    if (!sections) return result;
 
-    for (var i = 0; i < categoryIndices.length; i++) {
-      var catIndex = categoryIndices[i];
-      if (catIndex >= categories.length) continue;
+    var bindOverrides = root.pluginApi?.pluginSettings?.bindOverrides || ({});
+    for (var i = 0; i < sections.length; i++) {
+      var section = sections[i];
+      var cat = categories[section.index];
+      if (!cat || !cat.binds) continue;
 
-      var cat = categories[catIndex];
-      result.push({ type: "header", title: cat.title });
-      var term = root.searchText.toLowerCase();
-      for (var j = 0; j < cat.binds.length; j++) {
+      var visibleBinds = [];
+      var end = Math.min(section.end, cat.binds.length);
+      for (var j = section.start; j < end; j++) {
         var bnd = cat.binds[j];
         var isUndesc = bnd.undescribed === true;
-        if (!term || (bnd.desc && bnd.desc.toLowerCase().indexOf(term) !== -1) || (isUndesc && bnd.keys.toLowerCase().indexOf(term) !== -1)) {
-          result.push({
+        var override = bindOverrides[bnd.bindId || ""];
+        var desc = override?.desc || bnd.desc || "";
+        var rawDesc = bnd.rawDesc || bnd.desc || "";
+        var keys = String(bnd.keys || "");
+        if (bindingMatches(bnd)) {
+          visibleBinds.push({
             type: "bind",
-            keys: bnd.keys,
-            desc: bnd.desc,
+            keys: keys,
+            desc: desc,
+            rawDesc: rawDesc,
             bindId: bnd.bindId || "",
             undescribed: isUndesc
           });
         }
       }
-      if (i < categoryIndices.length - 1) {
+      if (visibleBinds.length === 0) continue;
+
+      if (result.length > 0)
         result.push({ type: "spacer" });
-      }
+      result.push({
+        type: "header",
+        title: section.title,
+        icon: Presentation.categoryIcon(cat.title)
+      });
+      for (var k = 0; k < visibleBinds.length; k++)
+        result.push(visibleBinds[k]);
     }
     return result;
   }
@@ -664,18 +745,7 @@ Item {
   }
 
   function distributeCategories() {
-    var numCols = root.columnCount;
-
-    // Calculate weights for each category
-    var catData = [];
-    for (var i = 0; i < categories.length; i++) {
-      var weight = 1 + categories[i].binds.length + 1; // header + binds + spacer
-      catData.push({ index: i, weight: weight });
-    }
-
-    // Sort by weight descending (largest categories first for better distribution)
-    catData.sort(function(a, b) { return b.weight - a.weight; });
-
+    var numCols = root.effectiveColumnCount;
     var columns = [];
     var columnWeights = [];
     for (var c = 0; c < numCols; c++) {
@@ -683,23 +753,55 @@ Item {
       columnWeights.push(0);
     }
 
-    // Assign each category to the column with smallest current weight
-    for (var i = 0; i < catData.length; i++) {
+    var sections = [];
+    var order = 0;
+    for (var i = 0; i < categories.length; i++) {
+      var cat = categories[i];
+      var bindCount = cat.binds ? cat.binds.length : 0;
+      var splitThreshold = Math.max(32, numCols * 8);
+      var sliceCount = 1;
+      if (bindCount > splitThreshold) {
+        var slicesPerColumn = Math.max(1, Math.ceil(bindCount / (numCols * 24)));
+        sliceCount = numCols * slicesPerColumn;
+      }
+      var sliceSize = bindCount > 0 ? Math.ceil(bindCount / sliceCount) : 1;
+
+      for (var start = 0; start < Math.max(bindCount, 1); start += sliceSize) {
+        var end = Math.min(bindCount, start + sliceSize);
+        var matchingCount = 0;
+        for (var matchIndex = start; matchIndex < end; matchIndex++)
+          if (bindingMatches(cat.binds[matchIndex])) matchingCount++;
+        if (matchingCount === 0) continue;
+        sections.push({
+          index: i,
+          start: start,
+          end: end,
+          title: cat.title + (start > 0 ? " (continued)" : ""),
+          weight: matchingCount + 2,
+          order: order++
+        });
+      }
+    }
+
+    sections.sort(function(a, b) {
+      return b.weight === a.weight ? a.order - b.order : b.weight - a.weight;
+    });
+
+    for (var i = 0; i < sections.length; i++) {
       var minCol = 0;
       for (var c = 1; c < numCols; c++) {
-        if (columnWeights[c] < columnWeights[minCol]) {
+        if (columnWeights[c] < columnWeights[minCol])
           minCol = c;
-        }
       }
-      columns[minCol].push(catData[i].index);
-      columnWeights[minCol] += catData[i].weight;
+      columns[minCol].push(sections[i]);
+      columnWeights[minCol] += sections[i].weight;
     }
 
-    // Sort categories within each column by original order for consistent display
     for (var c = 0; c < numCols; c++) {
-      columns[c].sort(function(a, b) { return a - b; });
+      columns[c].sort(function(a, b) {
+        return a.index === b.index ? a.start - b.start : a.index - b.index;
+      });
     }
-
     return columns;
   }
 
