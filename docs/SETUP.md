@@ -116,6 +116,17 @@ cd ~/workspace/.files
 ./scripts/onboard status --json
 ```
 
+## Netflix launcher
+
+`config/applications/netflix.desktop` adds **Netflix** to Noctalia and other
+desktop application launchers. The `core-links` onboarding module links it into
+`~/.local/share/applications/`.
+
+The entry opens Chrome in app mode with `--profile-directory=Default`, the
+existing main Chrome profile on this host. It reuses that profile's Netflix
+login instead of creating a separate browser profile. It does not add video
+upscaling or launch Chrome during installation.
+
 ## Apple Magic Trackpad
 
 Hyprland matches the connected device as `apple-inc.-magic-trackpad`.
