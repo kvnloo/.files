@@ -5,7 +5,7 @@ GenericName=Video Streaming
 Comment=Watch Netflix with the main Chrome profile
 Exec=/usr/bin/google-chrome-stable --profile-directory=Default --app=https://www.netflix.com/
 TryExec=/usr/bin/google-chrome-stable
-Icon=netflix
+Icon=/usr/share/icons/Papirus/48x48/apps/netflix.svg
 Terminal=false
 Categories=AudioVideo;Video;
 Keywords=netflix;movies;tv;streaming;

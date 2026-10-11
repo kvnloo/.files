@@ -145,9 +145,9 @@ run_core_links() {
 
   onboard_link "$repo/config/nvim" "$HOME/.config/nvim"
   if [[ -d "$HOME/.config/noctalia" && ! -L "$HOME/.config/noctalia" ]]; then
-    # Keep the live CachyOS/Noctalia directory (look/settings) and only
-    # share the tracked config.toml fragment.
+    # Keep the live CachyOS/Noctalia look/settings; share tracked theming inputs.
     onboard_link "$repo/config/noctalia/config.toml" "$HOME/.config/noctalia/config.toml"
+    onboard_link "$repo/config/noctalia/user-templates.toml" "$HOME/.config/noctalia/user-templates.toml"
   else
     onboard_link "$repo/config/noctalia" "$HOME/.config/noctalia"
   fi

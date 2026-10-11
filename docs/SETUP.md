@@ -126,6 +126,29 @@ The entry opens Chrome in app mode with `--profile-directory=Default`, the
 existing main Chrome profile on this host. It reuses that profile's Netflix
 login instead of creating a separate browser profile. It does not add video
 upscaling or launch Chrome during installation.
+The icon uses the installed Papirus SVG by absolute path so a different active
+icon theme cannot replace it with a generic application icon.
+
+## Noctalia group colors
+
+`config/noctalia/user-templates.toml` registers the native
+`hyprland-group-colors.conf` template. With **User theming** enabled, Noctalia
+renders the selected preset or wallpaper scheme into
+`~/.cache/noctalia/hyprland-group-colors.conf`. Its post-hook applies only the
+14 border and group-tab color settings through one `hyprctl --batch` call.
+It does not reload the compositor, change the selected scheme, or enable the
+built-in Hyprland template.
+
+Wallpaper-driven pywal updates retain those generated Noctalia colors while
+keeping terminal colors and the hyprglass tint wallpaper-driven. The
+`core-links` onboarding module also links the user-template registration when
+the live Noctalia directory is not a symlink.
+
+The live legacy compositor still sources its existing pywal cache. After a
+manual compositor reload, reapply the current scheme in Noctalia if stale
+colors return; changing that watched source would also activate unrelated
+pending compositor configuration. Ordinary Noctalia scheme changes do not
+require a compositor or shell restart.
 
 ## Apple Magic Trackpad
 
