@@ -157,6 +157,7 @@ run_core_links() {
   onboard_link "$repo/config/agent-deck/config.toml" "$HOME/.config/agent-deck/config.toml"
   onboard_link "$repo/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
   onboard_link "$repo/config/zed/settings.json" "$HOME/.config/zed/settings.json"
+  onboard_link "$repo/config/tern/settings.json" "$HOME/.config/tern/settings.json"
 
   # Searchable desktop actions for Noctalia/Rofi application launchers.
   if [[ -d "$repo/config/applications" ]]; then

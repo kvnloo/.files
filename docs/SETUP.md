@@ -116,6 +116,20 @@ cd ~/workspace/.files
 ./scripts/onboard status --json
 ```
 
+## Tern Carly
+
+`core-links` installs `config/tern/settings.json` at
+`~/.config/tern/settings.json`. Carly uses the concrete selector
+`openai-codex/gpt-6-luna`; this does not change OMP's global model roles.
+
+Tern 0.7.2 can pass its default `@smol` literally to OMP 18.8.9, which rejects
+that selector before RPC startup. The resulting suggestion to update OMP
+does not mean RPC is absent. RPC `get_state` succeeds with the concrete
+selector without sending a model prompt or starting the microphone.
+
+This setting repairs model selection, not proof of realtime voice: microphone
+capture, provider connection, listening, and speaking require separate checks.
+
 ## Netflix launcher
 
 `config/applications/netflix.desktop` adds **Netflix** to Noctalia and other

@@ -1,0 +1,11 @@
+{
+  "theme": "Dark",
+  "theme_dark": "dark-catppuccin",
+  "cursor": {
+    "trail": "comet"
+  },
+  "tabs": "Vertical",
+  "carly": {
+    "model": "openai-codex/gpt-6-luna"
+  }
+}
