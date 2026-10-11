@@ -192,6 +192,29 @@ colors return; changing that watched source would also activate unrelated
 pending compositor configuration. Ordinary Noctalia scheme changes do not
 require a compositor or shell restart.
 
+## Noctalia keybind cheatsheet
+
+`config/noctalia/plugins/keybind-cheatsheet` vendors upstream 3.7.4 from
+[`noctalia-dev/legacy-v4-plugins` at `aa30139`](https://github.com/noctalia-dev/legacy-v4-plugins/commit/aa30139adf4691a284cd44ed5020ac631039efd9),
+with a narrow native Super press/hold/release integration. It replaces the
+custom three-file renderer; the upstream panel, search, and settings remain.
+
+The existing `down-left`, `down-right`, `show-left`, and `show-right` global
+bindings are retained. A hold-opened panel is nonexclusive and closes after
+the last held Super key is released; a manually opened panel keeps search
+focus and survives that release. Late screen-detection callbacks cannot
+reopen a panel after release. `Super+/` keeps the existing manual launcher.
+
+Run `scripts/install-noctalia-audio-overlay.py` after updating the shell
+overlay: it forwards the plugin's keyboard policy and clears stale keyboard
+initialization. Reload Noctalia to activate both changes together; no
+Hyprland reload or Lua configuration migration is required.
+
+The real upstream parser rendered the legacy configuration, and native
+keyboard/focus and release-state checks passed on owned headless Sway.
+Hyprland's physical GlobalShortcut delivery and Caps firmware mapping are
+separate, unverified checks. Generated `settings.json` stays gitignored.
+
 ## Apple Magic Trackpad
 
 Hyprland matches the connected device as `apple-inc.-magic-trackpad`.
