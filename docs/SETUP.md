@@ -129,6 +129,17 @@ upscaling or launch Chrome during installation.
 The icon uses the installed Papirus SVG by absolute path so a different active
 icon theme cannot replace it with a generic application icon.
 
+On this NVIDIA/Wayland host, `config/chrome-flags.conf` includes
+`--disable-gpu-memory-buffer-video-frames`. Chrome 151.0.7922.71 with NVIDIA
+615.71.09 otherwise crashes while mapping a DMA-BUF video frame as Netflix
+initializes its home page (`Aw, Snap!`, error 4). This disables GPU-backed video
+frames, not general GPU rendering, the sandbox, DRM, or extensions.
+
+The standard Chrome launcher reads this shared flags file, so the setting also
+applies when normal Chrome starts before the Netflix shortcut. A browser already
+running must exit normally and start again to pick up a changed startup flag;
+opening another app window alone does not change its process flags.
+
 ## Noctalia group colors
 
 `config/noctalia/user-templates.toml` registers the native
