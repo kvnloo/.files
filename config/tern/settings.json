@@ -6,6 +6,6 @@
   },
   "tabs": "Vertical",
   "carly": {
-    "model": "openai-codex/gpt-6-luna"
+    "model": "@smol"
   }
 }
