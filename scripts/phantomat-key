@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Canvas-aware key for the legacy (hyprlang) config, the counterpart of
+# canvas_or() in config/hyprland/phantomat/phantomat.lua.
+#
+#   phantomat-key <overview|navigate|window|canvas> <arg...> -- <dispatcher> [args...]
+#
+# While a Phantomat canvas is open, runs the plugin dispatcher
+# spatialoverview:<name> with <arg...>; otherwise (canvas closed, plugin not
+# loaded, wrong build) runs the fallback dispatcher, i.e. the key's original
+# binding. Only talks to the compositor it was started from.
+set -uo pipefail
+
+plugin_dispatcher=${1:-}
+shift || true
+plugin_args=()
+while (($#)) && [[ $1 != -- ]]; do
+  plugin_args+=("$1")
+  shift
+done
+[[ ${1:-} == -- ]] && shift
+
+if [[ -z $plugin_dispatcher || ${#plugin_args[@]} -eq 0 || $# -eq 0 ]]; then
+  echo "usage: phantomat-key <overview|navigate|window|canvas> <arg...> -- <dispatcher> [args...]" >&2
+  exit 2
+fi
+
+# "canvas noop" succeeds only while a canvas is open (main.cpp, onCanvasDispatcher).
+if [[ $(hyprctl dispatch spatialoverview:canvas noop 2>/dev/null) == ok ]]; then
+  [[ ${plugin_args[*]} == noop ]] && exit 0
+  exec hyprctl dispatch "spatialoverview:$plugin_dispatcher" "${plugin_args[*]}" >/dev/null
+fi
+exec hyprctl dispatch "$@" >/dev/null
