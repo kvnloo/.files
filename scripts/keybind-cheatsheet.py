@@ -75,7 +75,7 @@ def tmux_binding(tokens: list[str]) -> tuple[str, str] | None:
     key = tokens[index]
     action = " ".join(tokens[index + 1 :])
     if table == "prefix":
-        shortcut = f"Ctrl-Space, {key}"
+        shortcut = f"Ctrl-B, {key}"
     else:
         shortcut = f"{table}: {key}"
     return shortcut, action
@@ -111,7 +111,7 @@ def tmux_bindings(path: Path) -> list[str]:
     fleet_key = re.search(r"set\s+-g\s+@agent-fleet-key\s+['\"]?([^'\"\s]+)", content)
     if fleet_key and fleet_key.group(1) != "none":
         rows.append(
-            f"{'tmux':<20} {f'Ctrl-Space, {fleet_key.group(1)}':<28} "
+            f"{'tmux':<20} {f'Ctrl-B, {fleet_key.group(1)}':<28} "
             "open multi-harness agent fleet dashboard"
         )
     return rows

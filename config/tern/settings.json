@@ -5,6 +5,8 @@
     "trail": "comet"
   },
   "tabs": "Vertical",
+  "keymap": "tmux",
+  "keymap_prefix": "ctrl+b",
   "carly": {
     "model": "@smol"
   }

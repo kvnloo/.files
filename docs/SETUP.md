@@ -123,6 +123,9 @@ cd ~/workspace/.files
 assignment is `openai-codex/gpt-6-luna`. Change model roles through OMP's
 protected configuration interface, not a separate hardcoded Carly model.
 
+Both tmux and Tern's tmux preset use **Ctrl+B** as the prefix. tmux has no
+secondary prefix. Ctrl+Space is not a prefix in either application.
+
 Tern manages its own OMP at `~/.local/share/tern/omp/bin/omp`; updating the Bun
 installation alone does not establish which runtime Carly launches. The
 Tern-managed OMP 18.9.2 successfully resolves `--model @smol` to GPT-6 Luna and
