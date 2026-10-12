@@ -162,6 +162,23 @@ protected configuration interface, not a separate hardcoded Carly model.
 Both tmux and Tern's tmux preset use **Ctrl+B** as the prefix. tmux has no
 secondary prefix. Ctrl+Space is not a prefix in either application.
 
+Tern keeps its built-in tmux preset and adds the navigation overrides from
+`config/.tmux.conf`. Press and release **Ctrl+B**, then press the second key:
+
+| Second key | Tern action |
+| --- | --- |
+| `h` / `j` / `k` / `l` | Focus left / down / up / right |
+| `Shift+h` / `Shift+j` / `Shift+k` / `Shift+l` | Resize in that direction |
+| `-` / `\|` | Split down / right |
+| `Tab` | Return to the previous tab |
+| `r` | Reload Tern settings |
+
+`Ctrl+B, l` now means focus right. Previous-tab access remains available through
+`Ctrl+B, Tab` and Tern's `Ctrl+Shift+Tab`. Stock preset arrows, `%`, `"`, `c`,
+`n`, `p`, `o`, `z`, and `x` remain. This is a Tern keymap, not a tmux command
+interpreter: tmux copy-mode tables, server management, plugins, and shell popups
+do not automatically transfer. The cheatsheet applies these user overrides.
+
 Tern manages its own OMP at `~/.local/share/tern/omp/bin/omp`; updating the Bun
 installation alone does not establish which runtime Carly launches. The
 Tern-managed OMP 18.9.2 successfully resolves `--model @smol` to GPT-6 Luna and

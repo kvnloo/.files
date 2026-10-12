@@ -105,6 +105,10 @@ Multi-horizon labels (500ms / 2s / 10s / 60s): if nothing relevant happens,
 `actual_family=noop`. Canonical receipt `flow_prediction.v1` dual-writes to
 `~/.z0int/receipts/flow_predictions.jsonl`.
 
+The next-context transition prior uses one `noop` outcome per prediction at the
+60s horizon. Shorter-horizon labels remain available for horizon metrics but
+are not counted as independent stay observations.
+
 Invariant: **never steal focus**. Never auto-run consequential actions.
 Correct prediction ≠ useful intervention (keyboard-fast → silence).
 

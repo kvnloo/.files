@@ -43,6 +43,9 @@ OPERATOR_FAMILIES = (
 # Censored horizons: label noop if no relevant action within window.
 HORIZONS_MS = (500, 2000, 10000, 60000)
 
+# Model one prediction at the longest censored horizon. Shorter-horizon
+# outcomes are correlated calibration labels, not independent stay evidence.
+PREDICTION_HORIZON_MS = max(HORIZONS_MS)
 CONTEXT_TRIGGER_KINDS = frozenset(
     {
         "activewindow",
@@ -201,6 +204,8 @@ def ensure_flow_schema(db: Any) -> None:
         );
         CREATE INDEX IF NOT EXISTS prediction_horizons_open
             ON prediction_horizons(closed_at, opened_at, horizon_ms);
+        CREATE INDEX IF NOT EXISTS prediction_horizons_model
+            ON prediction_horizons(horizon_ms, actual_family, opened_at, pred_id);
 
         CREATE TABLE IF NOT EXISTS next_action_surface (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -537,13 +542,15 @@ def predict_next_context_v0(
         family_for[nid][fam] += 1
         target_for[nid][row["action_target"] or after.get("app") or ""] += 1
 
-    # Horizon noop labels feed stay prior.
+    # Count one outcome per prediction. Mixing all censored horizons multiplies
+    # "stay" evidence because a single prediction may be noop at several short
+    # horizons before its eventual transition inside the 60s horizon.
     noop_n = db.execute(
         """SELECT COUNT(*) AS n FROM prediction_horizons h
            JOIN shadow_predictions p ON p.pred_id=h.pred_id
-           WHERE h.closed_at IS NOT NULL AND h.actual_family=?
+           WHERE h.closed_at IS NOT NULL AND h.actual_family=? AND h.horizon_ms=?
              AND p.context_id=? AND h.opened_at>=?""",
-        (NOOP_LABEL, cid, cutoff),
+        (NOOP_LABEL, PREDICTION_HORIZON_MS, cid, cutoff),
     ).fetchone()["n"]
     if noop_n:
         next_ids[cid] += int(noop_n)
@@ -2007,6 +2014,7 @@ def _contract() -> dict[str, Any]:
         "dismissal": "dont-remind-until-evidence-changes",
         "mode": "predict-prepare-surface-commit",
         "horizons_ms": list(HORIZONS_MS),
+        "prediction_horizon_ms": PREDICTION_HORIZON_MS,
         "receipt_schema": RECEIPT_SCHEMA,
     }
 
@@ -2553,6 +2561,7 @@ def shadow_stats(db: Any, *, limit_hours: float = 24.0) -> dict[str, Any]:
         "operator_schema": OPERATOR_SCHEMA,
         "operator_families": list(OPERATOR_FAMILIES),
         "horizons_ms": list(HORIZONS_MS),
+        "prediction_horizon_ms": PREDICTION_HORIZON_MS,
         "window_hours": limit_hours,
         "predictions": total,
         "matched": matched,
