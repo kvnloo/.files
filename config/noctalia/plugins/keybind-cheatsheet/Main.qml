@@ -33,38 +33,28 @@ Item {
   property int appShortcutGeneration: 0
   property var appShortcutLines: []
   property bool preserveAppContextWhileOpening: false
-  property bool leftHeld: false
-  property bool rightHeld: false
-  property bool holdVisible: false
+  property int superTapCount: 0
+  property string superTapSide: ""
+  property double superTapStartedAt: 0
   property bool manualVisible: false
-  property bool holdOpenedPanel: false
-  property bool holdOpenPending: false
-  property int holdGeneration: 0
-  property var holdPanelScreen: null
   property var currentPanelScreen: pluginApi?.panelOpenScreen ?? null
   readonly property bool exclusiveKeyboard: manualVisible
+  Timer {
+    id: superTapSequenceTimer
+    interval: 700
+    repeat: false
+    onTriggered: root.resetSuperTapSequence()
+  }
+
 
   onCurrentPanelScreenChanged: {
     preserveAppContextWhileOpening = false;
     if (!currentPanelScreen) {
       manualVisible = false;
-      holdOpenedPanel = false;
       Qt.callLater(() => root.updateActiveAppContext());
-      if (holdVisible) {
-        const generation = holdGeneration;
-        Qt.callLater(() => root.ensureHoldPanel(generation));
-      }
-    } else if (!holdVisible || currentPanelScreen !== holdPanelScreen) {
+    } else {
       manualVisible = true;
     }
-  }
-
-  function hasHeldSuper() {
-    return leftHeld || rightHeld;
-  }
-
-  function isSuperHeld(side) {
-    return side === "left" ? leftHeld : rightHeld;
   }
 
   function openManualPanel(screen) {
@@ -72,7 +62,7 @@ Item {
       return false;
 
     manualVisible = true;
-    if (currentPanelScreen || (holdVisible && holdOpenedPanel))
+    if (currentPanelScreen)
       return true;
 
     updateActiveAppContext();
@@ -89,12 +79,6 @@ Item {
 
   function closeManualPanel(screen) {
     manualVisible = false;
-    if (holdVisible) {
-      holdOpenedPanel = true;
-      if (!holdPanelScreen)
-        holdPanelScreen = screen || currentPanelScreen;
-      return true;
-    }
 
     const targetScreen = screen || currentPanelScreen;
     if (!pluginApi || !targetScreen)
@@ -106,60 +90,35 @@ Item {
     return manualVisible ? closeManualPanel(screen) : openManualPanel(screen);
   }
 
-  function ensureHoldPanel(generation) {
-    if (!pluginApi || generation !== holdGeneration || !holdVisible || !hasHeldSuper() || holdOpenPending)
-      return;
-
-    holdOpenPending = true;
-    pluginApi.withCurrentScreen(screen => {
-      if (generation !== root.holdGeneration || !root.holdVisible || !root.hasHeldSuper())
-        return;
-
-      root.holdOpenPending = false;
-      if (!screen)
-        return;
-
-      if (root.manualVisible || root.currentPanelScreen || root.holdOpenedPanel)
-        return;
-
-      root.holdPanelScreen = screen;
-      root.updateActiveAppContext();
-      root.preserveAppContextWhileOpening = true;
-      root.holdOpenedPanel = root.pluginApi.openPanel(screen);
-      if (!root.holdOpenedPanel || root.currentPanelScreen)
-        root.preserveAppContextWhileOpening = false;
-    });
+  function resetSuperTapSequence() {
+    superTapSequenceTimer.stop();
+    superTapCount = 0;
+    superTapSide = "";
+    superTapStartedAt = 0;
   }
 
-  function showHeldPanel(side) {
-    if (!isSuperHeld(side))
+  function recordSuperTap(side) {
+    const now = Date.now();
+    const elapsed = now - superTapStartedAt;
+    if (superTapCount === 0 ||
+        superTapSide !== side ||
+        elapsed < 0 ||
+        elapsed >= superTapSequenceTimer.interval) {
+      resetSuperTapSequence();
+      superTapSide = side;
+      superTapCount = 1;
+      superTapStartedAt = now;
+      superTapSequenceTimer.start();
       return;
-
-    if (!holdVisible) {
-      holdVisible = true;
-      ++holdGeneration;
     }
-    ensureHoldPanel(holdGeneration);
-  }
 
-  function releaseHeldKey(side) {
-    if (side === "left")
-      leftHeld = false;
-    else
-      rightHeld = false;
-
-    if (hasHeldSuper())
+    ++superTapCount;
+    if (superTapCount < 3)
       return;
 
-    const screen = holdPanelScreen;
-    const shouldClose = holdVisible && holdOpenedPanel && !manualVisible;
-    holdVisible = false;
-    ++holdGeneration;
-    holdOpenPending = false;
-    holdOpenedPanel = false;
-    holdPanelScreen = null;
-    if (shouldClose && pluginApi && screen)
-      pluginApi.closePanel(screen);
+    resetSuperTapSequence();
+    if (pluginApi)
+      pluginApi.withCurrentScreen(screen => root.toggleManualPanel(screen));
   }
 
 
@@ -2031,29 +1990,15 @@ Item {
     sourceComponent: Item {
       GlobalShortcut {
         appid: "keybind-cheatsheet"
-        name: "down-left"
-        description: "Track left Super without consuming it"
-        onPressed: root.leftHeld = true
-        onReleased: root.releaseHeldKey("left")
+        name: "tap-left"
+        description: "Toggle shortcuts with three left Super taps"
+        onReleased: root.recordSuperTap("left")
       }
       GlobalShortcut {
         appid: "keybind-cheatsheet"
-        name: "down-right"
-        description: "Track right Super without consuming it"
-        onPressed: root.rightHeld = true
-        onReleased: root.releaseHeldKey("right")
-      }
-      GlobalShortcut {
-        appid: "keybind-cheatsheet"
-        name: "show-left"
-        description: "Show shortcuts after holding left Super"
-        onPressed: root.showHeldPanel("left")
-      }
-      GlobalShortcut {
-        appid: "keybind-cheatsheet"
-        name: "show-right"
-        description: "Show shortcuts after holding right Super"
-        onPressed: root.showHeldPanel("right")
+        name: "tap-right"
+        description: "Toggle shortcuts with three right Super taps"
+        onReleased: root.recordSuperTap("right")
       }
     }
   }
@@ -2079,7 +2024,7 @@ Item {
     }
 
     function status(): string {
-      return (root.currentPanelScreen || root.holdVisible) ? "open" : "closed";
+      return (root.currentPanelScreen || root.manualVisible) ? "open" : "closed";
     }
 
 

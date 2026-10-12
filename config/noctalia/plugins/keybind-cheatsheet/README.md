@@ -47,9 +47,13 @@ bind = $mod, F1, exec, qs -c noctalia-shell ipc call plugin:keybind-cheatsheet t
 ```
 You can set your custom Super key variable (e.g. `$mainMod`) in the plugin settings.
 
-### Hold Super on Hyprland
+### Triple Super tap on Hyprland
 
-In this workspace, holding either Super key past Hyprland's long-press threshold opens the panel; releasing the last held Super key closes a hold-opened panel. The two keys are tracked independently, short taps do not open the panel, and ordinary Super+key chords remain non-consuming. With the configured `caps:super` mapping, Caps Lock follows the same behavior. This uses native Hyprland/Quickshell global shortcuts rather than a shell process for each key event.
+On Groot, keyd emits F13 for a bare left-Super tap and F14 for a bare
+right-Super tap; a Super+key chord emits neither sentinel. Hyprland routes
+these to the plugin's `tap-left` and `tap-right` GlobalShortcuts. Three
+completed same-side taps within 700 ms toggle the sticky panel. In Caps Insert,
+a bare Caps tap may share the left-Super trigger; in Normal, Caps emits Escape.
 
 **Niri:**
 ```kdl

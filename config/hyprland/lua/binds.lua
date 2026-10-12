@@ -8,6 +8,8 @@ hl.bind("SUPER + space", hl.dsp.exec_raw("exec", "qs -c noctalia-shell ipc --any
 hl.bind("SUPER + SHIFT + space", hl.dsp.exec_raw("exec", "rofi -show run"))
 hl.bind("SUPER + Tab", hl.dsp.exec_raw("exec", "rofi -show window"))
 hl.bind("SUPER + slash", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/keybind-cheatsheet.py"))
+hl.bind("F13", hl.dsp.exec_raw("global", "keybind-cheatsheet:tap-left"))
+hl.bind("F14", hl.dsp.exec_raw("global", "keybind-cheatsheet:tap-right"))
 hl.bind("SUPER + O", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/workspace-atlas.py"))
 hl.bind("SUPER + V", hl.dsp.exec_raw("exec", "cliphist list | rofi -dmenu | cliphist decode | wl-copy"))
 hl.bind("SUPER + F", hl.dsp.exec_raw("fullscreen", "0"))

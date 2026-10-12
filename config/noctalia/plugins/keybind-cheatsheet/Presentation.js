@@ -296,16 +296,16 @@ function classifyBinding(binding, rawDesc) {
   if (verb === "exec") return describeExec(binding, rawDesc);
 
   if (verb === "global") {
-    var globalAction = param.substring(param.lastIndexOf(":") + 1).toLowerCase();
-    var globalLabels = {
-      "down-left": "Notify shortcuts helper: left key down",
-      "down-right": "Notify shortcuts helper: right key down",
-      "show-left": "Show shortcuts on the left",
-      "show-right": "Show shortcuts on the right"
-    };
+    if (param === "keybind-cheatsheet:tap-left" || param === "keybind-cheatsheet:tap-right") {
+      return {
+        category: "Cheatsheet controls",
+        desc: "Triple-tap to toggle keyboard shortcuts",
+        keys: param.endsWith("tap-left") ? "Left Super ×3" : "Right Super ×3"
+      };
+    }
     return {
       category: "Cheatsheet controls",
-      desc: globalLabels[globalAction] || (param ? "Global action: " + param : readableFallback(rawDesc))
+      desc: param ? "Global action: " + param : readableFallback(rawDesc)
     };
   }
 
@@ -535,6 +535,8 @@ function prepareCategories(rawCategories, bindOverrides) {
         title = "Mode: " + String(sourceBind._submap).split(" · ")[0];
 
       var bind = copyFields(sourceBind);
+      if (presentation.keys)
+        bind.keys = presentation.keys;
       var preserveDescription = hasExplicitDescription(sourceBind, rawDesc);
       var overrideDescription = override && typeof override.desc === "string" ? override.desc : "";
       bind.rawDesc = rawDesc;

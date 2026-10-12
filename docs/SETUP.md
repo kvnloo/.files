@@ -252,16 +252,16 @@ require a compositor or shell restart.
 
 `config/noctalia/plugins/keybind-cheatsheet` vendors upstream 3.7.4 from
 [`noctalia-dev/legacy-v4-plugins` at `aa30139`](https://github.com/noctalia-dev/legacy-v4-plugins/commit/aa30139adf4691a284cd44ed5020ac631039efd9),
-with native Super press/hold/release integration and a refined presentation
+with a native same-side Super triple-tap trigger and a refined presentation
 based on macOS CheatSheet's grouped-column layout. The upstream plugin
 structure, search, and settings remain; this is not app-specific macOS menu
 discovery.
 
-The existing `down-left`, `down-right`, `show-left`, and `show-right` global
-bindings are retained. A hold-opened panel is nonexclusive and closes after
-the last held Super key is released; a manually opened panel keeps search
-focus and survives that release. Late screen-detection callbacks cannot
-reopen a panel after release. `Super+/` keeps the existing manual launcher.
+On Groot, keyd emits F13 for a bare left-Super tap and F14 for a bare
+right-Super tap; a Super+key chord emits neither sentinel. Hyprland routes
+these to the `tap-left` and `tap-right` GlobalShortcuts. Three completed taps
+from the same side within 700 ms toggle the sticky panel. `Super+/`, IPC, and
+the bar widget remain manual toggles.
 
 `Presentation.js` groups desktop actions and supplies readable labels while
 retaining raw commands for search and tooltips. Unknown commands stay visible.
@@ -281,23 +281,22 @@ remain searchable and available in tooltips. Standalone exits, custom reset
 descriptions, and overridden resets stay separate; cached bindings are not
 rewritten.
 
-Native Sway checks covered 1440×1000 and 900×800 outputs, all 128 current
-bindings represented in 118 rows, raw-command search, held-panel keyboard
-pass-through, and both-key release behavior. The complete sheet, including
-its mode sections, was visually inspected. Reference:
+Headless Sway checks covered 1440×1000 and 900×800 outputs, parser/search
+behavior, and the same-side triple-tap panel toggle. They do not exercise the
+physical keyd F13/F14 sentinels or Hyprland GlobalShortcut delivery. The
+complete sheet, including its mode sections, was visually inspected. Reference:
 [Media Atelier CheatSheet screenshot and review](https://www.macstories.net/mac/cheatsheet-quickly-lists-an-apps-keyboard-shortcuts/).
 
 Run `scripts/install-noctalia-audio-overlay.py` after updating the shell
 overlay: it forwards the plugin's keyboard policy and clears stale keyboard
-initialization. Reload Noctalia to activate both changes together; no
-Hyprland reload or Lua configuration migration is required.
+initialization. Run `hyprctl reload` to register F13/F14, then disable and
+re-enable the keybind-cheatsheet plugin in Noctalia Settings to register its
+new GlobalShortcut handlers. No Lua configuration migration is required.
 Refresh the cached binding metadata after upgrading the parser with
 `qs -c noctalia-shell ipc --any-display call plugin:keybind-cheatsheet refresh`.
 
-The real upstream parser rendered the legacy configuration, and native
-keyboard/focus and release-state checks passed on owned headless Sway.
-Hyprland's physical GlobalShortcut delivery and Caps firmware mapping are
-separate, unverified checks. Generated `settings.json` stays gitignored.
+The physical Wooting/Caps sentinel path and Hyprland GlobalShortcut delivery
+still require native validation. Generated `settings.json` remains gitignored.
 
 ## Apple Magic Trackpad
 
@@ -348,16 +347,16 @@ Insert. Enter Insert before using app sequences such as Tern's `Ctrl+B, h`.
 Explicit Super/Ctrl/Alt mappings retain their modifiers. Focus changes and
 mouse clicks do not change the mode.
 
-Caps is Super in Insert. In Normal, a tap emits Escape; holding for 200 ms or
+Caps is Super in Insert, so a bare Caps tap may share the left-Super
+cheatsheet trigger. In Normal, a tap emits Escape; holding for 200 ms or
 pressing another key activates Super. Caps+Enter therefore emits Super+Enter
-in either mode, invoking the existing explicit next-action commit. Physical
-Super is unchanged. No action is committed by a prediction alone.
+in either mode, invoking the existing explicit next-action commit.
 
 There is no catchall, Fn remap, or Wooting firmware edit. Unlisted keycodes
 pass through. A Fn-layer action that emits one of the blocked printable codes
 cannot be distinguished from that ordinary key in Normal. The physical Caps
-event, complete Fn profile, and held-Super cheatsheet still require a hardware
-check; no profile or HID input was captured during isolated verification.
+event, complete Fn profile, and Super/Caps tap-sentinel path still require a
+hardware check; no profile or HID input was captured during isolated verification.
 
 Hyprland's `caps:super` fallback stays unchanged for other keyboards. The
 Noctalia submap indicator observes Hyprland, not keyd; it does not show this
