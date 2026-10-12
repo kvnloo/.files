@@ -27,7 +27,7 @@ if os.getenv("HYPR_LUA_TEST_MODE") ~= "1" or os.getenv("HYPR_LUA_ISOLATED_MODE")
 end
 
 hl.config({
-  input = { kb_layout="us", follow_mouse=1, sensitivity=0, accel_profile="flat", touchpad={ natural_scroll=true } },
+  input = { kb_layout="us", kb_options="caps:super", follow_mouse=1, sensitivity=0, accel_profile="flat", touchpad={ natural_scroll=true } },
   general = { gaps_in=18, gaps_out=8, border_size=4, col={ active_border={colors={"rgba(75A4CDff)","rgba(BE78D1ff)"},angle=45}, inactive_border="rgba(2f343faa)" }, layout="dwindle", allow_tearing=false },
   group = { groupbar={ height=30, font_size=12, font_family="JetBrainsMono Nerd Font", font_weight_active=600, font_weight_inactive=450, gradients=true, blur=true, rounding=12, rounding_power=2, text_padding=10, indicator_gap=2, indicator_height=2, gaps_in=6, gaps_out=8, gradient_rounding=12, gradient_round_only_edges=true } },
   decoration = { rounding=12, active_opacity=1.0, inactive_opacity=0.95, shadow={enabled=true, range=12, offset="-12 -12", render_power=3, color="rgba(00000080)"}, blur={enabled=true,size=6,passes=2,new_optimizations=true,ignore_opacity=true,noise=0.015,vibrancy=0.22,contrast=0.9,brightness=0.85} },

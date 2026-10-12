@@ -321,7 +321,7 @@ This uses Hyprland's native gestures, not a separate input daemon or raw-input
 logging. Window picking is not a macOS Mission Control thumbnail overview.
 
 Workspace Copilot remains advisory: prepare without focus changes, surface
-rarely, commit only by explicit invocation (`Super+Space`). Predictive navigation
+rarely, commit only by explicit invocation (`Super+Enter`). Predictive navigation
 is not bound to a swipe. The existing Workspace Atlas capture switches
 workspaces and is deliberately not used as the window-picker gesture.
 
@@ -332,6 +332,53 @@ of gesture setup. Lua uses underscore device fields, callback gesture actions,
 and `workspace_name` with Hyprland 0.56.2.
 Physical swipe direction, cancellation, app zoom, and click feel still require
 a trackpad check; parsing and reload receipts do not prove those interactions.
+
+## Global desktop Normal/Insert modes
+
+`config/keyd/default.conf` provides an opt-in global mode for the Wooting
+main keyboard interface `31e3:1312:629432a5`. Auxiliary Wooting interfaces,
+other keyboards, mice, and trackpads are excluded.
+A fresh keyd start uses Insert. Physical Escape enters Normal (consuming that
+first Escape); plain `i` returns to Insert. Further Escapes in Normal reach the
+app. `Ctrl+Alt+Space` clears the mode and recovers to Insert.
+
+In Normal, bare `h/j/k/l` emit `Super+h/j/k/l`, using the existing Hyprland/
+Phantomat focus bindings. Other listed ANSI printable keys are blocked until
+Insert. Enter Insert before using app sequences such as Tern's `Ctrl+B, h`.
+Explicit Super/Ctrl/Alt mappings retain their modifiers. Focus changes and
+mouse clicks do not change the mode.
+
+Caps is Super in Insert. In Normal, a tap emits Escape; holding for 200 ms or
+pressing another key activates Super. Caps+Enter therefore emits Super+Enter
+in either mode, invoking the existing explicit next-action commit. Physical
+Super is unchanged. No action is committed by a prediction alone.
+
+There is no catchall, Fn remap, or Wooting firmware edit. Unlisted keycodes
+pass through. A Fn-layer action that emits one of the blocked printable codes
+cannot be distinguished from that ordinary key in Normal. The physical Caps
+event, complete Fn profile, and held-Super cheatsheet still require a hardware
+check; no profile or HID input was captured during isolated verification.
+
+Hyprland's `caps:super` fallback stays unchanged for other keyboards. The
+Noctalia submap indicator observes Hyprland, not keyd; it does not show this
+mode. Offline validation is `keyd check config/keyd/default.conf`. The native
+keyd 2.6.0 input-isolated engine also verified mode transitions, blocked typing,
+navigation, modifier retention, Caps tap/chords, recovery, and representative
+Fn output keycodes without opening an input device.
+
+Setup requires separate approval to intercept the Wooting:
+
+```sh
+scripts/setup-desktop-modal.sh install   # package/config only; no activation
+scripts/setup-desktop-modal.sh activate  # enable/restart only after approval
+scripts/setup-desktop-modal.sh disable   # stop interception and disable boot start
+```
+
+The installer preserves an existing `/etc/keyd/default.conf` in a unique
+`default.conf.backup.*` file and refuses other `.conf` files that could widen
+device scope. To restore an older setup, disable first, then restore that
+backup. Do not remove the keyd package if another setup needs it. Upstream's
+emergency `Backspace+Escape+Enter` chord terminates keyd.
 
 ## Legacy entry points
 
