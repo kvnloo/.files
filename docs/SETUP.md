@@ -116,6 +116,42 @@ cd ~/workspace/.files
 ./scripts/onboard status --json
 ```
 
+## Tern remote reconnection
+
+Groot uses Tern's system `tern-remote.service`, installed by Tern and enabled
+at boot. The phone connects as `kvn@0.taila30dc.ts.net`; incoming SSH to the
+phone uses its PRoot account, `root`, not `kvn`. Keep the existing host keys
+and access policy. Never replace a pin merely because a connection fails.
+
+Tern updates replace `~/.local/bin/tern`. A remote service still running the
+old executable can authenticate clients but fail to spawn its login process
+with `No such file or directory`. Existing connections can continue until
+the client restarts, which makes this look like a phone reconnection failure.
+
+Install the tracked update recovery after Tern's system service exists:
+
+```sh
+./scripts/setup-tern-remote-refresh.sh
+```
+
+The installer copies the helper and units into root-owned system paths.
+`tern-remote-refresh.timer` checks every 30 seconds, including after boot.
+The helper compares the running executable's device/inode with the installed
+binary. It validates a replacement with `--version` before restarting only
+the active remote service. Unchanged binaries and intentionally stopped
+services remain untouched. It requires `KillMode=process`, so session daemons
+and shells survive the transport restart. Remote clients may briefly reconnect.
+The timer does not depend on available inotify watches.
+
+```sh
+systemctl status tern-remote.service tern-remote-refresh.timer
+journalctl -u tern-remote.service -u tern-remote-refresh.service
+```
+
+The phone's saved `hosts` and `known_hosts` files stay in its normal
+`~/.config/tern`. No alternate profile, GUI restart, authentication bypass,
+or duplicate daemon is required.
+
 ## Tern Carly
 
 `core-links` installs `config/tern/settings.json` at
