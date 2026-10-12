@@ -1,0 +1,6 @@
+schema = 1
+id = "phone-controls"
+name = "Phone controls"
+version = "0.1.0"
+description = "Phone-local navigation and input controls."
+window = "window.luau"
