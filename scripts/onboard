@@ -200,7 +200,7 @@ run_core_links() {
              reforge-groot-launcher.sh update-all-ui-runner.sh \
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
-             tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh \
+             tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh theme \
              reload-desktop.sh keybind-cheatsheet.py; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"

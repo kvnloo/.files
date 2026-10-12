@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""theme: unified desktop theme manager (see docs/theme-manager.md)."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from theme_manager import main  # noqa: E402
+
+raise SystemExit(main())

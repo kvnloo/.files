@@ -58,3 +58,7 @@ config/waybar/scripts/*.so
 
 # Noctalia writes parsed keybindings and per-user plugin choices here.
 /config/noctalia/plugins/keybind-cheatsheet/settings.json
+
+# Unified theme manager: wire-step symlinks into the generated directory
+config/noctalia/colorschemes/Unified
+config/dunst/dunstrc.d/50-theme.conf

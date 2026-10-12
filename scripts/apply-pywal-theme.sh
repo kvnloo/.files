@@ -21,6 +21,17 @@ elif [[ -f $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
   bash "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true
 fi
 
+# Unified theme manager (scripts/theme). Once it has been activated it owns the
+# live colours: a fixed theme ignores wallpaper changes, and wallpaper mode
+# re-renders its generated files from the pywal palette just written above.
+theme_state=$HOME/.local/state/theme/state.json
+if [[ -f $theme_state ]]; then
+  if grep -q '"source": "wallpaper"' "$theme_state"; then
+    exec "$root/scripts/theme" wallpaper-mode
+  fi
+  exit 0
+fi
+
 if command -v dunstctl >/dev/null 2>&1; then
   dunstctl reload "$HOME/.cache/wal/dunstrc" >/dev/null 2>&1 || true
 fi
