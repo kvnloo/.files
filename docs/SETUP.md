@@ -258,8 +258,10 @@ structure, search, and settings remain; this is not app-specific macOS menu
 discovery.
 
 On Groot, keyd emits F13 for a bare left-Super tap and F14 for a bare
-right-Super tap; a Super+key chord emits neither sentinel. Hyprland routes
-these to the `tap-left` and `tap-right` GlobalShortcuts. Three completed taps
+right-Super tap; a Super+key chord emits neither sentinel. Hyprland matches
+raw keycodes `191`/`192` and routes them to `tap-left`/`tap-right`. XKB's US
+layout names these keys `XF86Tools`/`XF86Launch5`, not F13/F14; symbol-based
+F13/F14 bindings do not match. Three completed taps
 from the same side within 700 ms toggle the sticky panel. `Super+/`, IPC, and
 the bar widget remain manual toggles.
 
@@ -289,7 +291,7 @@ complete sheet, including its mode sections, was visually inspected. Reference:
 
 Run `scripts/install-noctalia-audio-overlay.py` after updating the shell
 overlay: it forwards the plugin's keyboard policy and clears stale keyboard
-initialization. Run `hyprctl reload` to register F13/F14, then disable and
+initialization. Run `hyprctl reload` to register the raw-code bindings, then disable and
 re-enable the keybind-cheatsheet plugin in Noctalia Settings to register its
 new GlobalShortcut handlers. No Lua configuration migration is required.
 Refresh the cached binding metadata after upgrading the parser with

@@ -50,8 +50,9 @@ You can set your custom Super key variable (e.g. `$mainMod`) in the plugin setti
 ### Triple Super tap on Hyprland
 
 On Groot, keyd emits F13 for a bare left-Super tap and F14 for a bare
-right-Super tap; a Super+key chord emits neither sentinel. Hyprland routes
-these to the plugin's `tap-left` and `tap-right` GlobalShortcuts. Three
+right-Super tap; a Super+key chord emits neither sentinel. Hyprland matches
+raw keycodes `191`/`192`, not the layout-dependent keysyms, and routes these
+to the plugin's `tap-left` and `tap-right` GlobalShortcuts. Three
 completed same-side taps within 700 ms toggle the sticky panel. In Caps Insert,
 a bare Caps tap may share the left-Super trigger; in Normal, Caps emits Escape.
 
