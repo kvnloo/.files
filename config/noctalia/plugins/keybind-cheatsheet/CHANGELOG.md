@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+- Bundle native-derived Tern 0.8.0 `tern` and `tmux` keyboard catalogs, apply the configured prefix and user keybind overrides/unbinds, group shortcuts by Tern context, and bound the searchable app list so global categories remain accessible.
+- Add an active-application shortcut section sourced from compositor focus signals and exact app-ID mappings, keeping unsupported apps unavailable rather than showing stale entries.
+
 ## [3.7.3] - 2026-05-25
 
 ### Fixes

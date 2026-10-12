@@ -6,7 +6,7 @@
   "author": "blacku",
   "license": "MIT",
   "repository": "https://github.com/noctalia-dev/noctalia-plugins",
-  "description": "Universal keyboard shortcuts keymap that automatically detects and displays keybindings for Hyprland, Niri, or MangoWC compositors.",
+  "description": "Compositor keybind cheatsheet for Hyprland, Niri, or MangoWC with a focus-aware section for configured application shortcut sources.",
   "tags": [
     "Bar",
     "Panel",
@@ -72,7 +72,17 @@
       "keyLabelMod3": "",
       "keyLabelMod5": "",
       "descriptionTextColor": "",
-      "bindOverrides": {}
+      "bindOverrides": {},
+      "appShortcutSources": {
+        "so.stencil.tern": {
+          "format": "tern-settings",
+          "path": "$TERN_CONFIG_DIR/settings.json"
+        },
+        "so.stencil.tern.open": {
+          "format": "tern-settings",
+          "path": "$TERN_CONFIG_DIR/settings.json"
+        }
+      }
     }
   }
 }

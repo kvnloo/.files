@@ -8,11 +8,22 @@ import qs.Services.UI
 import qs.Services.Compositor
 import qs.Widgets
 import "Presentation.js" as Presentation
+import "AppShortcuts.js" as AppShortcuts
 
 Item {
   id: root
   property var pluginApi: null
   readonly property bool exclusiveKeyboard: pluginApi?.mainInstance?.exclusiveKeyboard ?? true
+  readonly property var appContextSource: pluginApi?.mainInstance ?? null
+  readonly property string activeAppId: appContextSource?.activeAppId ?? ""
+  readonly property string activeAppName: appContextSource?.activeAppName ?? activeAppId
+  readonly property string activeAppShortcutOwnerAppId: appContextSource?.activeAppShortcutOwnerAppId ?? ""
+  readonly property string activeAppShortcutStatus: appContextSource?.activeAppShortcutStatus ?? "no-app"
+  readonly property string activeAppShortcutFormat: appContextSource?.activeAppShortcutFormat ?? ""
+  readonly property string activeAppShortcutKeymap: appContextSource?.activeAppShortcutKeymap ?? ""
+  readonly property string activeAppShortcutPrefix: appContextSource?.activeAppShortcutPrefix ?? ""
+  readonly property string activeAppShortcutCatalogVersion: appContextSource?.activeAppShortcutCatalogVersion ?? ""
+  readonly property var activeAppShortcutEntries: appContextSource?.activeAppShortcutEntries ?? []
 
   // Settings
   property var cfg: pluginApi?.pluginSettings || ({})
@@ -28,6 +39,8 @@ Item {
   readonly property real sectionHeaderHeight: 40 * Style.uiScaleRatio
   readonly property real bindRowHeight: 22 * Style.uiScaleRatio
   readonly property real categoryGap: 10 * Style.uiScaleRatio
+  readonly property real applicationShortcutMaxHeight: Math.max(96 * Style.uiScaleRatio,
+                                                                 Math.min(320 * Style.uiScaleRatio, maxScreenHeight * 0.32))
   readonly property real availableWidth: panelOpenScreen ? Math.max(1, panelOpenScreen.width - 40 * Style.uiScaleRatio) : settingsWidth
   readonly property int effectiveColumnCount: {
     var requested = Math.max(1, Math.min(4, columnCount));
@@ -65,15 +78,15 @@ Item {
 
   Component.onCompleted: {
     categories = processCategories(Presentation.prepareCategories(rawCategories, pluginApi?.pluginSettings?.bindOverrides || ({})));
-    // Start timeout timer if we have no data yet
-    if (root.isLoading) {
+    applicationItems = buildApplicationItems();
+    if (root.isLoading)
       loadingTimeoutTimer.start();
-    }
   }
 
 
   // Dynamic column items (up to 4 columns)
   property var columnItems: []
+  property var applicationItems: []
 
   // Memory leak prevention: debounce column updates
   Timer {
@@ -132,6 +145,17 @@ Item {
   Connections {
     target: root.pluginApi?.mainInstance
     function onManualVisibleChanged() { root.updateSearchFocus(); }
+    function onActiveAppIdChanged() {
+      if (applicationShortcutViewport)
+        applicationShortcutViewport.contentY = 0;
+      root.updateColumnItems();
+    }
+    function onActiveAppShortcutOwnerAppIdChanged() { root.updateColumnItems(); }
+    function onActiveAppShortcutStatusChanged() { root.updateColumnItems(); }
+    function onActiveAppShortcutEntriesChanged() { root.updateColumnItems(); }
+    function onActiveAppShortcutKeymapChanged() { root.updateColumnItems(); }
+    function onActiveAppShortcutPrefixChanged() { root.updateColumnItems(); }
+    function onActiveAppShortcutCatalogVersionChanged() { root.updateColumnItems(); }
   }
 
   onPanelOpenScreenChanged: {
@@ -150,13 +174,14 @@ Item {
   }
 
   function updateColumnItemsNow() {
-    columnItems = []; // Clear old items explicitly
+    columnItems = [];
     var assignments = distributeCategories();
     var items = [];
-    for (var i = 0; i < effectiveColumnCount; i++) {
+    for (var i = 0; i < effectiveColumnCount; i++)
       items.push(buildColumnItems(assignments[i] || []));
-    }
     columnItems = items;
+    applicationItems = buildApplicationItems();
+    contentPreferredHeight = calculateDynamicHeight();
   }
 
   // Screen height limit (90% of screen)
@@ -245,7 +270,16 @@ Item {
       maxColumnHeight = Math.max(maxColumnHeight, colHeight);
     }
 
-    var totalHeight = 48 * scale + maxColumnHeight + 34 * scale;
+    var applicationListHeight = Math.min(Math.max(1, applicationItems.length) * bindRowHeight,
+                                          applicationShortcutMaxHeight);
+    var applicationHeight = 74 * scale + applicationListHeight;
+    if (activeAppShortcutStatus !== "ready")
+      applicationHeight += 18 * scale;
+    if (activeAppShortcutStatus === "ready" && AppShortcuts.isTernAppId(activeAppId))
+      applicationHeight += 48 * scale;
+    if (activeAppShortcutStatus === "ready" && activeAppShortcutFormat === "json")
+      applicationHeight += 26 * scale;
+    var totalHeight = 48 * scale + applicationHeight + categoryGap + maxColumnHeight + 34 * scale;
     return Math.max(300 * scale, Math.min(totalHeight, maxScreenHeight));
   }
 
@@ -354,14 +388,14 @@ Item {
       id: loadingText
       anchors.centerIn: parent
       text: root.loadingTimedOut ? pluginApi?.tr("panel.loading-timeout") : pluginApi?.tr("panel.loading")
-      visible: root.isLoading
+      visible: root.isLoading && !root.activeAppId
       font.pointSize: Style.fontSizeL
       color: Color.mOnSurface
     }
 
     NScrollView {
       id: scrollView
-      visible: root.categories.length > 0 && !root.isLoading
+      visible: (!root.isLoading && root.categories.length > 0) || !!root.activeAppId
       anchors.top: header.bottom
       anchors.bottom: parent.bottom
       anchors.left: parent.left
@@ -373,8 +407,190 @@ Item {
       topPadding: 12 * Style.uiScaleRatio
       bottomPadding: 14 * Style.uiScaleRatio
 
+      ColumnLayout {
+        width: Math.max(0, scrollView.availableWidth)
+        spacing: root.categoryGap
+
+        Rectangle {
+          id: applicationShortcutSection
+          Layout.fillWidth: true
+          Layout.preferredHeight: implicitHeight
+          Layout.minimumHeight: implicitHeight
+          implicitHeight: applicationCardContent.implicitHeight + 24 * Style.uiScaleRatio
+          radius: 10 * Style.uiScaleRatio
+          color: Color.mSurface
+          border.color: Color.mPrimary
+          border.width: Style.uiScaleRatio
+
+          ColumnLayout {
+            id: applicationCardContent
+            anchors.fill: parent
+            anchors.margins: 12 * Style.uiScaleRatio
+            spacing: 7 * Style.uiScaleRatio
+
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 10 * Style.uiScaleRatio
+
+              NIcon {
+                icon: "keyboard"
+                pointSize: 16 * Style.uiScaleRatio
+                color: Color.mPrimary
+              }
+
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2 * Style.uiScaleRatio
+
+                NText {
+                  text: root.localizedText("panel.application-shortcuts-title", "ACTIVE APPLICATION")
+                  family: "Noto Sans"
+                  pointSize: 8.5
+                  font.weight: Font.DemiBold
+                  color: Color.mOnSurfaceVariant
+                }
+
+                NText {
+                  text: root.activeAppName || root.localizedText("panel.no-active-app", "No focused application")
+                  family: "Noto Sans"
+                  pointSize: 13
+                  font.weight: Font.DemiBold
+                  color: Color.mOnSurface
+                  elide: Text.ElideRight
+                  Layout.fillWidth: true
+                }
+
+                NText {
+                  visible: !!root.activeAppId && root.activeAppName !== root.activeAppId
+                  text: root.activeAppId
+                  family: "Noto Sans"
+                  pointSize: 8.5
+                  color: Color.mOnSurfaceVariant
+                  elide: Text.ElideRight
+                  Layout.fillWidth: true
+                }
+              }
+            }
+
+            NText {
+              visible: !!root.activeAppShortcutKeymap || !!root.activeAppShortcutPrefix
+              text: root.applicationKeymapSummary()
+              family: "Noto Sans"
+              pointSize: 9
+              color: Color.mOnSurfaceVariant
+              Layout.fillWidth: true
+            }
+
+            NText {
+              visible: root.activeAppShortcutStatus !== "ready"
+              text: root.applicationStatusText()
+              family: "Noto Sans"
+              pointSize: 9
+              color: Color.mOnSurfaceVariant
+              wrapMode: Text.WordWrap
+              Layout.fillWidth: true
+            }
+
+            Flickable {
+              id: applicationShortcutViewport
+              visible: root.applicationItems.length > 0
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+              contentWidth: width
+              contentHeight: applicationShortcutList.implicitHeight
+              Layout.fillWidth: true
+              Layout.preferredHeight: Math.min(applicationShortcutList.implicitHeight,
+                                               root.applicationShortcutMaxHeight)
+              Layout.minimumHeight: Math.min(applicationShortcutList.implicitHeight,
+                                             96 * Style.uiScaleRatio)
+              Layout.maximumHeight: root.applicationShortcutMaxHeight
+
+              GridLayout {
+                id: applicationShortcutList
+                width: applicationShortcutViewport.width
+                columns: root.effectiveColumnCount
+                columnSpacing: root.columnGutter
+                rowSpacing: 2 * Style.uiScaleRatio
+                uniformCellWidths: true
+
+                Repeater {
+                  model: root.applicationItems
+                  delegate: Loader {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.columnSpan: modelData.type === "group" ? root.effectiveColumnCount : 1
+                    Layout.preferredHeight: modelData.type === "group" ?
+                                            Math.max(18 * Style.uiScaleRatio, item?.implicitHeight || 0) :
+                                            Math.max(root.bindRowHeight, item?.implicitHeight || 0)
+                    Layout.minimumHeight: Layout.preferredHeight
+                    sourceComponent: modelData.type === "group" ? appGroupHeaderComponent : appBindingComponent
+                    property var itemData: modelData
+                  }
+                }
+              }
+
+              ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+              }
+            }
+
+            NText {
+              visible: AppShortcuts.isTernAppId(root.activeAppId) &&
+                       root.activeAppShortcutStatus === "ready"
+              text: root.localizedText(
+                "panel.tern-shortcut-limit",
+                "Native keyboard catalog from Tern Preferences → Keyboard; settings.json user overrides are applied. Plugin-added binds are not included. Context headings follow Tern's Keyboard preferences."
+              )
+              family: "Noto Sans"
+              pointSize: 8.5
+              color: Color.mOnSurfaceVariant
+              wrapMode: Text.WordWrap
+              Layout.fillWidth: true
+            }
+
+            NText {
+              visible: root.activeAppShortcutFormat === "json" &&
+                       root.activeAppShortcutStatus === "ready"
+              text: root.localizedText(
+                "panel.configured-shortcut-source",
+                "This is a configured JSON shortcut list, not an application menu provided by Linux."
+              )
+              family: "Noto Sans"
+              pointSize: 8.5
+              color: Color.mOnSurfaceVariant
+              wrapMode: Text.WordWrap
+              Layout.fillWidth: true
+            }
+
+            NText {
+              visible: root.activeAppShortcutStatus === "ready" &&
+                       root.applicationItems.length === 0 &&
+                       (root.activeAppShortcutFormat === "json" ||
+                        AppShortcuts.isTernAppId(root.activeAppId))
+              text: root.searchText ?
+                    root.localizedText("panel.no-matching-app-shortcuts", "No matching application shortcuts.") :
+                    root.localizedText("panel.no-configured-app-shortcuts", "No shortcuts are listed by this source.")
+              family: "Noto Sans"
+              pointSize: 9
+              font.italic: true
+              color: Color.mOnSurfaceVariant
+              Layout.fillWidth: true
+            }
+          }
+        }
+
+        NText {
+          visible: root.isLoading
+          text: root.loadingTimedOut ? root.localizedText("panel.loading-timeout", "Loading timed out. Click Refresh to retry.") :
+                                      root.localizedText("panel.loading", "Loading...")
+          font.pointSize: Style.fontSizeL
+          color: Color.mOnSurface
+          Layout.alignment: Qt.AlignHCenter
+        }
+
       RowLayout {
         id: mainLayout
+        visible: root.categories.length > 0 && !root.isLoading
         width: Math.max(0, scrollView.availableWidth)
         spacing: root.columnGutter
 
@@ -411,6 +627,7 @@ Item {
             }
           }
         }
+      }
       }
     }
   }
@@ -630,6 +847,81 @@ Item {
     }
   }
 
+  Component {
+    id: appGroupHeaderComponent
+    RowLayout {
+      Layout.fillWidth: true
+      Layout.minimumWidth: 0
+      implicitHeight: 18 * Style.uiScaleRatio
+      spacing: 6 * Style.uiScaleRatio
+
+      Rectangle {
+        Layout.preferredWidth: 2 * Style.uiScaleRatio
+        Layout.preferredHeight: 10 * Style.uiScaleRatio
+        radius: Style.uiScaleRatio
+        color: Color.mPrimary
+      }
+
+      NText {
+        text: itemData.title || ""
+        family: "Noto Sans"
+        pointSize: 8.5
+        font.weight: Font.DemiBold
+        color: Color.mOnSurfaceVariant
+        elide: Text.ElideRight
+        Layout.fillWidth: true
+      }
+    }
+  }
+
+  Component {
+    id: appBindingComponent
+    RowLayout {
+      id: appBindingRow
+      Layout.fillWidth: true
+      Layout.minimumWidth: 0
+      implicitHeight: Math.max(root.bindRowHeight, appBindingDescription.implicitHeight + 2 * Style.uiScaleRatio)
+      spacing: 10 * Style.uiScaleRatio
+
+      ColumnLayout {
+        id: appBindingDescription
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        spacing: 1 * Style.uiScaleRatio
+
+        NText {
+          text: itemData.desc || ""
+          family: "Noto Sans"
+          pointSize: 9.75
+          color: root.descriptionTextColor
+          elide: Text.ElideRight
+          Layout.fillWidth: true
+        }
+
+        NText {
+          visible: !!itemData.sourceLabel
+          text: itemData.sourceLabel || ""
+          family: "Noto Sans"
+          pointSize: 7.5
+          color: Color.mOnSurfaceVariant
+          elide: Text.ElideRight
+          Layout.fillWidth: true
+        }
+      }
+
+      NText {
+        text: root.formatApplicationKeys(itemData.keys)
+        family: "Noto Sans"
+        pointSize: 9.75
+        font.weight: Font.DemiBold
+        color: Color.mOnSurface
+        elide: Text.ElideRight
+        horizontalAlignment: Text.AlignRight
+        Layout.maximumWidth: Math.min(260 * Style.uiScaleRatio, appBindingRow.width * 0.52)
+      }
+    }
+  }
+
   function isModifierKey(keyName) {
     var key = String(keyName || "").toLowerCase();
     return key === "super" || key === "super_l" || key === "super_r" ||
@@ -717,6 +1009,108 @@ Item {
     pluginApi.pluginSettings.bindOverrides = o;
     pluginApi.saveSettings();
     pluginApi.mainInstance?.refresh();
+  }
+
+
+  function localizedText(key, fallback) {
+    const translated = pluginApi?.tr(key);
+    return translated && translated !== key ? translated : fallback;
+  }
+
+  function applicationStatusText() {
+    if (!activeAppId)
+      return localizedText("panel.no-active-app-detail", "No focused application is available.");
+    if (activeAppShortcutOwnerAppId !== activeAppId)
+      return localizedText("panel.app-shortcuts-loading", "Reading this application's configured shortcut source...");
+    if (activeAppShortcutStatus === "loading")
+      return localizedText("panel.app-shortcuts-loading", "Reading this application's configured shortcut source...");
+    if (activeAppShortcutStatus === "unconfigured")
+      return localizedText("panel.app-shortcuts-unconfigured", "Application shortcuts are unavailable: no source is configured for this app.");
+    if (activeAppShortcutStatus === "unsupported-keymap")
+      return localizedText("panel.app-shortcuts-unsupported-keymap",
+                           "Application shortcuts are unavailable: this Tern keymap has no native catalog in the plugin.");
+    if (activeAppShortcutStatus === "unsupported")
+      return localizedText("panel.app-shortcuts-unsupported", "Application shortcuts are unavailable: this source format is not supported.");
+    if (activeAppShortcutStatus === "invalid")
+      return localizedText("panel.app-shortcuts-invalid", "Application shortcuts are unavailable: the configured source is invalid.");
+    if (activeAppShortcutStatus === "unavailable")
+      return localizedText("panel.app-shortcuts-unavailable", "Application shortcut source could not be read.");
+    return localizedText("panel.app-shortcuts-unavailable", "Application shortcut source is unavailable.");
+  }
+
+  function applicationKeymapSummary() {
+    var parts = [];
+    if (activeAppShortcutKeymap)
+      parts.push(localizedText("panel.app-keymap", "Keymap") + ": " + activeAppShortcutKeymap);
+    if (activeAppShortcutPrefix)
+      parts.push(localizedText("panel.app-prefix", "Prefix") + ": " + formatApplicationKeys(activeAppShortcutPrefix));
+    if (activeAppShortcutCatalogVersion)
+      parts.push(localizedText("panel.app-catalog", "Catalog") + ": " + activeAppShortcutCatalogVersion);
+    return parts.join("  ·  ");
+  }
+
+  function formatApplicationKeys(chord) {
+    var labels = {
+      "CTRL": "Ctrl", "CONTROL": "Ctrl", "ALT": "Alt", "OPT": "Alt",
+      "SHIFT": "Shift", "CMD": "Super", "SUPER": "Super",
+      "SPACE": "Space", "ENTER": "Enter", "RETURN": "Return",
+      "ESC": "Esc", "ESCAPE": "Esc", "TAB": "Tab",
+      "LEFT": "←", "RIGHT": "→", "UP": "↑", "DOWN": "↓",
+      "PAGEUP": "PgUp", "PAGEDOWN": "PgDn", "INSERT": "Ins", "MINUS": "−"
+    };
+    return String(chord || "").split(">").map(function(sequence) {
+      return sequence.split("+").map(function(part) {
+        var token = part.trim();
+        var upper = token.toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(labels, upper))
+          return labels[upper];
+        return token.length === 1 ? token.toUpperCase() :
+               token.charAt(0).toUpperCase() + token.substring(1);
+      }).join(" + ");
+    }).join("  ›  ");
+  }
+
+  function applicationBindingMatches(binding) {
+    var term = root.searchText.trim().toLowerCase();
+    if (!term)
+      return true;
+    return String(binding.desc || "").toLowerCase().includes(term) ||
+           String(binding.group || "").toLowerCase().includes(term) ||
+           String(binding.keys || "").toLowerCase().includes(term) ||
+           String(binding.sourceLabel || "").toLowerCase().includes(term);
+  }
+
+  function buildApplicationItems() {
+    if (!activeAppId || activeAppShortcutOwnerAppId !== activeAppId ||
+        activeAppShortcutStatus !== "ready")
+      return [];
+
+    var entries = activeAppShortcutEntries || [];
+    var result = [];
+    var currentGroup = "";
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i];
+      if (!entry || typeof entry.keys !== "string" || !entry.keys ||
+          typeof entry.desc !== "string" || !entry.desc ||
+          !applicationBindingMatches(entry))
+        continue;
+
+      var group = String(entry.group || "").trim();
+      if (group && group !== currentGroup) {
+        result.push({ type: "group", title: group });
+        currentGroup = group;
+      } else if (!group) {
+        currentGroup = "";
+      }
+      result.push({
+        type: "binding",
+        keys: entry.keys,
+        desc: entry.desc,
+        group: group,
+        sourceLabel: entry.sourceLabel || ""
+      });
+    }
+    return result;
   }
 
   function bindingMatches(binding) {
@@ -829,7 +1223,7 @@ Item {
   }
 
   function distributeCategories() {
-    var numCols = root.effectiveColumnCount;
+    var numCols = Math.max(1, root.effectiveColumnCount);
     var columns = [];
     var columnWeights = [];
     for (var c = 0; c < numCols; c++) {

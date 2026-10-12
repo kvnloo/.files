@@ -1,6 +1,6 @@
 # Keybind Cheatsheet for Noctalia
 
-Universal keyboard shortcuts cheatsheet plugin for Noctalia that **automatically detects** your compositor (Hyprland, Niri or MangoWC) and displays your keybindings with **recursive config parsing**. Supports the classic Hyprland `.conf` format, the new **Hyprland 0.55+ Lua config**, Niri KDL and MangoWC.
+App-aware keyboard shortcuts cheatsheet plugin for Noctalia that automatically detects your compositor (Hyprland, Niri or MangoWC), recursively parses its keybind configuration, and shows a separate section for the focused application's configured shortcut source.
 
 ![Preview](preview.png)
 
@@ -13,6 +13,7 @@ Universal keyboard shortcuts cheatsheet plugin for Noctalia that **automatically
 - **Without Description section** - binds with no description are surfaced, not dropped; add a custom description or hide them inline
 - **Full per-category color customization** - background + text color for every key category, with live preview and clipboard quick-paste
 - **Search filter** - type to filter keybindings in the panel
+- **Active application section** — tracks the focused app ID and displays only shortcuts from that app's configured source
 - **Configurable paths & parser mode** - custom config locations and forced Lua/conf parser in settings
 - **Smart key formatting** - XF86 keys display as readable names (Vol Up, Bright Down, etc.)
 - **Flexible column layout** (1-4 columns) with auto-height
@@ -241,7 +242,42 @@ Access settings via the gear icon in the panel header:
 - **Show binds without a description** toggle + **Restore hidden** / **Clear all overrides**
 - **Merge sequential binds** and **split large workspace category** (threshold configurable)
 - **Per-category colors** — background + text for every category, with clipboard paste and reset
-- **Refresh** — force reload keybindings
+- **Refresh** — reload compositor binds and the active application's configured shortcut source
+
+## Active application shortcuts
+
+The panel reads the focused application ID from Noctalia's compositor service (`CompositorService.getFocusedWindow()` and its `activeWindowChanged` signal). The active app context remains attached to the panel while the overlay opens, and a later focus change to another real window replaces it. The app ID is matched exactly; the UI does not use window titles or fuzzy matching.
+
+The installed Tern runtime's focused compositor app ID `so.stencil.tern` was verified in the private owned Sway session. The plugin also matches the exact candidate ID `so.stencil.tern.open` from the installed file-open desktop entry, which uses the same executable; that second ID was not independently observed at runtime. Matching never uses titles or prefixes.
+
+Tern's settings source is `$TERN_CONFIG_DIR/settings.json` when that environment variable is set, or `~/.config/tern/settings.json` otherwise; it is read only. The bundled native Keyboard-preferences catalog is versioned to Linux Tern 0.8.0 (commit `872b6f4`) and contains the captured `tern` and `tmux` preset maps. The selected `keymap_prefix` replaces only the first chord in Tern prefix sequences. Explicit `keybinds` overrides replace matching catalog chords; `"unbind"` and `[]` remove them. Other Tern presets are shown as unavailable until a native catalog is added. The visible catalog version identifies the data source; the plugin does not read the running Tern binary's version.
+
+Rows are grouped by Tern's Keyboard-preferences sections. `Editor`, `Databases`, `Notebooks`, `Boards`, `Canvases`, and `Git` entries apply in those Tern contexts rather than globally. Plugin-added Tern bindings are not part of the bundled catalog; check **Tern Preferences → Keyboard** for those and for the live application map. Inner OMP key hints are not treated as Tern application bindings.
+
+Other apps are supported through the exact-ID `appShortcutSources` plugin setting. A source with `"format": "json"` points to a user-maintained catalog such as:
+
+```json
+{
+  "shortcuts": [
+    { "keys": "Ctrl+Shift+S", "description": "Save" }
+  ]
+}
+```
+
+Register it by app ID and path:
+
+```json
+{
+  "appShortcutSources": {
+    "org.example.Editor": {
+      "format": "json",
+      "path": "~/.config/editor/shortcuts.json"
+    }
+  }
+}
+```
+
+Linux has no universal API for extracting arbitrary applications' shortcut menus. Apps without a configured source are shown as unavailable; the app-specific rows are kept separate from compositor binds and are searched alongside the global list. The app section uses the panel's responsive column count and a bounded inner scroll area so large catalogs do not displace the global categories.
 
 ## Troubleshooting
 

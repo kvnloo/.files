@@ -5,10 +5,34 @@ import Quickshell.Hyprland
 import qs.Commons
 import qs.Services.UI
 import qs.Services.Compositor
+import "AppShortcuts.js" as AppShortcuts
+import "TernKeymaps.js" as TernKeymaps
 
 Item {
   id: root
   property var pluginApi: null
+  property string activeAppIdValue: ""
+  readonly property string activeAppId: activeAppIdValue
+  readonly property string activeAppName: AppShortcuts.isTernAppId(activeAppId) ? "Tern" : activeAppId
+  property string activeAppShortcutOwnerValue: ""
+  readonly property string activeAppShortcutOwnerAppId: activeAppShortcutOwnerValue
+  property string activeAppShortcutStatusValue: "no-app"
+  readonly property string activeAppShortcutStatus: activeAppShortcutStatusValue
+  property string activeAppShortcutSourcePathValue: ""
+  readonly property string activeAppShortcutSourcePath: activeAppShortcutSourcePathValue
+  property string activeAppShortcutFormatValue: ""
+  readonly property string activeAppShortcutFormat: activeAppShortcutFormatValue
+  property string activeAppShortcutKeymapValue: ""
+  readonly property string activeAppShortcutKeymap: activeAppShortcutKeymapValue
+  property string activeAppShortcutPrefixValue: ""
+  readonly property string activeAppShortcutPrefix: activeAppShortcutPrefixValue
+  property string activeAppShortcutCatalogVersionValue: ""
+  readonly property string activeAppShortcutCatalogVersion: activeAppShortcutCatalogVersionValue
+  property var activeAppShortcutEntriesValue: []
+  readonly property var activeAppShortcutEntries: activeAppShortcutEntriesValue
+  property int appShortcutGeneration: 0
+  property var appShortcutLines: []
+  property bool preserveAppContextWhileOpening: false
   property bool leftHeld: false
   property bool rightHeld: false
   property bool holdVisible: false
@@ -21,9 +45,11 @@ Item {
   readonly property bool exclusiveKeyboard: manualVisible
 
   onCurrentPanelScreenChanged: {
+    preserveAppContextWhileOpening = false;
     if (!currentPanelScreen) {
       manualVisible = false;
       holdOpenedPanel = false;
+      Qt.callLater(() => root.updateActiveAppContext());
       if (holdVisible) {
         const generation = holdGeneration;
         Qt.callLater(() => root.ensureHoldPanel(generation));
@@ -49,9 +75,15 @@ Item {
     if (currentPanelScreen || (holdVisible && holdOpenedPanel))
       return true;
 
+    updateActiveAppContext();
+    preserveAppContextWhileOpening = true;
     const opened = pluginApi.openPanel(screen);
-    if (!opened && !currentPanelScreen)
+    if (!opened && !currentPanelScreen) {
       manualVisible = false;
+      preserveAppContextWhileOpening = false;
+    } else if (currentPanelScreen) {
+      preserveAppContextWhileOpening = false;
+    }
     return opened;
   }
 
@@ -91,7 +123,11 @@ Item {
         return;
 
       root.holdPanelScreen = screen;
+      root.updateActiveAppContext();
+      root.preserveAppContextWhileOpening = true;
       root.holdOpenedPanel = root.pluginApi.openPanel(screen);
+      if (!root.holdOpenedPanel || root.currentPanelScreen)
+        root.preserveAppContextWhileOpening = false;
     });
   }
 
@@ -129,14 +165,26 @@ Item {
 
 
   Component.onCompleted: {
-    if (pluginApi && !parserStarted) {
+    updateActiveAppContext();
+    if (pluginApi) {
       checkAndParse();
+      refreshAppShortcutSource();
     }
   }
 
   onPluginApiChanged: {
-    if (pluginApi && !parserStarted) {
-      checkAndParse();
+    updateActiveAppContext();
+    if (pluginApi) {
+      if (!parserStarted)
+        checkAndParse();
+      refreshAppShortcutSource();
+    }
+  }
+
+  Connections {
+    target: CompositorService
+    function onActiveWindowChanged() {
+      root.updateActiveAppContext();
     }
   }
 
@@ -207,13 +255,146 @@ Item {
     if (hyprDetectProcess.running) hyprDetectProcess.running = false;
     if (hyprLuaReadProcess.running) hyprLuaReadProcess.running = false;
     if (hyprctlBindsProcess.running) hyprctlBindsProcess.running = false;
+    if (appShortcutReadProcess.running) appShortcutReadProcess.running = false;
 
-    // Clear process buffers
     niriGlobProcess.expandedFiles = [];
     hyprGlobProcess.expandedFiles = [];
     mangoGlobProcess.expandedFiles = [];
     hyprctlChunks = [];
     currentLines = [];
+    appShortcutLines = [];
+  }
+
+  function updateActiveAppContext() {
+    const focusedWindow = CompositorService.getFocusedWindow();
+    const nextAppId = focusedWindow && typeof focusedWindow.appId === "string" ?
+                      focusedWindow.appId : "";
+    if (!nextAppId && (currentPanelScreen || preserveAppContextWhileOpening))
+      return;
+    if (nextAppId === activeAppIdValue)
+      return;
+
+    activeAppIdValue = nextAppId;
+    refreshAppShortcutSource();
+  }
+
+  function refreshAppShortcutSource() {
+    const generation = ++appShortcutGeneration;
+    if (appShortcutReadProcess.running)
+      appShortcutReadProcess.running = false;
+    appShortcutLines = [];
+    activeAppShortcutOwnerValue = activeAppIdValue;
+    activeAppShortcutStatusValue = activeAppIdValue ? "unconfigured" : "no-app";
+    activeAppShortcutSourcePathValue = "";
+    activeAppShortcutFormatValue = "";
+    activeAppShortcutKeymapValue = "";
+    activeAppShortcutPrefixValue = "";
+    activeAppShortcutCatalogVersionValue = "";
+    activeAppShortcutEntriesValue = [];
+
+    if (!pluginApi || !activeAppIdValue)
+      return;
+
+    const settings = pluginApi.pluginSettings || ({});
+    const defaults = pluginApi.manifest?.metadata?.defaultSettings || ({});
+    const sources = settings.appShortcutSources === undefined ?
+                    (defaults.appShortcutSources || ({})) : settings.appShortcutSources;
+    const source = sources && typeof sources === "object" ? sources[activeAppIdValue] : null;
+    if (!source || typeof source !== "object") {
+      activeAppShortcutStatusValue = "unconfigured";
+      return;
+    }
+
+    const format = String(source.format || "");
+    if (format !== "tern-settings" && format !== "json") {
+      activeAppShortcutStatusValue = "unsupported";
+      return;
+    }
+    if (format === "tern-settings" && !AppShortcuts.isTernAppId(activeAppIdValue)) {
+      activeAppShortcutStatusValue = "unsupported";
+      return;
+    }
+
+    var path = String(source.path || "").trim();
+    const home = Quickshell.env("HOME") || "";
+    if (path === "$TERN_CONFIG_DIR/settings.json") {
+      const configDir = Quickshell.env("TERN_CONFIG_DIR") || (home ? home + "/.config/tern" : "");
+      path = configDir ? configDir + "/settings.json" : "";
+    } else if (path === "~") {
+      path = home;
+    } else if (path.startsWith("~/") && home) {
+      path = home + path.substring(1);
+    }
+    if (!path.startsWith("/")) {
+      activeAppShortcutStatusValue = "unavailable";
+      return;
+    }
+
+    activeAppShortcutSourcePathValue = path;
+    activeAppShortcutFormatValue = format;
+    activeAppShortcutStatusValue = "loading";
+    appShortcutReadProcess.requestGeneration = generation;
+    appShortcutReadProcess.requestAppId = activeAppIdValue;
+    appShortcutReadProcess.requestFormat = format;
+    appShortcutReadProcess.truncated = false;
+    appShortcutReadProcess.command = ["cat", path];
+    appShortcutReadProcess.running = true;
+  }
+
+  Process {
+    id: appShortcutReadProcess
+    property int requestGeneration: 0
+    property string requestAppId: ""
+    property string requestFormat: ""
+    property bool truncated: false
+    running: false
+
+    stdout: SplitParser {
+      onRead: data => {
+        if (appShortcutReadProcess.requestGeneration !== root.appShortcutGeneration)
+          return;
+        if (root.appShortcutLines.length < 4096)
+          root.appShortcutLines.push(data);
+        else
+          appShortcutReadProcess.truncated = true;
+      }
+    }
+
+    onExited: (exitCode, exitStatus) => {
+      if (requestGeneration !== root.appShortcutGeneration || requestAppId !== root.activeAppIdValue)
+        return;
+      if (truncated || exitCode !== 0) {
+        root.activeAppShortcutStatusValue = "unavailable";
+        root.appShortcutLines = [];
+        return;
+      }
+
+      var parsed;
+      try {
+        const content = root.appShortcutLines.join("\n");
+        parsed = requestFormat === "tern-settings" ?
+                 AppShortcuts.parseTernSettings(content, TernKeymaps.catalogs, TernKeymaps.version, TernKeymaps.commit) :
+                 AppShortcuts.parseJsonCatalog(content);
+      } catch (e) {
+        parsed = { valid: false, supported: false, bindings: [], keymap: "", prefix: "", catalogVersion: "" };
+      }
+      root.appShortcutLines = [];
+      if (!parsed.valid) {
+        root.activeAppShortcutStatusValue = "invalid";
+        return;
+      }
+      root.activeAppShortcutKeymapValue = parsed.keymap;
+      root.activeAppShortcutPrefixValue = parsed.prefix;
+      root.activeAppShortcutCatalogVersionValue = parsed.catalogVersion || "";
+      if (!parsed.supported) {
+        root.activeAppShortcutStatusValue = "unsupported-keymap";
+        return;
+      }
+
+
+      root.activeAppShortcutEntriesValue = parsed.bindings;
+      root.activeAppShortcutStatusValue = "ready";
+    }
   }
 
   function clearParsingData() {
@@ -234,17 +415,14 @@ Item {
 
   // Refresh function - accessible from mainInstance
   function refresh() {
-    if (!pluginApi) {
+    if (!pluginApi)
       return;
-    }
 
-    // Reset parserStarted to allow re-parsing
     parserStarted = false;
     isCurrentlyParsing = false;
-
-    // Now run parser
     parserStarted = true;
     runParser();
+    refreshAppShortcutSource();
   }
 
   // Recursive parsing support
