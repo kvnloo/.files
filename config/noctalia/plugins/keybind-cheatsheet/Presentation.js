@@ -441,7 +441,67 @@ function categoryRank(title) {
   return -1;
 }
 
-function prepareCategories(rawCategories) {
+function sourceCountFor(binding) {
+  var count = binding.sourceCount;
+  if (typeof count === "number" && isFinite(count) && count >= 1 && Math.floor(count) === count) {
+    return count;
+  }
+  return 1;
+}
+
+function overrideForBinding(binding, bindOverrides) {
+  if (!binding || typeof binding.bindId !== "string" || !binding.bindId ||
+      !bindOverrides || typeof bindOverrides !== "object" ||
+      !Object.prototype.hasOwnProperty.call(bindOverrides, binding.bindId)) {
+    return null;
+  }
+  var override = bindOverrides[binding.bindId];
+  return override && typeof override === "object" ? override : null;
+}
+
+function isExactSubmapReset(binding) {
+  return !!binding && binding._verb === "submap" && binding._param === "reset";
+}
+function isSubmapResetLike(binding) {
+  return !!binding && typeof binding._verb === "string" &&
+    binding._verb.trim().toLowerCase() === "submap" &&
+    typeof binding._param === "string" && binding._param.trim().toLowerCase() === "reset";
+}
+
+
+function hasDescribedCommand(binding, rawDesc) {
+  if (!binding || binding.undescribed === true ||
+      typeof binding.desc !== "string" || !binding.desc.trim() ||
+      typeof binding._verb !== "string" || !binding._verb.trim() ||
+      typeof rawDesc !== "string" || !rawDesc.trim()) {
+    return false;
+  }
+  return !!reconstructedCommand(binding).trim();
+}
+
+function canFoldModeReset(previous, current) {
+  var action = previous.sourceBind;
+  var reset = current.sourceBind;
+  if (!action || !reset || previous.categoryIndex !== current.categoryIndex ||
+      previous.bindIndex + 1 !== current.bindIndex ||
+      isSubmapResetLike(action) || !isExactSubmapReset(reset) ||
+      action._merged === true || reset._merged === true ||
+      (Object.prototype.hasOwnProperty.call(action, "sourceCount") && action.sourceCount !== 1) ||
+      (Object.prototype.hasOwnProperty.call(reset, "sourceCount") && reset.sourceCount !== 1) ||
+      typeof action._submap !== "string" || !action._submap ||
+      action._submap !== reset._submap ||
+      action.keys !== reset.keys || typeof action.keys !== "string" || !action.keys.trim() ||
+      previous.title !== current.title ||
+      !hasDescribedCommand(action, previous.rawDesc) ||
+      !hasDescribedCommand(reset, current.rawDesc) ||
+      hasExplicitDescription(reset, current.rawDesc) ||
+      current.override) {
+    return false;
+  }
+  return true;
+}
+
+function prepareCategories(rawCategories, bindOverrides) {
   if (!Array.isArray(rawCategories)) return [];
 
   var buckets = Object.create(null);
@@ -451,10 +511,20 @@ function prepareCategories(rawCategories) {
   for (var i = 0; i < rawCategories.length; i++) {
     var sourceCategory = rawCategories[i] || {};
     var sourceBinds = Array.isArray(sourceCategory.binds) ? sourceCategory.binds : [];
+    var previousRecord = null;
 
     for (var j = 0; j < sourceBinds.length; j++) {
       var sourceBind = sourceBinds[j];
-      if (!sourceBind || typeof sourceBind !== "object") continue;
+      if (!sourceBind || typeof sourceBind !== "object") {
+        previousRecord = null;
+        continue;
+      }
+
+      var override = overrideForBinding(sourceBind, bindOverrides);
+      if (override && override.hidden === true) {
+        previousRecord = null;
+        continue;
+      }
 
       var rawDesc = sourceDescription(sourceBind);
       var presentation = classifyBinding(sourceBind, rawDesc);
@@ -463,19 +533,47 @@ function prepareCategories(rawCategories) {
       var title = explicitTitle || presentation.category;
       if (sourceBind._submap)
         title = "Mode: " + String(sourceBind._submap).split(" · ")[0];
-      var bucket = buckets[title];
 
+      var bind = copyFields(sourceBind);
+      var preserveDescription = hasExplicitDescription(sourceBind, rawDesc);
+      var overrideDescription = override && typeof override.desc === "string" ? override.desc : "";
+      bind.rawDesc = rawDesc;
+      bind.desc = overrideDescription.trim() ? overrideDescription :
+        preserveDescription ? sourceBind.desc : presentation.desc;
+      bind.sourceCount = sourceCountFor(sourceBind);
+
+      var record = {
+        sourceBind: sourceBind,
+        rawDesc: rawDesc,
+        title: title,
+        categoryIndex: i,
+        bindIndex: j,
+        override: override,
+        bind: bind
+      };
+
+      if (previousRecord && canFoldModeReset(previousRecord, record)) {
+        var folded = previousRecord.bind;
+        folded.hint = "Returns to normal shortcuts";
+        folded.rawDesc = previousRecord.rawDesc + "\n" + rawDesc;
+        folded.sourceIds = [
+          previousRecord.sourceBind.bindId === undefined ? null : previousRecord.sourceBind.bindId,
+          sourceBind.bindId === undefined ? null : sourceBind.bindId
+        ];
+        folded.sourceCommands = [previousRecord.rawDesc, rawDesc];
+        folded.sourceCount += bind.sourceCount;
+        previousRecord = record;
+        continue;
+      }
+
+      var bucket = buckets[title];
       if (!bucket) {
         bucket = { title: title, binds: [], firstIndex: nextIndex++ };
         buckets[title] = bucket;
         entries.push(bucket);
       }
-
-      var bind = copyFields(sourceBind);
-      var preserveDescription = hasExplicitDescription(sourceBind, rawDesc);
-      bind.rawDesc = rawDesc;
-      bind.desc = preserveDescription ? sourceBind.desc : presentation.desc;
       bucket.binds.push(bind);
+      previousRecord = record;
     }
   }
 

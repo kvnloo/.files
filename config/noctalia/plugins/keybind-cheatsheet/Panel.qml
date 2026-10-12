@@ -24,10 +24,14 @@ Item {
   property bool autoHeight: cfg.autoHeight ?? defaults.autoHeight ?? true
   property int columnCount: cfg.columnCount ?? defaults.columnCount ?? 3
   readonly property real minimumColumnWidth: 280 * Style.uiScaleRatio
+  readonly property real columnGutter: 28 * Style.uiScaleRatio
+  readonly property real sectionHeaderHeight: 40 * Style.uiScaleRatio
+  readonly property real bindRowHeight: 22 * Style.uiScaleRatio
+  readonly property real categoryGap: 10 * Style.uiScaleRatio
   readonly property real availableWidth: panelOpenScreen ? Math.max(1, panelOpenScreen.width - 40 * Style.uiScaleRatio) : settingsWidth
   readonly property int effectiveColumnCount: {
     var requested = Math.max(1, Math.min(4, columnCount));
-    var columnGap = 14 * Style.uiScaleRatio;
+    var columnGap = root.columnGutter;
     var horizontalPadding = 36 * Style.uiScaleRatio;
     var fitCount = Math.floor((Math.min(settingsWidth, availableWidth) - horizontalPadding + columnGap) /
                               (minimumColumnWidth + columnGap));
@@ -60,7 +64,7 @@ Item {
   }
 
   Component.onCompleted: {
-    categories = processCategories(Presentation.prepareCategories(rawCategories));
+    categories = processCategories(Presentation.prepareCategories(rawCategories, pluginApi?.pluginSettings?.bindOverrides || ({})));
     // Start timeout timer if we have no data yet
     if (root.isLoading) {
       loadingTimeoutTimer.start();
@@ -89,7 +93,7 @@ Item {
   }
 
   onRawCategoriesChanged: {
-    categories = processCategories(Presentation.prepareCategories(rawCategories));
+    categories = processCategories(Presentation.prepareCategories(rawCategories, pluginApi?.pluginSettings?.bindOverrides || ({})));
     updateColumnItems();
   }
 
@@ -233,10 +237,10 @@ Item {
       var sections = assignments[col] || [];
       for (var i = 0; i < sections.length; i++) {
         var section = sections[i];
-        colHeight += 40 * scale; // Section heading and divider
-        colHeight += Math.max(0, section.weight - 2) * 24 * scale;
+        colHeight += root.sectionHeaderHeight;
+        colHeight += Math.max(0, section.weight - 2) * root.bindRowHeight;
         if (i < sections.length - 1)
-          colHeight += 10 * scale;
+          colHeight += root.categoryGap;
       }
       maxColumnHeight = Math.max(maxColumnHeight, colHeight);
     }
@@ -264,32 +268,53 @@ Item {
 
       RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: Style.marginM
-        anchors.rightMargin: Style.marginM
-        spacing: Style.marginS
+        anchors.leftMargin: Style.marginS
+        anchors.rightMargin: Style.marginS
+        spacing: 6 * Style.uiScaleRatio
+
+        RowLayout {
+          spacing: 6 * Style.uiScaleRatio
+
+          NIcon {
+            icon: "keyboard"
+            pointSize: 15 * Style.uiScaleRatio
+            color: Color.mOnSurfaceVariant
+          }
+          NText {
+            text: CompositorService.isHyprland ? pluginApi?.tr("panel.title-hyprland") :
+                  CompositorService.isNiri     ? pluginApi?.tr("panel.title-niri") :
+                  CompositorService.isMango    ? pluginApi?.tr("panel.title-mango") :
+                                                 pluginApi?.tr("panel.title")
+            family: "Noto Sans"
+            pointSize: 11.25
+            font.weight: Font.DemiBold
+            color: Color.mOnSurface
+            Layout.maximumWidth: Math.min(210 * Style.uiScaleRatio,
+                                          Math.max(68 * Style.uiScaleRatio, root.contentPreferredWidth * 0.22))
+            elide: Text.ElideRight
+          }
+        }
+
+        NText {
+          visible: root.contentPreferredWidth > 1000 * Style.uiScaleRatio
+          text: "Desktop shortcuts · ↩ returns to normal shortcuts"
+          family: "Noto Sans"
+          pointSize: 9
+          font.italic: true
+          color: Color.mOnSurfaceVariant
+          opacity: 0.8
+          Layout.leftMargin: 12 * Style.uiScaleRatio
+        }
 
         Item { Layout.fillWidth: true }
 
-        NIcon {
-          icon: "keyboard"
-          pointSize: 15 * Style.uiScaleRatio
-          color: Color.mOnSurfaceVariant
-        }
-        NText {
-          text: CompositorService.isHyprland ? pluginApi?.tr("panel.title-hyprland") :
-                CompositorService.isNiri     ? pluginApi?.tr("panel.title-niri") :
-                CompositorService.isMango    ? pluginApi?.tr("panel.title-mango") :
-                                               pluginApi?.tr("panel.title")
-          family: "Noto Sans"
-          pointSize: 11.25
-          font.weight: Font.DemiBold
-          color: Color.mOnSurface
-        }
-
         NTextInput {
           id: searchInput
-          Layout.preferredWidth: Math.min(280 * Style.uiScaleRatio, Math.max(120 * Style.uiScaleRatio, root.settingsWidth * 0.22))
-          Layout.minimumWidth: 110 * Style.uiScaleRatio
+          Layout.fillWidth: false
+          Layout.preferredWidth: Math.min(340 * Style.uiScaleRatio,
+                                          Math.max(92 * Style.uiScaleRatio, root.contentPreferredWidth * 0.26))
+          Layout.minimumWidth: Math.min(110 * Style.uiScaleRatio, root.contentPreferredWidth * 0.24)
+          Layout.maximumWidth: 340 * Style.uiScaleRatio
           placeholderText: pluginApi?.tr("panel.search-placeholder")
           text: root.searchText
 
@@ -298,8 +323,6 @@ Item {
             root.updateColumnItems();
           }
         }
-
-        Item { Layout.fillWidth: true }
 
         NIconButton {
           icon: "refresh"
@@ -353,7 +376,7 @@ Item {
       RowLayout {
         id: mainLayout
         width: Math.max(0, scrollView.availableWidth)
-        spacing: 14 * Style.uiScaleRatio
+        spacing: root.columnGutter
 
         Repeater {
           model: root.columnItems.length
@@ -372,6 +395,10 @@ Item {
               Loader {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
+                Layout.preferredHeight: modelData.type === "header" ? root.sectionHeaderHeight :
+                                        modelData.type === "spacer" ? root.categoryGap :
+                                        Math.max(root.bindRowHeight, item?.implicitHeight || 0)
+                Layout.minimumHeight: Layout.preferredHeight
                 sourceComponent: modelData.type === "header" ? headerComponent :
                                (modelData.type === "spacer" ? spacerComponent : bindComponent)
                 property var itemData: modelData
@@ -393,36 +420,47 @@ Item {
     ColumnLayout {
       Layout.fillWidth: true
       Layout.minimumWidth: 0
-      Layout.topMargin: 13 * Style.uiScaleRatio
-      Layout.bottomMargin: 4 * Style.uiScaleRatio
-      spacing: 5 * Style.uiScaleRatio
+      implicitHeight: root.sectionHeaderHeight
+      spacing: 3 * Style.uiScaleRatio
+
+      Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 10 * Style.uiScaleRatio
+      }
 
       RowLayout {
         Layout.fillWidth: true
+        Layout.preferredHeight: 15 * Style.uiScaleRatio
         spacing: 6 * Style.uiScaleRatio
 
         NIcon {
           icon: itemData.icon || "keyboard"
-          pointSize: 13 * Style.uiScaleRatio
+          pointSize: 11.5 * Style.uiScaleRatio
           color: Color.mOnSurfaceVariant
+          opacity: 0.72
         }
 
         NText {
           Layout.fillWidth: true
           text: itemData.title
           family: "Noto Sans"
-          pointSize: 9
+          pointSize: 10.25
           font.weight: Font.DemiBold
-          color: Color.mOnSurfaceVariant
+          color: Color.mPrimary
           elide: Text.ElideRight
         }
       }
 
       Rectangle {
         Layout.fillWidth: true
-        height: 1
-        color: Color.mOnSurfaceVariant
-        opacity: 0.2
+        Layout.preferredHeight: 1 * Style.uiScaleRatio
+        color: Color.mOutline
+        opacity: 0.34
+      }
+
+      Item {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 5 * Style.uiScaleRatio
       }
     }
   }
@@ -430,43 +468,23 @@ Item {
   Component {
     id: spacerComponent
     Item {
-      height: 10 * Style.uiScaleRatio
+      implicitHeight: root.categoryGap
       Layout.fillWidth: true
     }
   }
-
   Component {
     id: bindComponent
     RowLayout {
       id: bindRow
       Layout.fillWidth: true
       Layout.minimumWidth: 0
-      Layout.minimumHeight: 24 * Style.uiScaleRatio
-      Layout.preferredHeight: Math.max(24 * Style.uiScaleRatio,
-                                       keyFlow.implicitHeight + 2 * Style.uiScaleRatio,
-                                       bindRow.editing ? Style.baseWidgetSize : 0)
-      spacing: 5 * Style.uiScaleRatio
+      implicitHeight: Math.max(root.bindRowHeight,
+                               keyFlow.implicitHeight + 2 * Style.uiScaleRatio,
+                               bindRow.editing ? Style.baseWidgetSize : 0)
+      spacing: 10 * Style.uiScaleRatio
 
       property bool editing: false
 
-      Flow {
-        id: keyFlow
-        Layout.preferredWidth: Math.min(190 * Style.uiScaleRatio,
-                                       Math.max(105 * Style.uiScaleRatio, parent.width * 0.44))
-        Layout.minimumWidth: 100 * Style.uiScaleRatio
-        Layout.alignment: Qt.AlignVCenter
-        spacing: 2 * Style.uiScaleRatio
-
-        Repeater {
-          model: String(itemData.keys || "").split(" + ")
-          NText {
-            text: (index > 0 ? " + " : "") + root.formatKeyLabel(modelData)
-            family: "Noto Sans"
-            pointSize: 9.75
-            color: root.getKeyTextColor(modelData)
-          }
-        }
-      }
 
       NText {
         visible: !itemData.undescribed
@@ -479,7 +497,7 @@ Item {
         color: root.descriptionTextColor
         elide: Text.ElideRight
         wrapMode: Text.NoWrap
-        ToolTip.text: itemData.rawDesc || itemData.desc || ""
+        ToolTip.text: [itemData.desc, itemData.hint, itemData.rawDesc].filter(Boolean).join("\n")
         ToolTip.visible: descriptionHover.hovered && !!(itemData.rawDesc || itemData.desc)
         ToolTip.delay: 350
 
@@ -506,6 +524,7 @@ Item {
           onClicked: { bindRow.editing = true; descInput.text = ""; descInput.inputItem.forceActiveFocus(); }
         }
       }
+
 
       NTextInput {
         id: descInput
@@ -558,22 +577,84 @@ Item {
         tooltipText: pluginApi?.tr("panel.hide-bind")
         onClicked: { root.hideBind(itemData.bindId); }
       }
+      Item {
+        id: keyColumn
+        Layout.preferredWidth: Math.min(166 * Style.uiScaleRatio,
+                                       Math.max(88 * Style.uiScaleRatio, bindRow.width * 0.36))
+        Layout.minimumWidth: keyFlow.implicitWidth
+        Layout.alignment: Qt.AlignVCenter
+        implicitHeight: keyFlow.implicitHeight
+
+        Row {
+          id: keyFlow
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 3 * Style.uiScaleRatio
+          property var tokens: String(itemData.keys || "").split(" + ")
+
+          Repeater {
+            model: keyFlow.tokens
+            NText {
+              text: {
+                if (index === 0)
+                  return root.formatKeyLabel(modelData);
+                var previous = keyFlow.tokens[index - 1];
+                var separator = root.isModifierKey(previous) && root.isModifierKey(modelData) ? " " : " + ";
+                return separator + root.formatKeyLabel(modelData);
+              }
+              family: "Noto Sans"
+              pointSize: 9.75
+              font.weight: root.isModifierKey(modelData) ? Font.Normal : Font.DemiBold
+              color: root.getKeyTextColor(modelData)
+              opacity: root.isModifierKey(modelData) ? 0.7 : 1
+            }
+          }
+        }
+      }
+      NText {
+        visible: !!itemData.hint && !bindRow.editing
+        Layout.alignment: Qt.AlignVCenter
+        text: "↩"
+        family: "Noto Sans"
+        pointSize: 8.5
+        font.weight: Font.Normal
+        color: Color.mOnSurfaceVariant
+        ToolTip.text: itemData.hint + (itemData.sourceCount > 1 && itemData.rawDesc ? "\n" + itemData.rawDesc : "")
+        ToolTip.visible: hintHover.hovered
+        ToolTip.delay: 350
+
+        HoverHandler {
+          id: hintHover
+        }
+      }
     }
   }
 
+  function isModifierKey(keyName) {
+    var key = String(keyName || "").toLowerCase();
+    return key === "super" || key === "super_l" || key === "super_r" ||
+           key === "ctrl" || key === "control" || key === "shift" || key === "alt" ||
+           key === "mod2" || key === "mod3" || key === "mod5";
+  }
+
+  function defaultKeyColor(keyName) {
+    return root.keyColorDefaultOverride ||
+           (root.isModifierKey(keyName) ? Color.mOnSurfaceVariant : Color.mOnSurface);
+  }
+
   function getKeyColor(keyName) {
-    if (keyName === "Super") return root.keyColorSuperOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Ctrl") return root.keyColorCtrlOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Shift") return root.keyColorShiftOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Alt") return root.keyColorAltOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName.startsWith("XF86")) return root.keyColorXF86Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "PRINT" || keyName === "Print") return root.keyColorPrintOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName.match(/^[0-9]$/)) return root.keyColorNumericOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyColorMouseOverride || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Mod2") return root.keyColorMod2Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Mod3") return root.keyColorMod3Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    if (keyName === "Mod5") return root.keyColorMod5Override || root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
-    return root.keyColorDefaultOverride || Color.mOnSurfaceVariant;
+    if (keyName === "Super") return root.keyColorSuperOverride || defaultKeyColor(keyName);
+    if (keyName === "Ctrl") return root.keyColorCtrlOverride || defaultKeyColor(keyName);
+    if (keyName === "Shift") return root.keyColorShiftOverride || defaultKeyColor(keyName);
+    if (keyName === "Alt") return root.keyColorAltOverride || defaultKeyColor(keyName);
+    if (keyName.startsWith("XF86")) return root.keyColorXF86Override || defaultKeyColor(keyName);
+    if (keyName === "PRINT" || keyName === "Print") return root.keyColorPrintOverride || defaultKeyColor(keyName);
+    if (keyName.match(/^[0-9]$/)) return root.keyColorNumericOverride || defaultKeyColor(keyName);
+    if (keyName.includes("MOUSE") || keyName.includes("Wheel")) return root.keyColorMouseOverride || defaultKeyColor(keyName);
+    if (keyName === "Mod2") return root.keyColorMod2Override || defaultKeyColor(keyName);
+    if (keyName === "Mod3") return root.keyColorMod3Override || defaultKeyColor(keyName);
+    if (keyName === "Mod5") return root.keyColorMod5Override || defaultKeyColor(keyName);
+    return defaultKeyColor(keyName);
   }
 
   function getKeyTextColor(keyName) {
@@ -644,6 +725,7 @@ Item {
     var override = root.pluginApi?.pluginSettings?.bindOverrides?.[binding.bindId || ""];
     return String(override?.desc || binding.desc || "").toLowerCase().includes(term) ||
            String(binding.rawDesc || "").toLowerCase().includes(term) ||
+           String(binding.hint || "").toLowerCase().includes(term) ||
            String(binding.keys || "").toLowerCase().includes(term);
   }
 
@@ -672,6 +754,8 @@ Item {
             keys: keys,
             desc: desc,
             rawDesc: rawDesc,
+            hint: bnd.hint || "",
+            sourceCount: Number(bnd.sourceCount) || 1,
             bindId: bnd.bindId || "",
             undescribed: isUndesc
           });

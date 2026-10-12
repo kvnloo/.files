@@ -212,12 +212,24 @@ retaining raw commands for search and tooltips. Unknown commands stay visible.
 The conf parser records submap context so mode-only keys are not presented as
 global shortcuts. Noto Sans body text, standard modifier/arrow glyphs, and
 existing Noctalia icons avoid a dependency on a particular Nerd Font family.
+Actions lead each row; right-aligned shortcuts use subdued modifiers and
+semibold trigger keys. Theme-accent headings, wider column gutters, and a
+bounded search field separate navigation from content. Rows have a measured
+22px baseline at normal scale; italics are reserved for secondary hints.
 Columns fit the available screen width without horizontal scrolling, and
 search results rebalance and reduce the panel height.
 
+An immediately following, same-key reset in the same mode is shown as a
+`↩` hint on its action instead of a duplicate row. Both original commands
+remain searchable and available in tooltips. Standalone exits, custom reset
+descriptions, and overridden resets stay separate; cached bindings are not
+rewritten.
+
 Native Sway checks covered 1440×1000 and 900×800 outputs, all 128 current
-bindings, raw-command search, held-panel keyboard pass-through, and both-key
-release behavior. Reference: [Media Atelier CheatSheet screenshot and review](https://www.macstories.net/mac/cheatsheet-quickly-lists-an-apps-keyboard-shortcuts/).
+bindings represented in 118 rows, raw-command search, held-panel keyboard
+pass-through, and both-key release behavior. The complete sheet, including
+its mode sections, was visually inspected. Reference:
+[Media Atelier CheatSheet screenshot and review](https://www.macstories.net/mac/cheatsheet-quickly-lists-an-apps-keyboard-shortcuts/).
 
 Run `scripts/install-noctalia-audio-overlay.py` after updating the shell
 overlay: it forwards the plugin's keyboard policy and clears stale keyboard
