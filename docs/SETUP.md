@@ -390,4 +390,13 @@ emergency `Backspace+Escape+Enter` chord terminates keyd.
 
 - Do not commit Sunshine `credentials/`, `sunshine_state.json`, or logs.
 - Agent Reach secrets stay in `~/.agent-reach` (untracked).
+`/run/keyd.socket` is root-equivalent: it accepts bindings, text input, and
+`command()` actions that keyd runs as root. Never add users to the `keyd` group
+or ACLs to that socket; `activate` empties the group and resets the socket ACL.
+`mode-border` reads layer state from `/run/keyd-layers.sock` (kvn only, 0600).
+`keyd-layers.service` runs the root-owned `/usr/local/bin/keyd-layers` as a
+dynamic user with only the `keyd` group. It holds one `keyd listen` connection
+and forwards `/layout` snapshots and `+/-normal`. Modifier layers are dropped
+because their timing reveals typing. Client input is discarded.
+
 - `wallhaven` / MCP / provider API keys are never stored in this repo’s tracked configs.

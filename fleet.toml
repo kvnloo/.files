@@ -10,6 +10,7 @@ package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev",
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
 system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
 system_timers = ["tern-remote-refresh.timer"]
+system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service"]
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
