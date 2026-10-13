@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_resolved_path_moves_match_current_evidence():
-    """Cold docs and the CachyOS migration tree are compatibility symlinks."""
+    """The CachyOS migration tree is a compatibility symlink; cold docs are gone."""
     migration = ROOT / "migration"
     assert migration.is_symlink()
     assert os.readlink(migration) == "transitions/legacy/cachyos-migration"
@@ -15,17 +15,10 @@ def test_resolved_path_moves_match_current_evidence():
     assert canonical.is_dir()
     assert not canonical.is_symlink()
 
-    applied = {
-        "claudedocs": "docs/archive/claude",
-        "POLYBAR_PYWAL_USAGE.md": "docs/legacy/POLYBAR_PYWAL_USAGE.md",
-    }
-    for old, new in applied.items():
-        path = ROOT / old
-        assert path.is_symlink(), old
-        assert os.readlink(path) == new
-        canonical = ROOT / new
-        assert canonical.exists(), new
-        assert not canonical.is_symlink(), new
+    # The cold docs and their compatibility symlinks were removed.
+    for gone in ("claudedocs", "POLYBAR_PYWAL_USAGE.md", "docs/archive", "docs/legacy"):
+        path = ROOT / gone
+        assert not path.exists() and not path.is_symlink(), gone
 
     assert not (ROOT / "proposal_codexbar_aggregate.md").exists()
     assert not (ROOT / "docs/proposals/codexbar-aggregate.md").exists()
@@ -35,6 +28,6 @@ def test_path_map_covers_every_compatibility_alias():
     data = tomllib.loads((ROOT / "transitions" / "path-map.toml").read_text())
     moves = {(row["from"], row["to"]) for row in data["move"]}
     assert ("migration", "transitions/legacy/cachyos-migration") in moves
-    assert ("claudedocs", "docs/archive/claude") in moves
-    assert ("POLYBAR_PYWAL_USAGE.md", "docs/legacy/POLYBAR_PYWAL_USAGE.md") in moves
+    removed = {"claudedocs", "POLYBAR_PYWAL_USAGE.md"}
+    assert not removed & {row["from"] for row in data["move"]}
     assert ("proposal_codexbar_aggregate.md", "docs/proposals/codexbar-aggregate.md") in moves

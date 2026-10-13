@@ -1,1 +1,0 @@
-docs/legacy/POLYBAR_PYWAL_USAGE.md
