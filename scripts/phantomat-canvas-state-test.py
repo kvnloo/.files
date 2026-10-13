@@ -338,8 +338,10 @@ class FakeHyprctl:
             return dict(screens=[{}]*self.screens)
         if name == 'getoption':
             # polish: existing fixtures have no hyprglass unless explicitly supplied.
-            if args[0] == 'plugin:hyprglass:manage_window_blur' and args[0] not in self.options:
+            if args[0].startswith('plugin:hyprglass:') and args[0] not in self.options:
                 raise RuntimeError('no such option')
+            if args[0] == 'plugin:hyprglass:glass_opacity':
+                return dict(float=self.options[args[0]])
             return dict(int=self.options.get(args[0], 1))
         raise AssertionError(f'unexpected query {name} {args}')
 
@@ -2729,6 +2731,7 @@ class CanvasLeave(unittest.TestCase):
 
 # polish: exercise optional glass release, frame ordering and journal recovery offline.
 GLASS = 'plugin:hyprglass:manage_window_blur'
+OPACITY = 'plugin:hyprglass:glass_opacity'
 
 
 class CanvasPolish(unittest.TestCase):
@@ -2874,6 +2877,121 @@ class CanvasPolish(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt):
                 state.execute(hc, 'leave', self.path)
         self.assertEqual(hc.options[GLASS], 1)
+
+
+    # polish: the glass switch hides in an opacity fade; the configured opacity is journalled.
+    def glass_hc(self, kind, glass, opacity, configured=None):
+        hc = kind(self.clients)
+        hc.options.update({GLASS: glass, OPACITY: opacity})
+        if configured is not None:
+            self.journal.write_text(json.dumps({REMEMBER: 1, AUTO_PLACE: 1, GLASS: 1, OPACITY: configured}))
+        return hc
+
+    def opacities(self, hc):
+        return [event[2] for event in hc.events if event[:2] == ('keyword', OPACITY)]
+
+    def test_enter_fades_opacity_down_before_release_and_restores_it(self):
+        hc = self.glass_hc(CanvasHyprctl, 1, .9)
+        keyword = hc.keyword
+        def checked(name, value):
+            if name == OPACITY:
+                self.assertEqual(json.loads(self.journal.read_text())[OPACITY], .9)
+            keyword(name, value)
+        with patch.object(hc, 'keyword', side_effect=checked):
+            state.execute(hc, 'enter', self.path)
+        release = hc.events.index(('keyword', GLASS, 0))
+        ramp = [event[2] for event in hc.events[:release] if event[:2] == ('keyword', OPACITY)]
+        self.assertEqual(len(ramp), state.GLASS_FADE_STEPS)
+        self.assertEqual(ramp, sorted(ramp, reverse=True))
+        self.assertLess(ramp[0], .9)
+        self.assertEqual(ramp[-1], state.GLASS_MATCH)
+        self.assertEqual(hc.events[release+1], ('keyword', OPACITY, .9))
+        self.assertEqual({call.args[0] for call in self.sleep.call_args_list},
+                         {state.GLASS_FADE/state.GLASS_FADE_STEPS})
+        self.assertLess(release+1, hc.events.index(('spatialoverview:overview', 'toggle all')))
+        self.assertEqual(hc.options[OPACITY], .9)
+        self.assertEqual(json.loads(self.journal.read_text())[OPACITY], .9)
+
+    def test_leave_restores_glass_at_match_then_fades_to_configured_opacity(self):
+        hc = self.glass_hc(ZoomHyprctl, 0, .9, configured=.9)
+        self.path.write_text(json.dumps(packet(self.clients)))
+        state.execute(hc, 'leave', self.path)
+        restored = hc.events.index(('keyword', GLASS, 1))
+        self.assertLess(hc.events.index(('keyword', OPACITY, state.GLASS_MATCH)), restored)
+        ramp = [event[2] for event in hc.events[restored:] if event[:2] == ('keyword', OPACITY)]
+        self.assertEqual(len(ramp), state.GLASS_FADE_STEPS)
+        self.assertEqual(ramp, sorted(ramp))
+        self.assertGreater(ramp[0], state.GLASS_MATCH)
+        self.assertEqual(ramp[-1], .9)
+        self.assertEqual(self.opacities(hc)[0], state.GLASS_MATCH)
+        self.assertEqual((hc.options[GLASS], hc.options[OPACITY]), (1, .9))
+        self.assertFalse(self.journal.exists())
+
+    def test_opacity_configured_below_match_is_never_changed(self):
+        hc = self.glass_hc(CanvasHyprctl, 1, .2)
+        state.execute(hc, 'enter', self.path)
+        state.execute(hc, 'leave', self.path)
+        self.assertEqual(set(self.opacities(hc)), {.2})
+        self.assertEqual((hc.options[GLASS], hc.options[OPACITY]), (1, .2))
+
+    def test_killed_fade_is_recovered_from_journal_before_new_entry(self):
+        hc = self.glass_hc(CanvasHyprctl, 1, .45, configured=.8)
+        state.execute(hc, 'enter', self.path)
+        self.assertLess(hc.events.index(('keyword', OPACITY, .8)), hc.events.index(('query', 'clients')))
+        self.assertEqual(hc.options[OPACITY], .8)
+        self.assertEqual(json.loads(self.journal.read_text())[OPACITY], .8)
+
+    def test_killed_fade_is_recovered_from_journal_on_leave(self):
+        hc = self.glass_hc(CanvasHyprctl, 0, .3, configured=.8)
+        state.execute(hc, 'leave', self.path)
+        self.assertEqual((hc.options[GLASS], hc.options[OPACITY]), (1, .8))
+        self.assertFalse(self.journal.exists())
+
+    def test_interrupted_fade_still_ends_at_configured_opacity(self):
+        hc = self.glass_hc(CanvasHyprctl, 0, 1.0, configured=1.0)
+        self.sleep.side_effect = [None, None, KeyboardInterrupt]
+        with self.assertRaises(KeyboardInterrupt):
+            state.execute(hc, 'leave', self.path)
+        self.assertEqual((hc.options[GLASS], hc.options[OPACITY]), (1, 1.0))
+
+    def test_failed_glass_restore_keeps_opacity_configured_and_journalled(self):
+        hc = self.glass_hc(CanvasHyprctl, 0, 1.0, configured=1.0)
+        keyword = hc.keyword
+        def fail(name, value):
+            if name == GLASS:
+                raise RuntimeError('glass restore refused')
+            keyword(name, value)
+        with patch.object(hc, 'keyword', side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError, 'glass restore refused'):
+                state.execute(hc, 'leave', self.path)
+        self.assertEqual(hc.options[OPACITY], 1.0)
+        self.assertEqual(json.loads(self.journal.read_text())[OPACITY], 1.0)
+
+    def test_failed_open_restores_opacity(self):
+        hc = self.glass_hc(CanvasHyprctl, 1, .9)
+        batch = hc.batch
+        def fail(commands):
+            batch(commands)
+            if ('spatialoverview:overview', 'toggle all') in commands:
+                raise RuntimeError('open failed after dispatch')
+        with patch.object(hc, 'batch', side_effect=fail):
+            with self.assertRaisesRegex(RuntimeError, 'open failed after dispatch'):
+                state.execute(hc, 'enter', self.path)
+        self.assertEqual((hc.options[GLASS], hc.options[OPACITY]), (1, .9))
+
+    def test_journalled_opacity_with_unloaded_glass_still_allows_entry(self):
+        hc = CanvasHyprctl(self.clients)
+        self.journal.write_text(json.dumps({REMEMBER: 1, AUTO_PLACE: 1, GLASS: 1, OPACITY: .9}))
+        state.execute(hc, 'enter', self.path)
+        self.assertEqual(hc.screens, 1)
+        self.assertNotIn(OPACITY, hc.options)
+
+    def test_dry_run_does_not_fade(self):
+        hc = self.glass_hc(CanvasHyprctl, 1, .9)
+        hc.dry = True
+        state.execute(hc, 'enter', self.path)
+        self.sleep.assert_not_called()
+        self.assertEqual(self.opacities(hc), [state.GLASS_MATCH, .9])
 
 
 if __name__ == '__main__':

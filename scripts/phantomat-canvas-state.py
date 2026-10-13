@@ -1330,6 +1330,9 @@ CANVAS_OPTIONS = (CANVAS_REMEMBER, CANVAS_AUTO_PLACE)
 # polish: optional glass setting stays out of the atomic close/rebuild batch.
 CANVAS_GLASS = 'plugin:hyprglass:manage_window_blur'
 GLASS_DESKTOP_FRAME_DELAY = .15
+# polish: glass on at this opacity is the measured closest look to glass off, so the switch hides in a fade.
+GLASS_OPACITY = 'plugin:hyprglass:glass_opacity'
+GLASS_MATCH, GLASS_FADE, GLASS_FADE_STEPS = .3, .2, 10
 ANIMATIONS = 'animations:enabled'
 
 
@@ -1340,6 +1343,8 @@ def read_canvas_options(journal):
         # polish: older journals do not contain the optional hyprglass value.
         if CANVAS_GLASS in data:
             previous[CANVAS_GLASS] = int(data[CANVAS_GLASS])
+        if GLASS_OPACITY in data:
+            previous[GLASS_OPACITY] = float(data[GLASS_OPACITY])
         if ANIMATIONS in data:
             previous[ANIMATIONS] = int(data[ANIMATIONS])
         return previous
@@ -1349,15 +1354,45 @@ def read_canvas_options(journal):
         raise RuntimeError(f'could not read canvas option journal: {error}') from error
 
 
+def glass_option(hc, name):
+    # polish: absent/unloaded hyprglass is optional; None means leave the option alone.
+    try:
+        return float(hc.query('getoption', name)['float' if name == GLASS_OPACITY else 'int'])
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return None
+
+
+def fade_glass(hc, start, end):
+    # polish: smoothstep; the final value is written even when a step is interrupted.
+    try:
+        for step in range(1, 0 if hc.dry or start == end else GLASS_FADE_STEPS):
+            x = step/GLASS_FADE_STEPS
+            hc.keyword(GLASS_OPACITY, round(start+(end-start)*x*x*(3-2*x), 3))
+            time.sleep(GLASS_FADE/GLASS_FADE_STEPS)
+    finally:
+        hc.keyword(GLASS_OPACITY, end)
+
+
+def restore_glass(hc, previous):
+    # polish: switch glass on at the matching opacity, then fade to the configured one.
+    opacity = previous.get(GLASS_OPACITY)
+    if glass_option(hc, GLASS_OPACITY) is None:
+        opacity = None
+    try:
+        if opacity is not None:
+            hc.keyword(GLASS_OPACITY, min(GLASS_MATCH, opacity))
+        restore_option_values(hc, {CANVAS_GLASS: previous[CANVAS_GLASS]})
+    finally:
+        if opacity is not None:
+            fade_glass(hc, min(GLASS_MATCH, opacity), opacity)
+
+
 def restore_option_values(hc, previous):
     errors = []
     for name, value in reversed(list(previous.items())):
         # polish: a plugin may also disappear between journalling and recovery.
-        if name == CANVAS_GLASS:
-            try:
-                int(hc.query('getoption', name)['int'])
-            except (RuntimeError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
-                continue
+        if name in (CANVAS_GLASS, GLASS_OPACITY) and glass_option(hc, name) is None:
+            continue
         try:
             hc.keyword(name, value)
         except Exception as error:
@@ -1399,7 +1434,7 @@ def restore_canvas_options(hc, journal, previous=None, canvas_restored=False):
         # polish: after zoom/rebuild, including interrupted option cleanup.
         try:
             if previous and CANVAS_GLASS in previous:
-                restore_option_values(hc, {CANVAS_GLASS: previous[CANVAS_GLASS]})
+                restore_glass(hc, previous)
             glass_restored = True
         finally:
             # Keep either original recoverable if its restore was refused.
@@ -1432,12 +1467,12 @@ def open_canvas(hc, saved, journal):
         if previous is None:
             previous = {name: hc.query('getoption', name)['int'] for name in CANVAS_OPTIONS}
         # polish: absent/unloaded hyprglass is optional, never an entry failure.
-        try:
-            glass = int(hc.query('getoption', CANVAS_GLASS)['int'])
-        except (RuntimeError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
-            glass = 0
+        glass = int(glass_option(hc, CANVAS_GLASS) or 0)
+        opacity = glass_option(hc, GLASS_OPACITY) if glass else None
         if glass != 0:
             previous.setdefault(CANVAS_GLASS, glass)
+            if opacity is not None:
+                previous.setdefault(GLASS_OPACITY, opacity)
             if not hc.dry:
                 save_atomic(journal, previous)
         elif not hc.dry and not journal.exists():
@@ -1445,8 +1480,13 @@ def open_canvas(hc, saved, journal):
             save_atomic(journal, previous)
         if glass != 0:
             # polish: separate keyword, then a desktop frame before the toggle batch.
+            if opacity is not None:
+                fade_glass(hc, opacity, min(GLASS_MATCH, previous[GLASS_OPACITY]))
             hc.keyword(CANVAS_GLASS, 0)
-            if not hc.dry:
+            if opacity is not None:
+                # polish: opacity has no visible effect while glass is off.
+                hc.keyword(GLASS_OPACITY, previous[GLASS_OPACITY])
+            elif not hc.dry:
                 time.sleep(GLASS_DESKTOP_FRAME_DELAY)
         for name in CANVAS_OPTIONS:
             hc.keyword(name, 0)
@@ -1498,7 +1538,7 @@ def open_canvas(hc, saved, journal):
                 raise
             finally:
                 if toggle_started and (not opened or cleanup_failed) and CANVAS_GLASS in previous:
-                    restore_option_values(hc, {CANVAS_GLASS: previous[CANVAS_GLASS]})
+                    restore_glass(hc, previous)
 
 
 def set_aside(hc, path, why):
