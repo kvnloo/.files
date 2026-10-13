@@ -18,6 +18,15 @@ flowchart TD
   modules --> optional[agent-tools / tailnet / nix / audio]
 ```
 
+## Desktop file manager
+
+The desktop host uses Strata as the default folder handler (`inode/directory`).
+**Super+E** opens `~/.local/bin/strata`. **Super+Shift+E** is unbound.
+Super+E replaces the previous split-direction shortcut.
+The Hyprlang and Lua configurations contain the same explorer bindings.
+The release pin and runtime dependencies are recorded in `fleet.toml`.
+The system file chooser and FileManager1 D-Bus provider remain unchanged.
+
 ## Method 1 — LLM harness (interactive through chat)
 
 Works with Cursor, Claude Code, Codex, OpenCode, Gemini CLI, Oh My Pi, and similar
@@ -381,15 +390,6 @@ device scope. To restore an older setup, disable first, then restore that
 backup. Do not remove the keyd package if another setup needs it. Upstream's
 emergency `Backspace+Escape+Enter` chord terminates keyd.
 
-## Legacy entry points
-
-- [`script.sh`](../script.sh) now forwards to `./install` (old macOS/Ubuntu menu is retired).
-- [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path. It resolves the repo root by walking to `.git`, so the compatibility symlink is safe.
-
-## Safety
-
-- Do not commit Sunshine `credentials/`, `sunshine_state.json`, or logs.
-- Agent Reach secrets stay in `~/.agent-reach` (untracked).
 `/run/keyd.socket` is root-equivalent: it accepts bindings, text input, and
 `command()` actions that keyd runs as root. Never add users to the `keyd` group
 or ACLs to that socket; `activate` empties the group and resets the socket ACL.
@@ -399,4 +399,13 @@ dynamic user with only the `keyd` group. It holds one `keyd listen` connection
 and forwards `/layout` snapshots and `+/-normal`. Modifier layers are dropped
 because their timing reveals typing. Client input is discarded.
 
+## Legacy entry points
+
+- [`script.sh`](../script.sh) now forwards to `./install` (old macOS/Ubuntu menu is retired).
+- [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path. It resolves the repo root by walking to `.git`, so the compatibility symlink is safe.
+
+## Safety
+
+- Do not commit Sunshine `credentials/`, `sunshine_state.json`, or logs.
+- Agent Reach secrets stay in `~/.agent-reach` (untracked).
 - `wallhaven` / MCP / provider API keys are never stored in this repo’s tracked configs.

@@ -16,6 +16,20 @@ user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
+# Verified upstream release; per-user default explorer, no portal takeover.
+[hosts.desktop.strata]
+repository = "https://github.com/lgse/strata"
+version = "1.0.0"
+asset = "strata-1.0.0-x86_64-unknown-linux-gnu.tar.gz"
+sha256 = "e15095a201165132a88032df15ecbeab795a13d6cacc4ebb943e276c35ff492e"
+verify_attestation = true
+binary = "~/.local/bin/strata"
+desktop_entry = "~/.local/share/applications/io.github.lgse.Strata.desktop"
+desktop_mime_registration = true
+default_folder_handler = "io.github.lgse.Strata.desktop"
+explorer_shortcuts = ["SUPER+E"]
+runtime_packages = ["bubblewrap", "ffmpeg", "ffmpegthumbnailer", "fontconfig", "gstreamer", "gst-libav", "gst-plugins-base", "gst-plugins-good", "gtk4", "gtksourceview5", "gvfs", "poppler-glib"]
+
 [hosts.mbp]
 match_hostnames = ["mbp"]
 platform = "cachyos"
