@@ -50,7 +50,7 @@ hl.device({
 })
 -- Native gestures: leave two-finger scroll/pinch to applications.
 hl.gesture({fingers=3, direction="horizontal", action="workspace"})
-hl.gesture({fingers=3, direction="up", action=function() hl.dispatch(hl.dsp.exec_raw("exec", "rofi -show window")) end})
+hl.gesture({fingers=3, direction="up", action=function() hl.dispatch(hl.dsp.exec_raw("exec", os.getenv("HOME") .. "/workspace/.files/scripts/phantomat-window-picker")) end})
 hl.gesture({fingers=4, direction="left", action=function() hl.dispatch(hl.dsp.exec_raw("changegroupactive", "b")) end})
 hl.gesture({fingers=4, direction="right", action=function() hl.dispatch(hl.dsp.exec_raw("changegroupactive", "f")) end})
 hl.gesture({fingers=4, direction="up", action=function() hl.dispatch(hl.dsp.exec_raw("exec", "qs -c noctalia-shell ipc --any-display call launcher toggle")) end})

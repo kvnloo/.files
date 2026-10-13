@@ -13,6 +13,7 @@ rule("nested-wlroots-isolation", {class="^(wlroots)$"}, {workspace="special:herm
 local agent="^(HermesE2E-[0-9]+|Pokemon Native Contract Preflight|Agent Orchestrator|Agent-orchestrator|agent-orchestra.*|ZenCDAE2E.*)$"
 rule("agent-headless-isolation", {class=agent}, {workspace="special:hermes-tests silent",no_initial_focus=true,no_focus=true})
 rule("glass-fullscreen-off", {fullscreen=true}, {tag="+hyprglass_disabled"})
+rule("glass-fullscreen-on", {fullscreen=false}, {tag="-hyprglass_disabled"})
 rule("glass-media-off", {class="^(steam|Steam|Plex|linux-wallpaperengine)$"}, {tag="+hyprglass_disabled"})
 rule("scratch", {class="^(scratch_term)$"}, {float=true,size="80% 70%",center=true,workspace="special:scratch_term"})
 for _,class in ipairs({"^(pavucontrol)$","^(nm-connection-editor)$","^(blueman-manager)$"}) do rule("float-"..class,{class=class},{float=true}) end

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# rofi window picker that also works on the Phantomat canvas.
+#
+#   phantomat-window-picker [extra rofi args...]
+#
+# Why: rofi is an exclusive-keyboard layer surface. Hyprland 0.56.2 raises the
+# picked window but refuses to give it keyboard focus while such a layer is
+# mapped (FocusState.cpp rawWindowFocus, "exclusive ls"). Off the canvas the
+# pick still lands, because activate() warps the cursor onto the window and
+# follow_mouse focuses it once rofi is gone. An open canvas sets
+# cursor:no_warps=1 and input:follow_mouse=0, so there the pick is lost: the
+# old window is refocused, no activewindow event fires and the camera never pans.
+#
+# Fix: note which window rofi asked for (Hyprland posts "urgent>>ADDR" on
+# socket2 for it), and once rofi has exited focus that window with the core
+# dispatcher. That focus change is what the plugin's active-window hook pans
+# the camera on (scrollOverview.cpp onWindowActive -> followCanvasWindow).
+# Only talks to the compositor it was started from.
+set -uo pipefail
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  export HYPRLAND_INSTANCE_SIGNATURE=$(/usr/bin/ls -t "$XDG_RUNTIME_DIR/hypr/" | head -1)
+fi
+events_socket=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+
+# Without socat or the event socket this is just the plain picker.
+if ! command -v socat >/dev/null 2>&1 || [[ ! -S $events_socket ]]; then
+  exec rofi -show window "$@"
+fi
+
+events=$(mktemp "${TMPDIR:-/tmp}/phantomat-window-picker.XXXXXX")
+socat -u "UNIX-CONNECT:$events_socket" - >"$events" 2>/dev/null &
+listener=$!
+cleanup() {
+  kill "$listener" 2>/dev/null
+  rm -f "$events"
+}
+trap cleanup EXIT
+
+rofi -show window "$@"
+sleep 0.1 # let the listener write the last events
+kill "$listener" 2>/dev/null
+wait "$listener" 2>/dev/null
+
+# No urgent event: nothing picked, or the pick is the window that already has
+# focus (Hyprland ignores that request).
+target=$(sed -n 's/^urgent>>\([0-9a-fA-F]\{1,\}\)$/\1/p' "$events" | tail -n 1)
+[[ -z $target ]] && exit 0
+target=0x$target
+
+# Gone in the meantime, or already focused (the stock path worked): leave it.
+state=$(hyprctl -j clients 2>/dev/null |
+  jq -r --arg a "$target" '.[] | select(.address == $a) | "\(.focusHistoryID) \(.floating)"' 2>/dev/null)
+[[ -z $state ]] && exit 0
+read -r history floating <<<"$state"
+
+[[ $history != 0 ]] && hyprctl dispatch focuswindow "address:$target" >/dev/null
+# Floating windows (every window on the canvas) also come to the front.
+[[ $floating == true ]] && hyprctl dispatch alterzorder "top,address:$target" >/dev/null
+exit 0
