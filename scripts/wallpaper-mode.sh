@@ -10,6 +10,7 @@
 #   cycle        performance -> chill -> aesthetic -> performance
 #   pause/resume/toggle  freeze or resume Wallpaper Engine
 #   restore      re-apply the saved mode
+#   guard        restart the engine with the same arguments when a Noctalia wallpaper layer covers it
 #   status       print the saved mode
 
 set -u
@@ -355,6 +356,32 @@ do_resume() { engine_pids | xargs -r kill -CONT; notify "Resumed"; }
 
 current_mode() { cat "$STATE_FILE" 2>/dev/null || echo chill; }
 
+# Layers on one level are drawn in list order, so a Noctalia wallpaper layer listed after the
+# engine's layer hides the live wallpaper. Noctalia recreates that layer whenever the bar restarts.
+engine_covered() {
+  hyprctl -j layers 2>/dev/null | jq -e '
+    [ .[] | (.levels["0"] // [] | map(.namespace)) as $n
+      | ($n | index("linux-wallpaperengine")) as $engine
+      | ([$n | to_entries[] | select(.value | startswith("noctalia-wallpaper")) | .key] | max) as $cover
+      | select($engine != null and $cover != null and $cover > $engine) ] | length > 0' >/dev/null
+}
+
+do_guard() {
+  resolve_hyprland || return 1
+  engine_covered || return 0
+  local pid restarted=0
+  local -a argv
+  while read -r pid; do
+    [[ -r /proc/$pid/cmdline ]] || continue
+    mapfile -d '' -t argv < "/proc/$pid/cmdline"
+    (( ${#argv[@]} > 1 )) || continue
+    kill "$pid" 2>/dev/null || continue
+    env SDL_AUDIODRIVER=dummy /home/kvn/.local/opt/linux-wallpaperengine/run "${argv[@]:1}" >/dev/null 2>&1 &
+    restarted=$((restarted + 1))
+  done < <(engine_pids)
+  echo "guard: restarted $restarted covered wallpaper engine(s)"
+}
+
 case "${1:-status}" in
   performance) mode_performance ;;
   chill)       mode_chill ;;
@@ -396,6 +423,7 @@ case "${1:-status}" in
       static\|*)   mode_static "${saved#static|}" auto ;;
       *)           mode_chill ;;
     esac ;;
+  guard)  do_guard ;;
   status) echo "$(current_mode)" ;;
-  *) echo "usage: $(basename "$0") {performance|chill|aesthetic|static FILE [auto|span|fill|fit|center|tile|stretch]|draw MODE|off|cycle|pause|resume|toggle|restore|status}" >&2; exit 1 ;;
+  *) echo "usage: $(basename "$0") {performance|chill|aesthetic|static FILE [auto|span|fill|fit|center|tile|stretch]|draw MODE|off|cycle|pause|resume|toggle|restore|guard|status}" >&2; exit 1 ;;
 esac
