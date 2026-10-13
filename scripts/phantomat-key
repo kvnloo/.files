@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Canvas-aware key for the legacy (hyprlang) config, the counterpart of
+# canvas_or() in config/hyprland/phantomat/phantomat.lua.
+#
+#   phantomat-key <overview|navigate|window|canvas> <arg...> -- <dispatcher> [args...]
+#
+# While a Phantomat canvas is open, runs the plugin dispatcher
+# spatialoverview:<name> with <arg...>; otherwise (canvas closed, plugin not
+# loaded, wrong build) runs the fallback dispatcher, i.e. the key's original
+# binding. Only talks to the compositor it was started from.
+set -uo pipefail
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+  export HYPRLAND_INSTANCE_SIGNATURE=$(/usr/bin/ls -t /run/user/1000/hypr/ | head -1)
+fi
+
+plugin_dispatcher=${1:-}
+shift || true
+plugin_args=()
+while (($#)) && [[ $1 != -- ]]; do
+  plugin_args+=("$1")
+  shift
+done
+[[ ${1:-} == -- ]] && shift
+
+if [[ -z $plugin_dispatcher || ${#plugin_args[@]} -eq 0 || $# -eq 0 ]]; then
+  echo "usage: phantomat-key <overview|navigate|window|canvas> <arg...> -- <dispatcher> [args...]" >&2
+  exit 2
+fi
+
+# The state query includes workspace overviews and canvases at 100% zoom.
+if hyprctl spatialoverview 2>/dev/null | jq -e '.screens | type == "array" and length > 0' >/dev/null 2>&1; then
+  [[ ${plugin_args[*]} == noop ]] && exit 0
+  exec hyprctl dispatch "spatialoverview:$plugin_dispatcher" "${plugin_args[*]}" >/dev/null
+fi
+exec hyprctl dispatch "$@" >/dev/null
