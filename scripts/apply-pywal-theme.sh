@@ -14,6 +14,12 @@ wal -i "$image" -n -s -t -e -q
 lua_artifact=${HOME}/.cache/wal/colors-hyprland.lua
 [[ -f $lua_artifact ]] || { printf 'pywal generated Lua artifact missing: %s\n' "$lua_artifact" >&2; exit 1; }
 
+# Tern terminal: pywal → its omp theme (~/.omp/agent/themes/pywal.json), which
+# running windows follow by themselves. Never fatal to the rest of the sync.
+if [[ -x $root/scripts/tern-theme-sync ]]; then
+  "$root/scripts/tern-theme-sync" >/dev/null 2>&1 || true
+fi
+
 # Hermes Desktop liquid-glass theme (pywal → DesktopTheme + plugin poll).
 if [[ -x $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
   "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true

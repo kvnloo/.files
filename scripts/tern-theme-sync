@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""Generate Tern's theme from the global pywal palette.
+
+Tern (so.stencil.tern) takes its colors from omp themes: the built-in ones
+plus the user's own JSON themes in ~/.omp/agent/themes/ (the theme picker's
+note: "your own themes in themes/ join the built-in ones").  settings.json
+selects one with `theme_dark` / `theme_light`.  A theme carries `vars`,
+`colors` (UI roles: accent, borders, text ...) and a `terminal` section
+(background, foreground, chrome, widget and the 16 ANSI colors).
+
+Translucency is not part of a theme: Tern's own `material` / `opacity` /
+`blur` settings decide how much of the background covers the desktop, so the
+background written here stays a plain color and the glass keeps working.
+
+A running window follows the theme file by itself: it repaints within a few
+seconds of the rename below, so there is nothing to signal (observed on Tern
+0.8.3; `theme_dark` in settings.json only has to name this theme once).
+
+Usage: tern-theme-sync [--print] [--palette FILE] [--out FILE]
+"""
+
+from __future__ import annotations
+
+import argparse
+import colorsys
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+THEME_NAME = "pywal"
+PALETTE = Path.home() / ".cache/wal/colors.json"
+AGENT_DIR = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".omp/agent")
+THEME_FILE = AGENT_DIR / "themes" / f"{THEME_NAME}.json"
+TEXT_CONTRAST = 4.5  # WCAG AA for body text
+FOREGROUND_CONTRAST = 7.0  # WCAG AAA for the default text color
+# Alerts stay recognizable on any wallpaper (same anchors as sync-pywal-theme.py).
+SEMANTIC = {"ok": "#64d8a1", "warn": "#f0b65b", "bad": "#ff7085"}
+
+
+def rgb(value: str) -> tuple[int, int, int]:
+    value = value.strip().lstrip("#")
+    if len(value) != 6:
+        raise ValueError(f"not a #rrggbb color: {value!r}")
+    return tuple(int(value[index : index + 2], 16) for index in (0, 2, 4))
+
+
+def hex_color(value: tuple[float, float, float]) -> str:
+    return "#" + "".join(f"{max(0, min(255, round(channel))):02x}" for channel in value)
+
+
+def luminance(value: str) -> float:
+    channels = []
+    for channel in rgb(value):
+        normalized = channel / 255
+        channels.append(
+            normalized / 12.92
+            if normalized <= 0.04045
+            else ((normalized + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast(first: str, second: str) -> float:
+    light, dark = sorted((luminance(first), luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def mix(first: str, second: str, amount: float) -> str:
+    return hex_color(
+        tuple(a + (b - a) * amount for a, b in zip(rgb(first), rgb(second)))
+    )
+
+
+def readable(candidate: str, background: str, minimum: float = TEXT_CONTRAST) -> str:
+    """Moves lightness (hue and saturation kept) until the ratio is met."""
+    if contrast(candidate, background) >= minimum:
+        return hex_color(rgb(candidate))
+    dark_background = luminance(background) < 0.35
+    hue, lightness, saturation = colorsys.rgb_to_hls(*(c / 255 for c in rgb(candidate)))
+    for step in range(1, 101):
+        moved = lightness + (1 - lightness) * step / 100 if dark_background else lightness * (1 - step / 100)
+        value = hex_color(tuple(c * 255 for c in colorsys.hls_to_rgb(hue, moved, saturation)))
+        if contrast(value, background) >= minimum:
+            return value
+    return "#ffffff" if dark_background else "#000000"
+
+
+def build_theme(palette: dict) -> tuple[dict, dict]:
+    special, colors = palette["special"], palette["colors"]
+    background = hex_color(rgb(special["background"]))
+    pole = "#ffffff" if luminance(background) < 0.35 else "#000000"
+    foreground = readable(special["foreground"], background, FOREGROUND_CONTRAST)
+
+    # Surfaces stay in the background's own family, a step towards the text.
+    chrome = mix(background, foreground, 0.04)
+    widget = mix(background, foreground, 0.08)
+    surface = mix(background, foreground, 0.14)
+    line = mix(background, foreground, 0.24)
+    muted = readable(colors["color8"], background)
+    dim = readable(mix(background, foreground, 0.5), background)
+
+    hues = {f"c{index}": readable(colors[f"color{index}"], background) for index in range(1, 7)}
+    bright = {
+        f"b{index}": readable(mix(colors[f"color{index + 8}"], pole, 0.25), background)
+        for index in range(1, 7)
+    }
+    semantic = {name: readable(value, background) for name, value in SEMANTIC.items()}
+    # color4 is the desktop's active color (tmux, dunst frame); color6 seconds it.
+    accent, second = hues["c4"], hues["c6"]
+
+    theme_vars = {
+        "background": background,
+        "foreground": foreground,
+        "chrome": chrome,
+        "widget": widget,
+        "surface": surface,
+        "line": line,
+        "muted": muted,
+        "dim": dim,
+        "accent": accent,
+        "second": second,
+        **hues,
+        **bright,
+        **semantic,
+    }
+    theme = {
+        "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/theme-schema.json",
+        "name": THEME_NAME,
+        "vars": theme_vars,
+        "colors": {
+            "accent": "accent",
+            "border": "accent",
+            "borderAccent": "second",
+            "borderMuted": "line",
+            "success": "ok",
+            "error": "bad",
+            "warning": "warn",
+            "muted": "muted",
+            "dim": "dim",
+            "text": "",
+            "thinkingText": "muted",
+            "selectedBg": "surface",
+            "userMessageBg": "chrome",
+            "userMessageText": "",
+            "customMessageBg": "widget",
+            "customMessageText": "",
+            "customMessageLabel": "c5",
+            "toolPendingBg": "surface",
+            "toolSuccessBg": "chrome",
+            "toolErrorBg": "widget",
+            "toolText": "",
+            "toolTitle": "second",
+            "toolOutput": "muted",
+            "mdHeading": "accent",
+            "mdLink": "c5",
+            "mdLinkUrl": "dim",
+            "mdCode": "second",
+            "mdCodeBlock": "foreground",
+            "mdCodeBlockBorder": "line",
+            "mdQuote": "muted",
+            "mdQuoteBorder": "line",
+            "mdHr": "line",
+            "mdListBullet": "accent",
+            "toolDiffAdded": "ok",
+            "toolDiffRemoved": "bad",
+            "toolDiffContext": "muted",
+            "link": "c5",
+            "syntaxComment": "dim",
+            "syntaxKeyword": "c3",
+            "syntaxFunction": "c4",
+            "syntaxVariable": "foreground",
+            "syntaxString": "c5",
+            "syntaxNumber": "c6",
+            "syntaxType": "b6",
+            "syntaxOperator": "c1",
+            "syntaxPunctuation": "muted",
+            "thinkingOff": "line",
+            "thinkingMinimal": "dim",
+            "thinkingLow": "c1",
+            "thinkingMedium": "c4",
+            "thinkingHigh": "c5",
+            "thinkingXhigh": "c3",
+            "bashMode": "c6",
+            "statusLineBg": "chrome",
+            "statusLineSep": "line",
+            "statusLineModel": "c3",
+            "statusLinePath": "c6",
+            "statusLineGitClean": "ok",
+            "statusLineGitDirty": "warn",
+            "statusLineContext": "c5",
+            "statusLineSpend": "c4",
+            "statusLineStaged": "ok",
+            "statusLineDirty": "warn",
+            "statusLineUntracked": "c1",
+            "statusLineOutput": "c2",
+            "statusLineCost": "c2",
+            "statusLineSubagents": "accent",
+            "pythonMode": "warn",
+        },
+        "export": {"pageBg": "background", "cardBg": "chrome", "infoBg": "surface"},
+        "terminal": {
+            "background": "background",
+            "foreground": "foreground",
+            "chrome": "chrome",
+            "widget": "widget",
+            "ansi": [
+                "line",  # pywal's color0 is the background itself: invisible as text
+                *[f"c{index}" for index in range(1, 7)],
+                hex_color(rgb(readable(colors["color7"], background))),
+                "muted",
+                *[f"b{index}" for index in range(1, 7)],
+                readable(mix(colors["color15"], pole, 0.35), background, FOREGROUND_CONTRAST),
+            ],
+        },
+    }
+    report = {
+        "theme": str(THEME_FILE),
+        "wallpaper": palette.get("wallpaper"),
+        "background": background,
+        "foreground": foreground,
+        "accent": accent,
+        "contrast": {
+            "foreground": round(contrast(foreground, background), 2),
+            "accent": round(contrast(accent, background), 2),
+            "muted": round(contrast(muted, background), 2),
+            "ansi_min": round(
+                min(contrast(theme_vars[name], background) for name in (*hues, *bright)), 2
+            ),
+        },
+        "adjusted": {
+            f"color{index}": [colors[f"color{index}"].lower(), hues[f"c{index}"]]
+            for index in range(1, 7)
+            if colors[f"color{index}"].lower() != hues[f"c{index}"]
+        },
+    }
+    return theme, report
+
+
+def write_atomic(path: Path, text: str) -> bool:
+    """Writes through a rename; False when the file already held the text."""
+    if path.is_file() and path.read_text() == text:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(handle, "w") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--palette", type=Path, default=PALETTE)
+    parser.add_argument("--out", type=Path, default=THEME_FILE)
+    parser.add_argument("--print", action="store_true", help="print the theme, write nothing")
+    args = parser.parse_args()
+
+    theme, report = build_theme(json.loads(args.palette.read_text()))
+    text = json.dumps(theme, indent="\t") + "\n"
+    if args.print:
+        sys.stdout.write(text)
+        return 0
+    report["theme"] = str(args.out)
+    report["changed"] = write_atomic(args.out, text)
+    report["reload"] = "none needed: Tern follows the theme file"
+    print(json.dumps(report))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
