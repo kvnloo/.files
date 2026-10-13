@@ -336,7 +336,7 @@ is not bound to a swipe. The existing Workspace Atlas capture switches
 workspaces and is deliberately not used as the window-picker gesture.
 
 Validate with `Hyprland --verify-config -c config/hyprland/hyprland.legacy.conf`
-and the equivalent `hyprland.conf` / `hyprland.lua` paths. Reload the active
+and the equivalent `hyprland.lua` path. Reload the active
 legacy config with `hyprctl reload`; do not activate or restart into Lua as part
 of gesture setup. Lua uses underscore device fields, callback gesture actions,
 and `workspace_name` with Hyprland 0.56.2.

@@ -136,7 +136,9 @@ run_core_links() {
       # CachyOS Lua compositor owns monitors, decorations, and the stub
       # hyprland.conf. Do not replace it with the desktop 3-monitor conf.
     else
-      onboard_link "$repo/config/hyprland/hyprland.conf" "$HOME/.config/hypr/hyprland.conf"
+      # hyprland.legacy.conf is the live hyprlang config; the repo no longer
+      # carries a second copy named hyprland.conf.
+      onboard_link "$repo/config/hyprland/hyprland.legacy.conf" "$HOME/.config/hypr/hyprland.conf"
       if [[ -d "$repo/config/hyprland/config" ]]; then
         onboard_link "$repo/config/hyprland/config" "$HOME/.config/hypr/config"
       fi
