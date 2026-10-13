@@ -1,0 +1,40 @@
+/* omp-hud: the HUD shows only omp's composer; everything else is transparent.
+ *
+ * scripts/omp-hud loads this sheet into the HUD's Tern window only
+ * ("tern ctl css hud.css <this file>"); the main Tern never sees it.
+ * The window background itself is made transparent by "opacity": 0 in
+ * hud-overrides.json. After an edit: omp-hud style
+ *
+ * Tern 0.8.3's CSS engine has no :has(), so the rules use plain selectors.
+ */
+
+/* No tab pill, no tab sidebar. Their keys (tabs, palette, splits) still work. */
+#tabbar,
+#sidebar {
+	display: none !important;
+}
+
+/* Give the room the tab pill and the sidebar edge kept back to the pane, and
+ * make the scrim behind the model picker and the command palette clear. */
+html.lay-float {
+	--tn-bar: 0px !important;
+	--vt-room: 0px !important;
+	--dim: transparent !important;
+}
+
+/* No omp logo, version or tip, and no spacers around them: an empty
+ * conversation has zero height, so nothing is drawn above the composer. */
+.sf-region.sf-main > [data-role='omp.welcome'],
+.sf-region.sf-main > .sf-spacer:first-child,
+.sf-region.sf-main > [data-role='omp.welcome'] + .sf-spacer {
+	display: none !important;
+}
+
+/* The conversation gets a dark sheet so its text can be read over any window.
+ * The sheet is as tall as the messages: with no message it has no height. */
+.sf-region.sf-main {
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+	border-radius: 14px;
+	background: rgb(from var(--tv-bg) r g b / 88%) !important;
+}

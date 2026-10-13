@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
-# omp-hud - a small floating Tern window that runs the real omp, on a key.
+# omp-hud - omp's prompt box as a floating bar at the bottom of the screen, on a key.
 #
 # Why it exists: send a prompt to omp from any app without switching to the
 # terminal workspace. It is a real Tern window with a real omp in it, so every
 # omp key (model picker, /commands) and every Tern key (Carly on double-tap
 # Ctrl, tabs, splits) works. Nothing is re-implemented.
 #
-# How: a second Tern instance (own settings dir + own session daemon) lives on
-# the Hyprland special workspace "omp-hud". The key shows or hides that
-# workspace. This script only ever touches its own window (by address) and its
-# own special workspace. It never moves, focuses or closes any other window.
+# Look: only omp's composer shows, bottom centre of the focused monitor. The
+# rest of the window is transparent: no frame, border, shadow, blur, glass, tab
+# bar or logo. The conversation and the menus (model picker, slash menu,
+# palette) appear above the composer in the same transparent window.
+#   settings: hud-overrides.json ("opacity": 0 makes Tern's background clear)
+#   style:    hud.css, loaded into this window only with "tern ctl css"
+#   frame:    Hyprland properties set on this window only, by address
+#
+# How: a second Tern instance (own settings dir + own session daemon). Hidden,
+# its window waits on the Hyprland special workspace "omp-hud", which is never
+# opened (opening it would dim the screen). The key moves the window to the
+# current workspace and back. This script only ever touches its own window (by
+# address). It never moves, focuses or closes any other window.
 #
 #   omp-hud            toggle (default)
 #   omp-hud warm       start hidden, without focus (for exec-once at login)
 #   omp-hud new        show, with a fresh omp in a new tab (old one keeps running)
 #   omp-hud status     what is running
+#   omp-hud style      load hud.css again (after an edit)
 #   omp-hud quit       close the window, end omp, stop the HUD daemon
 #   omp-hud carly      show the HUD and open Carly in it (bound to keyd's Ctrl Ctrl sentinel, F15).
 #                      Does nothing when a Tern window has the keyboard (Tern's own Ctrl Ctrl
@@ -38,8 +48,9 @@ CWD="${OMP_HUD_CWD:-$HOME}"            # where omp starts
 MANAGED_OMP="${XDG_DATA_HOME:-$HOME/.local/share}/tern/omp/bin/omp"
 [[ -x "$MANAGED_OMP" ]] || MANAGED_OMP=omp
 OMP_CMD="${OMP_HUD_OMP:-$MANAGED_OMP}" # add " -c" to continue the last conversation after omp was quit
-WANT_W="${OMP_HUD_WIDTH:-900}"
-WANT_H="${OMP_HUD_HEIGHT:-520}"
+WANT_W="${OMP_HUD_WIDTH:-720}"         # 720x440 is the smallest window Tern 0.8.3 accepts
+WANT_H="${OMP_HUD_HEIGHT:-440}"
+GAP="${OMP_HUD_GAP:-72}"               # pixels between the window and the bottom of the work area
 
 export TERN_CONFIG_DIR="$PROFILE" TERN_DAEMON_SOCKET="$RUN/daemon.sock"
 SELF="$(readlink -f "$0")"
@@ -65,17 +76,34 @@ hud_addr() {
 	hc -j clients | jq -r --argjson pid "$pid" 'first(.[] | select(.pid == $pid) | .address) // empty'
 }
 
-# "W H X Y": size and centred position on the focused monitor (logical pixels,
-# portrait monitors and the bar's reserved area included).
+# "W H X Y": size and bottom-centre position on the focused monitor (logical
+# pixels, portrait monitors and the bar's reserved area included).
 geometry() {
-	hc -j monitors | jq -r --argjson ww "$WANT_W" --argjson wh "$WANT_H" '
+	hc -j monitors | jq -r --argjson ww "$WANT_W" --argjson wh "$WANT_H" --argjson gap "$GAP" '
 		first(.[] | select(.focused)) as $m
 		| (if ($m.transform % 2) == 1 then [$m.height, $m.width] else [$m.width, $m.height] end) as $px
 		| (($px[0] / $m.scale) | floor) as $mw | (($px[1] / $m.scale) | floor) as $mh
 		| ($m.reserved // [0,0,0,0]) as $r
 		| ($mw - $r[0] - $r[2]) as $uw | ($mh - $r[1] - $r[3]) as $uh
-		| ([$ww, $uw - 80] | min) as $w | ([$wh, $uh - 160] | min) as $h
-		| "\($w) \($h) \($m.x + $r[0] + (($uw - $w) / 2 | floor)) \($m.y + $r[1] + (($uh - $h) / 2 | floor))"'
+		| ([$ww, $uw - 80] | min) as $w | ([$wh, $uh - $gap] | min) as $h
+		| "\($w) \($h) \($m.x + $r[0] + (($uw - $w) / 2 | floor)) \($m.y + $r[1] + $uh - $h - $gap)"'
+}
+
+# Hyprland dispatches that take the frame off the HUD window only: no border, shadow,
+# blur (blur would fog the whole transparent window), rounding or hyprglass.
+frame() {
+	local a="address:$1"
+	echo "dispatch setprop $a border_size 0 ; dispatch setprop $a no_shadow on ; dispatch setprop $a no_blur on ; dispatch setprop $a rounding 0 ; dispatch tagwindow +hyprglass_disabled $a"
+}
+
+# Load hud.css into the HUD window (Tern keeps a sheet until the window closes).
+style() {
+	[[ -r "$PROFILE/hud.css" ]] || return 0
+	for _ in $(seq 80); do
+		TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl css hud.css "$PROFILE/hud.css" >/dev/null 2>&1 && return 0
+		sleep 0.1
+	done
+	echo "omp-hud: the HUD window did not take hud.css" >&2
 }
 
 # ids of the blocks that run omp in the HUD daemon (empty when none or no daemon).
@@ -117,45 +145,50 @@ window() {
 	fi
 }
 
-# $1: "silent" starts hidden and without focus; "" starts it shown.
+# Starts the window hidden and without focus, takes its frame off and styles it. Prints its address.
 launch() {
-	local g; read -r -a g <<<"$(geometry)"
-	local rules="workspace special:$WS${1:+ silent}; float on; size ${g[0]} ${g[1]}; center on"
-	[[ -n "${1:-}" ]] && rules+="; no_initial_focus on"
+	local g addr=""; read -r -a g <<<"$(geometry)"
+	local rules="workspace special:$WS silent; float on; size ${g[0]} ${g[1]}; no_initial_focus on"
 	local v envs=""                                  # Hyprland starts the window, so hand it our settings
 	for v in "${!OMP_HUD_@}"; do envs+=" $v=$(printf %q "${!v}")"; done
 	hc dispatch exec "[$rules] env$envs $SELF _window" >/dev/null
+	for _ in $(seq 60); do addr="$(hud_addr)"; [[ -n "$addr" ]] && break; sleep 0.1; done
+	[[ -n "$addr" ]] || return 0
+	hc --batch "$(frame "$addr")" >/dev/null
+	style
+	echo "$addr"
 }
 
-visible_on() { # prints the monitor name the HUD workspace is shown on, if any
-	hc -j monitors | jq -r --arg ws "special:$WS" 'first(.[] | select(.specialWorkspace.name == $ws) | .name) // empty'
+hud_ws() { # $1: address, $2: id (default) or name. Prints the workspace the HUD window is on.
+	hc -j clients | jq -r --arg a "$1" --arg k "${2:-id}" 'first(.[] | select(.address == $a) | .workspace[$k]) // empty'
 }
-focused_monitor() { hc -j monitors | jq -r 'first(.[] | select(.focused) | .name)'; }
+focused_ws() { hc -j monitors | jq -r 'first(.[] | select(.focused) | .activeWorkspace.id)'; }
+shown_here() { [[ "$(hud_ws "$1")" == "$(focused_ws)" ]]; }   # $1: address
 
 show() {
 	[[ -z "$NOSHOW" ]] || return 0
 	local addr="$1" g; read -r -a g <<<"$(geometry)"
-	hc --batch "dispatch togglespecialworkspace $WS ; dispatch resizewindowpixel exact ${g[0]} ${g[1]},address:$addr ; dispatch movewindowpixel exact ${g[2]} ${g[3]},address:$addr ; dispatch focuswindow address:$addr" >/dev/null
+	hc --batch "$(frame "$addr") ; dispatch movetoworkspacesilent $(focused_ws),address:$addr ; dispatch resizewindowpixel exact ${g[0]} ${g[1]},address:$addr ; dispatch movewindowpixel exact ${g[2]} ${g[3]},address:$addr ; dispatch focuswindow address:$addr" >/dev/null
 }
+hide() { hc dispatch movetoworkspacesilent "special:$WS,address:$1" >/dev/null; }
 
 toggle() {
 	local addr; addr="$(hud_addr)"
-	if [[ -z "$addr" ]]; then                       # cold: start it on the workspace, then make sure it shows
-		launch "${NOSHOW:+silent}"
-		for _ in $(seq 60); do addr="$(hud_addr)"; [[ -n "$addr" ]] && break; sleep 0.1; done
-		[[ -z "$addr" || -n "$(visible_on)" ]] || show "$addr"
+	if [[ -z "$addr" ]]; then                       # cold: start it hidden and styled, then show it
+		addr="$(launch)"
+		[[ -z "$addr" ]] || show "$addr"
 		return
 	fi
-	if [[ "$(visible_on)" == "$(focused_monitor)" ]]; then
-		hc dispatch togglespecialworkspace "$WS" >/dev/null    # shown here: hide
+	if shown_here "$addr"; then
+		hide "$addr"
 	else
-		show "$addr"                                            # hidden, or on the other monitor: bring here
+		show "$addr"                                            # hidden, or on another workspace: bring here
 		[[ -n "$(omp_blocks)" ]] || new_omp_tab                 # omp was quit: start it again
 	fi
 }
 
 # One run at a time: a second key press during a cold start must not open a second window.
-if [[ "${1:-toggle}" =~ ^(toggle|warm|new|carly)$ ]]; then
+if [[ "${1:-toggle}" =~ ^(toggle|warm|new|carly|style)$ ]]; then
 	mkdir -p "$RUN"
 	exec 9>"$RUN/lock"
 	flock -n 9 || exit 0
@@ -163,12 +196,13 @@ fi
 
 case "${1:-toggle}" in
 toggle) toggle ;;
-warm) [[ -n "$(hud_addr)" ]] || launch silent ;;
+warm) [[ -n "$(hud_addr)" ]] || launch >/dev/null ;;
+style) style ;;
 new)
 	addr="$(hud_addr)"
 	if [[ -z "$addr" ]]; then toggle; else
 		new_omp_tab
-		[[ "$(visible_on)" == "$(focused_monitor)" ]] || show "$addr"
+		shown_here "$addr" || show "$addr"
 	fi
 	;;
 carly)
@@ -179,7 +213,7 @@ carly)
 	fi
 	addr="$(hud_addr)"
 	if [[ -z "$addr" ]]; then toggle
-	elif [[ "$(visible_on)" != "$(focused_monitor)" ]]; then show "$addr"; fi
+	elif ! shown_here "$addr"; then show "$addr"; fi
 	# The HUD has its own daemon and one window, so the daemon socket names that window.
 	for _ in $(seq 80); do
 		TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl carly open >/dev/null 2>&1 && exit 0
@@ -191,8 +225,10 @@ status)
 	echo "profile:  $PROFILE"
 	echo "socket:   $TERN_DAEMON_SOCKET"
 	echo "window:   pid=$(hud_pid) address=$(hud_addr)"
-	echo "shown on: $(visible_on)"
+	addr="$(hud_addr)"
+	echo "workspace: $([[ -z "$addr" ]] || hud_ws "$addr" name)   (special:$WS = hidden)"
 	echo "geometry: $(geometry)   (width height x y on the focused monitor)"
+	echo "style:    $(TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl css 2>/dev/null | jq -r '[.sheets[] | select(.name == "hud.css") | .file] | first // "hud.css is not loaded"')"
 	echo "omp:      $(omp_blocks | tr '\n' ' ')"
 	;;
 quit)
@@ -203,5 +239,5 @@ quit)
 	rm -f "$RUN/window.pid"
 	;;
 _window) window ;;
-*) sed -n '2,22p' "$0"; exit 2 ;;
+*) sed -n '2,32p' "$0"; exit 2 ;;
 esac
