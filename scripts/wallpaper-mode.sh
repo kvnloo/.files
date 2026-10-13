@@ -2,7 +2,7 @@
 # wallpaper-mode.sh — manage animated/static wallpaper modes and static drawing
 #
 #   performance  engine off; cached scene frames shown per output
-#   chill        engine at 120/120/75 fps (the everyday default)
+#   chill        engine at 120/120/75 fps; no saved state starts live at 60 fps
 #   aesthetic    engine synced to native refresh: 540/240/75 fps
 #   static FILE [DRAW]  static image with auto/span/fill/fit/center/tile/stretch
 #   draw DRAW    redraw the current static wallpaper with a different method
@@ -16,7 +16,7 @@ set -u
 
 ASSETS=/workspace/SteamLibrary/steamapps/common/wallpaper_engine/assets
 WP_DIR=/workspace/SteamLibrary/steamapps/workshop/content/431960
-WPE=(env SDL_AUDIODRIVER=dummy linux-wallpaperengine --silent --no-audio-processing --assets-dir "$ASSETS")
+WPE=(env SDL_AUDIODRIVER=dummy /home/kvn/.local/opt/linux-wallpaperengine/run --silent --no-audio-processing --fullscreen-pause-only-active --assets-dir "$ASSETS")
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 APPLY_PALETTE="$ROOT/scripts/apply-pywal-theme.sh"
 
@@ -201,11 +201,11 @@ auto_draw_mode() {
 
 start_engine() {  # $1 = fps field index: 3 for chill, 4 for native
   local idx=$1 screen id fps
-  for entry in "${SCREENS[@]}"; do
+  while IFS= read -r entry; do
     IFS='|' read -r screen id _ _ <<< "$entry"
-    fps=$(echo "$entry" | cut -d'|' -f"$idx")
+    fps=${2:-$(echo "$entry" | cut -d'|' -f"$idx")}
     "${WPE[@]}" --fps "$fps" --screen-root "$screen" --bg "$WP_DIR/$id" >/dev/null 2>&1 &
-  done
+  done < <(active_screen_entries)
 }
 
 active_screen_entries() {
@@ -269,6 +269,13 @@ mode_performance() {
   jq --arg pywal "$pywal_hash" '{mode:"performance",outputs:.,pywalHash:$pywal}' <<< "$receipt" > "$PERFORMANCE_RECEIPT"
   echo performance > "$STATE_FILE"
   notify "Performance mode — verified live frames frozen"
+}
+
+mode_default_live() {
+  start_engine 3 60
+  verify_resumed_assets || return 1
+  echo chill > "$STATE_FILE"
+  notify "Live wallpaper · 60 fps"
 }
 
 mode_chill() {
@@ -373,6 +380,10 @@ case "${1:-status}" in
       do_pause
     fi ;;
   restore)
+    if [[ ! -e $STATE_FILE ]]; then
+      mode_default_live
+      exit $?
+    fi
     saved=$(current_mode)
     case "$saved" in
       performance) mode_performance ;;
