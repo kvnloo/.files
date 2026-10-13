@@ -111,11 +111,7 @@ cd ~/workspace/.files
 # or open the repo in Cursor/Claude/Codex and accept harness onboarding
 ```
 
-3. Optional deeper CachyOS migration scripts live at
-   [`transitions/legacy/cachyos-migration/`](../transitions/legacy/cachyos-migration/).
-   [`migration/`](../migration/) is a compatibility symlink.
-
-4. Optional Home Manager details: [`config/nix/README.md`](../config/nix/README.md)
+3. Optional Home Manager details: [`config/nix/README.md`](../config/nix/README.md)
 
 ## Doctor
 
@@ -398,10 +394,6 @@ or ACLs to that socket; `activate` empties the group and resets the socket ACL.
 dynamic user with only the `keyd` group. It holds one `keyd listen` connection
 and forwards `/layout` snapshots and `+/-normal`. Modifier layers are dropped
 because their timing reveals typing. Client input is discarded.
-
-## Legacy entry points
-
-- [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path. It resolves the repo root by walking to `.git`, so the compatibility symlink is safe.
 
 ## Safety
 

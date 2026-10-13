@@ -67,8 +67,3 @@ This tree is public. Treat anything that can authenticate as **out of band**:
 ## License
 
 [MIT](LICENSE) © Kevin Rajan (kvnloo)
-
-## Legacy / deep migration
-
-- Day-to-day onboarding: `./install` or harness flow above
-- One-shot CachyOS rebuild scripts: [`transitions/legacy/cachyos-migration/`](transitions/legacy/cachyos-migration/) (`migration/` remains a compatibility symlink)

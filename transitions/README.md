@@ -10,9 +10,7 @@ boundary.
 - `workspace-xfs-bcachefs.toml` describes the planned filesystem transition.
 - `claudedocs`, `POLYBAR_PYWAL_USAGE.md`, `docs/archive` and `docs/legacy` were
   removed on 2026-10-13. The old notes stay in git history.
-- `migration/` is a compatibility symlink to `legacy/cachyos-migration/`.
-  The 7-day hot window on `02-deploy-dotfiles.sh` (content commit 2026-09-17)
-  cleared before 2026-10-04. Active scripts walk to `.git` for the repo root
-  so `readlink -f` through the symlink does not retarget `DOTFILES`.
+- `legacy/cachyos-migration/` and the root `migration` symlink were removed on
+  2026-10-13. The one-shot CachyOS migration scripts stay in git history.
 - `proposal_codexbar_aggregate.md` is not in this tree, so its mapped
   proposal path is not created.

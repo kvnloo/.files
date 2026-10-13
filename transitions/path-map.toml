@@ -2,9 +2,5 @@
 # Consumed by: ./iac links scan --map transitions/path-map.toml ...
 
 [[move]]
-from = "migration"
-to = "transitions/legacy/cachyos-migration"
-
-[[move]]
 from = "proposal_codexbar_aggregate.md"
 to = "docs/proposals/codexbar-aggregate.md"
