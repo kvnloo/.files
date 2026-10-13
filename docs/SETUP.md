@@ -401,7 +401,6 @@ because their timing reveals typing. Client input is discarded.
 
 ## Legacy entry points
 
-- [`script.sh`](../script.sh) now forwards to `./install` (old macOS/Ubuntu menu is retired).
 - [`migration/08-master-migration.sh`](../migration/08-master-migration.sh) remains the one-shot CachyOS migration orchestrator for rebuilds, not the default daily onboarding path. It resolves the repo root by walking to `.git`, so the compatibility symlink is safe.
 
 ## Safety

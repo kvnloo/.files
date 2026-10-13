@@ -72,4 +72,3 @@ This tree is public. Treat anything that can authenticate as **out of band**:
 
 - Day-to-day onboarding: `./install` or harness flow above
 - One-shot CachyOS rebuild scripts: [`transitions/legacy/cachyos-migration/`](transitions/legacy/cachyos-migration/) (`migration/` remains a compatibility symlink)
-- Older `script.sh` now forwards to `./install`
