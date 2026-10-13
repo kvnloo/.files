@@ -16,7 +16,7 @@ set -u
 
 ASSETS=/workspace/SteamLibrary/steamapps/common/wallpaper_engine/assets
 WP_DIR=/workspace/SteamLibrary/steamapps/workshop/content/431960
-WPE=(env SDL_AUDIODRIVER=dummy /home/kvn/.local/opt/linux-wallpaperengine/run --silent --no-audio-processing --fullscreen-pause-only-active --assets-dir "$ASSETS")
+WPE=(env SDL_AUDIODRIVER=dummy /home/kvn/.local/opt/linux-wallpaperengine/run --silent --no-audio-processing --fullscreen-pause-only-active --layer background --assets-dir "$ASSETS")
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 APPLY_PALETTE="$ROOT/scripts/apply-pywal-theme.sh"
 
