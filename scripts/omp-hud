@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# omp-hud - a small floating Tern window that runs the real omp, on a key.
+#
+# Why it exists: send a prompt to omp from any app without switching to the
+# terminal workspace. It is a real Tern window with a real omp in it, so every
+# omp key (model picker, /commands) and every Tern key (Carly on double-tap
+# Ctrl, tabs, splits) works. Nothing is re-implemented.
+#
+# How: a second Tern instance (own settings dir + own session daemon) lives on
+# the Hyprland special workspace "omp-hud". The key shows or hides that
+# workspace. This script only ever touches its own window (by address) and its
+# own special workspace. It never moves, focuses or closes any other window.
+#
+#   omp-hud            toggle (default)
+#   omp-hud warm       start hidden, without focus (for exec-once at login)
+#   omp-hud new        show, with a fresh omp in a new tab (old one keeps running)
+#   omp-hud status     what is running
+#   omp-hud quit       close the window, end omp, stop the HUD daemon
+#   omp-hud carly      show the HUD and open Carly in it (bound to keyd's Ctrl Ctrl sentinel, F15).
+#                      Does nothing when a Tern window has the keyboard (Tern's own Ctrl Ctrl
+#                      already toggled Carly there) or when the active window is fullscreen (games).
+#                      "omp-hud carly --always" skips both checks (for a plain key bind).
+set -euo pipefail
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+	HYPRLAND_INSTANCE_SIGNATURE="$(/usr/bin/ls -t "$XDG_RUNTIME_DIR/hypr" 2>/dev/null | head -1)"
+	export HYPRLAND_INSTANCE_SIGNATURE
+fi
+
+TERN="${OMP_HUD_TERN:-$HOME/.local/bin/tern}"
+PROFILE="${OMP_HUD_PROFILE:-${XDG_CONFIG_HOME:-$HOME/.config}/tern-hud}"  # the HUD's TERN_CONFIG_DIR
+MAIN_SETTINGS="${OMP_HUD_MAIN_SETTINGS:-${XDG_CONFIG_HOME:-$HOME/.config}/tern/settings.json}"
+RUN="${OMP_HUD_RUNTIME:-$XDG_RUNTIME_DIR/tern-hud}"
+WS="${OMP_HUD_WS:-omp-hud}"            # special workspace name
+CWD="${OMP_HUD_CWD:-$HOME}"            # where omp starts
+# The omp that Tern manages is the "omp" of the main Tern's terminals; use the same one here.
+MANAGED_OMP="${XDG_DATA_HOME:-$HOME/.local/share}/tern/omp/bin/omp"
+[[ -x "$MANAGED_OMP" ]] || MANAGED_OMP=omp
+OMP_CMD="${OMP_HUD_OMP:-$MANAGED_OMP}" # add " -c" to continue the last conversation after omp was quit
+WANT_W="${OMP_HUD_WIDTH:-900}"
+WANT_H="${OMP_HUD_HEIGHT:-520}"
+
+export TERN_CONFIG_DIR="$PROFILE" TERN_DAEMON_SOCKET="$RUN/daemon.sock"
+SELF="$(readlink -f "$0")"
+# Run from a shell inside Tern, these would point the tern CLI at that pane's window.
+unset TERN_PANE TERN_PANE_SOCKET TERN_WINDOW_KEY TERN_WINDOW_SOCKET
+# Test only: OMP_HUD_NOSHOW=1 keeps the HUD on its hidden workspace (never shown, never focused).
+NOSHOW="${OMP_HUD_NOSHOW:-}"
+
+hc() { hyprctl "$@"; }
+
+# pid of the HUD's Tern window process, or nothing.
+hud_pid() {
+	local pid
+	pid="$(cat "$RUN/window.pid" 2>/dev/null)" || return 0
+	[[ -n "$pid" && "$(readlink "/proc/$pid/exe" 2>/dev/null)" == "$(readlink -f "$TERN")"* ]] && echo "$pid"
+	return 0
+}
+
+# address of the HUD window in Hyprland, or nothing.
+hud_addr() {
+	local pid; pid="$(hud_pid)"
+	[[ -n "$pid" ]] || return 0
+	hc -j clients | jq -r --argjson pid "$pid" 'first(.[] | select(.pid == $pid) | .address) // empty'
+}
+
+# "W H X Y": size and centred position on the focused monitor (logical pixels,
+# portrait monitors and the bar's reserved area included).
+geometry() {
+	hc -j monitors | jq -r --argjson ww "$WANT_W" --argjson wh "$WANT_H" '
+		first(.[] | select(.focused)) as $m
+		| (if ($m.transform % 2) == 1 then [$m.height, $m.width] else [$m.width, $m.height] end) as $px
+		| (($px[0] / $m.scale) | floor) as $mw | (($px[1] / $m.scale) | floor) as $mh
+		| ($m.reserved // [0,0,0,0]) as $r
+		| ($mw - $r[0] - $r[2]) as $uw | ($mh - $r[1] - $r[3]) as $uh
+		| ([$ww, $uw - 80] | min) as $w | ([$wh, $uh - 160] | min) as $h
+		| "\($w) \($h) \($m.x + $r[0] + (($uw - $w) / 2 | floor)) \($m.y + $r[1] + (($uh - $h) / 2 | floor))"'
+}
+
+# ids of the blocks that run omp in the HUD daemon (empty when none or no daemon).
+omp_blocks() {
+	"$TERN" ls --json 2>/dev/null | jq -r '.sessions[].tabs[].blocks[]
+		| select(.live and ((.command // "") | test("^(\\S*/)?omp(\\s|$)"))) | .id' 2>/dev/null || true
+}
+
+# A new tab with omp, made the tab the window shows (a tab made from the CLI is not shown by itself).
+new_omp_tab() {
+	local id
+	id="$(cd "$CWD" && "$TERN" new tab --cwd "$CWD" --json -- $OMP_CMD | jq -r '.block')"
+	[[ -z "$id" ]] || "$TERN" focus "$id" >/dev/null
+}
+
+# HUD settings = the main Tern settings (theme, font, keymap, keybinds) with
+# hud-overrides.json on top, rebuilt at each cold start so the two never drift.
+write_settings() {
+	mkdir -p "$PROFILE/omp"
+	# Without this, a new Tern settings dir offers to install its own 276 MB copy of omp.
+	[[ -e "$PROFILE/omp/state.json" ]] || echo '{"managed":false,"offered":true}' >"$PROFILE/omp/state.json"
+	local base='{}'
+	[[ -r "$MAIN_SETTINGS" ]] && base="$(cat "$MAIN_SETTINGS")"
+	[[ -r "$PROFILE/hud-overrides.json" ]] || return 0
+	jq -n --argjson base "$base" --slurpfile over "$PROFILE/hud-overrides.json" '$base * $over[0]' \
+		>"$PROFILE/settings.json.new" && mv "$PROFILE/settings.json.new" "$PROFILE/settings.json"
+}
+
+# Runs as the window process (Hyprland starts it with the window rules attached).
+window() {
+	mkdir -p "$RUN"
+	echo $$ >"$RUN/window.pid"
+	write_settings
+	cd "$CWD"
+	if [[ -n "$(omp_blocks)" ]]; then
+		exec "$TERN"                 # omp still runs in the daemon: only attach a window
+	else
+		exec "$TERN" -e $OMP_CMD     # -e must be Tern's first argument
+	fi
+}
+
+# $1: "silent" starts hidden and without focus; "" starts it shown.
+launch() {
+	local g; read -r -a g <<<"$(geometry)"
+	local rules="workspace special:$WS${1:+ silent}; float on; size ${g[0]} ${g[1]}; center on"
+	[[ -n "${1:-}" ]] && rules+="; no_initial_focus on"
+	local v envs=""                                  # Hyprland starts the window, so hand it our settings
+	for v in "${!OMP_HUD_@}"; do envs+=" $v=$(printf %q "${!v}")"; done
+	hc dispatch exec "[$rules] env$envs $SELF _window" >/dev/null
+}
+
+visible_on() { # prints the monitor name the HUD workspace is shown on, if any
+	hc -j monitors | jq -r --arg ws "special:$WS" 'first(.[] | select(.specialWorkspace.name == $ws) | .name) // empty'
+}
+focused_monitor() { hc -j monitors | jq -r 'first(.[] | select(.focused) | .name)'; }
+
+show() {
+	[[ -z "$NOSHOW" ]] || return 0
+	local addr="$1" g; read -r -a g <<<"$(geometry)"
+	hc --batch "dispatch togglespecialworkspace $WS ; dispatch resizewindowpixel exact ${g[0]} ${g[1]},address:$addr ; dispatch movewindowpixel exact ${g[2]} ${g[3]},address:$addr ; dispatch focuswindow address:$addr" >/dev/null
+}
+
+toggle() {
+	local addr; addr="$(hud_addr)"
+	if [[ -z "$addr" ]]; then                       # cold: start it on the workspace, then make sure it shows
+		launch "${NOSHOW:+silent}"
+		for _ in $(seq 60); do addr="$(hud_addr)"; [[ -n "$addr" ]] && break; sleep 0.1; done
+		[[ -z "$addr" || -n "$(visible_on)" ]] || show "$addr"
+		return
+	fi
+	if [[ "$(visible_on)" == "$(focused_monitor)" ]]; then
+		hc dispatch togglespecialworkspace "$WS" >/dev/null    # shown here: hide
+	else
+		show "$addr"                                            # hidden, or on the other monitor: bring here
+		[[ -n "$(omp_blocks)" ]] || new_omp_tab                 # omp was quit: start it again
+	fi
+}
+
+# One run at a time: a second key press during a cold start must not open a second window.
+if [[ "${1:-toggle}" =~ ^(toggle|warm|new|carly)$ ]]; then
+	mkdir -p "$RUN"
+	exec 9>"$RUN/lock"
+	flock -n 9 || exit 0
+fi
+
+case "${1:-toggle}" in
+toggle) toggle ;;
+warm) [[ -n "$(hud_addr)" ]] || launch silent ;;
+new)
+	addr="$(hud_addr)"
+	if [[ -z "$addr" ]]; then toggle; else
+		new_omp_tab
+		[[ "$(visible_on)" == "$(focused_monitor)" ]] || show "$addr"
+	fi
+	;;
+carly)
+	if [[ "${2:-}" != --always ]]; then
+		active="$(hc -j activewindow)"
+		[[ "$(jq -r '.class // empty' <<<"$active")" != so.stencil.tern ]] || exit 0
+		[[ "$(jq -r '.fullscreen // 0' <<<"$active")" != 2 ]] || exit 0
+	fi
+	addr="$(hud_addr)"
+	if [[ -z "$addr" ]]; then toggle
+	elif [[ "$(visible_on)" != "$(focused_monitor)" ]]; then show "$addr"; fi
+	# The HUD has its own daemon and one window, so the daemon socket names that window.
+	for _ in $(seq 80); do
+		TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl carly open >/dev/null 2>&1 && exit 0
+		sleep 0.1
+	done
+	echo "omp-hud: the HUD window did not answer 'carly open'" >&2; exit 1
+	;;
+status)
+	echo "profile:  $PROFILE"
+	echo "socket:   $TERN_DAEMON_SOCKET"
+	echo "window:   pid=$(hud_pid) address=$(hud_addr)"
+	echo "shown on: $(visible_on)"
+	echo "geometry: $(geometry)   (width height x y on the focused monitor)"
+	echo "omp:      $(omp_blocks | tr '\n' ' ')"
+	;;
+quit)
+	addr="$(hud_addr)"
+	for b in $(omp_blocks); do "$TERN" close "$b" >/dev/null 2>&1 || true; done
+	[[ -z "$addr" ]] || hc dispatch closewindow "address:$addr" >/dev/null
+	pkill -u "$(id -u)" -f "^$(readlink -f "$TERN") daemon --socket $RUN/daemon.sock" 2>/dev/null || true
+	rm -f "$RUN/window.pid"
+	;;
+_window) window ;;
+*) sed -n '2,22p' "$0"; exit 2 ;;
+esac

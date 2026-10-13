@@ -1,0 +1,16 @@
+{
+  "layout": "Float",
+  "tabs": "Vertical",
+  "tabs_autohide": true,
+  "status_bar": false,
+  "confirm_close": "never",
+  "new_blocks": "Agent",
+  "agent_command": "omp",
+  "file_tree": {
+    "open": false
+  },
+  "clawdi": false,
+  "carly": {
+    "voice_on_open": false
+  }
+}
