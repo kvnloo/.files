@@ -1,0 +1,1511 @@
+#!/usr/bin/env python3
+"""Mode borders and layered focused-window glow for Hyprland 0.56.2.
+
+Insert preserves its theme/override border without brightening, halo, glow or dim.
+Its shadow is explicitly reset to range 12, render_power 3, offset -12 -12 and
+rgba(00000080). Nav derives a near-white core, 28px halo and faint inner rim
+in OKLCH. At strength 1 the command halo alpha is 0.44, flaring to 35px/0.55.
+Other submaps retain their derived role colours with the command look. Inactive
+windows keep a neutral shadow. A selector deadline settles command entry bursts
+in 150ms; a second switch cancels it and applies the new steady look immediately.
+Insert never bursts; switches between command submaps do not burst either.
+Each repaint is one keyword batch, including the existing group borders.
+
+Theme priority: Noctalia fragment, pywal fragment, palette, built-in fallback;
+override.conf wins. Optional $mode_insert_border/$mode_nav_border gradients,
+$mode_glow=on|off, $mode_glow_strength=0..1.5, $mode_dim=0..0.3 are validated
+per line. Strength scales only the command halo, with alpha capped at 0.55.
+Invalid entries warn and retain
+their last good values. Command dim defaults to 0.08 and is capped at 0.10.
+Computed borders are exported to ~/.cache/mode-border/colors.conf.
+No mode-coloured live border is sampled as a theme baseline. Decoration originals
+are read with getoption before use, saved beside colors.conf by compositor
+instance, and restored on stop, signals, or glow off. Restarts reuse active
+receipts so the watcher's own decoration values never become the baseline.
+
+A set request paints its full look and overrides submaps and keyd until the
+next real +/-layer event, a changed keyd snapshot, or set auto. Unchanged resync
+snapshots never expire the override. Without an override, a nonempty submap
+wins over observed keyd state. keyd-layers listen relays keyd's /layout snapshots
+and +/-normal changes; the root-owned relay drops all other layers, so modifier
+timing never reaches this process and it needs no keyd control-socket access.
+Snapshot layers settle together before comparing the observed state.
+One relay connection is kept open; there is no periodic reconnect (it exhausts
+keyd's listener table). An unrecognised layer event still triggers one resync. This assumes
+only the Wooting configuration has a normal layer. No key-event guessing.
+
+Theme writes settle for 300ms, configreloaded for 100ms. Linux inotify watches
+inputs; unavailable inotify falls back to 5s stat. Keyd failures back off to 60s,
+permission failures wait for socket changes. No reload, dispatch, plugins,
+configuration edits, installation, permissions changes or service actions.
+
+Usage: mode-border run | status | set insert|nav|resize|wallpaper|system|auto
+       mode-border colours [--palette FILE] | selftest | stop
+Selftest uses temporary paths and stubbed subprocesses, never real Hyprland.
+"""
+from __future__ import annotations
+
+import argparse
+import ctypes
+import errno
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+
+ROLES = ('insert', 'nav', 'resize', 'wallpaper', 'system', 'auto')
+LAYER_SOCKET = Path('/run/keyd-layers.sock')
+LAYER_LISTEN = ['/usr/local/bin/keyd-layers', 'listen']
+MIN_DELTA = 12.0
+HEX = re.compile(r'#[0-9a-fA-F]{6}')
+GRADIENT = re.compile(r'(?:rgba\([0-9a-fA-F]{8}\)|rgb\([0-9a-fA-F]{6}\))'
+                      r'(?:\s+(?:rgba\([0-9a-fA-F]{8}\)|rgb\([0-9a-fA-F]{6}\)))*'
+                      r'(?:\s+-?\d+(?:\.\d+)?deg)?')
+
+
+def log(message):
+    print('mode-border: ' + message, file=sys.stderr, flush=True)
+
+
+def rgb(value):
+    if not HEX.fullmatch(value):
+        raise ValueError(f'invalid palette colour: {value!r}')
+    return tuple(int(value[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+
+def linear(value):
+    return value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4
+
+
+def oklab(value):
+    r, g, b = map(linear, rgb(value))
+    l = (.4122214708 * r + .5363325363 * g + .0514459929 * b) ** (1 / 3)
+    m = (.2119034982 * r + .6806995451 * g + .1073969566 * b) ** (1 / 3)
+    s = (.0883024619 * r + .2817188376 * g + .6299787005 * b) ** (1 / 3)
+    return (.2104542553 * l + .7936177850 * m - .0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + .4505937099 * s,
+            .0259040371 * l + .7827717662 * m - .8086757660 * s)
+
+
+def lch(value):
+    light, a, b = oklab(value)
+    return light, math.hypot(a, b), math.atan2(b, a)
+
+
+def delta(first, second):
+    return 100 * math.dist(oklab(first), oklab(second))
+
+
+def from_lch(light, chroma, hue):
+    # Reduce chroma at fixed L/hue until inside sRGB; do not clip saturated RGB.
+    light = max(0, min(1, light))
+    def channels(c):
+        a, b = c * math.cos(hue), c * math.sin(hue)
+        l = (light + .3963377774 * a + .2158037573 * b) ** 3
+        m = (light - .1055613458 * a - .0638541728 * b) ** 3
+        s = (light - .0894841775 * a - 1.2914855480 * b) ** 3
+        return (4.0767416621 * l - 3.3077115913 * m + .2309699292 * s,
+                -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s,
+                -.0041960863 * l - .7034186147 * m + 1.7076147010 * s)
+    low, high = 0.0, chroma
+    for _ in range(24):
+        candidate = (low + high) / 2
+        if all(-1e-7 <= x <= 1 + 1e-7 for x in channels(candidate)):
+            low = candidate
+        else:
+            high = candidate
+    def encode(x):
+        x = max(0, min(1, x))
+        return round(255 * (12.92 * x if x <= .0031308 else 1.055 * x ** (1 / 2.4) - .055))
+    return '#' + ''.join(f'{encode(x):02x}' for x in channels(low))
+
+
+def luminance(value):
+    r, g, b = map(linear, rgb(value))
+    return .2126 * r + .7152 * g + .0722 * b
+
+
+def contrast(first, second):
+    light, dark = sorted((luminance(first), luminance(second)), reverse=True)
+    return (light + .05) / (dark + .05)
+
+
+def readable_muted(candidate, background):
+    # Match sync-pywal-theme.py, including its twenty quantized RGB steps.
+    if contrast(candidate, background) >= 5:
+        return candidate
+    source = tuple(round(x * 255) for x in rgb(candidate))
+    target = 255 if luminance(background) < .35 else 0
+    for step in range(1, 21):
+        adjusted = '#' + ''.join(f'{round(x + (target - x) * step / 20):02x}' for x in source)
+        if contrast(adjusted, background) >= 5:
+            return adjusted
+    return '#ffffff' if target else '#000000'
+
+
+def gradient(value):
+    value = ' '.join(value.split())
+    if not GRADIENT.fullmatch(value) or len(stops(value)) > 10:
+        raise ValueError(f'invalid border gradient: {value!r}')
+    return value
+
+
+def stops(value):
+    return ['#' + match[:6].lower() for match in re.findall(r'rgba?\(([0-9a-fA-F]+)\)', value)]
+
+
+def angle(value):
+    match = re.search(r'(-?\d+(?:\.\d+)?deg)$', value)
+    return match[1] if match else '0deg'
+
+
+GLOW_DEFAULTS = {'$mode_glow': True, '$mode_glow_strength': 1.0, '$mode_dim': .08}
+
+
+def read_values(path, allowed, previous=None):
+    values = {}
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        return values
+    except (OSError, UnicodeError) as exc:
+        log(f'warning: cannot read {path}: {exc}; keeping last good values')
+        return dict(previous or {})
+    for number, line in enumerate(lines, 1):
+        line = line.split('#', 1)[0].strip()
+        if not line:
+            continue
+        key, separator, value = line.partition('=')
+        key, value = key.strip(), value.strip()
+        try:
+            if not separator or key not in allowed:
+                if '$mode_glow' in allowed:
+                    raise ValueError('unknown or malformed setting')
+                continue
+            if key == '$mode_glow':
+                if value not in ('on', 'off'):
+                    raise ValueError('expected on|off')
+                values[key] = value == 'on'
+            elif key in ('$mode_glow_strength', '$mode_dim'):
+                limit = 1.5 if key == '$mode_glow_strength' else .3
+                number_value = float(value)
+                if not math.isfinite(number_value) or not 0 <= number_value <= limit:
+                    raise ValueError(f'expected 0..{limit}')
+                values[key] = number_value
+            else:
+                values[key] = gradient(value)
+        except ValueError as exc:
+            log(f'warning: {path}:{number}: {exc}; ignoring line')
+            bad_key = key.split()[0] if key else ''
+            if previous and bad_key in previous:
+                values.setdefault(bad_key, previous[bad_key])
+            elif previous and not separator:
+                for old_key, old_value in previous.items():
+                    values.setdefault(old_key, old_value)
+    return values
+
+
+def paths():
+    home = Path.home()
+    cache = Path(os.environ.get('XDG_CACHE_HOME', str(home / '.cache')))
+    config = Path(os.environ.get('XDG_CONFIG_HOME', str(home / '.config')))
+    return (home / '.cache/wal/colors.json', home / '.cache/wal/colors-hyprland.conf',
+            home / '.cache/noctalia/hyprland-group-colors.conf',
+            config / 'mode-border/override.conf', cache / 'mode-border/colors.conf')
+
+
+def load_palette(path):
+    data = json.loads(path.read_text())
+    colors = {f'color{i}': data['colors'][f'color{i}'].lower() for i in range(16)}
+    special = {key: value.lower() for key, value in data['special'].items()}
+    for value in [*colors.values(), *special.values()]:
+        rgb(value)
+    return colors, special
+
+
+def select_colours(palette_path=None, previous_overrides=None):
+    palette, theme, noctalia, override, _ = paths()
+    try:
+        colors, special = load_palette(palette_path or palette)
+        has_palette = True
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        if palette_path is not None:
+            raise
+        if not isinstance(exc, FileNotFoundError):
+            log(f'warning: cannot read palette: {exc}; using defaults')
+        has_palette = False
+        colors = {f'color{i}': from_lch(.72, .14, 2.35) for i in range(16)}
+        special = {'background': '#000000', 'foreground': '#ffffff'}
+    active = ' '.join(f'rgba({colors[f"color{i}"][1:]}ff)' for i in range(1, 7)) + ' 90deg'
+    inactive_stops = [readable_muted(colors['color8'], special['background'])]
+    source = 'pywal color1..6 fallback' if has_palette else 'built-in fallback'
+    if palette_path is None:
+        for candidate in (theme, noctalia):
+            values = read_values(candidate, {'general:col.active_border', 'general:col.inactive_border'})
+            if 'general:col.active_border' in values:
+                active = values['general:col.active_border']
+                source = str(candidate)
+            if 'general:col.inactive_border' in values:
+                inactive_stops = stops(values['general:col.inactive_border'])
+        overrides = read_values(override, {'$mode_insert_border', '$mode_nav_border', *GLOW_DEFAULTS},
+                                previous_overrides)
+        if previous_overrides is not None:
+            previous_overrides.clear()
+            previous_overrides.update(overrides)
+        if '$mode_insert_border' in overrides:
+            active = overrides['$mode_insert_border']
+            source = str(override)
+    else:
+        overrides = {}
+    insert = stops(active)
+    accent = insert[0]
+    references = insert + inactive_stops
+    light, chroma, hue = lch(accent)
+    def distance(value):
+        return min(delta(value, ref) for ref in references)
+    def qualifies(value):
+        L, C, _ = lch(value)
+        return abs(L - light) <= .20 and C >= .045 and distance(value) >= MIN_DELTA
+    candidates = set(colors.values()) | set(special.values())
+    eligible = [value for value in candidates if qualifies(value)]
+    def hue_distance(value):
+        return abs(math.atan2(math.sin(lch(value)[2] - hue), math.cos(lch(value)[2] - hue)))
+    if eligible:
+        nav = max(eligible, key=lambda value: (hue_distance(value), distance(value), value))
+        method = 'palette opposite hue'
+    else:
+        nav = from_lch(light, max(.16, chroma), hue + math.pi)
+        method = '180deg hue rotation'
+        if not qualifies(nav):
+            choices = ['#ffffff', '#000000']
+            passing = [value for value in choices if distance(value) >= MIN_DELTA]
+            nav = max(passing or choices, key=lambda value: contrast(value, special['background']))
+            method = 'contrast white/black fallback'
+    L, C, H = lch(nav)
+    variants = [from_lch(L + shift, C, H) for shift in (.04, -.04)]
+    second = next((value for value in variants if value != nav
+                   and (qualifies(value) if method != 'contrast white/black fallback'
+                        else distance(value) >= MIN_DELTA)), nav)
+    nav_gradient = f'rgba({nav[1:]}ff) rgba({second[1:]}ff) {angle(active)}'
+    if not has_palette:
+        nav = from_lch(.86, .12, 1.75)
+        second = from_lch(.80, .08, 1.75)
+        nav_gradient = f'rgba({nav[1:]}ff) rgba({second[1:]}ff) {angle(active)}'
+        method = 'built-in fallback'
+    if '$mode_nav_border' in overrides:
+        nav_gradient = overrides['$mode_nav_border']
+        method = 'override'
+    nav_stops = stops(nav_gradient)
+    nav_distance = min(distance(value) for value in nav_stops)
+    roles = {}
+    # The closure's reference set grows as roles are assigned. Never reuse a stop
+    # which is too close to Insert, Nav, inactive or another role.
+    references.extend(nav_stops)
+    for role, preferred_rotation in (('resize', math.pi / 2),
+                                     ('wallpaper', -math.pi / 2), ('system', 0)):
+        available = [value for value in candidates if qualifies(value)]
+        role_method = 'palette'
+        if available:
+            primary = max(available, key=lambda value: (hue_distance(value), distance(value), value))
+        else:
+            rotated = [from_lch(light, max(.16, chroma), hue + rotation)
+                       for rotation in (preferred_rotation, math.pi / 2, -math.pi / 2, 0, math.pi)]
+            primary = next((value for value in rotated if qualifies(value)), None)
+            role_method = 'rotation'
+        if primary is None:
+            passing = [value for value in ('#ffffff', '#000000') if distance(value) >= MIN_DELTA]
+            primary = max(passing, key=lambda value: contrast(value, special['background'])) if passing else None
+            role_method = 'contrast'
+        if primary is None:
+            roles[role] = None  # Too many nearby stops: preserve the underlying mode.
+            continue
+        L, C, H = lch(primary)
+        alternatives = [from_lch(L + shift, C, H) for shift in (.04, -.04)]
+        secondary = next((value for value in alternatives if value != primary and
+                          (qualifies(value) if role_method != 'contrast'
+                           else distance(value) >= MIN_DELTA)), primary)
+        roles[role] = f'rgba({primary[1:]}ff) rgba({secondary[1:]}ff) {angle(active)}'
+        references.extend((primary, secondary))
+    return dict(accent=accent, insert=active, nav=nav_gradient, roles=roles,
+                inactive=' '.join(inactive_stops), min_delta=nav_distance,
+                method=method, source=source,
+                glow=dict(enabled=overrides.get('$mode_glow', GLOW_DEFAULTS['$mode_glow']),
+                          strength=overrides.get('$mode_glow_strength', GLOW_DEFAULTS['$mode_glow_strength']),
+                          dim=overrides.get('$mode_dim', GLOW_DEFAULTS['$mode_dim'])))
+
+
+def atomic_write(path, content):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def export_colours(colours):
+    atomic_write(paths()[4], '# Generated by mode-border; theme managers may read these variables.\n'
+                 '# Write optional inputs to ~/.config/mode-border/override.conf.\n'
+                 f'$mode_insert_border = {colours["insert"]}\n'
+                 f'$mode_nav_border = {colours["nav"]}\n')
+
+
+def runtime_dir():
+    return Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+
+
+def state_dir():
+    return runtime_dir() / 'mode-border'
+
+
+def read_mode():
+    try:
+        value = (state_dir() / 'mode').read_text().strip()
+        return value if value in ROLES else 'auto'
+    except FileNotFoundError:
+        return 'auto'
+
+
+def signature(excluded=()):
+    root = runtime_dir() / 'hypr'
+    current = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
+    try:
+        instances = [path for path in root.iterdir()
+                     if path.name not in excluded and (path / '.socket2.sock').exists()]
+        return max(instances, key=lambda path: (path.stat().st_mtime_ns, path.name == current)).name if instances else None
+    except FileNotFoundError:
+        return None
+
+
+def border_value(colours, mode, fallback='insert'):
+    if mode in ('insert', 'nav'):
+        return colours[mode]
+    return colours['roles'].get(mode) or colours[fallback]
+
+
+DECORATION_OPTIONS = (
+    'decoration:shadow:range', 'decoration:shadow:render_power', 'decoration:shadow:offset',
+    'decoration:shadow:color', 'decoration:shadow:color_inactive',
+    'decoration:glow:enabled', 'decoration:glow:range', 'decoration:glow:render_power',
+    'decoration:glow:color', 'decoration:glow:color_inactive',
+    'decoration:dim_inactive', 'decoration:dim_strength')
+
+
+def hypr(argv, instance):
+    env = dict(os.environ, HYPRLAND_INSTANCE_SIGNATURE=instance, XDG_RUNTIME_DIR=str(runtime_dir()))
+    result = subprocess.run(['hyprctl', *argv], env=env, capture_output=True, text=True, timeout=5)
+    if result.returncode or any('error' in line.lower() for line in result.stdout.splitlines()):
+        raise RuntimeError((result.stderr or result.stdout).strip() or f'hyprctl exit {result.returncode}')
+    return result.stdout
+
+
+def apply_keywords(values, instance):
+    hypr(['--batch', ' ; '.join(f'keyword {key} {value}' for key, value in values.items())], instance)
+
+
+def parse_option(key, output):
+    lines = output.splitlines()
+    if not lines or ': ' not in lines[0]:
+        raise ValueError(f'cannot read {key}: {output!r}')
+    value = lines[0].split(': ', 1)[1].strip()
+    if key.endswith('color') or key.endswith('color_inactive'):
+        if key.endswith('color_inactive') and 'set: false' in lines:
+            return None if ':glow:' in key else 'rgba(00000080)'
+        if GRADIENT.fullmatch(value):
+            return gradient(value)
+        tokens = []
+        for token in value.split():
+            if re.fullmatch(r'-?\d+(?:\.\d+)?deg', token):
+                tokens.append(token)
+            elif re.fullmatch(r'[0-9a-fA-F]{1,8}', token):
+                padded = f'{int(token, 16):08x}'
+                tokens.append(f'rgba({padded[2:]}{padded[:2]})')
+            else:
+                raise ValueError(f'invalid colour for {key}: {value!r}')
+        return gradient(' '.join(tokens))
+    tokens = value.strip('[]').replace(',', ' ').split()
+    if len(tokens) != (2 if key.endswith('offset') else 1):
+        raise ValueError(f'invalid value for {key}: {value!r}')
+    numbers = [float(token) for token in tokens]
+    if not all(math.isfinite(number) for number in numbers):
+        raise ValueError(f'nonfinite value for {key}')
+    return ' '.join(f'{number:g}' for number in numbers)
+
+
+def originals_path():
+    return paths()[4].parent / 'originals.json'
+
+
+def load_originals(instance):
+    try:
+        saved = json.loads(originals_path().read_text())
+        if saved['signature'] == instance and saved['active']:
+            values = {key: parse_option(key, 'value: ' + saved['values'][key])
+                      for key in DECORATION_OPTIONS}
+            return values
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        # Never sample a possibly mode-coloured baseline when its receipt is broken.
+        raise RuntimeError(f'cannot read saved decoration originals: {exc}') from exc
+    return None
+
+
+def save_originals(instance, values, active):
+    atomic_write(originals_path(), json.dumps(dict(signature=instance, values=values, active=active)) + '\n')
+
+
+def mode_look(colours, mode, fallback='insert', burst=False):
+    value = border_value(colours, mode, fallback)
+    settings = colours['glow']
+    if settings['enabled'] and mode != 'insert':
+        light, chroma, hue = lch(stops(value)[0])
+        halo = from_lch(max(light, min(.90, light + .06)), chroma * 1.4, hue)
+        inner = from_lch(max(light, min(.93, light + .04)), chroma * 1.15, hue)
+        core = from_lch(.98, chroma * .12, hue)
+        rim = from_lch(min(.94, light + .07), chroma * .75, hue)
+        value = f'rgba({core[1:]}ff) rgba({rim[1:]}ff) {angle(value)}'
+    values = {key: value for key in ('general:col.active_border', 'group:col.border_active',
+                                    'group:col.border_locked_active')}
+    if not settings['enabled']:
+        return values
+    if mode == 'insert':
+        values.update({
+            'decoration:shadow:range': '12', 'decoration:shadow:render_power': '3',
+            'decoration:shadow:offset': '-12 -12', 'decoration:shadow:color': 'rgba(00000080)',
+            'decoration:shadow:color_inactive': 'rgba(00000080)',
+            'decoration:glow:enabled': '0', 'decoration:glow:range': '20',
+            'decoration:glow:render_power': '2', 'decoration:glow:color': 'rgba(ffffff00)',
+            'decoration:glow:color_inactive': 'rgba(ffffff00)',
+            'decoration:dim_inactive': '0', 'decoration:dim_strength': '0'})
+        return values
+    strength = settings['strength']
+    alpha = min(140, round(112 * strength * (1.25 if burst else 1)))
+    radius = round(28 * strength * (1.25 if burst else 1))
+    dim = min(.10, settings['dim'])
+    values.update({
+        'decoration:shadow:offset': '0 0', 'decoration:shadow:range': str(radius),
+        'decoration:shadow:render_power': '4',
+        'decoration:shadow:color': f'rgba({halo[1:]}{alpha:02x})',
+        'decoration:shadow:color_inactive': 'rgba(00000059)',
+        'decoration:glow:enabled': '1',
+        'decoration:glow:range': '20',
+        'decoration:glow:render_power': '3',
+        'decoration:glow:color': f'rgba({inner[1:]}18)',
+        'decoration:glow:color_inactive': 'rgba(00000000)',
+        'decoration:dim_inactive': '1' if dim else '0', 'decoration:dim_strength': f'{dim:g}'})
+    return values
+
+
+def current_submap(instance):
+    value = json.loads(hypr(['-j', 'submap'], instance))
+    if not isinstance(value, str):
+        raise ValueError('unexpected submap response')
+    return '' if value in ('', 'default', 'reset') else value
+
+
+def keyd_layer(line):
+    line = line.strip()
+    if line == '+normal':
+        return True
+    if line == '-normal':
+        return False
+    return None
+
+
+class FileEvents:
+    """One inotify fd. Reattach directory watches after atomic directory replacement."""
+    MASK = 0x00000004 | 0x00000008 | 0x00000040 | 0x00000080 | 0x00000100 | 0x00000200 | 0x00000400 | 0x00000800
+
+    def __init__(self, watched):
+        self.paths = {Path(path) for path in watched}
+        self.dirs = {}
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.inotify_init1.argtypes = [ctypes.c_int]
+        self.libc.inotify_init1.restype = ctypes.c_int
+        self.libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+        self.libc.inotify_add_watch.restype = ctypes.c_int
+        self.fd = self.libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if self.fd < 0:
+            raise OSError(ctypes.get_errno(), 'inotify_init1')
+        try:
+            self.attach()
+        except Exception:
+            os.close(self.fd)
+            raise
+
+    def attach(self):
+        for path in self.paths:
+            parent = path.parent
+            while not parent.is_dir() and parent != parent.parent:
+                parent = parent.parent
+            wd = self.libc.inotify_add_watch(self.fd, os.fsencode(parent), self.MASK)
+            if wd < 0:
+                raise OSError(ctypes.get_errno(), f'inotify_add_watch {parent}')
+            self.dirs[wd] = parent
+
+    def read(self):
+        changed = set()
+        while True:
+            try:
+                data = os.read(self.fd, 65536)
+            except BlockingIOError:
+                break
+            offset = 0
+            while offset < len(data):
+                wd, mask, cookie, length = struct.unpack_from('iIII', data, offset)
+                name = os.fsdecode(data[offset + 16:offset + 16 + length].split(b'\0', 1)[0])
+                offset += 16 + length
+                parent = self.dirs.get(wd)
+                if mask & 0x00004000:  # IN_Q_OVERFLOW: re-read every input.
+                    changed.update(self.paths)
+                elif parent is not None:
+                    candidate = parent / name if name else parent
+                    changed.update(path for path in self.paths if path == candidate or candidate in path.parents)
+                if mask & 0x00008000:  # IN_IGNORED
+                    self.dirs.pop(wd, None)
+        self.attach()
+        return changed
+
+
+def file_versions(watched):
+    versions = {}
+    for path in watched:
+        try:
+            stat = path.stat()
+            versions[path] = (stat.st_ino, stat.st_mtime_ns, stat.st_size, stat.st_mode, stat.st_uid, stat.st_gid)
+        except FileNotFoundError:
+            versions[path] = None
+    return versions
+
+
+class Watcher:
+    def __init__(self):
+        self.selector = selectors.DefaultSelector()
+        self.control = None
+        self.compositor = None
+        self.files = None
+        self.lock = None
+        self.keyd = None
+        self.keyd_buffer = b''
+        self.keyd_retired = []
+        self.keyd_resync = None
+        self.hypr_buffer = b''
+        self.normal = None
+        self.submap = ''
+        self.mode = read_mode()
+        self.manual_mode = None if self.mode == 'auto' else self.mode
+        self.manual_normal = None
+        self.keyd_snapshot = False
+        self.manual_base = 'nav' if self.mode == 'nav' else 'insert'
+        self.instance = None
+        self.colours = None
+        self.overrides = {}
+        self.originals = None
+        self.decorations_active = False
+        self.burst_due = None
+        self.burst_steady = None
+        self.interrupted = False
+        self.pending = None
+        self.settle = 0.0
+        self.recompute = False
+        self.force = False
+        self.last = None
+        self.done = False
+        self.keyd_retry = None
+        self.keyd_backoff = 1.0
+        self.keyd_warned = False
+        self.permission_denied = False
+        self.wake_read, self.wake_write = socket.socketpair()
+        self.wake_read.setblocking(False)
+        self.wake_write.setblocking(False)
+        self.selector.register(self.wake_read, selectors.EVENT_READ, 'signal')
+
+    def schedule(self, delay=.01, force=False, recompute=False):
+        now = time.monotonic()
+        if self.burst_due is not None and delay < .1:
+            self.burst_due = None
+            self.interrupted = True
+            self.settle = 0
+            delay = 0
+        if recompute or delay >= .1:
+            self.settle = max(self.settle, now + delay)
+        self.pending = max(now + delay, self.settle)
+        self.force |= force
+        self.recompute |= recompute
+
+    def capture_originals(self):
+        self.originals = load_originals(self.instance)
+        self.decorations_active = self.originals is not None
+        if self.originals is None:
+            self.originals = {key: parse_option(key, hypr(['getoption', key], self.instance))
+                              for key in DECORATION_OPTIONS}
+            if self.originals['decoration:glow:color_inactive'] is None:
+                self.originals['decoration:glow:color_inactive'] = self.originals['decoration:glow:color']
+            save_originals(self.instance, self.originals, False)
+
+    def restore(self):
+        if self.originals is not None and self.decorations_active:
+            apply_keywords(self.originals, self.instance)
+            save_originals(self.instance, self.originals, False)
+            self.decorations_active = False
+        self.burst_due = None
+        self.burst_steady = None
+
+    def paint(self, mode, fallback, force=False):
+        steady = mode_look(self.colours, mode, fallback)
+        identity = (mode, fallback, steady)
+        if not force and not self.interrupted and self.last == identity:
+            return
+        interrupted = self.interrupted or self.burst_due is not None
+        self.interrupted = False
+        self.burst_due = None
+        self.burst_steady = None
+        enabled = self.colours['glow']['enabled']
+        if not enabled:
+            # Combine restoration and the requested border repaint in one batch.
+            values = dict(self.originals) if self.decorations_active else {}
+            values.update(steady)
+            apply_keywords(values, self.instance)
+            if self.decorations_active:
+                save_originals(self.instance, self.originals, False)
+                self.decorations_active = False
+        else:
+            if self.originals is None:
+                self.capture_originals()
+            # Commit the receipt before the first keyword, including partial failures.
+            if not self.decorations_active:
+                save_originals(self.instance, self.originals, True)
+                self.decorations_active = True
+            burst = mode != 'insert' and (self.last is None or self.last[0] == 'insert') and not interrupted
+            apply_keywords(mode_look(self.colours, mode, fallback, burst=True) if burst else steady,
+                           self.instance)
+            if burst:
+                self.burst_steady = steady
+                self.burst_due = time.monotonic() + .15
+        self.last = identity
+
+    def finish_burst(self, now):
+        if self.burst_due is not None and now >= self.burst_due:
+            apply_keywords(self.burst_steady, self.instance)
+            self.burst_due = None
+            self.burst_steady = None
+
+    def retire_keyd(self):
+        if self.keyd is not None:
+            self.selector.unregister(self.keyd.stdout)
+            self.keyd.stdout.close()
+            if self.keyd.poll() is None:
+                self.keyd.terminate()
+                self.keyd_retired.append(self.keyd)
+            self.keyd = None
+        self.keyd_retired = [process for process in self.keyd_retired if process.poll() is None]
+
+    def keyd_line(self, text):
+        normal = keyd_layer(text)
+        if text.startswith('/'):
+            self.keyd_snapshot = True
+            normal = False  # Connect snapshot is followed by the active +layers.
+            self.schedule()
+        elif text.startswith(('+', '-')) and not self.keyd_snapshot:
+            if self.manual_mode is not None:
+                self.manual_mode = None
+                self.schedule()
+        if normal is not None:
+            if self.normal != normal:
+                self.normal = normal
+                self.schedule()
+            self.keyd_backoff = 1.0
+
+    def effective_mode(self):
+        if self.keyd_snapshot:
+            self.keyd_snapshot = False
+            if self.manual_normal is not None and self.normal != self.manual_normal:
+                self.manual_mode = None
+            self.manual_normal = self.normal
+        if self.manual_mode is not None:
+            return self.manual_mode
+        if self.submap:
+            return self.submap if self.submap in ('resize', 'wallpaper', 'system') else 'nav'
+        return self.base_mode()
+
+    def base_mode(self):
+        if self.manual_mode is not None:
+            return self.manual_mode
+        if self.normal is not None:
+            return 'nav' if self.normal else 'insert'
+        return 'insert'
+
+    def update_mode(self):
+        self.mode = read_mode()
+        self.manual_mode = None if self.mode == 'auto' else self.mode
+        self.manual_normal = self.normal
+        if self.mode in ('insert', 'nav', 'auto'):
+            self.manual_base = 'insert' if self.mode == 'auto' else self.mode
+
+    def stop_signal(self, signum, frame):
+        self.done = True
+        try:
+            self.wake_write.send(b'x')
+        except BlockingIOError:
+            pass
+
+    def publish(self):
+        atomic_write(state_dir() / 'status.json', json.dumps(dict(
+            running=True, pid=os.getpid(), signature=self.instance, mode=self.effective_mode(),
+            state=self.mode, submap=self.submap, keyd=('nav' if self.normal else 'insert')
+            if self.normal is not None else 'unavailable', baseline=self.colours['insert'],
+            nav=self.colours['nav'], min_delta=self.colours['min_delta'])) + '\n')
+
+    def start_keyd(self):
+        if LAYER_SOCKET.exists() and not os.access(LAYER_SOCKET, os.R_OK | os.W_OK):
+            self.permission_denied = True
+            self.keyd_retry = None
+            self.keyd_resync = None
+            if not self.keyd_warned:
+                log('keyd socket permission denied; using submaps/state until permissions change')
+                self.keyd_warned = True
+            return
+        try:
+            self.keyd = subprocess.Popen(LAYER_LISTEN, stdout=subprocess.PIPE,
+                                         stderr=subprocess.STDOUT, bufsize=0)
+            os.set_blocking(self.keyd.stdout.fileno(), False)
+            self.selector.register(self.keyd.stdout, selectors.EVENT_READ, 'keyd')
+            # No periodic reconnect: keyd frees a listener slot only when a write to it fails,
+            # so reconnecting every 750 ms exhausts its listener table within seconds.
+            self.keyd_resync = None
+            self.keyd_buffer = b''
+            self.keyd_retry = None
+            self.permission_denied = False
+        except OSError as exc:
+            if not self.keyd_warned:
+                log(f'keyd unavailable ({exc}); using submaps/state')
+                self.keyd_warned = True
+            self.keyd_retry = time.monotonic() + self.keyd_backoff
+            self.keyd_backoff = min(60, self.keyd_backoff * 2)
+
+    def read_keyd(self):
+        data = os.read(self.keyd.stdout.fileno(), 65536)
+        if not data:
+            self.retire_keyd()
+            self.keyd_resync = None
+            self.keyd_snapshot = False
+            self.normal = None
+            if not self.keyd_warned:
+                log('keyd listener disconnected; using submaps/state')
+                self.keyd_warned = True
+            self.keyd_retry = None if self.permission_denied else time.monotonic() + self.keyd_backoff
+            self.keyd_backoff = min(60, self.keyd_backoff * 2)
+            self.schedule()
+            return
+        self.keyd_buffer += data
+        while b'\n' in self.keyd_buffer:
+            line, self.keyd_buffer = self.keyd_buffer.split(b'\n', 1)
+            text = line.decode(errors='replace').strip()
+            if 'permission denied' in text.lower() or 'permission to access' in text.lower():
+                self.permission_denied = True
+                if not self.keyd_warned:
+                    log('keyd socket permission denied; using submaps/state until permissions change')
+                    self.keyd_warned = True
+            self.keyd_line(text)
+
+    def input_changes(self, changed):
+        if state_dir() / 'mode' in changed:
+            self.update_mode()
+            self.schedule(force=True)
+        if LAYER_SOCKET in changed and self.keyd is None:
+            self.keyd_retry = time.monotonic()
+        if changed.intersection(self.theme_paths):
+            self.schedule(.3, force=True, recompute=True)
+
+    def run(self):
+        root = state_dir()
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.lock = (root / 'watcher.lock').open('a')
+        try:
+            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError('a watcher is already running')
+        control_path = root / 'control.sock'
+        control_path.unlink(missing_ok=True)
+        self.control = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.control.bind(str(control_path))
+        os.chmod(control_path, 0o600)
+        self.control.setblocking(False)
+        self.selector.register(self.control, selectors.EVENT_READ, 'control')
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, self.stop_signal)
+        # Wait for a compositor instead of making the user unit fail at session startup.
+        while not self.done:
+            attempted = set()
+            while True:
+                self.instance = signature(attempted)
+                if self.instance is None:
+                    break
+                attempted.add(self.instance)
+                conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    conn.connect(str(runtime_dir() / 'hypr' / self.instance / '.socket2.sock'))
+                    self.compositor = conn
+                    break
+                except OSError:
+                    conn.close()
+            if self.compositor is not None:
+                break
+            for key, _ in self.selector.select(1):
+                if key.data == 'signal':
+                    self.wake_read.recv(4096)
+                elif key.data == 'control':
+                    if self.control.recv(4096) == b'stop':
+                        self.done = True
+        if self.done:
+            return 0
+        self.compositor.setblocking(False)
+        self.selector.register(self.compositor, selectors.EVENT_READ, 'hypr')
+        # Subscribe first, then snapshot; queued events win over this initial state.
+        try:
+            self.submap = current_submap(self.instance)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            log(f'initial submap unavailable ({exc}); waiting for socket2 events')
+        self.theme_paths = set(paths()[:4])
+        watched = self.theme_paths | {root / 'mode', LAYER_SOCKET}
+        versions = file_versions(watched)
+        stat_due = None
+        try:
+            self.files = FileEvents(watched)
+            self.selector.register(self.files.fd, selectors.EVENT_READ, 'files')
+        except (OSError, AttributeError) as exc:
+            log(f'inotify unavailable ({exc}); falling back to 5s stat')
+            stat_due = time.monotonic() + 5
+        self.capture_originals()
+        self.update_mode()
+        self.start_keyd()
+        self.schedule(force=True, recompute=True)
+        while not self.done:
+            deadlines = [value for value in (self.pending, self.burst_due, self.keyd_retry, self.keyd_resync, stat_due) if value is not None]
+            timeout = max(0, min(deadlines) - time.monotonic()) if deadlines else None
+            for key, _ in self.selector.select(timeout):
+                if key.data == 'signal':
+                    self.wake_read.recv(4096)
+                elif key.data == 'control':
+                    message = self.control.recv(4096)
+                    if message == b'stop':
+                        self.done = True
+                    else:
+                        self.update_mode()
+                        self.schedule(force=True)
+                elif key.data == 'files':
+                    self.input_changes(self.files.read())
+                elif key.data == 'keyd':
+                    self.read_keyd()
+                elif key.data == 'hypr':
+                    try:
+                        data = self.compositor.recv(65536)
+                    except ConnectionResetError:
+                        data = b''
+                    if not data:
+                        self.done = True
+                        break
+                    self.hypr_buffer += data
+                    while b'\n' in self.hypr_buffer:
+                        line, self.hypr_buffer = self.hypr_buffer.split(b'\n', 1)
+                        event, _, value = line.decode(errors='replace').partition('>>')
+                        if event == 'submap':
+                            self.submap = '' if value in ('', 'reset') else value.strip()
+                            self.schedule()
+                        elif event == 'configreloaded':
+                            self.schedule(.1, force=True, recompute=True)
+            if self.done:
+                break
+            now = time.monotonic()
+            if stat_due is not None and now >= stat_due:
+                fresh = file_versions(watched)
+                self.input_changes({path for path in watched if fresh[path] != versions[path]})
+                versions = fresh
+                stat_due = now + 5
+            if self.keyd_resync is not None and now >= self.keyd_resync:
+                # keyd has no query command. Reconnecting listen obtains actual /layout +layers,
+                # including clear() changes which emitted no -normal. No blocking reads/waits.
+                self.keyd_resync = None
+                self.retire_keyd()
+                self.start_keyd()
+            if self.keyd_retry is not None and now >= self.keyd_retry:
+                self.start_keyd()
+            if self.pending is not None and now >= self.pending:
+                try:
+                    if self.recompute:
+                        self.colours = select_colours(previous_overrides=self.overrides)
+                        export_colours(self.colours)
+                    mode = self.effective_mode()
+                    base = self.base_mode()
+                    fallback = base if base in ('insert', 'nav') else self.manual_base
+                    self.paint(mode, fallback, self.force)
+                    self.publish()
+                    self.pending = None
+                    self.settle = 0
+                    self.force = self.recompute = False
+                except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as exc:
+                    log(f'cannot apply colours: {exc}; retrying in 1s')
+                    self.pending = time.monotonic() + 1
+            try:
+                self.finish_burst(time.monotonic())
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+                log(f'cannot settle glow: {exc}; retrying in 1s')
+                self.burst_due = time.monotonic() + 1
+        return 0
+
+    def close(self):
+        try:
+            self.restore()
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            log(f'cannot restore decorations: {exc}; originals retained for next run/stop')
+        for process in self.keyd_retired:
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        if self.keyd is not None:
+            if self.keyd.poll() is None:
+                self.keyd.terminate()
+            try:
+                self.keyd.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                self.keyd.kill()
+                self.keyd.wait()
+            self.keyd.stdout.close()
+        for resource in (self.control, self.compositor, self.wake_read, self.wake_write):
+            if resource is not None:
+                resource.close()
+        if self.files is not None:
+            os.close(self.files.fd)
+        self.selector.close()
+        # Only the process which owns the singleton lock can remove shared files.
+        if self.control is not None:
+            (state_dir() / 'control.sock').unlink(missing_ok=True)
+            (state_dir() / 'status.json').unlink(missing_ok=True)
+        if self.lock is not None:
+            self.lock.close()
+
+
+def nudge(message):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as control:
+        control.settimeout(.5)
+        try:
+            control.sendto(message, str(state_dir() / 'control.sock'))
+            return True
+        except OSError as exc:
+            if exc.errno in (errno.ENOENT, errno.ECONNREFUSED):
+                return False
+            raise
+
+
+def status():
+    running = False
+    try:
+        with (state_dir() / 'watcher.lock').open('r') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                running = True
+    except FileNotFoundError:
+        pass
+    try:
+        report = json.loads((state_dir() / 'status.json').read_text()) if running else {}
+    except (FileNotFoundError, ValueError):
+        report = {}
+    report.update(running=running, state=read_mode())
+    print(json.dumps(report, indent=2))
+
+
+def print_colours(colours, label=None):
+    if label:
+        print(label)
+    print(f'  accent={colours["accent"]} inactive={colours["inactive"]}')
+    print(f'  insert={" ".join(stops(colours["insert"]))} {angle(colours["insert"])}')
+    print(f'  nav={" ".join(stops(colours["nav"]))} {angle(colours["nav"])}')
+    print(f'  min ΔE_OKLab={colours["min_delta"]:.2f} (threshold {MIN_DELTA:g}; {colours["method"]})')
+    if not label:
+        print(f'  baseline source={colours["source"]}')
+
+
+def selftest():
+    """All writes are temporary; subprocesses are forbidden except the hyprctl stub."""
+    from unittest.mock import patch
+    import contextlib
+    import io
+
+    checks = 0
+    def check(condition, message):
+        nonlocal checks
+        assert condition, message
+        checks += 1
+
+    class PipeEnd:
+        def __init__(self, fd):
+            self.fd = fd
+        def fileno(self):
+            return self.fd
+        def setblocking(self, value):
+            os.set_blocking(self.fd, value)
+        def send(self, data):
+            return os.write(self.fd, data)
+        def recv(self, size):
+            return os.read(self.fd, size)
+        def close(self):
+            if self.fd is not None:
+                os.close(self.fd)
+                self.fd = None
+    def pipe_pair():
+        return tuple(PipeEnd(fd) for fd in os.pipe())
+
+    with tempfile.TemporaryDirectory(prefix='mode-border-test-', dir='/tmp') as tmp:
+        root = Path(tmp)
+        test_paths = tuple(root / name for name in
+                           ('wal.json', 'theme.conf', 'noctalia.conf', 'override.conf', 'colors.conf'))
+        override = test_paths[3]
+        insert = 'rgba(86c96bff) rgba(6c8a5fff) 90deg'
+        nav = 'rgba(e6d06aff) rgba(c8be72ff) 90deg'
+        override.write_text(f'$mode_insert_border = {insert}\n$mode_nav_border = {nav}\n')
+        calls = []
+        reads = []
+        originals = {
+            'decoration:shadow:range': '12', 'decoration:shadow:render_power': '3',
+            'decoration:shadow:offset': '-12 -12', 'decoration:shadow:color': 'rgba(00000080) 0deg',
+            'decoration:shadow:color_inactive': 'rgba(00000080)',
+            'decoration:glow:enabled': '0', 'decoration:glow:range': '20',
+            'decoration:glow:render_power': '2', 'decoration:glow:color': 'rgba(ffffff00) 0deg',
+            'decoration:glow:color_inactive': 'rgba(ffffff00) 0deg',
+            'decoration:dim_inactive': '0', 'decoration:dim_strength': '0.2'}
+        live = dict(originals)
+        def hyprctl(argv, **kwargs):
+            assert argv[0] == 'hyprctl', f'forbidden subprocess: {argv}'
+            if argv[1:3] == ['-j', 'submap']:
+                return subprocess.CompletedProcess(argv, 0, '""', '')
+            if argv[1] == 'getoption':
+                key = argv[2]
+                reads.append(key)
+                value = live[key]
+                if key.endswith('color') or key.endswith('color_inactive'):
+                    value = ' '.join(f'{int(t[6:8] + t[:6], 16):x}'
+                                     for t in re.findall(r'rgba\(([0-9a-f]{8})\)', value)) + ' 0deg'
+                    kind = 'custom type'
+                else:
+                    kind = 'vec2' if key.endswith('offset') else 'float' if key.endswith('strength') else 'int'
+                unset = key.endswith('color_inactive')
+                return subprocess.CompletedProcess(argv, 0, f'{kind}: {value}\nset: {str(not unset).lower()}\n', '')
+            assert argv[1] == '--batch', argv
+            values = {}
+            for command in argv[2].split(' ; '):
+                verb, key, value = command.split(' ', 2)
+                assert verb == 'keyword', command
+                assert key in (*DECORATION_OPTIONS, 'general:col.active_border',
+                               'group:col.border_active', 'group:col.border_locked_active'), key
+                values[key] = value
+            live.update(values)
+            calls.append(values)
+            return subprocess.CompletedProcess(argv, 0, 'ok\n', '')
+
+        with patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(root)}), \
+             patch(__name__ + '.paths', return_value=test_paths), \
+             patch('subprocess.run', side_effect=hyprctl), \
+             patch('socket.socketpair', side_effect=pipe_pair), \
+             patch('subprocess.Popen', side_effect=AssertionError('real process in selftest')):
+            retained = {}
+            colours = select_colours(previous_overrides=retained)
+            check(colours['insert'] == insert and colours['nav'] == nav, 'missing wal with overrides')
+            calm = mode_look(colours, 'insert')
+            command = mode_look(colours, 'nav')
+            check(calm['general:col.active_border'] == insert, 'insert border preserved')
+            plain_shadow = {
+                'decoration:shadow:range': '12', 'decoration:shadow:render_power': '3',
+                'decoration:shadow:offset': '-12 -12', 'decoration:shadow:color': 'rgba(00000080)',
+                'decoration:shadow:color_inactive': 'rgba(00000080)'}
+            check(all(calm[key] == value for key, value in plain_shadow.items()), 'insert original shadow')
+            check(calm['decoration:glow:enabled'] == '0' and
+                  calm['decoration:dim_inactive'] == '0' and calm['decoration:dim_strength'] == '0',
+                  'insert has no glow or dim')
+            check(command['decoration:shadow:range'] == '28' and
+                  command['decoration:shadow:color'].endswith('70)'), 'tasteful command halo')
+            check(command['decoration:dim_strength'] == '0.08', 'default command dimming')
+            check(command['decoration:glow:range'] == '20' and
+                  command['decoration:glow:color'].endswith('18)') and
+                  command['decoration:shadow:render_power'] == '4', 'faint inner glow')
+            check(stops(command['general:col.active_border'])[0] != '#e6d06a', 'nav hot core')
+            check(lch(stops(command['general:col.active_border'])[0])[0] > .95, 'near white core')
+            halo = stops(command['decoration:shadow:color'])[0]
+            inner = stops(command['decoration:glow:color'])[0]
+            check(lch(halo)[0] > lch('#e6d06a')[0] and lch(halo)[1] > lch('#e6d06a')[1],
+                  'derived command halo')
+            check(abs(lch(inner)[2] - lch('#e6d06a')[2]) < .05, 'inner hue follows border')
+            check(command['decoration:shadow:color_inactive'] == 'rgba(00000059)', 'neutral inactive shadow')
+            check(mode_look(colours, 'insert', burst=True) == calm, 'insert never flares')
+            override.write_text(override.read_text() + '$mode_glow_strength = 0.5\n$mode_dim = 0.3\n')
+            half = select_colours(previous_overrides=retained)
+            scaled = mode_look(half, 'nav')
+            check(scaled['decoration:shadow:range'] == '14' and scaled['decoration:shadow:color'].endswith('38)'), 'strength scales range and alpha')
+            check(scaled['decoration:dim_strength'] == '0.1', 'dim capped at 0.10')
+            check(all(scaled[key] == command[key] for key in command if ':glow:' in key),
+                  'strength leaves inner glow unchanged')
+            check(mode_look(half, 'insert') == calm, 'strength and dim leave insert plain')
+            for bad in ('nan', 'inf', '-0.1', '1.6', 'oops; keyword evil 1'):
+                override.write_text(f'$mode_insert_border = broken\n$mode_nav_border = {nav}\n'
+                                    f'$mode_glow = maybe\n$mode_glow_strength = {bad}\n$mode_dim = 0.31\nmalformed line\n')
+                warnings = io.StringIO()
+                with contextlib.redirect_stderr(warnings):
+                    invalid = select_colours(previous_overrides=retained)
+                check(invalid['insert'] == insert and invalid['glow']['strength'] == .5 and
+                      invalid['glow']['dim'] == .3 and invalid['glow']['enabled'], 'bad override retains last good')
+                check('warning' in warnings.getvalue(), 'bad override warning')
+            override.write_bytes(b'\xff')
+            with contextlib.redirect_stderr(io.StringIO()):
+                check(select_colours(previous_overrides=retained)['insert'] == insert, 'bad encoding keeps overrides')
+            override.write_text(f'$mode_insert_border {insert}\n$mode_glow_strength = 1.5\n')
+            with contextlib.redirect_stderr(io.StringIO()):
+                maximum = select_colours(previous_overrides=retained)
+            check(maximum['insert'] == insert and mode_look(maximum, 'nav')['decoration:shadow:range'] == '42',
+                  'missing equals retains colour and upper strength works')
+            check(all(mode_look(maximum, 'nav', burst=burst)['decoration:shadow:color'].endswith('8c)')
+                      for burst in (False, True)), 'halo alpha capped at 0.55 at maximum strength')
+            override.write_text('$mode_glow_strength = 0\n$mode_dim = 0\n')
+            zero = mode_look(select_colours(), 'nav')
+            check(zero['decoration:shadow:range'] == '0' and zero['decoration:shadow:color'].endswith('00)') and
+                  zero['decoration:dim_inactive'] == '0', 'zero strength and dim')
+            override.unlink()
+            defaults = select_colours(previous_overrides=retained)
+            check(bool(mode_look(defaults, 'nav')) and defaults['glow']['strength'] == 1, 'no wal or overrides')
+            check(parse_option('decoration:glow:color', 'custom type: 1 0deg\nset: true') == 'rgba(00000100) 0deg', 'unpadded transparent colour')
+            check(parse_option('decoration:shadow:offset', 'vec2: [-12.00000, -12.00000]') == '-12 -12', 'vector getoption')
+            watcher = Watcher()
+            watcher.instance = 'test-instance'
+            watcher.colours = colours
+            watcher.capture_originals()
+            watcher.paint('insert', 'insert', force=True)
+            check(watcher.burst_due is None and calls[-1] == calm, 'initial insert has no burst')
+            watcher.paint('nav', 'insert', force=True)
+            check(calls[-1]['decoration:shadow:range'] == '35' and
+                  calls[-1]['decoration:shadow:color'].endswith('8c)'), 'bounded command entry burst')
+            first_due = watcher.burst_due
+            watcher.paint('insert', 'insert')
+            check(calls[-1] == calm and watcher.burst_due is None, 'interrupted burst returns plain insert')
+            watcher.finish_burst(first_due + 1)
+            check(calls[-1]['general:col.active_border'] == insert, 'cancelled burst never repaints old mode')
+            before = len(calls)
+            watcher.paint('insert', 'insert', force=True)
+            check(len(calls) == before + 1 and 'decoration:glow:enabled' in calls[-1], 'forced same mode repaint')
+            watcher.finish_burst(time.monotonic() + 1)
+            check(calls[-1] == calm and watcher.burst_due is None, 'forced insert stays plain')
+            watcher.paint('nav', 'insert')
+            due = watcher.burst_due
+            check(due is not None and .14 <= due - time.monotonic() <= .15, '150ms burst deadline')
+            before = len(calls)
+            watcher.finish_burst(due - .01)
+            check(len(calls) == before, 'burst remains until deadline')
+            watcher.finish_burst(due)
+            check(calls[-1]['decoration:shadow:range'] == '28', 'timed burst settles nav')
+            watcher.paint('resize', 'insert')
+            check(watcher.burst_due is None, 'command submap change has no burst')
+            watcher.paint('nav', 'insert')
+            check(watcher.burst_due is None, 'return within command mode has no burst')
+            watcher.paint('insert', 'insert')
+            watcher.normal = False
+            watcher.keyd_line('/main')
+            watcher.keyd_line('+normal')
+            watcher.keyd_line('-normal')
+            watcher.paint('insert', 'insert')
+            check(calls[-1] == calm and watcher.burst_due is None,
+                  'rapid layer changes leave insert plain')
+            watcher.paint('nav', 'insert')
+            watcher.normal = True
+            watcher.keyd_line('-normal')
+            watcher.keyd_line('+normal')
+            watcher.paint('nav', 'insert')
+            check(calls[-1]['decoration:shadow:range'] == '28' and watcher.burst_due is None,
+                  'interrupted command burst settles even with unchanged final mode')
+            restarted = Watcher()
+            restarted.instance = watcher.instance
+            restarted.colours = colours
+            before_reads = len(reads)
+            restarted.capture_originals()
+            check(len(reads) == before_reads, 'restart reuses receipt without live baseline reads')
+            check(restarted.originals['decoration:shadow:range'] == '12', 'restart does not sample its glow')
+            restarted.close()
+            check(all(live[key] == value for key, value in originals.items()), 'restore persisted originals on stop')
+            watcher.burst_due = None
+            watcher.close()
+            watcher = Watcher()
+            watcher.instance = 'test-instance'
+            watcher.colours = colours
+            watcher.capture_originals()
+            watcher.paint('nav', 'insert')
+            watcher.colours = dict(colours, glow=dict(enabled=False, strength=1, dim=.1))
+            watcher.paint('nav', 'insert', force=True)
+            check(all(live[key] == value for key, value in originals.items()), 'glow off restores originals')
+            check(watcher.burst_due is None, 'glow off cancels burst')
+            watcher.normal = True
+            watcher.keyd_line('/main')
+            check(watcher.normal is False, 'clear snapshot returns to insert')
+            watcher.keyd_line('+normal')
+            check(watcher.normal is True, 'normal layer enters nav')
+            watcher.keyd_resync = time.monotonic() + .75
+            watcher.keyd_line('+unrecognised')
+            check(watcher.normal and watcher.keyd_resync is not None, 'unknown layer waits for periodic actual-state snapshot')
+            watcher.close()
+            watcher = Watcher()
+            watcher.instance = 'test-instance'
+            watcher.colours = colours
+            watcher.capture_originals()
+            watcher.paint('nav', 'insert')
+            watcher.stop_signal(signal.SIGTERM, None)
+            watcher.close()
+            check(watcher.done and all(live[key] == value for key, value in originals.items()), 'SIGTERM restores originals')
+            modified = dict(colours, nav=insert)
+            check(mode_look(modified, 'nav')['decoration:shadow:color'] != command['decoration:shadow:color'],
+                  'override hue carries through halo')
+            check(parse_option('decoration:glow:color', 'custom type: FFE6D06A 0 90deg') ==
+                  'rgba(e6d06aff) rgba(00000000) 90deg', 'gradient ARGB conversion')
+            watcher = Watcher()
+            watcher.instance = 'test-manual'
+            watcher.colours = colours
+            watcher.normal = False
+            mode_path = state_dir() / 'mode'
+            mode_path.parent.mkdir(parents=True, exist_ok=True)
+            watcher.submap = 'resize'
+            for mode in ('nav', 'insert', 'resize', 'wallpaper', 'system'):
+                mode_path.write_text(mode + '\n')
+                watcher.update_mode()
+                check(watcher.effective_mode() == mode, f'set {mode} overrides keyd insert')
+            watcher.submap = ''
+            mode_path.write_text('nav\n')
+            watcher.update_mode()
+            watcher.paint(watcher.effective_mode(), watcher.base_mode(), force=True)
+            watcher.finish_burst(time.monotonic() + 1)
+            check(calls[-1] == command, 'set nav with keyd insert paints full command look')
+            with patch('time.monotonic', return_value=time.monotonic() + 31):
+                watcher.keyd_line('/main')
+                watcher.paint(watcher.effective_mode(), watcher.base_mode(), force=True)
+            check(calls[-1] == command, 'unchanged insert resync preserves manual nav beyond 30 seconds')
+            watcher.keyd_line('+normal')
+            watcher.keyd_line('-normal')
+            watcher.paint(watcher.effective_mode(), watcher.base_mode())
+            watcher.finish_burst(time.monotonic() + 1)
+            check(calls[-1] == calm, 'real normal/insert changes clear manual nav')
+            watcher.normal = True
+            mode_path.write_text('insert\n')
+            watcher.update_mode()
+            watcher.keyd_line('/main')
+            watcher.keyd_line('+normal')
+            check(watcher.effective_mode() == 'insert', 'unchanged normal snapshot preserves manual insert')
+            watcher.keyd_line('/main')
+            check(watcher.effective_mode() == 'insert', 'changed snapshot observes insert')
+            watcher.keyd_line('+normal')
+            check(watcher.effective_mode() == 'nav', 'changed snapshot released manual insert')
+            mode_path.write_text('insert\n')
+            watcher.update_mode()
+            mode_path.write_text('auto\n')
+            watcher.update_mode()
+            check(watcher.effective_mode() == 'nav', 'set auto follows keyd normal')
+            watcher.keyd_line('-normal')
+            check(watcher.effective_mode() == 'insert', 'set auto clears manual override')
+            mode_path.write_text('nav\n')
+            watcher.update_mode()
+            watcher.keyd_line('+unrecognised')
+            check(watcher.effective_mode() == 'insert', 'real unknown layer event releases override')
+            watcher.close()
+            mode_path.unlink()
+            # Drive the actual selector/control loop, including a silent keyd clear().
+            import threading
+            keyd_normal = [True]
+            listeners = []
+            class Listener:
+                def __init__(self, argv, **kwargs):
+                    assert argv == LAYER_LISTEN, argv
+                    read_fd, self.write_fd = os.pipe()
+                    self.stdout = os.fdopen(read_fd, 'rb', buffering=0)
+                    self.returncode = None
+                    os.write(self.write_fd, b'/main\n' + (b'+normal\n' if keyd_normal[0] else b''))
+                    listeners.append(self)
+                def poll(self):
+                    return self.returncode
+                def terminate(self):
+                    if self.returncode is None:
+                        os.close(self.write_fd)
+                        self.returncode = -15
+                kill = terminate
+                def wait(self, timeout=None):
+                    return self.returncode
+
+            control_read, control_write = socket.socketpair()
+            compositor_read, compositor_write = socket.socketpair()
+            class LoopSocket:
+                def __init__(self, stream):
+                    self.stream = stream
+                def bind(self, path):
+                    Path(path).touch()  # Only a temporary control-path marker.
+                def connect(self, path):
+                    pass
+                def fileno(self):
+                    return self.stream.fileno()
+                def setblocking(self, value):
+                    self.stream.setblocking(value)
+                def recv(self, size):
+                    return self.stream.recv(size)
+                def close(self):
+                    self.stream.close()
+            def loop_socket(family, kind):
+                assert family == socket.AF_UNIX
+                return LoopSocket(control_read if kind == socket.SOCK_DGRAM else compositor_read)
+            override.write_text(f'$mode_insert_border = {insert}\n$mode_nav_border = {nav}\n')
+            loop = Watcher()
+            thread_errors = []
+            def wait_until(predicate):
+                deadline = time.monotonic() + 3
+                while not predicate():
+                    if time.monotonic() >= deadline:
+                        raise AssertionError('offline event-loop timeout')
+                    time.sleep(.005)
+            def drive():
+                try:
+                    wait_until(lambda: loop.last is not None and loop.last[0] == 'nav')
+                    wait_until(lambda: loop.burst_due is None)
+                    before = len(calls)
+                    control_write.send(b'repaint')
+                    wait_until(lambda: len(calls) > before)
+                    check(calls[-1]['decoration:shadow:range'] == '28', 'control requests force complete same-mode repaint')
+                    keyd_normal[0] = False  # No -normal event, as with keyd clear().
+                    wait_until(lambda: loop.last[0] == 'insert')
+                    check(len(listeners) >= 2, 'periodic listener reconnect obtains real layer snapshot')
+                    check(calls[-1]['decoration:dim_inactive'] == '0', 'clear resync removes command dimming')
+                    with patch('sys.argv', ['mode-border', 'set', 'nav']), \
+                         patch(__name__ + '.nudge', side_effect=control_write.send), \
+                         contextlib.redirect_stdout(io.StringIO()):
+                        check(main() == 0, 'offline set nav command succeeds')
+                    wait_until(lambda: loop.last[0] == 'nav' and loop.burst_due is None)
+                    before_listeners = len(listeners)
+                    wait_until(lambda: len(listeners) >= before_listeners + 2)
+                    wait_until(lambda: loop.pending is None)
+                    check(loop.last[0] == 'nav' and calls[-1]['decoration:shadow:range'] == '28'
+                          and calls[-1]['decoration:dim_inactive'] == '1',
+                          'control set nav keeps command look through unchanged insert resyncs')
+                    with patch('sys.argv', ['mode-border', 'set', 'auto']), \
+                         patch(__name__ + '.nudge', side_effect=control_write.send), \
+                         contextlib.redirect_stdout(io.StringIO()):
+                        check(main() == 0, 'offline set auto command succeeds')
+                    wait_until(lambda: loop.last[0] == 'insert' and loop.burst_due is None)
+                    check(calls[-1]['decoration:shadow:range'] == '12'
+                          and calls[-1]['decoration:dim_inactive'] == '0',
+                          'control set auto releases override and paints insert look')
+                    control_write.send(b'stop')
+                except BaseException as exc:
+                    thread_errors.append(exc)
+                    loop.stop_signal(signal.SIGTERM, None)
+            worker = threading.Thread(target=drive)
+            try:
+                with patch('subprocess.Popen', side_effect=Listener), \
+                     patch('os.access', return_value=True), patch('signal.signal'), \
+                     patch('socket.socket', side_effect=loop_socket), \
+                     patch(__name__ + '.signature', return_value='test-loop'):
+                    worker.start()
+                    loop.run()
+                    loop.close()
+                    worker.join(timeout=4)
+                check(not worker.is_alive() and not thread_errors, f'event loop: {thread_errors}')
+                check(all(live[key] == value for key, value in originals.items()), 'control stop restores actual originals')
+                check(not json.loads(originals_path().read_text())['active'], 'successful stop clears active receipt')
+            finally:
+                control_write.close()
+                compositor_write.close()
+                for listener in listeners:
+                    listener.terminate()
+                    listener.stdout.close()
+
+            for index in range(6):
+                palette = test_paths[0]
+                colors = {f'color{i}': from_lch(.55 + (i % 3) * .03, .11, index + i * .04) for i in range(16)}
+                palette.write_text(json.dumps(dict(colors=colors, special=dict(background='#000000', foreground='#ffffff'))))
+                check(select_colours(palette)['min_delta'] >= MIN_DELTA, 'palette separation')
+    print(f'SELFTEST: {checks} checks passed; 0 failures; offline (temporary files, hyprctl stubbed)')
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest='command', required=True)
+    for name in ('run', 'status', 'stop', 'selftest'):
+        commands.add_parser(name)
+    setter = commands.add_parser('set')
+    setter.add_argument('mode', choices=ROLES)
+    colour = commands.add_parser('colours')
+    colour.add_argument('--palette', type=Path, help='test this palette without theme fragments or overrides')
+    args = parser.parse_args()
+    try:
+        if args.command == 'run':
+            watcher = Watcher()
+            try:
+                return watcher.run()
+            finally:
+                watcher.close()
+        if args.command == 'status':
+            status()
+        elif args.command == 'stop':
+            if nudge(b'stop'):
+                print('stop requested')
+            else:
+                instance = signature()
+                originals = load_originals(instance) if instance else None
+                if originals is not None:
+                    apply_keywords(originals, instance)
+                    save_originals(instance, originals, False)
+                print('no watcher running' + ('; decorations restored' if originals else ''))
+        elif args.command == 'set':
+            atomic_write(state_dir() / 'mode', args.mode + '\n')
+            if nudge(b'set'):
+                print(f'state={args.mode}; watcher notified')
+            else:
+                instance = signature()
+                if instance is None:
+                    raise RuntimeError('state saved; no Hyprland instance is present to apply it')
+                colours = select_colours()
+                export_colours(colours)
+                watcher = Watcher()
+                watcher.instance = instance
+                watcher.colours = colours
+                try:
+                    watcher.capture_originals()
+                    # Without an event loop, set applies the complete steady look once.
+                    watcher.interrupted = True
+                    watcher.paint('insert' if args.mode == 'auto' else args.mode, 'insert', force=True)
+                finally:
+                    # Leave the requested appearance in place; stop/run owns restoration.
+                    watcher.decorations_active = False
+                    watcher.close()
+                print(f'state={args.mode}; applied immediately')
+        elif args.command == 'colours':
+            print_colours(select_colours(args.palette))
+        elif args.command == 'selftest':
+            return selftest()
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as exc:
+        log(str(exc))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
