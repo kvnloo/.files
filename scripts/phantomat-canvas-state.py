@@ -1303,7 +1303,9 @@ def zoom_to_desktop(hc):
             screens = canvas_screens(hc, timeout=remaining)
         except subprocess.TimeoutExpired:
             break
-        if not screens or all(not screen.get('navigating', False) and screen.get('zoom', 0) >= .995
+        # The plugin fades its distortion, dim and minimap on the same animation as the zoom, so cutting
+        # the tail short shows as a hop. It reports three decimals: wait for the zoom to round to 1.
+        if not screens or all(not screen.get('navigating', False) and screen.get('zoom', 0) >= .9995
                               for screen in screens):
             return
         time.sleep(.016)

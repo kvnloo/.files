@@ -2382,7 +2382,8 @@ class CanvasLeave(unittest.TestCase):
         hc.zoom_frames = [[dict(navigating=True, zoom=.998)],
                           [dict(navigating=False, zoom=.994)],
                           [dict(navigating=False, zoom=.999), dict(navigating=False, zoom=.99)],
-                          [dict(navigating=False, zoom=.995), dict(navigating=False, zoom=1)]]
+                          [dict(navigating=False, zoom=.999), dict(navigating=False, zoom=1)],
+                          [dict(navigating=False, zoom=1), dict(navigating=False, zoom=1)]]
         batch = hc.batch
         def checked(commands):
             if ('spatialoverview:overview', 'toggle all') in commands:
@@ -2390,7 +2391,7 @@ class CanvasLeave(unittest.TestCase):
             if ('spatialoverview:overview', 'off all') in commands:
                 self.assertEqual(json.loads(self.journal.read_text())[ANIMATIONS], 1)
                 self.assertEqual(hc.view, hc.zoom_frames[-1] if hc.zoom_frames else
-                                 [dict(navigating=False, zoom=.995), dict(navigating=False, zoom=1)])
+                                 [dict(navigating=False, zoom=1), dict(navigating=False, zoom=1)])
             batch(commands)
         with patch.object(hc, 'batch', side_effect=checked), patch.object(state.time, 'sleep') as sleep:
             state.execute(hc, 'leave', self.path)
@@ -2399,10 +2400,24 @@ class CanvasLeave(unittest.TestCase):
         close = hc.events.index(('spatialoverview:overview', 'off all'))
         self.assertLess(toggle, disabled)
         self.assertLess(disabled, close)
-        self.assertEqual(sleep.call_count, 3)
+        self.assertEqual(sleep.call_count, 4)
         self.assertTrue(all(.015 <= call.args[0] <= .02 for call in sleep.call_args_list))
         self.assertEqual(hc.commands.count(('spatialoverview:overview', 'toggle all')), 1)
         self.assertEqual(hc.events[-1], ('keyword', ANIMATIONS, 1))
+        self.assertFalse(self.path.exists())
+
+    def test_zoom_tail_is_not_cut_before_the_plugin_reports_exactly_one(self):
+        # The plugin fades distortion, dim and minimap with the zoom; .995 still showed a 5 px hop.
+        hc = ZoomHyprctl(self.clients)
+        hc.zoom_frames = [[dict(navigating=False, zoom=zoom)] for zoom in (.995, .997, .999, 1)]
+        with patch.object(state.time, 'sleep') as sleep:
+            state.execute(hc, 'leave', self.path)
+        disabled = hc.events.index(('keyword', ANIMATIONS, 0))
+        views = [event[1][0]['zoom'] for event in hc.events[:disabled] if event[0] == 'view']
+        self.assertEqual(views[-4:], [.995, .997, .999, 1])
+        self.assertEqual(sleep.call_count, 3)
+        self.assertLess(disabled, hc.events.index(('spatialoverview:overview', 'off all')))
+        self.assertEqual(hc.options[ANIMATIONS], 1)
         self.assertFalse(self.path.exists())
 
     def test_at_100_percent_or_closed_never_toggles(self):
