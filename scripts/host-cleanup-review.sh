@@ -62,14 +62,44 @@ targets=("$HOME/.config/systemd/user" "$HOME/.omp/agent/extensions" "$HOME/.omp/
 for f in "$HOME"/.claude-home/settings*.json; do [[ -e $f ]] && targets+=("$f"); done
 existing=()
 for t in "${targets[@]}"; do [[ -e $t ]] && existing+=("$t"); done
-refs=$(mktemp)
-# Any path containing a z0intelligence* component, minus the master path.
-grep -RIEn --exclude-dir=node_modules -e '[A-Za-z0-9_./%~$-]*z0intelligence[A-Za-z0-9_.-]*[A-Za-z0-9_./-]*' "${existing[@]}" 2>/dev/null \
-  | grep -v -F "$MASTER" \
-  | grep -E '/(z0-wt|workspace|worktrees?|salvage)/|z0intelligence-[A-Za-z0-9]|%h/|~/' \
-  | cut -c1-220 > "$refs"
-[[ -s $refs ]] && cat "$refs" || echo "none found"
-rm -f "$refs"
+# Path tokens that name a z0int* checkout, minus the master checkout and the
+# ~/.config/z0intelligence config dir (config, not a checkout). Catches z0int-canonical too.
+# A path token (at a word boundary) with a directory segment starting "z0int",
+# e.g. /x/z0intelligence-pinned/src or ~/tmp/z0int-canonical. State dirs like ~/.z0int are skipped.
+PATH_RE='(?<![^\s="'"'"'`(])(/|%h/|~/)(?:[^\s:="'"'"'`/]+/)*z0int[\w-]*(?:/[^\s:="'"'"'`]*)?'
+filter_paths() { grep -v -E "(^|[^A-Za-z0-9_])$MASTER(/|\$|[[:space:]])|\.config/z0intelligence(/|\$)" ; }
+echo "-- raw files (grep, symlinks followed):"
+raw=$(for t in "${existing[@]}"; do
+  grep -RIPon --exclude-dir=node_modules -e "$PATH_RE" "$t" 2>/dev/null
+done | filter_paths | sort -u | cut -c1-220)
+[[ -n $raw ]] && echo "$raw" || echo "none found"
+echo "-- effective z0int* units (systemctl --user cat, drop-ins applied):"
+eff=0
+for u in "$HOME"/.config/systemd/user/z0int*.service "$HOME"/.config/systemd/user/z0int*.timer; do
+  [[ -e $u ]] || continue
+  name=${u##*/}
+  frag=$(systemctl --user show "$name" -p FragmentPath --value 2>/dev/null)
+  # Apply drop-in semantics: "Key=" resets a list, WorkingDirectory keeps its last value.
+  out=$(systemctl --user cat "$name" 2>/dev/null | awk '
+      /^#/ || !/^[A-Za-z]+=/ { next }
+      { k=$0; sub(/=.*/,"",k); v=substr($0,length(k)+2)
+        if (v=="" || k=="WorkingDirectory") n[k]=0
+        if (v!="") val[k,++n[k]]=$0
+        if (!(k in seen)) { seen[k]=1; order[++m]=k } }
+      END { for (i=1;i<=m;i++) for (j=1;j<=n[order[i]];j++) print val[order[i],j] }' \
+        | grep -P "$PATH_RE" | filter_paths | cut -c1-200)
+  [[ -n $out ]] && { echo "$name (fragment $frag):"; echo "$out" | sed 's/^/    /'; eff=1; }
+done
+((eff)) || echo "none found"
+echo "-- enablement links whose target differs from the loaded unit file:"
+mis=0
+for w in "$HOME"/.config/systemd/user/*.wants/z0int*; do
+  [[ -L $w ]] || continue
+  frag=$(systemctl --user show "${w##*/}" -p FragmentPath --value 2>/dev/null)
+  wt=$(readlink -f "$w"); ft=$(readlink -f "$frag" 2>/dev/null)
+  [[ $wt != "$ft" ]] && { echo "$w -> $wt (loaded: $frag -> $ft)"; mis=1; }
+done
+((mis)) || echo "none found"
 echo "(no files edited; fix these by hand after review)"
 
 echo; echo "done ($(mode))"
