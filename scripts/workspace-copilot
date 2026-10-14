@@ -1569,6 +1569,23 @@ def doctor(db: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _next_action_toast(title: str, body: str, kind: str) -> None:
+    """Overlay toast via Noctalia IPC. Never takes focus; ignored when qs is absent."""
+    payload = json.dumps(
+        {"title": title, "body": body, "icon": "sparkles", "type": kind, "duration": 2500}
+    )
+    try:
+        subprocess.Popen(
+            ["qs", "-c", "noctalia-shell", "ipc", "call", "toast", "send", payload],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, ValueError):
+        pass
+
+
 def print_data(data: Any, as_json: bool) -> None:
     if as_json:
         print(json.dumps(data, indent=2, sort_keys=True))
@@ -1631,7 +1648,8 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("purge", help="apply the retention policy now")
     # Flow predictor surface (shadow → prepare → commit)
     commands.add_parser("predict", help="run os.next_context.v0 shadow prediction now")
-    commands.add_parser("next-action", help="show the single global next-action surface")
+    nextact = commands.add_parser("next-action", help="show the single global next-action surface")
+    nextact.add_argument("--bar", action="store_true", help="print one Noctalia CustomButton JSON line")
     commands.add_parser("commit-next", help="commit prepared reversible navigation only")
     commands.add_parser("dismiss-next", help="suppress current next-action until evidence changes")
     shadow = commands.add_parser("shadow-stats", help="os.next_context.v0 shadow metrics")
@@ -1740,7 +1758,11 @@ def main() -> None:
         result = flow_tick(db, "manual-predict", force=True)
         print_data(result or {}, True if args.json else True)
     elif args.command == "next-action":
-        print_data(workspace_flow.show_next_action(db), True if args.json else True)
+        surface = workspace_flow.show_next_action(db)
+        if getattr(args, "bar", False):
+            print(json.dumps(surface.get("bar") or {"text": ""}, ensure_ascii=False))
+        else:
+            print_data(surface, True if args.json else True)
     elif args.command == "commit-next":
         result = workspace_flow.commit_next_action(
             db, run_fn=run, tmux_args_fn=tmux_args, source="flow"
@@ -1762,11 +1784,19 @@ def main() -> None:
                 details={"pred_id": result.get("pred_id"), "action_source": "flow"},
             )
             db.commit()
+        _next_action_toast(
+            "Next action" if result.get("ok") else "Nothing to commit",
+            str(result.get("result") or "") if result.get("ok") else str(result.get("error") or ""),
+            "notice" if result.get("ok") else "warning",
+        )
+        if result.get("ok"):
+            workspace_flow._shell_refresh()
         print_data(result, True if args.json else True)
         raise SystemExit(0 if result.get("ok") else 1)
     elif args.command == "dismiss-next":
         result = workspace_flow.dismiss_next_action(db)
         db.commit()
+        workspace_flow._shell_refresh()
         print_data(result, True if args.json else True)
     elif args.command == "shadow-stats":
         print_data(

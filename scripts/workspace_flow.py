@@ -19,6 +19,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import time
 import uuid
 from collections import Counter, defaultdict
@@ -88,6 +89,7 @@ MIN_TRANSITIONS = 3
 PREPARE_MIN_P = 0.28          # prepare often (cheap)
 PREPARE_MIN_MARGIN = 0.02
 SURFACE_MIN_P = 0.82          # surface rarely
+GHOST_MIN_P = 0.35            # dim 'ghost' chip in the bar; no gate, no receipts
 SURFACE_MIN_MARGIN = 0.12     # top1 - top2
 SURFACE_MAX_ENTROPY = 1.35    # nats over top-k; high entropy → silence
 WITHHOLD_RATE = 0.10          # eligible surface → 10% silent counterfactual arm
@@ -1872,6 +1874,20 @@ def _surface_summary(pred: dict[str, Any]) -> str:
     return labels.get(op) or labels.get(pred.get("family") or "") or f"{op} · {target}"
 
 
+def _shell_refresh() -> None:
+    """Ask the Noctalia CustomButton chip to re-run its text command. Non-blocking, best effort."""
+    try:
+        subprocess.Popen(
+            ["qs", "-c", "noctalia-shell", "ipc", "call", "cb", "refresh", "next-action"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, ValueError):
+        pass
+
+
 def update_next_action_surface(
     db: Any,
     *,
@@ -1964,7 +1980,81 @@ def update_next_action_surface(
             reason,
         ),
     )
+    _shell_refresh()
     return show_next_action(db)
+
+
+def _next_action_candidates(db: Any, pred_id: str) -> list[dict[str, Any]]:
+    """Top 3 non-noop predictions for the stored pred_id (read-only)."""
+    if not pred_id:
+        return []
+    try:
+        r = db.execute(
+            "SELECT topk_json FROM shadow_predictions WHERE pred_id=?", (pred_id,)
+        ).fetchone()
+        topk = json.loads((r["topk_json"] if r else "") or "[]")
+    except (TypeError, KeyError, ValueError, Exception):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in topk if isinstance(topk, list) else []:
+        if not isinstance(item, dict) or item.get("operator_family") == "noop":
+            continue
+        out.append(
+            {
+                "summary": _surface_summary(item),
+                "p": round(float(item.get("p") or 0.0), 4),
+                "operator_family": item.get("operator_family") or "",
+                "family": item.get("family") or "",
+                "target": item.get("target") or "",
+            }
+        )
+        if len(out) >= 3:
+            break
+    return out
+
+
+def _next_action_tier(
+    db: Any, status: str, pred_id: str, candidates: list[dict[str, Any]]
+) -> str:
+    if status == "suppressed" or not candidates:
+        return "none"
+    if status == "ready":
+        return "ready"
+    # Ghost only when the overall top-1 is itself a non-noop guess.
+    try:
+        r = db.execute(
+            "SELECT topk_json FROM shadow_predictions WHERE pred_id=?", (pred_id,)
+        ).fetchone()
+        topk = json.loads((r["topk_json"] if r else "") or "[]")
+        if topk and topk[0].get("operator_family") == "noop":
+            return "none"
+    except Exception:
+        return "none"
+    return "ghost" if candidates[0]["p"] >= GHOST_MIN_P else "none"
+
+
+def _next_action_bar(tier: str, summary: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    if tier == "none":
+        return {"text": "", "icon": "sparkles", "tooltip": "", "iconColor": "none", "textColor": "none"}
+    top = candidates[0]
+    label = summary if tier == "ready" and summary else top["summary"]
+    lines = [f"{c['summary']}  {round(c['p'] * 100)}%" for c in candidates]
+    lines.append("Super+Return commit · Super+BackSpace dismiss")
+    if tier == "ready":
+        return {
+            "text": f"⏎ {label}",
+            "icon": "sparkles-filled",
+            "tooltip": "\n".join(lines),
+            "iconColor": "primary",
+            "textColor": "primary",
+        }
+    return {
+        "text": f"{label} · {round(top['p'] * 100)}%",
+        "icon": "sparkles",
+        "tooltip": "\n".join(lines),
+        "iconColor": "none",
+        "textColor": "none",
+    }
 
 
 def show_next_action(db: Any) -> dict[str, Any]:
@@ -1978,7 +2068,12 @@ def show_next_action(db: Any) -> dict[str, Any]:
         prepare = {}
     arm = row["surface_arm"] if "surface_arm" in row.keys() else "ineligible"
     reason = row["surface_reason"] if "surface_reason" in row.keys() else ""
+    candidates = _next_action_candidates(db, row["pred_id"])
+    tier = _next_action_tier(db, row["status"], row["pred_id"], candidates)
     return {
+        "candidates": candidates,
+        "tier": tier,
+        "bar": _next_action_bar(tier, row["summary"], candidates),
         "status": row["status"],
         "summary": row["summary"],
         "action_family": row["action_family"],
@@ -1990,7 +2085,7 @@ def show_next_action(db: Any) -> dict[str, Any]:
         "prepare": prepare,
         "surface_arm": arm,
         "surface_reason": reason,
-        "commit_binding": "Super+Space",
+        "commit_binding": "Super+Enter",
         "dismiss_binding": "Esc",
         "contract": _contract(),
         "gates": {
@@ -2178,6 +2273,8 @@ def commit_next_action(
         prepare.get("cache_key")
         or prepare.get("outcome") in {"prepare_created", "would_prepare"}
     )
+    if surface.get("status") == "suppressed" or surface.get("tier") not in {"ghost", "ready"}:
+        return {"ok": False, "error": "no visible next-action to commit", "surface": surface}
     if surface.get("status") != "ready" and not has_prepare:
         return {"ok": False, "error": "no ready next-action or prepared artifact", "surface": surface}
 

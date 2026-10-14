@@ -99,7 +99,22 @@ Four separate gates (never one confidence knob):
 | **PREDICT** | Always. <1ms. Training data. |
 | **PREPARE** | Often (`p≥0.28`). Discardable, no side effects. |
 | **SURFACE** | Rarely (`p≥0.82` + margin/entropy). 10% withhold arm. |
-| **COMMIT** | Explicit only (`commit-next` / Super+Space). |
+| **COMMIT** | Explicit only (`commit-next` / Super+Return; Super+BackSpace dismisses). |
+
+Bar chip (Noctalia `CustomButton`, ipc id `next-action`, right section before
+codexbar). `next-action --bar` prints one JSON line; `next-action --json` also
+returns `candidates` (top 3 non-noop, with `p`) and `tier`:
+
+| Tier | Condition | Chip |
+|---|---|---|
+| none | top guess is noop, `p<0.35`, or dismissed | collapsed |
+| ghost | `p>=0.35`, SURFACE gate not passed | dim text, outline icon, "Open X · 41%" |
+| ready | SURFACE gate passed | primary colour, "⏎ Inspect X" |
+
+`commit-next` refuses unless tier is ghost or ready and status is not
+suppressed, and shows a toast either way. Left click commits, right click
+dismisses. The daemon, `commit-next` and `dismiss-next` push a
+`qs ... ipc call cb refresh next-action`; the chip also polls every 10s.
 
 Multi-horizon labels (500ms / 2s / 10s / 60s): if nothing relevant happens,
 `actual_family=noop`. Canonical receipt `flow_prediction.v1` dual-writes to
