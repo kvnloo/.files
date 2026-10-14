@@ -8,8 +8,11 @@ Environment=DISPLAY=:0
 # The session must not be named "0": tmux-resurrect's restore kills a lone
 # default-named session "0" as its dummy, which empties and exits the server
 # ~1s after start (the boot failure seen 2026-10-11). "main" survives restore.
-# "new-session -A" attaches to an existing session instead of failing.
-ExecStart=/usr/bin/tmux new-session -d -A -s main
+# Skip (not fail) when a tmux server already runs outside this unit: the
+# start would exit at once, systemd would then run ExecStop, and
+# "kill-server" would destroy every existing session.
+ExecCondition=/bin/sh -c '! /usr/bin/tmux has-session 2>/dev/null'
+ExecStart=/usr/bin/tmux new-session -d -s main
 
 ExecStop=/home/kvn/.tmux/plugins/tmux-resurrect/scripts/save.sh
 ExecStop=/usr/bin/tmux kill-server
