@@ -1709,8 +1709,8 @@ def main(argv):
             restore_cursor()
             restore.restore_focus()
         return 0
-    if len(argv) > 1 or argv and argv[0] not in ('enter', 'leave', 'toggle'):
-        raise ValueError('usage: phantomat-toggle [enter|leave|toggle]')
+    if len(argv) > 1 or argv and argv[0] not in ('enter', 'leave', 'toggle', 'reset'):
+        raise ValueError('usage: phantomat-toggle [enter|leave|toggle|reset]')
     runtime = Path(os.environ.setdefault('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     instance = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
     if not instance:
@@ -1724,6 +1724,14 @@ def main(argv):
         report('spatialoverview is not loaded; nothing to do')
         return 0
     path = runtime/('phantomat-toggle-'+re.sub(r'[^a-zA-Z0-9_.-]', '_', instance)+'.json')
+    if argv and argv[0] == 'reset':
+        # Panic reset: close every canvas and forget the saved layout.
+        hc.run('dispatch', 'spatialoverview:overview', 'off', 'all', mutation=True)
+        for leftover in (path, Path(str(path)+'.stale')):
+            if not hc.dry:
+                leftover.unlink(missing_ok=True)
+        report('canvas closed; saved snapshot removed')
+        return 0
     if hc.dry:
         execute(hc, argv[0] if argv else 'toggle', path)
     else:
