@@ -1980,7 +1980,6 @@ def update_next_action_surface(
             reason,
         ),
     )
-    _shell_refresh()
     return show_next_action(db)
 
 
@@ -2043,7 +2042,7 @@ def _next_action_bar(tier: str, summary: str, candidates: list[dict[str, Any]]) 
     if tier == "ready":
         return {
             "text": f"⏎ {label}",
-            "icon": "sparkles-filled",
+            "icon": "bolt-filled",
             "tooltip": "\n".join(lines),
             "iconColor": "primary",
             "textColor": "primary",
@@ -2086,7 +2085,7 @@ def show_next_action(db: Any) -> dict[str, Any]:
         "surface_arm": arm,
         "surface_reason": reason,
         "commit_binding": "Super+Enter",
-        "dismiss_binding": "Esc",
+        "dismiss_binding": "Super+BackSpace",
         "contract": _contract(),
         "gates": {
             "predict": "always",

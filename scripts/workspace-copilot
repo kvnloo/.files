@@ -440,6 +440,8 @@ def flow_tick(
         )
         if result is not None:
             db.commit()
+            # Refresh the bar chip only after the commit, so it never reads stale rows.
+            workspace_flow._shell_refresh()
         return result
     except Exception as exc:  # never take down the daemon for predictor faults
         try:
