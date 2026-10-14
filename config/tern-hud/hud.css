@@ -38,9 +38,78 @@ html.lay-float {
 		linear-gradient(rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%),
 		rgb(from var(--tv-bg) r g b / 80%);
 	--hud-rim:
-		0 0 0 1px rgba(255, 255, 255, 0.09),
 		inset 0 1px 0 rgba(255, 255, 255, 0.12),
+		inset 2px 0 3px -1px rgba(255, 90, 140, 0.16),
+		inset -2px 0 3px -1px rgba(70, 140, 255, 0.2),
 		0 12px 32px -14px rgba(0, 0, 0, 0.75);
+}
+
+/* Every glass surface gets the rim Tern draws on Carly's pill: a 1 px edge
+ * that is bright at the top and the bottom and fades out at the sides. */
+.sf-region.sf-main > :not(.sf-card[data-role='omp.user'], .sf-spacer, [data-role='omp.welcome'], .sf-find, .sf-layer),
+.sf-region.sf-main > .sf-card[data-role='omp.user'] > .sf-card-body,
+.sf-col[data-role^='omp.editor'] {
+	position: relative;
+	&::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		border-radius: inherit;
+		padding: 1px;
+		pointer-events: none;
+		background: linear-gradient(
+			172deg,
+			rgba(255, 255, 255, 0.3) 0%,
+			rgba(255, 255, 255, 0.07) 24%,
+			rgba(255, 255, 255, 0) 50%,
+			rgba(255, 255, 255, 0.04) 78%,
+			rgba(255, 255, 255, 0.16) 100%
+		);
+		-webkit-mask:
+			linear-gradient(#000 0 0) content-box,
+			linear-gradient(#000 0 0);
+		-webkit-mask-composite: xor;
+		mask-composite: exclude;
+	}
+}
+
+/* New messages spring up out of the composer; a recap writes itself in. */
+@keyframes hud-arrive {
+	from {
+		opacity: 0;
+		transform: translateY(16px) scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+@keyframes hud-reveal {
+	from {
+		-stencil-progress: 0;
+	}
+	to {
+		-stencil-progress: 1;
+	}
+}
+.sf-region.sf-main > :is([data-role='omp.user'], [data-role='omp.assistant'], [data-role='omp.error'], [data-role='omp.recap']) {
+	transform-origin: 50% 100%;
+	animation: hud-arrive spring(0.55s, 0.2) both !important;
+}
+.sf-region.sf-main > [data-role='omp.recap'] {
+	-stencil-text-effect: reveal;
+	-stencil-text-offset: 0 6px;
+	-stencil-text-blur: 3px;
+	-stencil-text-stagger: 0.008;
+	animation:
+		hud-arrive spring(0.55s, 0.2) both,
+		hud-reveal 0.9s ease-out both !important;
+}
+@media (prefers-reduced-motion: reduce) {
+	.sf-region.sf-main > * {
+		animation: none !important;
+	}
 }
 
 /* No sheet behind the conversation: each message is its own card, with clear
@@ -65,13 +134,14 @@ html.lay-float {
 	border-radius: 999px;
 }
 
-/* Your messages: a bubble on the right, tinted with the accent. */
+/* Your messages: a bubble on the right, in the blue, violet and pink of
+ * Carly's glow. */
 .sf-region.sf-main > .sf-card[data-role='omp.user'] > .sf-card-body {
-	border-radius: 18px 18px 6px 18px;
+	border-radius: 18px 18px 6px 18px !important;
 	background:
 		linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02) 60%),
-		rgb(from var(--accent) r g b / 30%),
-		rgb(from var(--tv-bg) r g b / 70%) !important;
+		linear-gradient(135deg, rgba(88, 110, 245, 0.5), rgba(139, 92, 246, 0.42) 70%, rgba(236, 72, 153, 0.3)),
+		rgb(from var(--tv-bg) r g b / 72%) !important;
 	box-shadow: var(--hud-rim) !important;
 }
 
