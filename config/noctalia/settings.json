@@ -177,6 +177,24 @@
                     "id": "plugin:aural-evolution"
                 },
                 {
+                    "hideMode": "hidden",
+                    "icon": "sparkles",
+                    "id": "CustomButton",
+                    "ipcIdentifier": "next-action",
+                    "leftClickExec": "/workspace/.files/scripts/workspace-copilot --json commit-next",
+                    "leftClickUpdateText": true,
+                    "parseJson": true,
+                    "rightClickExec": "/workspace/.files/scripts/workspace-copilot --json dismiss-next",
+                    "rightClickUpdateText": true,
+                    "showExecTooltip": false,
+                    "showIcon": true,
+                    "showTextTooltip": true,
+                    "textCollapse": "/^$/",
+                    "textCommand": "/workspace/.files/scripts/workspace-copilot next-action --bar",
+                    "textIntervalMs": 10000,
+                    "textStream": false
+                },
+                {
                     "icon": "brand-openai",
                     "id": "plugin:codexbar"
                 },

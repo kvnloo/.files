@@ -1,5 +1,6 @@
 -- Generated from the audited bind directives in hyprland.legacy.conf.
 hl.bind("SUPER + Return", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/workspace-copilot --json commit-next"))
+hl.bind("SUPER + BackSpace", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/workspace-copilot --json dismiss-next"))
 hl.bind("SUPER + SHIFT + Return", hl.dsp.exec_raw("exec", "kitty"))
 hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_raw("killactive", ""))
 hl.bind("SUPER + N", hl.dsp.exec_raw("exec", "$HOME/workspace/.files/scripts/night-mode.sh off"), {locked=true})
