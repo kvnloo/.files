@@ -1,0 +1,21 @@
+[Unit]
+Description=tmux default session (detached)
+Documentation=man:tmux(1)
+
+[Service]
+Type=forking
+Environment=DISPLAY=:0
+# The session must not be named "0": tmux-resurrect's restore kills a lone
+# default-named session "0" as its dummy, which empties and exits the server
+# ~1s after start (the boot failure seen 2026-10-11). "main" survives restore.
+# "new-session -A" attaches to an existing session instead of failing.
+ExecStart=/usr/bin/tmux new-session -d -A -s main
+
+ExecStop=/home/kvn/.tmux/plugins/tmux-resurrect/scripts/save.sh
+ExecStop=/usr/bin/tmux kill-server
+KillMode=control-group
+
+RestartSec=2
+
+[Install]
+WantedBy=default.target
