@@ -111,6 +111,17 @@ style() {
 	echo "omp-hud: the HUD window did not take hud.css" >&2
 }
 
+# Exact PIDs of this HUD's Tern daemon: /proc/PID/cmdline must be exactly
+# "<tern> daemon --socket $RUN/daemon.sock" and owned by this user. No pattern kill.
+daemon_pids() {
+	local want pid got
+	want="$(readlink -f "$TERN") daemon --socket $RUN/daemon.sock"
+	for pid in $(/usr/bin/ls /proc | grep -E '^[0-9]+$'); do
+		[[ -O /proc/$pid ]] || continue
+		got="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)" || continue
+		[[ "${got% }" == "$want" ]] && echo "$pid"
+	done
+}
 hctl() { TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl "$@"; }   # control the HUD window
 
 carly_open() { [[ "$(hctl tree '#carly' 2>/dev/null | jq -r '.count // 0')" -gt 0 ]]; }
@@ -299,7 +310,7 @@ quit)
 	addr="$(hud_addr)"
 	for b in $(omp_blocks); do "$TERN" close "$b" >/dev/null 2>&1 || true; done
 	[[ -z "$addr" ]] || hc dispatch closewindow "address:$addr" >/dev/null
-	pkill -u "$(id -u)" -f "^$(readlink -f "$TERN") daemon --socket $RUN/daemon.sock" 2>/dev/null || true
+	for pid in $(daemon_pids); do kill "$pid" 2>/dev/null || true; done
 	rm -f "$RUN/window.pid"
 	;;
 _window) window ;;
