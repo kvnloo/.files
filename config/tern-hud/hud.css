@@ -30,11 +30,65 @@ html.lay-float {
 	display: none !important;
 }
 
-/* The conversation gets a dark sheet so its text can be read over any window.
- * The sheet is as tall as the messages: with no message it has no height. */
+/* Glass. Hyprglass is off for this window (its blur would fill the gaps), so
+ * the glass is drawn here: a dark tinted face with a faint top sheen, a light
+ * rim and a soft drop shadow. The composer and every message share it. */
+html.lay-float {
+	--hud-face:
+		linear-gradient(rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 60%),
+		rgb(from var(--tv-bg) r g b / 80%);
+	--hud-rim:
+		0 0 0 1px rgba(255, 255, 255, 0.09),
+		inset 0 1px 0 rgba(255, 255, 255, 0.12),
+		0 12px 32px -14px rgba(0, 0, 0, 0.75);
+}
+
+/* No sheet behind the conversation: each message is its own card, with clear
+ * gaps between. The side padding lines the cards up with the composer. */
 .sf-region.sf-main {
-	padding-top: 0 !important;
-	padding-bottom: 0 !important;
-	border-radius: 14px;
-	background: rgb(from var(--tv-bg) r g b / 88%) !important;
+	gap: 10px !important;
+	padding: 4px 48px 10px !important;
+	background: none !important;
+}
+
+/* Everything else in the conversation (answers, tool calls, the "Worked" fold
+ * row, recaps, notices): one card each. */
+.sf-region.sf-main > :not(.sf-card[data-role='omp.user'], .sf-spacer, [data-role='omp.welcome'], .sf-find, .sf-layer) {
+	padding: 12px 16px;
+	border-radius: 18px;
+	background: var(--hud-face) !important;
+	box-shadow: var(--hud-rim) !important;
+}
+.sf-region.sf-main > .sf-work-head {
+	align-self: flex-start !important;
+	padding: 4px 12px;
+	border-radius: 999px;
+}
+
+/* Your messages: a bubble on the right, tinted with the accent. */
+.sf-region.sf-main > .sf-card[data-role='omp.user'] > .sf-card-body {
+	border-radius: 18px 18px 6px 18px;
+	background:
+		linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02) 60%),
+		rgb(from var(--accent) r g b / 30%),
+		rgb(from var(--tv-bg) r g b / 70%) !important;
+	box-shadow: var(--hud-rim) !important;
+}
+
+/* The status rows over the composer (working, context, todos): small glass
+ * pills, readable over any window. */
+.sf-dock > .sf-row:is([data-role='omp.hud'], [data-role='omp.hud.activity'], [data-role='omp.working']),
+.sf-dock > .sf-col[data-role='omp.hud.status'] {
+	align-self: flex-start !important;
+	width: auto !important;
+	padding: 2px 10px;
+	border-radius: 999px;
+	background: var(--hud-face) !important;
+	box-shadow: var(--hud-rim) !important;
+}
+
+/* The composer wears the same glass. */
+.sf-col[data-role^='omp.editor'] {
+	background: var(--hud-face) !important;
+	box-shadow: var(--hud-rim) !important;
 }
