@@ -278,8 +278,33 @@ def prune_tree(node, survivors):
     return dict(node, children=children)
 
 
+MIN_WINDOW_PIXELS = 20
+
+
 def resize_command(address, width, height):
-    return ('resizewindowpixel', f'exact {int(width)} {int(height)},address:{address}')
+    # Hyprland rejects zero or negative sizes, which fails the whole batch.
+    return ('resizewindowpixel', f'exact {max(int(width), MIN_WINDOW_PIXELS)} '
+                                 f'{max(int(height), MIN_WINDOW_PIXELS)},address:{address}')
+
+
+def canvas_enter_commands(saved, current):
+    """Commands that lay saved windows out on the canvas; skips windows that are gone."""
+    originals = {c['address']: c for c in saved['clients']}
+    commands = []
+    for address, (x, y, width, height) in canvas_targets(saved).items():
+        window = current.get(address)
+        if window is None or not same_window(originals[address], window):
+            report(f'skipped {address}: window no longer exists')
+            continue
+        # Special windows left tiled were not auto-floated by the plugin.
+        # Leave them alone rather than force them into an unmanaged canvas.
+        if window['workspace']['name'].startswith('special:') and not window['floating']:
+            continue
+        if not window['floating']:
+            commands.append(('setfloating', 'address:'+address))
+        commands.extend([resize_command(address, width, height),
+                         ('movewindowpixel', f'exact {int(x)} {int(y)},address:{address}')])
+    return commands
 
 
 def cursor_command(box):
@@ -1506,21 +1531,15 @@ def open_canvas(hc, saved, journal):
                 raise RuntimeError('canvas did not open; snapshot retained')
         camera_corrected = settle_canvas_camera(hc, overview)
         current = {c['address']: c for c in hc.query('clients')}
-        originals = {c['address']: c for c in saved['clients']}
-        commands = []
-        for address, (x, y, width, height) in canvas_targets(saved).items():
-            window = current.get(address)
-            if window is None or not same_window(originals[address], window):
-                continue
-            # Special windows left tiled were not auto-floated by the plugin.
-            # Leave them alone rather than force them into an unmanaged canvas.
-            if window['workspace']['name'].startswith('special:') and not window['floating']:
-                continue
-            if not window['floating']:
-                commands.append(('setfloating', 'address:'+address))
-            commands.extend([('resizewindowpixel', f'exact {width} {height},address:{address}'),
-                             ('movewindowpixel', f'exact {x} {y},address:{address}')])
-        hc.batch(commands)
+        commands = canvas_enter_commands(saved, current)
+        try:
+            hc.batch(commands)
+        except RuntimeError as error:
+            # A window can close between the query and the batch: rebuild from
+            # a fresh query (which skips it) and try once more.
+            report(f'canvas layout batch failed ({error}); retrying with live windows')
+            current = {c['address']: c for c in hc.query('clients')}
+            hc.batch(canvas_enter_commands(saved, current))
         if camera_corrected:
             settle_canvas_camera(hc)
         # polish: leave glass disabled until the leave path has finished rebuilding.

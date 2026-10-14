@@ -2994,5 +2994,22 @@ class CanvasPolish(unittest.TestCase):
         self.assertEqual(self.opacities(hc), [state.GLASS_MATCH, .9])
 
 
+class CanvasEnterBatchTests(unittest.TestCase):
+    def test_skips_gone_windows_and_clamps_sizes(self):
+        mon = dict(id=0, name='DP-1', x=0, y=0, width=1000, height=800, scale=1,
+                   activeWorkspace=dict(id=1), specialWorkspace=dict(id=0))
+        def win(addr, size):
+            return dict(address=addr, mapped=True, floating=True, at=[10, 10], size=size,
+                        workspace=dict(id=1, name='1'), monitor=0)
+        saved = dict(monitors=[mon], clients=[win('0xa', [0, -5]), win('0xb', [300, 200])])
+        current = {'0xa': win('0xa', [0, -5])}
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            commands = state.canvas_enter_commands(saved, current)
+        self.assertEqual(err.getvalue().count('skipped 0xb'), 1)
+        self.assertTrue(all('0xb' not in a for _, a in commands))
+        self.assertIn(('resizewindowpixel', 'exact 20 20,address:0xa'), commands)
+
+
 if __name__ == '__main__':
     unittest.main()
