@@ -87,6 +87,46 @@ html.lay-float {
 	box-shadow: var(--hud-rim) !important;
 }
 
+/* Carly over the chat: centred at the top, as wide as the composer, in
+ * place of Tern's top-right corner. hud-carly.css moves her down when she
+ * shows alone. */
+#carly.tn-carly {
+	left: calc(50% - 310px) !important;
+	right: auto !important;
+	top: 10px !important;
+	width: 620px !important;
+}
+/* Her refraction has no desktop to bend in a clear window, so her pill and
+ * answer card get the cards' dark face to stay readable. Her rim, sheen and
+ * glow stay. */
+#carly.tn-carly .cy-pill,
+#carly.tn-carly .cy-card {
+	background: rgb(from var(--tv-bg) r g b / 78%) !important;
+}
+
+/* No context rail over the composer: a hairline with 8 px labels that cannot
+ * be read over a wallpaper. */
+.sf-dock .sf-meter[data-role='omp.composer.context'] {
+	display: none !important;
+}
+
+/* No scroll-mark bar at the right edge (a stray dash in a clear window). */
+.tv-bar {
+	display: none !important;
+}
+
+/* Older messages fade out at the top instead of being cut by the window edge. */
+.tv-blocks {
+	-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 36px);
+	mask-image: linear-gradient(to bottom, transparent 0, #000 36px);
+}
+
+/* No "Finished" banners: the HUD shows the answer itself, and a banner would be
+ * cut off at the window's edge. */
+#banners {
+	display: none !important;
+}
+
 /* The composer wears the same glass. */
 .sf-col[data-role^='omp.editor'] {
 	background: var(--hud-face) !important;

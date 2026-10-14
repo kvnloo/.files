@@ -10,8 +10,5 @@
     "open": false
   },
   "clawdi": false,
-  "carly": {
-    "voice_on_open": false
-  },
   "opacity": 0
 }

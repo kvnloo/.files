@@ -26,10 +26,15 @@
 #   omp-hud status     what is running
 #   omp-hud style      load hud.css again (after an edit)
 #   omp-hud quit       close the window, end omp, stop the HUD daemon
-#   omp-hud carly      show the HUD and open Carly in it (bound to keyd's Ctrl Ctrl sentinel, F15).
+#   omp-hud carly      Carly alone, mic on (bound to keyd's Ctrl Ctrl sentinel, F15); again: close her.
 #                      Does nothing when a Tern window has the keyboard (Tern's own Ctrl Ctrl
 #                      already toggled Carly there) or when the active window is fullscreen (games).
 #                      "omp-hud carly --always" skips both checks (for a plain key bind).
+#
+# Modes of the shown HUD: chat (composer and conversation) or carly (only Carly,
+# hud-carly.css). SUPER+I never closes Carly: with Carly open it swaps between the
+# two modes, and the window only hides when Carly is closed. In carly mode a
+# watcher hides the window once Carly closes (Esc, her close button, Ctrl Ctrl).
 set -euo pipefail
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -106,6 +111,41 @@ style() {
 	echo "omp-hud: the HUD window did not take hud.css" >&2
 }
 
+hctl() { TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl "$@"; }   # control the HUD window
+
+carly_open() { [[ "$(hctl tree '#carly' 2>/dev/null | jq -r '.count // 0')" -gt 0 ]]; }
+
+mode() { cat "$RUN/mode" 2>/dev/null || echo chat; }
+
+# $1: chat or carly. Swaps the sheet "hud-mode.css" (empty in chat mode).
+set_mode() {
+	local sheet=/dev/null
+	[[ "$1" == carly ]] && sheet="$PROFILE/hud-carly.css"
+	hctl css hud-mode.css "$sheet" >/dev/null 2>&1 || true
+	echo "$1" >"$RUN/mode"
+}
+
+# In carly mode, hide the window once Carly closes. One watcher at a time; it
+# ends by itself when the mode changes, the window goes or Carly closes.
+watch_carly() {
+	"$SELF" _watch 9>&- >/dev/null 2>&1 &
+	disown
+}
+_watch() {
+	exec 8>"$RUN/watch.lock"
+	flock -n 8 || return 0
+	local addr
+	while sleep 0.25; do
+		[[ "$(mode)" == carly ]] || return 0
+		addr="$(hud_addr)"; [[ -n "$addr" ]] || return 0
+		[[ "$(hud_ws "$addr" name)" != "special:$WS" ]] || return 0
+		carly_open && continue
+		sleep 0.3; carly_open && continue          # not a blip while she reopens
+		[[ "$(mode)" == carly ]] && hide "$addr"
+		return 0
+	done
+}
+
 # ids of the blocks that run omp in the HUD daemon (empty when none or no daemon).
 omp_blocks() {
 	"$TERN" ls --json 2>/dev/null | jq -r '.sessions[].tabs[].blocks[]
@@ -176,15 +216,45 @@ toggle() {
 	local addr; addr="$(hud_addr)"
 	if [[ -z "$addr" ]]; then                       # cold: start it hidden and styled, then show it
 		addr="$(launch)"
-		[[ -z "$addr" ]] || show "$addr"
+		[[ -z "$addr" ]] || { set_mode chat; show "$addr"; }
 		return
 	fi
 	if shown_here "$addr"; then
-		hide "$addr"
+		if [[ "$(mode)" == carly ]]; then           # Carly alone: bring the chat in, Carly stays
+			set_mode chat
+			show "$addr"
+		elif carly_open; then                       # chat and Carly: leave Carly alone
+			set_mode carly
+			watch_carly
+		else
+			hide "$addr"
+		fi
 	else
+		set_mode chat
 		show "$addr"                                            # hidden, or on another workspace: bring here
 		[[ -n "$(omp_blocks)" ]] || new_omp_tab                 # omp was quit: start it again
 	fi
+}
+
+carly() {
+	local addr; addr="$(hud_addr)"
+	[[ -n "$addr" ]] || addr="$(launch)"
+	[[ -n "$addr" ]] || { echo "omp-hud: the HUD window did not start" >&2; exit 1; }
+	if shown_here "$addr" && carly_open; then        # Ctrl Ctrl again from another app: close her
+		hctl carly close >/dev/null 2>&1 || true
+		[[ "$(mode)" != carly ]] || hide "$addr"
+		return 0
+	fi
+	if ! shown_here "$addr"; then set_mode carly; fi  # hidden: Carly alone; chat shown: Carly over it
+	show "$addr"
+	for _ in $(seq 80); do
+		if hctl carly open >/dev/null 2>&1; then
+			[[ "$(mode)" != carly ]] || watch_carly
+			return 0
+		fi
+		sleep 0.1
+	done
+	echo "omp-hud: the HUD window did not answer 'carly open'" >&2; exit 1
 }
 
 # One run at a time: a second key press during a cold start must not open a second window.
@@ -202,7 +272,8 @@ new)
 	addr="$(hud_addr)"
 	if [[ -z "$addr" ]]; then toggle; else
 		new_omp_tab
-		shown_here "$addr" || show "$addr"
+		set_mode chat
+		show "$addr"
 	fi
 	;;
 carly)
@@ -211,16 +282,9 @@ carly)
 		[[ "$(jq -r '.class // empty' <<<"$active")" != so.stencil.tern ]] || exit 0
 		[[ "$(jq -r '.fullscreen // 0' <<<"$active")" != 2 ]] || exit 0
 	fi
-	addr="$(hud_addr)"
-	if [[ -z "$addr" ]]; then toggle
-	elif ! shown_here "$addr"; then show "$addr"; fi
-	# The HUD has its own daemon and one window, so the daemon socket names that window.
-	for _ in $(seq 80); do
-		TERN_PANE_SOCKET="$RUN/daemon.sock" "$TERN" ctl carly open >/dev/null 2>&1 && exit 0
-		sleep 0.1
-	done
-	echo "omp-hud: the HUD window did not answer 'carly open'" >&2; exit 1
+	carly
 	;;
+_watch) _watch ;;
 status)
 	echo "profile:  $PROFILE"
 	echo "socket:   $TERN_DAEMON_SOCKET"
