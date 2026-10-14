@@ -2034,7 +2034,17 @@ def _next_action_tier(
 
 def _next_action_bar(tier: str, summary: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
     if tier == "none":
-        return {"text": "", "icon": "sparkles", "tooltip": "", "iconColor": "none", "textColor": "none"}
+        # Noctalia keeps a non-streaming CustomButton visible, so the idle icon
+        # stays; its tooltip says why nothing is offered.
+        guesses = [f"{c['summary']}  {round(c['p'] * 100)}%" for c in candidates]
+        tip = "No suggestion yet (shows at 35%)"
+        return {
+            "text": "",
+            "icon": "sparkles",
+            "tooltip": "\n".join([tip, *guesses]),
+            "iconColor": "none",
+            "textColor": "none",
+        }
     top = candidates[0]
     label = summary if tier == "ready" and summary else top["summary"]
     lines = [f"{c['summary']}  {round(c['p'] * 100)}%" for c in candidates]
