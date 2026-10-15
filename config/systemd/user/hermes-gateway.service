@@ -6,20 +6,22 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+ExecStart="/home/kvn/.hermes/hermes-agent/venv/bin/python" "-I" "-c" "import os, sys, runpy; os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); os.environ.pop('VIRTUAL_ENV', None); sys.path.insert(0, '/home/kvn/.hermes/hermes-agent'); os.environ['HERMES_HOME'] = os.environ.get('HERMES_HOME') or '/home/kvn/.hermes'; import hermes_bootstrap; runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)" "gateway" "run"
 WorkingDirectory=/home/kvn/.hermes
-Environment="PATH=/home/kvn/.hermes/hermes-agent/venv/bin:/home/kvn/.hermes/hermes-agent/node_modules/.bin:/usr/bin:/home/kvn/.local/bin:/home/kvn/.cargo/bin:/home/kvn/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="VIRTUAL_ENV=/home/kvn/.hermes/hermes-agent/venv"
+Environment="PATH=/home/kvn/.hermes/hermes-agent/node_modules/.bin:/home/kvn/.local/bin:/home/kvn/.cargo/bin:/home/kvn/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 Environment="HERMES_HOME=/home/kvn/.hermes"
 Environment="HERMES_SUPERVISED_CHILD=1"
 Restart=always
 RestartSec=5
 RestartForceExitStatus=75
 SuccessExitStatus=75
+RestartPreventExitStatus=78
 KillMode=mixed
 KillSignal=SIGTERM
 ExecReload=/bin/kill -USR1 $MAINPID
-ExecStopPost=-/home/kvn/.hermes/hermes-agent/venv/bin/python -m gateway.cgroup_cleanup
+ExecStop=-"/home/kvn/.hermes/hermes-agent/venv/bin/python" "-I" "-c" "import os, sys, runpy; os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); os.environ.pop('VIRTUAL_ENV', None); sys.path.insert(0, '/home/kvn/.hermes/hermes-agent'); os.environ['HERMES_HOME'] = os.environ.get('HERMES_HOME') or '/home/kvn/.hermes'; import hermes_bootstrap; runpy.run_module('gateway.systemd_stop_mark', run_name='__main__', alter_sys=True)"
+ExecStopPost=-"/home/kvn/.hermes/hermes-agent/venv/bin/python" "-I" "-c" "import os, sys, runpy; os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); os.environ.pop('VIRTUAL_ENV', None); sys.path.insert(0, '/home/kvn/.hermes/hermes-agent'); os.environ['HERMES_HOME'] = os.environ.get('HERMES_HOME') or '/home/kvn/.hermes'; import hermes_bootstrap; runpy.run_module('gateway.cgroup_cleanup', run_name='__main__', alter_sys=True)"
 TimeoutStopSec=70
 StandardOutput=journal
 StandardError=journal

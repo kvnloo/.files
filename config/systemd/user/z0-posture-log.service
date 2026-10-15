@@ -1,0 +1,7 @@
+[Unit]
+Description=z0 resource posture snapshot (docs/resource-posture.md evaluation)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.z0int/bin/python -m z0int.cli posture --log --json
+StandardOutput=null

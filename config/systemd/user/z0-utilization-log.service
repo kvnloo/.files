@@ -1,0 +1,6 @@
+[Unit]
+Description=z0 utilization snapshot (north-star metric history)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.z0int/bin/z0-utilization-snapshot

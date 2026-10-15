@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the z0int optimization research tick every 6 hours
+
+[Timer]
+OnUnitActiveSec=6h
+OnBootSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=z0int optimization research tick (counts only, never promotes)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.z0int/research/optimize-proceed/tick.sh

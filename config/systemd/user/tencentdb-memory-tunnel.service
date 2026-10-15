@@ -1,0 +1,12 @@
+[Unit]
+Description=Local cache port for the groot TencentDB memory gateway (Tailscale SSH)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes -L 127.0.0.1:8420:127.0.0.1:8420 kvn@100.113.138.100
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

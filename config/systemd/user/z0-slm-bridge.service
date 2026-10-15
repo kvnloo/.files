@@ -1,0 +1,13 @@
+[Unit]
+Description=Forward the Kind lab SLM port to the local Vulkan router
+After=z0-slm.service
+Requires=z0-slm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.config/z0intelligence/slm-bridge.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

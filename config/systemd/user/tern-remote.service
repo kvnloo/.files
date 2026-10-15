@@ -1,0 +1,14 @@
+[Unit]
+Description=Tern remote sessions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/home/kvn/.local/bin/tern remote serve --user --access /home/kvn/.config/tern/access.toml
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=default.target
