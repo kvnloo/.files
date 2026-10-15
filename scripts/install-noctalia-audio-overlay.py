@@ -17,6 +17,8 @@ BRIGHTNESS_PANEL_OVERRIDE = Path("Modules/Panels/Brightness/BrightnessPanel.qml"
 BRIGHTNESS_WIDGET_OVERRIDE = Path("Modules/Bar/Widgets/Brightness.qml")
 SYSTEM_MONITOR_OVERRIDE = Path("Modules/Cards/SystemMonitorCard.qml")
 PROFILE_CARD_OVERRIDE = Path("Modules/Cards/ProfileCard.qml")
+PLUGIN_PANEL_OVERRIDE = Path("Modules/Panels/Plugins/PluginPanelSlot.qml")
+PANEL_SERVICE_OVERRIDE = Path("Services/UI/PanelService.qml")
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -807,6 +809,70 @@ def customize_profile_card(text: str) -> str:
     )
 
 
+def customize_plugin_panel_slot(text: str) -> str:
+    return replace_once(
+        text,
+        "  property var pluginInstance: null\n",
+        """  property var pluginInstance: null
+
+  // Resolve the main policy before the lazy panel-content loader runs.
+  exclusiveKeyboard: pluginInstance?.exclusiveKeyboard
+      ?? PluginService.loadedPlugins[root.currentPluginId]?.mainInstance?.exclusiveKeyboard
+      ?? true
+""",
+    )
+
+
+def customize_panel_service(text: str) -> str:
+    text = replace_once(
+        text,
+        """  Timer {
+    id: keyboardInitTimer
+    interval: 100
+    repeat: false
+    onTriggered: {
+      root.isInitializingKeyboard = false;
+    }
+  }
+""",
+        """  Timer {
+    id: keyboardInitTimer
+    interval: 100
+    repeat: false
+    onTriggered: {
+      root.isInitializingKeyboard = false;
+    }
+  }
+
+  function syncKeyboardInitialization() {
+    keyboardInitTimer.stop();
+    isInitializingKeyboard = root.openedPanel?.exclusiveKeyboard === true;
+    if (isInitializingKeyboard)
+      keyboardInitTimer.restart();
+  }
+
+  Connections {
+    target: root.openedPanel
+    function onExclusiveKeyboardChanged() {
+      root.syncKeyboardInitialization();
+    }
+  }
+""",
+    )
+    return replace_once(
+        text,
+        """    // Start keyboard initialization period (for Hyprland workaround)
+    if (panel && panel.exclusiveKeyboard) {
+      isInitializingKeyboard = true;
+      keyboardInitTimer.restart();
+    }
+""",
+        """    // Start or clear keyboard focus initialization for the active panel.
+    syncKeyboardInitialization();
+""",
+    )
+
+
 CUSTOMIZERS = {
     BRIGHTNESS_WIDGET_OVERRIDE: customize_brightness_widget,
     AUDIO_OVERRIDE: customize_audio_panel,
@@ -814,6 +880,8 @@ CUSTOMIZERS = {
     BRIGHTNESS_PANEL_OVERRIDE: customize_brightness_panel,
     SYSTEM_MONITOR_OVERRIDE: customize_system_monitor,
     PROFILE_CARD_OVERRIDE: customize_profile_card,
+    PLUGIN_PANEL_OVERRIDE: customize_plugin_panel_slot,
+    PANEL_SERVICE_OVERRIDE: customize_panel_service,
 }
 
 

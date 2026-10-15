@@ -45,6 +45,10 @@ COMMANDS: dict[str, list[str]] = {
         "systemctl", "list-unit-files", "--type=timer", "--state=enabled",
         "--no-legend", "--no-pager", "--plain",
     ],
+    "system_sockets_enabled": [
+        "systemctl", "list-unit-files", "--type=socket", "--state=enabled",
+        "--no-legend", "--no-pager", "--plain",
+    ],
     "user_timers_enabled": [
         "systemctl", "--user", "list-unit-files", "--type=timer", "--state=enabled",
         "--no-legend", "--no-pager", "--plain",

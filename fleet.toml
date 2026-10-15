@@ -6,11 +6,13 @@ schema = 1
 [hosts.desktop]
 match_hostnames = ["0", "groot"]
 platform = "cachyos"
-package_groups = ["core", "nvidia", "desktop", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
+package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
-system_services = ["docker.service", "tailscaled.service"]
+system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
+system_timers = ["tern-remote-refresh.timer"]
+system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service"]
-user_timers = ["bws-secrets-sync.timer"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
@@ -21,10 +23,21 @@ package_groups = ["core", "desktop", "dev", "shell", "fonts"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
 system_services = ["tailscaled.service"]
 user_services = []
-user_timers = []
+user_timers = ["z0int-loop-tick.timer"]
 nix_profile = "mbp"
 hypr_host = "mbp"
 
+# Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
+# Use the explicit logical id: the guest kernel hostname is "localhost".
+[hosts.phone]
+match_hostnames = ["omarchy-phone"]
+platform = "arch"
+package_groups = []
+onboard_modules = []
+system_services = []
+user_services = []
+user_timers = []
+tern_plugin_source = "config/tern-phone/phone-controls"
 # Workload ownership stays in the workload repo. This declaration only says
 # where the local lab belongs once the repo URL is published.
 [clusters.hermes-lab]

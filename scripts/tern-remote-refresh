@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Refresh only a remote transport whose executable was replaced by an update.
+set -euo pipefail
+binary="${1:?Tern executable required}"
+unit="${2:?Remote service unit required}"
+
+# Honor intentional stops. KillMode=process keeps the session daemons alive.
+systemctl is-active --quiet "$unit" || exit 0
+[[ "$(systemctl show "$unit" --property=KillMode --value)" == process ]] || {
+  printf 'Refusing to restart %s without KillMode=process\n' "$unit" >&2
+  exit 1
+}
+pid="$(systemctl show "$unit" --property=MainPID --value)"
+[[ "$pid" =~ ^[1-9][0-9]*$ ]] || exit 0
+running="$(stat -Lc '%d:%i' "/proc/$pid/exe")"
+installed="$(stat -Lc '%d:%i' "$binary")"
+[[ "$running" != "$installed" ]] || exit 0
+
+# Do not replace a running transport with an incomplete or invalid download.
+"$binary" --version >/dev/null
+printf 'Refreshing %s after executable replacement (pid %s)\n' "$unit" "$pid"
+systemctl try-restart "$unit"

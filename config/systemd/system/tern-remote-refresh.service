@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Tern remote transport after a binary update
+After=tern-remote.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/tern-remote-refresh /home/kvn/.local/bin/tern tern-remote.service
+User=root

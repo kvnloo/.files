@@ -55,3 +55,6 @@ config/waybar/scripts/*.so
 /t3code-audit/
 /theo_t3code_research/
 /tmux-client-*.log
+
+# Noctalia writes parsed keybindings and per-user plugin choices here.
+/config/noctalia/plugins/keybind-cheatsheet/settings.json

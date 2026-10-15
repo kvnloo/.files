@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Read-only keyd layer-state relay.
+
+Access to /run/keyd.socket is root-equivalent: it accepts bindings, text input,
+and command() actions that keyd runs as root. Users must not get that socket.
+
+serve LAYER...  Socket-activated system service, running with the keyd group
+                only. It holds one `keyd listen` connection; keyd frees a
+                listener slot only after a write fails, so clients never cause
+                reconnects. Each client gets a /layout snapshot plus the active
+                named layers, then their +/- changes. Other layers, including
+                shift/control/meta/alt, are never forwarded: their timing
+                reveals typing. Client input is read and discarded.
+listen          Copy the relay stream to stdout, like `keyd listen`.
+
+Install root-owned (setup-desktop-modal.sh). The service must never execute a
+user-writable copy: that would give the user keyd's control socket again.
+"""
+from __future__ import annotations
+
+import os
+import re
+import selectors
+import socket
+import subprocess
+import sys
+import time
+
+SOCKET = '/run/keyd-layers.sock'
+KEYD = '/usr/bin/keyd'
+MAX_CLIENTS = 8
+LINE = re.compile(rb'([/+-])([A-Za-z0-9_.+-]{1,64})')
+
+
+class Relay:
+    def __init__(self, server: socket.socket, allowed: set[bytes]):
+        self.server = server
+        self.allowed = allowed
+        self.selector = selectors.DefaultSelector()
+        self.selector.register(server, selectors.EVENT_READ, 'accept')
+        self.clients: set[socket.socket] = set()
+        self.layout: bytes | None = None  # None until keyd sends a snapshot.
+        self.counts: dict[bytes, int] = {}
+        self.child: subprocess.Popen | None = None
+        self.buffer = b''
+        self.retry_at = 0.0
+        self.backoff = 1.0
+
+    def snapshot(self) -> bytes:
+        active = sorted(name for name, count in self.counts.items() if count > 0)
+        return b''.join([b'/' + self.layout + b'\n', *(b'+' + name + b'\n' for name in active)])
+
+    def drop(self, client: socket.socket) -> None:
+        self.selector.unregister(client)
+        self.clients.discard(client)
+        client.close()
+
+    def send(self, client: socket.socket, data: bytes) -> None:
+        try:
+            if client.send(data) == len(data):
+                return
+        except OSError:
+            pass
+        self.drop(client)  # A client that cannot take a few bytes is stuck or gone.
+
+    def broadcast(self, data: bytes) -> None:
+        for client in list(self.clients):
+            self.send(client, data)
+
+    def accept(self) -> None:
+        try:
+            client, _ = self.server.accept()
+        except BlockingIOError:
+            return
+        if len(self.clients) >= MAX_CLIENTS:
+            client.close()
+            return
+        client.setblocking(False)
+        self.selector.register(client, selectors.EVENT_READ, 'client')
+        self.clients.add(client)
+        if self.layout is not None:
+            self.send(client, self.snapshot())
+
+    def start_child(self) -> None:
+        self.child = subprocess.Popen([KEYD, 'listen'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+        os.set_blocking(self.child.stdout.fileno(), False)
+        self.selector.register(self.child.stdout, selectors.EVENT_READ, 'keyd')
+        self.buffer = b''
+
+    def child_ended(self) -> None:
+        self.selector.unregister(self.child.stdout)
+        self.child.stdout.close()
+        self.child.wait()
+        self.child = None
+        self.layout = None
+        self.counts.clear()
+        for client in list(self.clients):
+            self.drop(client)  # EOF tells clients that layer state is unknown.
+        self.retry_at = time.monotonic() + self.backoff
+        self.backoff = min(30.0, self.backoff * 2)
+
+    def line(self, raw: bytes) -> None:
+        match = LINE.fullmatch(raw)
+        if match is None:
+            return  # Includes keyd's "Max listeners exceeded" notice.
+        kind, name = match.groups()
+        self.backoff = 1.0
+        if kind == b'/':
+            # Connect snapshot or layout change: layers stay active, so resend all.
+            self.layout = name
+            self.broadcast(self.snapshot())
+            return
+        if name not in self.allowed:
+            return
+        before = self.counts.get(name, 0)
+        after = before + 1 if kind == b'+' else max(0, before - 1)
+        self.counts[name] = after
+        if (before > 0) != (after > 0):
+            self.broadcast(kind + name + b'\n')
+
+    def read_child(self) -> None:
+        data = os.read(self.child.stdout.fileno(), 4096)
+        if not data:
+            self.child_ended()
+            return
+        self.buffer += data
+        *lines, self.buffer = self.buffer.split(b'\n')
+        if len(self.buffer) > 256:
+            self.buffer = b''
+        for raw in lines:
+            self.line(raw.strip())
+
+    def read_client(self, client: socket.socket) -> None:
+        try:
+            data = client.recv(256)
+        except OSError:
+            data = b''
+        if not data:
+            self.drop(client)
+
+    def run(self) -> None:
+        while True:
+            if self.child is None and time.monotonic() >= self.retry_at:
+                self.start_child()
+            timeout = None if self.child else max(0.0, self.retry_at - time.monotonic())
+            for key, _ in self.selector.select(timeout):
+                if key.data == 'accept':
+                    self.accept()
+                elif key.data == 'keyd':
+                    self.read_child()
+                elif key.fileobj in self.clients:
+                    self.read_client(key.fileobj)
+
+
+def serve(layers: list[str]) -> int:
+    if not layers:
+        print('usage: keyd-layers serve LAYER...', file=sys.stderr)
+        return 2
+    if os.environ.get('LISTEN_PID') != str(os.getpid()) or os.environ.get('LISTEN_FDS') != '1':
+        print('keyd-layers serve needs exactly one systemd socket', file=sys.stderr)
+        return 2
+    server = socket.socket(fileno=3)
+    server.setblocking(False)
+    Relay(server, {layer.encode() for layer in layers}).run()
+    return 0
+
+
+def listen() -> int:
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        connection.connect(SOCKET)
+    except OSError as exc:
+        print(f'keyd-layers: cannot connect to {SOCKET}: {exc.strerror}', file=sys.stderr)
+        return 1
+    try:
+        while data := connection.recv(4096):
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+    except BrokenPipeError:
+        return 0
+    return 1  # Relay closed: layer state is unknown, as when keyd listen exits.
+
+
+def main(argv: list[str]) -> int:
+    if argv[1:2] == ['serve']:
+        return serve(argv[2:])
+    if argv[1:] == ['listen']:
+        return listen()
+    print('usage: keyd-layers serve LAYER... | listen', file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

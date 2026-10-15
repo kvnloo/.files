@@ -76,6 +76,10 @@ packages = [
     "wlogout",
 ]
 
+# Opt-in only on the desktop host; never intercept a laptop keyboard.
+[modal-keyboard]
+packages = ["keyd"]
+
 # ---------------------------------------------------------
 # Audio
 # ---------------------------------------------------------
