@@ -1,0 +1,1 @@
+{"data":{"events":[{"Reason":"passd capability=cap-1 lease=lease-1 purpose=CANARY_SECRET_REASON","create_time":"2026-10-15T12:00:30Z","item":{"id":"item-1","content":"CANARY_SECRET_ITEM"},"agent":{"id":"broker"},"event":"read"}]}}

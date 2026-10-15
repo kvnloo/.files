@@ -1,0 +1,11 @@
+[Unit]
+Description=Check passd Proton AGENT access counts each minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=passd-agent-alert.service
+
+[Install]
+WantedBy=timers.target

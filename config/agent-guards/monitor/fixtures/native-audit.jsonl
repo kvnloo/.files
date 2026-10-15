@@ -1,0 +1,2 @@
+{"ts":1792065600,"agent_id":"machine-1","operation":"access.approve","item_id":"item-1","allowed":true,"approved_at":1792065600,"expires_at":1792065660,"detail":{"request_id":"native-1","capability_id":"cap-1","ttl":60,"uses":1}}
+{"ts":1792065620,"operation":"access.revoke","allowed":false,"detail":{"request_id":"native-1"}}

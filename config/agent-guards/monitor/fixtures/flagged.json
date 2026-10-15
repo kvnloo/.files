@@ -1,0 +1,1 @@
+{"events":[{"reason":"CANARY_UNSTRUCTURED_REASON","timestamp":"2026-10-15T12:00:30Z","item_id":"item-1","agent_id":"unknown","action":"read"},{"reason":"passd capability=cap-1 lease=lease-1","time":"2026-10-15T12:01:00Z","item_id":"item-1","agent_id":"broker","action":"read"}]}

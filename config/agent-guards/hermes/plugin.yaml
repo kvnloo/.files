@@ -1,0 +1,5 @@
+name: credential-guard
+version: "0.1.0"
+description: "Block direct credential-store tools and paths; use passd capabilities."
+hooks:
+  - pre_tool_call

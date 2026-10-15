@@ -1,0 +1,17 @@
+[Unit]
+Description=Count Proton AGENT accesses without an approved passd lease
+
+[Service]
+Type=oneshot
+# Install ONLY in the separate passd user's systemd --user manager.
+# Replace all REPLACE_* values and the checkout path before starting.
+ExecStart=/usr/bin/python3 %h/.files/config/agent-guards/monitor/passd-agent-alert.py --agent REPLACE_AGENT --known-agent REPLACE_AGENT --pass-cli %h/.local/bin/pass-cli --session-dir %h/REPLACE_SESSION_DIR --audit-jsonl %h/REPLACE_APPROVAL_EXPORT.jsonl --limit 100
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# Some CLI builds may update session metadata; add a narrowly scoped
+# ReadWritePaths= for the verified AGENT session directory if required.
+StandardOutput=journal
+StandardError=journal
