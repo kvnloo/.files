@@ -10,20 +10,118 @@ import shlex
 import sys
 
 
-DENIED = frozenset("pass-cli proton-pass secret-tool gnome-keyring-daemon gnome-keyring seahorse kwallet-query kwalletcli lssecret keyring bws bw op gopass pass".split())
+DENIED = frozenset("pass-cli pass-cli-run proton-pass secret-tool gnome-keyring-daemon gnome-keyring seahorse kwallet-query kwalletcli lssecret keyring bws bw op gopass pass".split())
 ROOTS = (
     "~/.local/share/proton-pass*", "~/.config/proton-pass*", "~/.cache/proton-pass*",
     "~/.local/share/keyrings", "~/.gnupg", "~/.password-store",
-    "~/.local/share/passd", "/var/lib/passd",
+    "~/.local/share/passd", "/var/lib/passd", "/var/lib/passvault",
+    "/usr/local/lib/proton-pass",
 )
 SHELLS = frozenset("bash sh zsh fish dash ksh".split())
-READERS = frozenset("cat less more head tail cp mv tar rsync grep rg find sqlite3 strings xxd od sed awk dd tee install".split())
+PRIVILEGE_TOOLS = frozenset("sudo doas su runuser pkexec machinectl systemd-run".split())
 EXEC_RE = re.compile(r"subprocess|exec|spawn|system|os\.popen|Bun\.\$|terminal\s*\(", re.I)
 TOKEN_RE = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, DENIED)) + r")(?![\w-])")
 ASSIGN_RE = re.compile(r"^[A-Za-z_]\w*=(.*)$", re.S)
 DENY_TOOL = "Direct credential tool invocation is blocked; request a passd capability."
 DENY_PATH = "Credential store access is blocked; request a passd capability."
 DENY_ENV = "Environment dumps are blocked."
+DENY_USER = "Credential custody user access is blocked; request a passd capability."
+
+
+def custody_user(value):
+    # Do not query accounts/NSS. Numeric identities may name either custody user.
+    return value in {"passvault", "passd"} or bool(re.fullmatch(r"#?\d+", value))
+
+
+def privilege_words(name, args):
+    """Inspect literal user selectors, then expose the wrapped command."""
+    user_options = {"--user", "-u"} if name in {"sudo", "doas", "runuser", "pkexec"} else set()
+    if name in {"machinectl", "systemd-run"}:
+        user_options = {"--uid"}
+    source_options = {"-c", "--command", "--session-command"} if name in {"su", "runuser"} else set()
+    value_options = {
+        "sudo": {"-g", "-h", "-p", "-C", "-T", "-D", "-R", "--group", "--host", "--prompt", "--chdir", "--chroot", "--close-from", "--command-timeout", "-r", "-t", "--role", "--type"},
+        "doas": {"-C", "-a"},
+        "su": {"-g", "-G", "-s", "--group", "--supp-group", "--shell", "--whitelist-environment", "-w"},
+        "runuser": {"-g", "-G", "-s", "--group", "--supp-group", "--shell", "--whitelist-environment", "-w"},
+        "systemd-run": {"-p", "--property", "--unit", "--description", "--slice", "--working-directory", "--gid", "-H", "--host", "-M", "--machine"},
+        "machinectl": {"-H", "--host", "-M", "--machine", "--setenv"},
+    }.get(name, set())
+    positional_user = name in {"su", "runuser"}
+    shell_target = False
+    source = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            i += 1
+            if name == "machinectl":
+                if i < len(args) and args[i] == "shell" and not shell_target:
+                    shell_target = True
+                    i += 1
+                if shell_target and i < len(args) and "@" in args[i] and custody_user(args[i].split("@", 1)[0]):
+                    return [], True
+            break
+        option, equal, value = arg.partition("=")
+        if option in user_options:
+            if not equal:
+                i += 1
+                value = args[i] if i < len(args) else ""
+            if custody_user(value):
+                return [], True
+            if name == "runuser":
+                positional_user = False
+        elif option in source_options:
+            if not equal:
+                i += 1
+                value = args[i] if i < len(args) else ""
+            source = value
+        elif arg.startswith("-") and not arg.startswith("--"):
+            # Short options may be joined: -upassvault, -iu passd, -nupassd.
+            cluster = arg[1:]
+            for index, flag in enumerate(cluster):
+                short = "-" + flag
+                if short in user_options or short in value_options or short in source_options:
+                    value = cluster[index + 1:]
+                    if not value:
+                        i += 1
+                        value = args[i] if i < len(args) else ""
+                    if short in user_options:
+                        if custody_user(value):
+                            return [], True
+                        if name == "runuser":
+                            positional_user = False
+                    if name == "systemd-run" and short == "-p" and value.startswith("User=") and custody_user(value[5:]):
+                        return [], True
+                    if short in source_options:
+                        source = value
+                    break
+        elif option in value_options:
+            if not equal:
+                i += 1
+                value = args[i] if i < len(args) else ""
+            if name == "systemd-run" and option in {"-p", "--property"} and value.startswith("User=") and custody_user(value[5:]):
+                return [], True
+        elif arg.startswith("-"):
+            pass
+        elif name == "machinectl" and arg == "shell":
+            shell_target = True
+        elif shell_target:
+            if custody_user(arg.split("@", 1)[0]) and "@" in arg:
+                return [], True
+            shell_target = False
+        elif positional_user:
+            if custody_user(arg):
+                return [], True
+            positional_user = False
+        elif ASSIGN_RE.match(arg):
+            pass
+        else:
+            break
+        i += 1
+    if positional_user and i < len(args) and custody_user(args[i]):
+        return [], True
+    return (["sh", "-c", source] if source is not None else args[i:]), False
 
 
 def strings(value):
@@ -71,13 +169,19 @@ def tool_name(word):
 
 
 def code_reason(code, cwd=None):
-    literals = (match.group(2) for match in re.finditer(r"(['\"])(.*?)\1", code, re.S))
+    literals = [match.group(2) for match in re.finditer(r"(['\"])(.*?)\1", code, re.S)]
     if protected_text(code, cwd) or any(protected(value, cwd) for value in literals):
         return DENY_PATH
     if re.search(r"\bos\.environ\b|\bprocess\.env\b|\bENV\b", code):
         return DENY_ENV
     if EXEC_RE.search(code) and TOKEN_RE.search(code):
         return DENY_TOOL
+    if EXEC_RE.search(code):
+        for i, value in enumerate(literals):
+            if value.split() and tool_name(value.split()[0]) in PRIVILEGE_TOOLS:
+                reason = bash_reason(value, cwd) or bash_reason(shlex.join(literals[i:]), cwd)
+                if reason:
+                    return reason
     if EXEC_RE.search(code) and re.search(r"['\"](?:env|printenv)(?:\s|['\"])", code):
         return DENY_ENV
     # Direct keyring module access does not need a child process.
@@ -105,6 +209,9 @@ def substitutions(command):
 
 def simple_reason(words, cwd, depth):
     while words:
+        # All explicit path operands count, including listing and editor tools.
+        if any(protected(word.split("=", 1)[-1], cwd) for word in words):
+            return DENY_PATH
         assignment = ASSIGN_RE.match(words[0])
         if assignment:
             if tool_name(assignment.group(1)) in DENIED:
@@ -117,6 +224,11 @@ def simple_reason(words, cwd, depth):
             continue
         if name in DENIED:
             return DENY_TOOL
+        if name in PRIVILEGE_TOOLS:
+            words, denied = privilege_words(name, args)
+            if denied:
+                return DENY_USER
+            continue
         if name in {"env", "printenv"}:
             if name == "printenv":
                 # Even named-variable queries can disclose credentials.
@@ -147,11 +259,10 @@ def simple_reason(words, cwd, depth):
             if not words:
                 return DENY_ENV
             continue
-        if name in {"sudo", "doas", "nohup", "command", "builtin", "exec", "xargs", "timeout"}:
+        if name in {"nohup", "command", "builtin", "exec", "xargs", "timeout"}:
             i = 0
             value_options = {
-                "sudo": {"-u", "-g", "-h", "-p", "-C", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "-D"},
-                "doas": {"-u", "-C"}, "exec": {"-a"},
+                "exec": {"-a"},
                 "xargs": {"-I", "-n", "-s", "-P", "-L", "-E", "-d", "--max-args", "--replace", "--delimiter"},
                 "timeout": {"-s", "-k", "--signal", "--kill-after"},
             }.get(name, set())
@@ -191,8 +302,6 @@ def simple_reason(words, cwd, depth):
             (match := ASSIGN_RE.match(arg)) and tool_name(match.group(1)) in DENIED for arg in args
         ):
             return DENY_TOOL
-        if name in READERS and any(protected(arg.split("=", 1)[-1], cwd) for arg in args if not arg.startswith("-") or "=" in arg):
-            return DENY_PATH
         return None
     return None
 
@@ -207,6 +316,7 @@ def bash_reason(command, cwd=None, depth=0):
         if reason:
             return reason
     lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>")
+    lexer.commenters = ""  # Keep sudo's unquoted -u#UID selector visible.
     lexer.whitespace_split = True
     lexer.whitespace = " \t\r"
     lexer.wordchars += "\n"  # Newlines are converted below; quoted ones stay inside words.
@@ -268,8 +378,8 @@ def check(tool, args, cwd=None):
         return bash_reason(command, cwd)
     if name in {"eval", "execute_code"}:
         return next((reason for value in strings(args) if (reason := code_reason(value, cwd))), None)
-    if name in {"read", "grep", "glob", "edit", "write", "notebookedit", "read_file", "write_file", "search_files", "patch"}:
-        for key in ("file_path", "path", "paths", "pattern", "notebook_path", "file_glob", "target_file"):
+    if name in {"read", "grep", "glob", "edit", "write", "notebookedit", "read_file", "write_file", "search_files", "patch", "list", "list_directory", "list_files"}:
+        for key in ("file_path", "path", "paths", "pattern", "notebook_path", "file_glob", "target_file", "directory", "dir_path"):
             if any(protected(value, cwd) for value in strings(args.get(key))):
                 return DENY_PATH
         if name == "patch" and isinstance(args.get("patch"), str):

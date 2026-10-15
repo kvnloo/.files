@@ -3,13 +3,19 @@
 These guards steer Claude Code, OMP and Hermes toward approved passd capabilities.
 They block direct credential commands, common shell disguises, environment dumps,
 and explicit accesses to Proton, keyring, GnuPG, password-store and passd data paths.
+The human Proton session belongs to `passvault` at `/var/lib/passvault`, using the
+filesystem key provider. Passd custody belongs to the separate `passd` OS user at
+`/var/lib/passd`. Both trees and `/usr/local/lib/proton-pass` are protected,
+including directory listings, edits and reads of the root-owned `pass-cli-run`.
+Bare and path-qualified runner invocations are denied too.
 The monitor checks Proton access metadata against exported passd approvals.
 
 Same-user hooks are defense-in-depth, not a security boundary. A coding agent can
 disable a hook, change its code, execute an uninspected script, encode a path, or
 use another tool to reach the same files. The boundary is the separate **passd OS
-user**, filesystem ownership, and Proton AGENT grants. Coding agents must not run
-as that user or inherit its session, keyring socket or credentials.
+user**, the separate **passvault OS user**, filesystem ownership, and Proton AGENT
+grants. Coding agents must not run as either user or inherit their sessions,
+keyring sockets or credentials.
 
 Nothing here installs itself. The service and timer are inactive templates.
 The commands below are manual installation instructions, not actions performed by
@@ -32,6 +38,11 @@ Here strings and here documents containing visible blocked commands are denied.
 
 All credential-tool invocations are denied, including `pass-cli --help`.
 `man pass-cli` is also denied as a deliberately simple documentation policy.
+User switches through `sudo`, `doas`, `su`, `runuser`, `pkexec`, `machinectl shell`
+and `systemd-run --uid` are denied when targeting `passvault` or `passd`. Literal
+numeric user selectors are conservatively denied without account lookups.
+Joined flags, named user options and visible interpreter subprocess arguments
+are inspected. Computed user names and IDs remain best-effort gaps.
 These remain allowed:
 
 ```bash
@@ -40,6 +51,8 @@ grep -r pass-cli docs/
 rg printenv
 echo "$PATH"
 env FOO=bar git status
+sudo pacman -Syu
+ls /var/lib
 ```
 
 Editing source or documentation that mentions a credential command is allowed
@@ -78,9 +91,9 @@ current Claude warns that `Glob(path)` rules are not consulted. Do not rely on
 them; the `Read` rules and hook cover explicit search targets. See the same
 reference and the [PreToolUse protocol](https://code.claude.com/docs/en/hooks).
 
-The static `Bash(env *)` and `Bash(set *)` rules are intentionally broader than
-the hook and may block benign wrapper/option forms. They provide a fallback
-when shell parsing or hook loading fails. The example hook command assumes
+The static `Bash(env *)`, `Bash(set *)`, custody-name and custody-path rules are
+intentionally broader than the hook and may block benign mentions in arguments.
+They provide a fallback when shell parsing or hook loading fails. The example hook command assumes
 `~/.files`; this merge replaces it with the actual checkout path.
 
 Run from the dotfiles checkout, after reviewing the snippet:
@@ -243,15 +256,15 @@ systemctl --user daemon-reload
 
 All submitted commands are inert strings. The monitor tests use only a fake
 executable and canned JSON/JSONL. Adapter tests call the actual Python guard,
-plus simulated process errors. Nothing invokes real credential tools or reads
-credential stores. Run all tests from the worktree without pytest or scratch dirs:
+plus simulated process errors. `custody-cases.json` supplies shared regression
+cases for all three hosts. Nothing invokes real credential tools or reads
+credential stores. Run all tests from the worktree:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s config/agent-guards/claude -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s config/agent-guards/hermes -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s config/agent-guards/monitor -v
-PYTHONDONTWRITEBYTECODE=1 node config/agent-guards/omp/test-adapter.mjs
+uv run --with pytest pytest -q config/agent-guards
+node config/agent-guards/omp/test-adapter.mjs
 ```
 
 Do not run the repository's unrelated live credential tests as part of this
-suite. No temporary files, live installations, network or credentials are needed.
+suite. Keep any test/cache scratch directories in the workspace. The tests need
+no live installations, network or credentials; uv may need cached pytest packages.

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import unittest
@@ -11,6 +12,13 @@ spec.loader.exec_module(plugin)
 
 
 class HermesGuardTests(unittest.TestCase):
+    def test_custody_cases(self):
+        cases = json.loads((Path(__file__).parent.parent / "custody-cases.json").read_text())
+        for name, args, denied in cases:
+            with self.subTest(name=name, args=args):
+                result = plugin.pre_tool_call(name, args)
+                self.assertEqual(result is not None and result["action"] == "block", denied)
+
     def test_registration(self):
         class Context:
             def register_hook(self, name, handler):

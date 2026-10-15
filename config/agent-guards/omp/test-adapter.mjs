@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import credentialGuard from "./credential-guard.mjs";
 
 let handler;
@@ -14,10 +15,11 @@ const cases = [
   ["bash", { command: 'git commit -m "mention pass-cli"' }, false],
   ["bash", { command: "echo $PATH" }, false],
   ["eval", { code: "1 + 1" }, false],
+  ...JSON.parse(readFileSync(new URL("../custody-cases.json", import.meta.url), "utf8")),
 ];
 for (const [toolName, input, denied] of cases) {
   const result = await handler({ toolName, input }, { cwd: process.cwd() });
-  assert.equal(result?.block === true, denied, toolName);
+  assert.equal(result?.block === true, denied, `${toolName}: ${JSON.stringify(input)}`);
 }
 const oldPath = process.env.PATH;
 try {

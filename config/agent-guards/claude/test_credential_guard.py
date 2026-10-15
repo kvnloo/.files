@@ -8,6 +8,7 @@ import unittest
 
 
 HOOK = Path(__file__).with_name("credential-guard.py")
+CUSTODY_CASES = json.loads((HOOK.parent.parent / "custody-cases.json").read_text())
 DENIED = [
     "pass-cli", "pass-cli --help", "/usr/bin/pass-cli item list", "./pass-cli --version",
     "~/.local/bin/pass-cli", "$HOME/.local/bin/pass-cli", "${HOME}/.local/bin/pass-cli",
@@ -77,6 +78,11 @@ def run_hook(data, raw=False):
 
 
 class GuardTests(unittest.TestCase):
+    def test_custody_cases(self):
+        for tool, args, denied in CUSTODY_CASES:
+            with self.subTest(tool=tool, args=args):
+                self.assertEqual(run_hook({"tool_name": tool, "tool_input": args}) is not None, denied)
+
     def test_protected_file_tools(self):
         for tool in ("Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit"):
             for key in ("file_path", "path", "pattern", "notebook_path"):
@@ -120,6 +126,14 @@ class GuardTests(unittest.TestCase):
         rules = settings["permissions"]["deny"]
         for rule in ("Bash(pass:*)", "Bash(pass *)", "Bash(*/pass-cli *)", "Read(//proc/*/environ)", "Edit(//var/lib/passd/**)"):
             self.assertIn(rule, rules)
+        for rule in ("Bash(pass-cli-run)", "Bash(pass-cli-run:*)", "Bash(*/pass-cli-run *)",
+                     "Bash(/usr/local/lib/proton-pass/pass-cli-run *)", "Bash(sudo *passvault*)",
+                     "Bash(su *passd*)", "Bash(systemd-run *passvault*)"):
+            self.assertIn(rule, rules)
+        for path in ("//var/lib/passvault", "//var/lib/passd", "//usr/local/lib/proton-pass"):
+            for tool in ("Read", "Edit", "Grep", "Glob"):
+                for suffix in ("", "/**"):
+                    self.assertIn(f"{tool}({path}{suffix})", rules)
         entry = settings["hooks"]["PreToolUse"][0]
         self.assertEqual(entry["matcher"], "Bash|Read|Grep|Glob|Edit|Write|NotebookEdit|mcp__.*")
         self.assertEqual(entry["hooks"][0]["type"], "command")
