@@ -1,0 +1,14 @@
+# Non-secret defaults for Proton Pass CLI. Sourced by scripts/pass-cli-wrapper.
+# Never put PROTON_PASS_PASSWORD, PROTON_PASS_TOTP, PROTON_PASS_ENCRYPTION_KEY or a
+# PROTON_PASS_PERSONAL_ACCESS_TOKEN in this file.
+
+# Keep the session key in GNOME Keyring (Secret Service over D-Bus) so the
+# session survives reboot. The default "kernel" keyring is cleared on reboot.
+PROTON_PASS_LINUX_KEYRING=dbus
+
+# Source builds must not self-update from upstream release channels.
+PROTON_PASS_NO_UPDATE_CHECK=1
+PROTON_PASS_DISABLE_TELEMETRY=1
+
+# Tailnet host that holds the shared logged-in session (fleet.toml: desktop).
+PROTON_PASS_CUSTODY_HOST=0

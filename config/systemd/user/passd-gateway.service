@@ -1,0 +1,19 @@
+[Unit]
+Description=passd agent gateway on groot's tailnet IP
+Requires=passd.service
+Wants=network-online.target
+After=passd.service network-online.target
+
+[Service]
+Type=simple
+Environment=PASSD_GATEWAY_LISTEN=100.113.138.100:55460
+EnvironmentFile=-%h/.config/passd/gateway.env
+ExecStart=%h/.local/bin/passd gateway --listen ${PASSD_GATEWAY_LISTEN}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

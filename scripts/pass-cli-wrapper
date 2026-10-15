@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Installed as ~/.local/bin/pass-cli. Applies the non-secret defaults from
+# config/proton-pass/env, then execs the real Proton Pass CLI binary.
+# Values already set in the environment win over the defaults.
+set -euo pipefail
+
+defaults="${PROTON_PASS_DEFAULTS_FILE:-$HOME/.config/proton-pass/env}"
+if [[ -r "$defaults" ]]; then
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Z_][A-Z0-9_]*$ ]] || continue
+    [[ -n "${!key:-}" ]] || export "$key=$value"
+  done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$defaults")
+fi
+
+# On a headless ssh session the Secret Service bus is still the user bus.
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "/run/user/$(id -u)/bus" ]]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+fi
+
+for real in "${PASS_CLI_REAL:-}" "$HOME/.local/lib/proton-pass/pass-cli" /usr/bin/pass-cli; do
+  [[ -n "$real" && -x "$real" ]] && exec "$real" "$@"
+done
+printf 'pass-cli: no real binary found; run scripts/proton-pass-install.sh\n' >&2
+exit 127

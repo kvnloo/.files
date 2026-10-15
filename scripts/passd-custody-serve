@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Unlock custody through Secret Service; keep the password on runtime tmpfs.
+set -euo pipefail
+umask 077
+
+: "${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must name the current user runtime directory}"
+export PATH="$HOME/.local/bin:$PATH"
+unset PASSD_REMOTE PASSD_AGENT_TOKEN PASSD_MASTER_PASSWORD
+
+missing_password() {
+  printf '%s\n' 'passd: no master password available from Secret Service.' \
+    "Store it with: secret-tool store --label='passd master password' service org.passd key master-password" >&2
+  exit 1
+}
+
+command -v secret-tool >/dev/null || missing_password
+password=$(secret-tool lookup service org.passd key master-password) || missing_password
+[[ -n "$password" ]] || missing_password
+
+runtime="$XDG_RUNTIME_DIR/passd"
+mkdir -p -- "$runtime"
+chmod 0700 -- "$runtime"
+export PASSD_MASTER_PASSWORD_FILE="$runtime/master-password"
+# Replace atomically rather than following an old file or symlink.
+staging=$(mktemp "$runtime/.master-password.XXXXXX")
+trap 'rm -f -- "$staging"' EXIT
+printf '%s' "$password" > "$staging"
+unset password
+chmod 0600 -- "$staging"
+mv -f -- "$staging" "$PASSD_MASTER_PASSWORD_FILE"
+
+# passd reads this file but has no read-and-delete option. ExecStopPost removes it.
+# Same-uid processes on the custody host can read it. This host must not run
+# coding agents; see passd/REMOTE_CUSTODY.md.
+exec passd serve

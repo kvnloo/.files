@@ -1,0 +1,16 @@
+[Unit]
+Description=passd credential custody
+After=graphical-session.target gnome-keyring-daemon.service
+
+[Service]
+Type=simple
+ExecStart=%h/workspace/.files/scripts/passd-custody-serve
+ExecStopPost=/usr/bin/rm -f -- %t/passd/master-password
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
