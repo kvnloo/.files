@@ -1,0 +1,59 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "factory-cpu-example",
+    "namespace": "oss-factory-jobs",
+    "labels": {"app.kubernetes.io/part-of": "oss-factory"},
+    "annotations": {
+      "oss-factory/work-order-id": "20261015-factory-kind-k3s-pilot-001",
+      "oss-factory/claim-url": "https://github.com/kvnloo/oss-factory/issues/127",
+      "dotfiles.k3s/purpose": "infrastructure smoke only; not a worker lease or HITL authorization"
+    }
+  },
+  "spec": {
+    "parallelism": 1,
+    "completions": 1,
+    "backoffLimit": 0,
+    "activeDeadlineSeconds": 180,
+    "ttlSecondsAfterFinished": 60,
+    "template": {
+      "metadata": {"labels": {"app.kubernetes.io/part-of": "oss-factory"}},
+      "spec": {
+        "restartPolicy": "Never",
+        "serviceAccountName": "oss-factory-worker",
+        "automountServiceAccountToken": false,
+        "terminationGracePeriodSeconds": 5,
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 65532,
+          "runAsGroup": 65532,
+          "fsGroup": 65532,
+          "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "containers": [{
+          "name": "verify",
+          "image": "docker.io/library/python@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4",
+          "imagePullPolicy": "IfNotPresent",
+          "command": ["python", "-c", "import hashlib, json, os, platform; result = sum(i*i for i in range(100000)); assert result == 333328333350000; assert os.getuid() == 65532; print(json.dumps({'result':'factory-cpu-ok','python':platform.python_version(),'uid':os.getuid(),'sum_squares':result,'source_commit':os.environ.get('SOURCE_COMMIT','manual-example-unrecorded')}), flush=True)"],
+          "env": [
+            {"name": "HOME", "value": "/tmp"},
+            {"name": "TMPDIR", "value": "/tmp"},
+            {"name": "PYTHONDONTWRITEBYTECODE", "value": "1"}
+          ],
+          "resources": {
+            "requests": {"cpu": "250m", "memory": "128Mi"},
+            "limits": {"cpu": "500m", "memory": "256Mi"}
+          },
+          "securityContext": {
+            "allowPrivilegeEscalation": false,
+            "readOnlyRootFilesystem": true,
+            "capabilities": {"drop": ["ALL"]}
+          },
+          "volumeMounts": [{"name": "temp", "mountPath": "/tmp"}]
+        }],
+        "volumes": [{"name": "temp", "emptyDir": {"sizeLimit": "32Mi"}}]
+      }
+    }
+  }
+}

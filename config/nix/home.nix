@@ -4,6 +4,7 @@
   imports = [
     ./modules/dotfiles.nix
     ./modules/audio
+    ./modules/k3s-client.nix
   ];
 
   home = {

@@ -48,6 +48,13 @@ Useful commands:
 - **Agents**: shared skills, Agent Reach, mcporter MCP config, workspace-copilot
 - **Optional**: Tailscale SSH, Nix Home Manager on CachyOS (`config/nix/`)
 
+### Optional CPU-only K3s
+
+See the [phone-first K3s guide](docs/k3s/ONBOARDING.md) for desktop preflight,
+explicit server setup, bounded Job verification, and rollback. Phones and
+laptops are clients only. K3s is **not** installed by `./install`, normal
+onboarding, or enabling the optional Home Manager client packages.
+
 ## Safety notes (public repo)
 
 This tree is public. Treat anything that can authenticate as **out of band**:

@@ -58,3 +58,12 @@ config/waybar/scripts/*.so
 
 # Noctalia writes parsed keybindings and per-user plugin choices here.
 /config/noctalia/plugins/keybind-cheatsheet/settings.json
+
+# Kubernetes client credentials and node bootstrap secrets are runtime state.
+**/.kube/
+**/kubeconfig
+**/kubeconfig.*
+**/*.kubeconfig
+**/k3s.yaml
+**/node-token
+/config/k3s/runtime/

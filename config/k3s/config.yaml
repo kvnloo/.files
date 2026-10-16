@@ -1,0 +1,13 @@
+# CPU-only, single-server SQLite. No token, datastore endpoint, GPU or join config.
+# setup-k3s.sh appends the explicitly approved private bind/node IP, interface
+# and data-dir. UFW's API allow is pod-only; review Tailscale ACLs and use SSH.
+https-listen-port: 6443
+write-kubeconfig-mode: "0600"
+cluster-cidr: 10.42.0.0/16
+service-cidr: 10.43.0.0/16
+flannel-backend: vxlan
+disable:
+  - traefik
+  - servicelb
+# Leave the built-in scheduler and network-policy controller enabled.
+secrets-encryption: true

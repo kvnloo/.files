@@ -80,6 +80,10 @@ Non-interactive examples:
 | `nix-home` | Runs [`config/nix/bootstrap-cachyos.sh`](../config/nix/bootstrap-cachyos.sh) on CachyOS/Arch |
 | `audio-evolution` | Runs [`scripts/install-audio-evolution.sh`](../scripts/install-audio-evolution.sh) |
 
+K3s server setup is a separate, explicitly approved system operation, not an
+onboarding module. Use the [phone-first K3s guide](k3s/ONBOARDING.md); it keeps
+Android/PRoot and laptop clients separate from the single desktop CPU node.
+
 State is stored outside git at:
 
 ```text
