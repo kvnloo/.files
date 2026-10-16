@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-16T23:31:54.480Z",
+  "compiler": {
+    "version": "bend 2.0.37",
+    "executable": "/root/workspace/llama-bend-tools/bend/bin/bend",
+    "executableSha256": "f47e9b96ac87bd1af94bbec993ec1d3bbded7dbdf9f5873d59dde2b73a5c77ca",
+    "target": "JavaScript",
+    "flags": [
+      "Runtime.bend",
+      "-o",
+      "Flow.js"
+    ],
+    "producerPlatform": "linux",
+    "producerArchitecture": "arm64"
+  },
+  "flowSha256": "a4319a3f801c1d3b486dc3d67cc4207d5a19317ad36a61919c22b31dbe7f038c",
+  "modelSha256": "8070101c1dfb1ae4623e3915b14d1818c0e31c88b6d51f077f0a485c5b14c9a4",
+  "runtimeSha256": "eb4400f9509101d1437adfb3aa8ff5f00176c31bea10966c4e2f33b6bbaa8001",
+  "rawCompilerOutputSha256": "69467d5ec06fb7048498de76ea30b91bad5d3b2a71a86ddcaa02d66a776c4590",
+  "compiledSha256": "86924cd7a18c100d11351cce8573b1880af31687b9b132536464af303895a54d",
+  "artifacts": {
+    "Flow.bend": "a4319a3f801c1d3b486dc3d67cc4207d5a19317ad36a61919c22b31dbe7f038c",
+    "model.json": "8070101c1dfb1ae4623e3915b14d1818c0e31c88b6d51f077f0a485c5b14c9a4",
+    "adapter.mjs": "db773c95979b579ccdc718eacd1c3293abe8e9f36f6577b4c74385b846f57b49",
+    "build.mjs": "75c8a05a4344e42f80d9c3d3472fd452dcd36a31b50db4c1c2630c8e1ea89ef8",
+    "scenarios.json": "0912140f70291bf8bd5d4699a386024c7d4f357a94dcc6e7b222b18bf4d9dea2",
+    "Flow.generated.mjs": "86924cd7a18c100d11351cce8573b1880af31687b9b132536464af303895a54d",
+    "projection.json": "348ec6c720e3ebae0bc9ddb1ebb0437e89f45a039079f1c6283e80fc92a02644",
+    "architecture.json": "ad845b7261bc73873b5966643127c4b801fd64a6580e99d291b1931d15bbf2d9"
+  },
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "kind": "harness contract",
+      "sha256": "a8c8dc3b581bc1e71e0d8d30826764a6a6d239c0f5c839046a2e2c2b8aa44023"
+    },
+    {
+      "path": "README.md",
+      "kind": "entry guide",
+      "sha256": "3b295ac9510416c9fbe02af5602b66f9a7063c5121bc2de849a19265f3db674a"
+    },
+    {
+      "path": "docs/SETUP.md",
+      "kind": "onboarding guide",
+      "sha256": "a507ca19d48e517cabe560bb4cc6048afbd023dd17f2f38d471925f85c4c8f6f"
+    },
+    {
+      "path": "scripts/onboard",
+      "kind": "executable control",
+      "sha256": "36619a4e5f51e72a73288e6b7f956544a565aa94674e3a02ff6d8ba52f5505d7"
+    },
+    {
+      "path": "scripts/lib/onboard-common.sh",
+      "kind": "module bookkeeping",
+      "sha256": "ac48ecebfb144ea3fdee416158d72c8f180bcf62ea6209d55fd525949c068f98"
+    },
+    {
+      "path": "docs/k3s/ONBOARDING.md",
+      "kind": "K3s operator specification",
+      "sha256": "9f75d9f322b179df6764d4e32f7c8b85f87b6748eef8648550a074106f70b978"
+    },
+    {
+      "path": "scripts/setup-k3s.sh",
+      "kind": "bootstrap safety gates",
+      "sha256": "af4ad4e7ca08f724434b1c87cab73e609968a294e89760dfb77cc1aec7edc203"
+    },
+    {
+      "path": "config/k3s/config.yaml",
+      "kind": "desired server configuration",
+      "sha256": "b30d4f63cdee58dce30e6baf6d5cdca4070fc94cca0278fd270612ab1b27bf80"
+    },
+    {
+      "path": "config/k3s/manifests/boundary.json",
+      "kind": "desired namespace boundary",
+      "sha256": "1df49f4cbd7eb2642ae4599efce60e924aa084ba3c4f6a8507457bc13386b5ef"
+    },
+    {
+      "path": "config/k3s/manifests/cpu-example-job.json",
+      "kind": "desired bounded CPU fixture",
+      "sha256": "01d4912c5130500906c801494dca8771012cc0bb4e54fa4897b635ef68432b54"
+    },
+    {
+      "path": "scripts/smoke-k3s.sh",
+      "kind": "runtime acceptance producer",
+      "sha256": "b6e8f3c9494ee5377c9b3cc87cf4741e6bb7d130492ff90abe79fda23ac63600"
+    }
+  ],
+  "provenance": {
+    "hapslandRepository": "https://github.com/dearlordylord/hapsland",
+    "hapslandCommit": "a0773f79ffa4babdba219c773832fa3a61cc803c",
+    "adaptation": "Independently authored .files policy, metadata, adapter and producer, borrowing only the Bend → checked adapter → projection → interactive SVG architecture described in Hapsland agent-flow-bend / agent-flow-projection / agent-flow-viz. No upstream source copied or distributed; no upstream license was exposed in the reference checkout. No review-product states, hooks, credentials or classifier calls. Hapsland pins Bend 2.0.36; this producer separately pins 2.0.37 and does not validate Hapsland artifacts."
+  },
+  "checks": {
+    "compilation": "Actual pinned Bend compiler emitted the included JavaScript; no handwritten transition fallback",
+    "projection": "Possible edges enumerated by executing compiled decisions with synthetic fact fixtures",
+    "theoremProofs": "Not claimed; ordinary compilation/typechecking is not an invariant proof",
+    "nativeRuntime": "Not exercised by this producer; no install, Kubernetes commands or paid calls",
+    "sourceTrust": "Hashes bind cited local dirty-checkout bytes, not a Git commit containing them or an external deployment receipt"
+  }
+}

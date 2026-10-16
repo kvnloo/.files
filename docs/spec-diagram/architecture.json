@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "groups": [
+    {"id":"controllers","title":"Controllers & external authority","summary":"Phone and MacBook are clients. Existing transport authenticates Groot access; Factory retains work claims and HITL authority."},
+    {"id":"onboarding","title":"Ordinary .files setup","summary":"Reviewed checkout → status and consent → shared modules. Recommended completion never installs K3s."},
+    {"id":"runtime","title":"Groot · separately opted-in runtime","summary":"Native host → authenticated read-only preflight → explicit server apply → separately applied namespace boundary → bounded CPU Job. Desired architecture, not a deployment receipt."},
+    {"id":"evidence","title":"Private evidence boundary","summary":"Host observations and retained logs stay outside Git. Checked Bend replay consumes supplied facts; it does not establish their truth."}
+  ],
+  "nodes": [
+    {
+      "id":"phone","group":"controllers","title":"Phone · Tern / OMP","owner":"User · existing S25 Ultra controller","kind":"controller",
+      "summary":"OmaLauncher Arch ARM/PRoot runs the existing Tern/OMP controller. Read status and request approved desktop actions; no phone K3s server, sudo or cluster-admin credential copy.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first"},{"path":"docs/SETUP.md","symbol":"Tern Carly"}],"states":[]
+    },
+    {
+      "id":"transport","group":"controllers","title":"Private access · authenticate","owner":"User · existing Tern / host access policy","kind":"trust-boundary",
+      "summary":"Verify saved desktop identity and host-key pins; preserve working Tern Hosts access. Ordinary SSH requires separately provisioned working authentication and is not established by Tern success. Review Tailscale ACL/netfilter ordering; UFW alone does not prove tailnet isolation.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first / Desktop server"},{"path":"docs/SETUP.md","symbol":"Tern remote reconnection"}],"states":[]
+    },
+    {
+      "id":"checkout","group":"onboarding","title":".files · desired configuration","owner":".files maintainers · reviewed user checkout","kind":"source",
+      "summary":"Canonical setup contract, shared module code, server defaults and bounded manifests. Verify the actual desktop checkout and reviewed revision; tracked files express intent, not installed state or permission.",
+      "citations":[{"path":"AGENTS.md","symbol":"Canonical docs"},{"path":"docs/SETUP.md","symbol":"Setup guide / Modules"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first / Desktop server"}],"states":[0]
+    },
+    {
+      "id":"onboarding","group":"onboarding","title":"Status → consent → selection","owner":"User approval · scripts/onboard","kind":"workflow",
+      "summary":"Harness reads status --json and asks before incomplete setup; ./install uses the same onboarding dispatcher. Select modules only after approval, or defer. Recommended complete means core-links + fonts + agent-skills done/done-inferred, not K3s readiness.",
+      "citations":[{"path":"AGENTS.md","symbol":"First contact / What recommended setup means"},{"path":"scripts/onboard","symbol":"cmd_status / cmd_offer / cmd_install / recommended_done"}],"states":[1,2,3,5,6]
+    },
+    {
+      "id":"modules","group":"onboarding","title":"Shared setup modules","owner":"User-selected local setup · scripts/onboard","kind":"module-set",
+      "summary":"core-links, fonts and agent-skills form the recommended baseline. agent-tools, tailnet-ssh, nix-home and audio-evolution are separately confirmed optional paths. Modules link/install their selected configuration and record local status; none bootstraps K3s.",
+      "citations":[{"path":"scripts/onboard","symbol":"MODULES / run_module / run_core_links / run_fonts / run_agent_skills"},{"path":"scripts/lib/onboard-common.sh","symbol":"onboard_state_file / onboard_mark_module"},{"path":"docs/SETUP.md","symbol":"Modules"}],"states":[4]
+    },
+    {
+      "id":"groot","group":"runtime","title":"Groot · native host owner","owner":"User · kvn on native CachyOS desktop","kind":"host",
+      "summary":"Native x86_64 systemd/cgroup-v2 host owns service, storage and private admin credentials. Existing Docker/containerd and kind remain independent and untouched, not this K3s runtime. Failures/drift require owner review; start or destructive teardown needs separate explicit approval, backups and workload/network-impact review.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server / Recovery and rollback"},{"path":"scripts/setup-k3s.sh","symbol":"check_host / check_existing / verify_managed / check_ports_and_kind"}],"states":[20,21,22,23]
+    },
+    {
+      "id":"preflight","group":"runtime","title":"Separate K3s opt-in / preflight","owner":"Authenticated desktop administrator · setup-k3s.sh","kind":"approval-gate",
+      "summary":"Distinct K3s opt-in is not onboarding consent. Privileged --check is read-only: native host, root/kubelet/data capacity, assigned private IP, routes, firewall, ports and ownership must pass. Eligibility is not installation; --apply needs explicit approval with the same reviewed flags.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server"},{"path":"scripts/setup-k3s.sh","symbol":"main / check_host / check_paths / check_network / check_firewall / check_existing"}],"states":[10,11,12]
+    },
+    {
+      "id":"k3s","group":"runtime","title":"K3s · one private CPU server","owner":"Groot administrator · pinned k3s.service","kind":"runtime",
+      "summary":"Opt-in v1.36.5+k3s1 server: private API/control plane, local SQLite, bundled containerd/kubelet, built-in scheduler and NetworkPolicy controller. Default server invocation does not select Docker or an external runtime. Traefik/ServiceLB disabled; root-owned kubeconfig stays mode 0600 on Groot. Apply request or ownership marker alone proves no readiness.",
+      "citations":[{"path":"scripts/setup-k3s.sh","symbol":"K3S_VERSION / apply_install / render_config / verify_managed"},{"path":"config/k3s/config.yaml","symbol":"single-server defaults / disable / secrets-encryption"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server / Access and manifests"}],"states":[13,14]
+    },
+    {
+      "id":"boundary","group":"runtime","title":"oss-factory-jobs · guardrails","owner":"Explicit-context administrator · shared Factory identities","kind":"workload-boundary",
+      "summary":"Separately applied restricted-PSA namespace, token-free oss-factory-worker SA with no granted RBAC, worker-guardrail quota (6 nonterminal Pods; 64 Jobs), container LimitRange and default-deny ingress/egress including DNS/API. Object presence is not enforcement evidence, global claim authority or an untrusted-code sandbox.",
+      "citations":[{"path":"config/k3s/manifests/boundary.json","symbol":"Namespace / ServiceAccount / worker-guardrail / worker-container-limits / deny-all-worker-traffic"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Access and manifests"}],"states":[15,16]
+    },
+    {
+      "id":"cpu-job","group":"runtime","title":"Bounded CPU Job / smoke","owner":"Approved host operator · smoke-k3s.sh","kind":"workload",
+      "summary":"Quiet namespace and explicit kubectl context; uniquely named fixture/probes only. CPU Job: 1 completion, no retry, 180s deadline, 60s TTL, 500m CPU/256Mi limit, pinned Python image, non-root/restricted security and no credentials/host mounts. No contribution test, worker lease or HITL authorization is created.",
+      "citations":[{"path":"config/k3s/manifests/cpu-example-job.json","symbol":"spec / template.spec / resources / securityContext"},{"path":"scripts/smoke-k3s.sh","symbol":"argument parser / create / live prerequisite checks / job"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Bounded smoke and evidence"}],"states":[17]
+    },
+    {
+      "id":"evidence","group":"evidence","title":"Retained results + TTL observation","owner":"External host observer · private local evidence","kind":"evidence-boundary",
+      "summary":"Retain source hashes/dirty revision/context, logs, full status and successful results/imageID/node/timing for every captured Pod. Verify live quota AND LimitRange, seventh-Pod denial and independent ingress/egress controls. Matching live TTL plus Job AND dependent-Pod disappearance must be observed without helper deletion. Bounded infrastructure acceptance only, not universal isolation, deployment or Factory approval.",
+      "citations":[{"path":"scripts/smoke-k3s.sh","symbol":"source / quota_seventh_pod_denied / network controls / container_result / ttl_cleanup_verified"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Bounded smoke and evidence / Recovery and rollback"},{"path":"docs/spec-diagram/model.json","symbol":"trustBoundary / states 18 and 19"}],"states":[18,19]
+    },
+    {
+      "id":"macbook","group":"controllers","title":"MacBook · client only","owner":"User · existing kvn@mbp profile","kind":"client",
+      "summary":"Existing SSH/client access, never server install or cluster join. Optional my.k3sClient.enable defaults false and adds only kubectl/k9s. Prefer host-side commands; native remote kubectl requires separately provisioned scoped RBAC/private transport, never copied desktop cluster-admin credentials.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"MacBook client"},{"path":"config/nix/modules/k3s-client.nix","symbol":"options.my.k3sClient.enable / home.packages"}],"states":[]
+    },
+    {
+      "id":"factory","group":"controllers","title":"Factory · claims / HITL authority","owner":"External oss-factory authority + human reviewer","kind":"external-authority",
+      "summary":"Factory retains global six-worker claims, registry, work orders and upstream-action HITL. Pause submissions through that existing authority for smoke. Namespace quota, manifest claim annotations, smoke receipts and Bend replay cannot issue claims or permissions; no new dispatcher/integration is asserted.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"One private, CPU-only K3s server / Access and manifests / Bounded smoke and evidence"},{"path":"config/k3s/manifests/cpu-example-job.json","symbol":"metadata.annotations"}],"states":[]
+    },
+    {
+      "id":"deferred-capacity","group":"runtime","title":"DEFERRED · second agent / GPU","owner":"Future explicit host/network/Factory approval","kind":"deferred",
+      "summary":"Not installed or joined by this design. Second PC is a possible later version-compatible CPU agent, never a second standalone server; requires measured need and redesigned inter-node firewall policy. NVIDIA runtime/device plugin and exclusive GPU scheduling require separate compatibility/benchmark approval. No alternate scheduler or GPU fractioning.",
+      "citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Optional worker later"}],"states":[]
+    }
+  ],
+  "edges": [
+    {"id":"phone-access","from":"phone","to":"transport","label":"Open saved Tern host","kind":"external-transport","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first"}],"status":"specified"},
+    {"id":"macbook-access","from":"macbook","to":"transport","label":"Authenticated client access only","kind":"external-client","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"MacBook client"}],"status":"specified"},
+    {"id":"desktop-auth","from":"transport","to":"groot","label":"Verify identity; authenticate session","kind":"external-authentication","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first"},{"path":"docs/SETUP.md","symbol":"Tern remote reconnection"}],"status":"specified"},
+    {"id":"host-checkout","from":"groot","to":"checkout","label":"Use verified desktop checkout","kind":"ownership","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first"}],"status":"specified"},
+    {"id":"checkout-onboard","from":"checkout","to":"onboarding","label":"Provides contract + dispatcher","kind":"source","citations":[{"path":"AGENTS.md","symbol":"First contact"},{"path":"docs/SETUP.md","symbol":"Setup guide"}],"status":"specified"},
+    {"id":"onboard-modules","from":"onboarding","to":"modules","label":"Run approved module selection","kind":"control","citations":[{"path":"scripts/onboard","symbol":"cmd_offer / cmd_install / run_module"}],"status":"specified"},
+    {"id":"modules-host","from":"modules","to":"groot","label":"Link config / install selected tools","kind":"configuration","citations":[{"path":"scripts/onboard","symbol":"run_core_links / run_fonts / run_agent_skills / run_module"},{"path":"docs/SETUP.md","symbol":"Modules"}],"status":"specified"},
+    {"id":"host-preflight","from":"groot","to":"preflight","label":"Separate opt-in + host admin auth","kind":"privilege-boundary","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server"},{"path":"scripts/setup-k3s.sh","symbol":"main"}],"status":"specified"},
+    {"id":"checkout-preflight","from":"checkout","to":"preflight","label":"Supplies reviewed server defaults","kind":"source","citations":[{"path":"scripts/setup-k3s.sh","symbol":"DEFAULTS / render_config"},{"path":"config/k3s/config.yaml","symbol":"single-server defaults"}],"status":"specified"},
+    {"id":"preflight-server","from":"preflight","to":"k3s","label":"Passed check; explicit --apply only","kind":"control","citations":[{"path":"scripts/setup-k3s.sh","symbol":"main / apply_install"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server"}],"status":"specified"},
+    {"id":"host-server","from":"groot","to":"k3s","label":"Own service, SQLite + credentials","kind":"ownership","citations":[{"path":"scripts/setup-k3s.sh","symbol":"apply_install / verify_managed"},{"path":"docs/k3s/ONBOARDING.md","symbol":"Desktop server / Access and manifests / Recovery and rollback"}],"status":"specified"},
+    {"id":"server-boundary","from":"k3s","to":"boundary","label":"Separately apply via host kubectl","kind":"control","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Access and manifests"}],"status":"specified"},
+    {"id":"boundary-job","from":"boundary","to":"cpu-job","label":"Constrain admission + traffic","kind":"workload-isolation","citations":[{"path":"config/k3s/manifests/boundary.json","symbol":"List.items"},{"path":"config/k3s/manifests/cpu-example-job.json","symbol":"spec.template.spec"}],"status":"specified"},
+    {"id":"server-job","from":"k3s","to":"cpu-job","label":"Schedule Pods; run via containerd","kind":"execution","citations":[{"path":"scripts/setup-k3s.sh","symbol":"apply_install: default server invocation"},{"path":"config/k3s/config.yaml","symbol":"built-in scheduler retained"},{"path":"config/k3s/manifests/cpu-example-job.json","symbol":"spec"}],"status":"specified"},
+    {"id":"factory-work","from":"factory","to":"cpu-job","label":"Pause submissions / authorize real work","kind":"external-authority","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"One private, CPU-only K3s server / Bounded smoke and evidence"},{"path":"config/k3s/manifests/cpu-example-job.json","symbol":"metadata.annotations"}],"status":"specified"},
+    {"id":"job-evidence","from":"cpu-job","to":"evidence","label":"Capture every Pod result + logs","kind":"external-observation","citations":[{"path":"scripts/smoke-k3s.sh","symbol":"source / job_logs / job_status / container_result"}],"status":"specified"},
+    {"id":"boundary-evidence","from":"boundary","to":"evidence","label":"Test live quota / limits / deny controls","kind":"external-observation","citations":[{"path":"scripts/smoke-k3s.sh","symbol":"live prerequisite checks / quota_seventh_pod_denied / network controls"}],"status":"specified"},
+    {"id":"ttl-evidence","from":"k3s","to":"evidence","label":"Observe Job + Pod cleanup under TTL","kind":"external-observation","citations":[{"path":"scripts/smoke-k3s.sh","symbol":"live Job TTL check / ttl_cleanup_verified"}],"status":"specified"},
+    {"id":"evidence-phone","from":"evidence","to":"phone","label":"Read retained private host logs","kind":"external-evidence","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Phone first / Access and manifests / Bounded smoke and evidence"}],"status":"specified"},
+    {"id":"future-agent","from":"k3s","to":"deferred-capacity","label":"Later agent join; redesign + approval","kind":"deferred-capacity","citations":[{"path":"docs/k3s/ONBOARDING.md","symbol":"Optional worker later"}],"status":"deferred"}
+  ],
+  "stateToNode": [
+    {"state":0,"node":"checkout"},
+    {"state":1,"node":"onboarding"},
+    {"state":2,"node":"onboarding"},
+    {"state":3,"node":"onboarding"},
+    {"state":4,"node":"modules"},
+    {"state":5,"node":"onboarding"},
+    {"state":6,"node":"onboarding"},
+    {"state":10,"node":"preflight"},
+    {"state":11,"node":"preflight"},
+    {"state":12,"node":"preflight"},
+    {"state":13,"node":"k3s"},
+    {"state":14,"node":"k3s"},
+    {"state":15,"node":"boundary"},
+    {"state":16,"node":"boundary"},
+    {"state":17,"node":"cpu-job"},
+    {"state":18,"node":"evidence"},
+    {"state":19,"node":"evidence"},
+    {"state":20,"node":"groot"},
+    {"state":21,"node":"groot"},
+    {"state":22,"node":"groot"},
+    {"state":23,"node":"groot"}
+  ],
+  "scope": {
+    "title":"Phone-controlled .files setup → explicitly opted-in Groot CPU runtime",
+    "overview":"Existing clients authenticate to Groot; its reviewed .files checkout drives ordinary consent-based modules. A different, explicitly approved preflight/apply path can create one private K3s server, then a separately applied workload boundary and bounded CPU smoke. Private runtime evidence is read from the controller; Factory remains outside this infrastructure's authority.",
+    "projection":"Four groups and fourteen architectural concepts, not a second state machine. Every existing model state maps exactly once; multiple lifecycle stages highlight the same concept. Nodes with empty states are structural context, not missing lifecycle stages. Recovery states highlight Groot because host-owner review/start/teardown belongs there. Onboarding modules may also target other supported machines; the displayed concrete execution host is Groot.",
+    "model":"docs/spec-diagram/model.json",
+    "checkedReplay":"Only actual Flow.bend decisions and their existing model-state mapping may determine accepted/refused replay highlights. These structural edges neither grant transitions nor decide policy. A checked transition within one concept stays within that node; no new transition should be inferred from an architectural edge.",
+    "edgeStatus":"specified means sourced architecture/intent, not installed, running, permitted or replay-accepted. deferred means explicitly excluded from the present single-node CPU design.",
+    "externalTrustBoundaries":[
+      {"id":"client-to-host","edges":["phone-access","macbook-access","desktop-auth"],"summary":"Existing client/transport identity and authentication must be verified outside Bend; Tern success is not SSH success."},
+      {"id":"host-privilege","edges":["host-preflight"],"summary":"User controller intent does not authenticate root or approve installation. Host admin auth, preflight and scoped apply consent remain separate."},
+      {"id":"factory-authority","edges":["factory-work"],"summary":"Factory owns global claims, work orders and HITL outside .files/Kubernetes/Bend. This relationship states required external coordination, not an implemented dispatcher or smoke-issued permission."},
+      {"id":"runtime-observation","edges":["job-evidence","boundary-evidence","ttl-evidence","evidence-phone"],"summary":"Execution/enforcement/cleanup facts require real host observation and privately retained evidence. Replay consumes supplied predicates and cannot establish identity, truth, freshness or OS success."}
+    ],
+    "runtimeComponentBasis":"K3s runtime grouping follows the pinned default server invocation: no --docker, external container-runtime endpoint, external datastore, alternate scheduler or disabled agent is configured. Existing Docker/containerd/kind on Groot are separate, not reused as K3s components.",
+    "nonClaims":["No native commands are executed by this JSON or Bend replay.","No K3s installation, SSH success, runtime acceptance, deployment or Factory authorization is claimed.","No Kubernetes quota replaces global worker claims; no Pod security/network-control test proves universal sandbox isolation.","No cluster-admin kubeconfig, token, credential or runtime evidence belongs in Git or on the client.","Second-agent capacity, GPU runtime/device plugin and GPU scheduling remain deferred, not installed."],
+    "sourceProvenance":"Independently authored .files architecture data with local source citations. No Hapsland source copied or redistributed; topology presentation belongs to the actual upstream renderer, not this data file."
+  }
+}

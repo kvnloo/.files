@@ -1,0 +1,129 @@
+[
+  {
+    "id":"onboarding-approved",
+    "title":"Synthetic · approved recommended onboarding",
+    "summary":"Synthetic model replay only; no command executes. Each module is explicitly selected; completion is a fresh external status assertion, not inferred from one module result. Optional tools and K3s are never automatic.",
+    "initialState":0,
+    "steps":[
+      {"event":0,"facts":{},"note":"Request existing onboarding status; request is not completion.","expect":{"accepted":true,"state":1}},
+      {"event":1,"facts":{"observed":true,"recommendedComplete":false},"note":"Synthetic incomplete status triggers ask, not setup.","expect":{"accepted":true,"state":2}},
+      {"event":2,"facts":{"userApproved":true},"note":"Explicit yes to guided onboarding.","expect":{"accepted":true,"state":3}},
+      {"event":4,"facts":{"userApproved":true},"note":"Select core-links only.","expect":{"accepted":true,"state":4}},
+      {"event":6,"facts":{"observed":true,"moduleSucceeded":true},"note":"Synthetic core-links result; bookkeeping is not whole-host verification.","expect":{"accepted":true,"state":3}},
+      {"event":4,"facts":{"userApproved":true},"note":"Select fonts only.","expect":{"accepted":true,"state":4}},
+      {"event":6,"facts":{"observed":true,"moduleSucceeded":true},"note":"Synthetic fonts result.","expect":{"accepted":true,"state":3}},
+      {"event":4,"facts":{"userApproved":true},"note":"Select agent-skills only.","expect":{"accepted":true,"state":4}},
+      {"event":6,"facts":{"observed":true,"moduleSucceeded":true},"note":"Synthetic agent-skills result. No automatic optional module follows.","expect":{"accepted":true,"state":3}},
+      {"event":7,"facts":{"observed":true,"recommendedComplete":true},"note":"Fresh synthetic status reports all three recommended modules complete (done or inferred).", "expect":{"accepted":true,"state":5}},
+      {"event":5,"facts":{"userApproved":false},"note":"Automatic optional module attempt is refused; state retained and no action emitted.","expect":{"accepted":false,"state":5}}
+    ]
+  },
+  {
+    "id":"onboarding-deferred-and-optional",
+    "title":"Synthetic · decline, then explicit optional selection",
+    "summary":"Synthetic no-mutation replay demonstrates decline, status refresh, existing inferred completion, separately confirmed optional module and failed result without automatic retry.",
+    "initialState":0,
+    "steps":[
+      {"event":0,"facts":{},"note":"Request status.","expect":{"accepted":true,"state":1}},
+      {"event":1,"facts":{"observed":true},"note":"Incomplete observation asks user.","expect":{"accepted":true,"state":2}},
+      {"event":3,"facts":{},"note":"Decline setup; no module request.","expect":{"accepted":true,"state":6}},
+      {"event":4,"facts":{"userApproved":true},"note":"Cannot skip from deferred directly into a module.","expect":{"accepted":false,"state":6}},
+      {"event":0,"facts":{},"note":"Later explicit status refresh.","expect":{"accepted":true,"state":1}},
+      {"event":1,"facts":{"observed":true,"recommendedComplete":true},"note":"Synthetic existing baseline complete; do not re-offer automatically.","expect":{"accepted":true,"state":5}},
+      {"event":5,"facts":{"userApproved":true},"note":"Separately select optional agent-tools (could instead be tailnet-ssh/nix-home/audio-evolution).", "expect":{"accepted":true,"state":4}},
+      {"event":6,"facts":{"observed":true,"moduleSucceeded":false},"note":"Failure returns to selection, with no retry or completion claim.","expect":{"accepted":true,"state":3}}
+    ]
+  },
+  {
+    "id":"k3s-approved-synthetic-success",
+    "title":"Synthetic · fully approved K3s through TTL acceptance",
+    "summary":"Entirely synthetic control trace, NOT evidence Groot has K3s. Explicit opt-in, refreshed gates, apply request, distinct readiness and namespace observations, actual-runtime predicates and cleanup under reviewed live TTL are separate. No shell/Kubernetes commands execute.",
+    "initialState":0,
+    "steps":[
+      {"event":8,"facts":{"userApproved":true,"explicitK3sOptIn":true},"note":"Separate K3s choice; normal onboarding cannot imply this.","expect":{"accepted":true,"state":10}},
+      {"event":9,"facts":{"nativeHost":true,"adminAuthenticated":true},"note":"Authenticated native desktop read-only --check request.","expect":{"accepted":true,"state":11}},
+      {"event":10,"facts":{"observed":true,"nativeHost":true,"adminAuthenticated":true,"storageSafe":true,"networkReviewed":true,"firewallReviewed":true,"ownershipSafe":true,"preflightPassed":true,"managedExact":false},"note":"Synthetic fresh preflight passes all gates; still not installed.","expect":{"accepted":true,"state":12}},
+      {"event":11,"facts":{"userApproved":true,"explicitK3sOptIn":true,"nativeHost":true,"adminAuthenticated":true,"storageSafe":true,"networkReviewed":true,"firewallReviewed":true,"ownershipSafe":true,"preflightPassed":true},"note":"Explicit same-flags apply request; not a success event.","expect":{"accepted":true,"state":13}},
+      {"event":12,"facts":{"observed":true,"installRecorded":true,"managedExact":true,"serviceActive":true,"apiReady":true},"note":"Synthetic independent installation ownership/exact-state/service/API observation.","expect":{"accepted":true,"state":14}},
+      {"event":13,"facts":{"userApproved":true,"adminAuthenticated":true,"contextExplicit":true},"note":"Separately approve server dry-run and boundary.json apply.","expect":{"accepted":true,"state":15}},
+      {"event":14,"facts":{"observed":true,"boundaryApplied":true},"note":"Live object result, not merely manifests in checkout. Does not establish enforcement.","expect":{"accepted":true,"state":16}},
+      {"event":15,"facts":{"userApproved":true,"adminAuthenticated":true,"contextExplicit":true,"namespaceQuiet":true},"note":"Approved bounded smoke with existing authority's quiet window.","expect":{"accepted":true,"state":17}},
+      {"event":16,"facts":{"observed":true,"jobComplete":true,"evidenceRetained":true,"quotaVerified":true,"networkControlsVerified":true},"note":"Synthetic retained run-bound hashes/context/logs/status, successful container imageID/exit/node/timestamps for EVERY captured Pod, live quota AND LimitRange match, quota probe and independent network controls. Await cleanup under reviewed live TTL.","expect":{"accepted":true,"state":18}},
+      {"event":17,"facts":{"observed":true,"ttlVerified":true},"note":"Synthetic live TTL matches reviewed fixture; Job AND dependent Pods disappear without helper deletion. Cleanup under that configuration, not an exclusive-cause controller audit. Infrastructure acceptance only, not Factory authorization.","expect":{"accepted":true,"state":19}}
+    ]
+  },
+  {
+    "id":"groot-observed-blocked-snapshot-20261016",
+    "title":"2026-10-16 documented snapshot · NOT INSTALLED / blocked",
+    "summary":"Timestamped source snapshot retained for this diagram on 2026-10-16, not a new probe: Groot root ~0.84% free; K3s NOT INSTALLED; sudo requires human authentication; deletion not approved; storage/UFW/tailnet review pending. Read docs/k3s/ONBOARDING.md for measurements. Initial state is a replay observation boundary, NOT a claim privileged --check ran. Only these documented facts are observed; all transitions are model replay.",
+    "initialState":11,
+    "steps":[
+      {"event":10,"facts":{"observed":true,"nativeHost":true,"adminAuthenticated":false,"storageSafe":false,"networkReviewed":false,"firewallReviewed":false,"ownershipSafe":true,"preflightPassed":false,"managedExact":false},"note":"Documented observed snapshot, recorded 2026-10-16: root pressure independently blocks storage; auth and review also pending. No sudo/preflight/installation executed by this scenario.","expect":{"accepted":true,"state":20}},
+      {"event":11,"facts":{"explicitK3sOptIn":true,"storageSafe":false,"adminAuthenticated":false},"note":"Apply is denied in blocked state, with no action and no deletion/host change approved.","expect":{"accepted":false,"state":20}},
+      {"event":21,"facts":{"userApproved":false,"destructiveApproved":false},"note":"No destructive cleanup or rollback approval may be inferred from disk pressure.","expect":{"accepted":false,"state":20}}
+    ]
+  },
+  {
+    "id":"automatic-and-phone-refusals",
+    "title":"Synthetic · automatic install / phone server refused",
+    "summary":"Synthetic negative replay. Recommended completion never permits K3s apply, separate opt-in cannot be invented, and Android/proot cannot become the native desktop server. Phone remains controller only.",
+    "initialState":5,
+    "steps":[
+      {"event":11,"facts":{"userApproved":true},"note":"Normal onboarding complete does not enter K3s or authorize install.","expect":{"accepted":false,"state":5}},
+      {"event":8,"facts":{"userApproved":false,"explicitK3sOptIn":false},"note":"Attempted automatic opt-in refused.","expect":{"accepted":false,"state":5}},
+      {"event":8,"facts":{"userApproved":true,"explicitK3sOptIn":true},"note":"A user may opt into discussing K3s separately.","expect":{"accepted":true,"state":10}},
+      {"event":9,"facts":{"nativeHost":false,"adminAuthenticated":true},"note":"Phone/proot native-host predicate false: no privileged preflight action requested.","expect":{"accepted":false,"state":10}},
+      {"event":11,"facts":{"userApproved":true,"nativeHost":false},"note":"Explicit apply cannot bypass the host and preflight phases.","expect":{"accepted":false,"state":10}}
+    ]
+  },
+  {
+    "id":"completion-without-evidence-refused",
+    "title":"Synthetic · Job Complete and manifest-only claims refused",
+    "summary":"Synthetic negative replay, starting after a hypothetical approved smoke request. Job status, configured NetworkPolicy and manual deletion are not sufficient runtime acceptance. No native workload runs.",
+    "initialState":17,
+    "steps":[
+      {"event":16,"facts":{"observed":true,"jobComplete":true,"boundaryApplied":true},"note":"Job completion plus manifest application lacks actual image/log/status/quota/network controls; denied with state preserved.","expect":{"accepted":false,"state":17}},
+      {"event":17,"facts":{"observed":true,"ttlVerified":true},"note":"Cannot skip runtime evidence by asserting TTL first.","expect":{"accepted":false,"state":17}},
+      {"event":16,"facts":{"observed":true,"jobComplete":true,"evidenceRetained":true,"quotaVerified":true,"networkControlsVerified":true},"note":"Synthetic complete evidence now supplied, including every captured Pod's successful container results and matching live limits; still await configured cleanup.","expect":{"accepted":true,"state":18}},
+      {"event":17,"facts":{"observed":true,"ttlVerified":false},"note":"Manual cleanup, Job-only disappearance, or missing/changed live TTL cannot establish cleanup under the reviewed fixture.","expect":{"accepted":false,"state":18}}
+    ]
+  },
+  {
+    "id":"foreign-state-review",
+    "title":"Synthetic · changed / foreign state refuses adoption",
+    "summary":"Synthetic negative replay. A previously ready state can drift; ownership mismatches preserve state for review, not reapply, overwrite or automatic service restart.",
+    "initialState":14,
+    "steps":[
+      {"event":18,"facts":{"observed":true,"ownershipSafe":false,"managedExact":false},"note":"Synthetic changed config/binary/service or foreign/partial ownership detected.","expect":{"accepted":true,"state":20}},
+      {"event":11,"facts":{"userApproved":true,"explicitK3sOptIn":true},"note":"No forced apply from review.","expect":{"accepted":false,"state":20}},
+      {"event":20,"facts":{"userApproved":true,"nativeHost":true,"adminAuthenticated":true,"reviewComplete":true,"managedExact":false,"ownershipSafe":false,"serviceInactive":true},"note":"Foreign state cannot use the exact-owned inactive-service start path.","expect":{"accepted":false,"state":20}},
+      {"event":19,"facts":{"userApproved":true,"adminAuthenticated":true},"note":"Only approved private inspection is requested; inspect journals/ownership without changing host.","expect":{"accepted":true,"state":20}}
+    ]
+  },
+  {
+    "id":"managed-rerun-readonly",
+    "title":"Synthetic · exact managed check is not reinstall",
+    "summary":"Synthetic exact-state path from an opted-in hypothetical lifecycle. A matching already-active managed installation is checked read-only, with no install/restart action and no runtime acceptance inferred.",
+    "initialState":10,
+    "steps":[
+      {"event":9,"facts":{"nativeHost":true,"adminAuthenticated":true},"note":"Request read-only check with original approved flags.","expect":{"accepted":true,"state":11}},
+      {"event":10,"facts":{"observed":true,"nativeHost":true,"adminAuthenticated":true,"storageSafe":true,"networkReviewed":true,"firewallReviewed":true,"ownershipSafe":true,"preflightPassed":true,"managedExact":true,"serviceActive":true,"apiReady":true},"note":"Synthetic exact active managed state observed; no reinstall and no automatic boundary/smoke.","expect":{"accepted":true,"state":14}},
+      {"event":11,"facts":{"userApproved":true,"explicitK3sOptIn":true,"nativeHost":true,"adminAuthenticated":true,"storageSafe":true,"networkReviewed":true,"firewallReviewed":true,"ownershipSafe":true,"preflightPassed":true,"managedExact":true,"serviceActive":true,"apiReady":true},"note":"Explicit unchanged managed apply rerun is an allowed no-op: no install, writes or restart requested.","expect":{"accepted":true,"state":14}}
+    ]
+  },
+  {
+    "id":"reviewed-start-and-destructive-rollback",
+    "title":"Synthetic · retained partial startup, reviewed start, explicit rollback",
+    "summary":"Synthetic recovery-only replay; no actual K3s installation exists. Startup failure retains ownership; rerun apply cannot restart; only reviewed exact-owned inactive service may start. Rollback needs additional explicit destructive approval and backup/workload/network-impact review.",
+    "initialState":13,
+    "steps":[
+      {"event":12,"facts":{"observed":true,"installRecorded":true,"managedExact":true,"serviceActive":false,"apiReady":false},"note":"Synthetic startup failure: ownership marker is not health/success; preserve it.","expect":{"accepted":true,"state":20}},
+      {"event":11,"facts":{"userApproved":true},"note":"Repeated apply is not restart/recovery.","expect":{"accepted":false,"state":20}},
+      {"event":20,"facts":{"userApproved":true,"nativeHost":true,"adminAuthenticated":true,"ownershipSafe":true,"managedExact":true,"reviewComplete":true,"serviceInactive":true},"note":"After root-cause owner review, explicitly request start of only matching owned inactive service.","expect":{"accepted":true,"state":23}},
+      {"event":12,"facts":{"observed":true,"installRecorded":true,"managedExact":true,"serviceActive":true,"apiReady":true},"note":"Synthetic new observation, not inference from start request.","expect":{"accepted":true,"state":14}},
+      {"event":21,"facts":{"userApproved":true,"adminAuthenticated":true,"destructiveApproved":false,"backupAndWorkloadsReviewed":true},"note":"Ordinary action approval is not destructive teardown approval.","expect":{"accepted":false,"state":14}},
+      {"event":21,"facts":{"userApproved":true,"adminAuthenticated":true,"destructiveApproved":true,"backupAndWorkloadsReviewed":true},"note":"Explicit teardown approval: backup outside Git, stop through Factory, review killall/uninstall host-network effects, exact approved K3S_DATA_DIR.","expect":{"accepted":true,"state":21}},
+      {"event":22,"facts":{"observed":true,"rollbackComplete":true},"note":"Synthetic teardown result; no claim unrelated services/networking are healthy and no automatic reinstall.","expect":{"accepted":true,"state":22}}
+    ]
+  }
+]

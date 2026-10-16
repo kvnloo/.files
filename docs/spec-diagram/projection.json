@@ -1,0 +1,428 @@
+{
+  "edges": [
+    {
+      "from": 0,
+      "to": 1,
+      "event": 0,
+      "eventTitle": "Request onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 0,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "event": 1,
+      "eventTitle": "Observe onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 1,
+      "to": 5,
+      "event": 1,
+      "eventTitle": "Observe onboarding status",
+      "kind": "event-established"
+    },
+    {
+      "from": 2,
+      "to": 1,
+      "event": 0,
+      "eventTitle": "Request onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 2,
+      "to": 3,
+      "event": 2,
+      "eventTitle": "Approve onboarding",
+      "kind": "event-established"
+    },
+    {
+      "from": 2,
+      "to": 6,
+      "event": 3,
+      "eventTitle": "Decline onboarding",
+      "kind": "event-established"
+    },
+    {
+      "from": 2,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 3,
+      "to": 1,
+      "event": 0,
+      "eventTitle": "Request onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "event": 4,
+      "eventTitle": "Run selected recommended module",
+      "kind": "action-requested"
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "event": 5,
+      "eventTitle": "Run selected optional module",
+      "kind": "action-requested"
+    },
+    {
+      "from": 3,
+      "to": 5,
+      "event": 7,
+      "eventTitle": "Observe recommended completion",
+      "kind": "event-established"
+    },
+    {
+      "from": 3,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 4,
+      "to": 3,
+      "event": 6,
+      "eventTitle": "Observe selected module result",
+      "kind": "event-established"
+    },
+    {
+      "from": 5,
+      "to": 1,
+      "event": 0,
+      "eventTitle": "Request onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 5,
+      "to": 4,
+      "event": 4,
+      "eventTitle": "Run selected recommended module",
+      "kind": "action-requested"
+    },
+    {
+      "from": 5,
+      "to": 4,
+      "event": 5,
+      "eventTitle": "Run selected optional module",
+      "kind": "action-requested"
+    },
+    {
+      "from": 5,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 6,
+      "to": 1,
+      "event": 0,
+      "eventTitle": "Request onboarding status",
+      "kind": "action-requested"
+    },
+    {
+      "from": 6,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 10,
+      "to": 11,
+      "event": 9,
+      "eventTitle": "Request read-only K3s preflight",
+      "kind": "action-requested"
+    },
+    {
+      "from": 11,
+      "to": 12,
+      "event": 10,
+      "eventTitle": "Observe K3s preflight",
+      "kind": "event-established"
+    },
+    {
+      "from": 11,
+      "to": 14,
+      "event": 10,
+      "eventTitle": "Observe K3s preflight",
+      "kind": "event-established"
+    },
+    {
+      "from": 11,
+      "to": 20,
+      "event": 10,
+      "eventTitle": "Observe K3s preflight",
+      "kind": "event-established"
+    },
+    {
+      "from": 12,
+      "to": 13,
+      "event": 11,
+      "eventTitle": "Explicitly apply K3s",
+      "kind": "action-requested"
+    },
+    {
+      "from": 12,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 12,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 13,
+      "to": 14,
+      "event": 12,
+      "eventTitle": "Observe managed startup / API",
+      "kind": "event-established"
+    },
+    {
+      "from": 13,
+      "to": 20,
+      "event": 12,
+      "eventTitle": "Observe managed startup / API",
+      "kind": "event-established"
+    },
+    {
+      "from": 13,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 13,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 14,
+      "to": 14,
+      "event": 11,
+      "eventTitle": "Explicitly apply K3s",
+      "kind": "policy-decided"
+    },
+    {
+      "from": 14,
+      "to": 15,
+      "event": 13,
+      "eventTitle": "Separately apply boundary manifests",
+      "kind": "action-requested"
+    },
+    {
+      "from": 14,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 14,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 15,
+      "to": 16,
+      "event": 14,
+      "eventTitle": "Observe boundary objects applied",
+      "kind": "event-established"
+    },
+    {
+      "from": 15,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 15,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 16,
+      "to": 17,
+      "event": 15,
+      "eventTitle": "Request bounded runtime smoke",
+      "kind": "action-requested"
+    },
+    {
+      "from": 16,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 16,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 17,
+      "to": 18,
+      "event": 16,
+      "eventTitle": "Observe Job and runtime controls",
+      "kind": "event-established"
+    },
+    {
+      "from": 17,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 17,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 18,
+      "to": 19,
+      "event": 17,
+      "eventTitle": "Observe cleanup under reviewed live TTL",
+      "kind": "event-established"
+    },
+    {
+      "from": 18,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 18,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 19,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 19,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 20,
+      "to": 11,
+      "event": 9,
+      "eventTitle": "Request read-only K3s preflight",
+      "kind": "action-requested"
+    },
+    {
+      "from": 20,
+      "to": 20,
+      "event": 19,
+      "eventTitle": "Request private manual review",
+      "kind": "action-requested"
+    },
+    {
+      "from": 20,
+      "to": 23,
+      "event": 20,
+      "eventTitle": "Explicitly start reviewed inactive service",
+      "kind": "action-requested"
+    },
+    {
+      "from": 20,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    },
+    {
+      "from": 21,
+      "to": 22,
+      "event": 22,
+      "eventTitle": "Observe approved rollback complete",
+      "kind": "event-established"
+    },
+    {
+      "from": 22,
+      "to": 10,
+      "event": 8,
+      "eventTitle": "Opt into distinct K3s lifecycle",
+      "kind": "event-established"
+    },
+    {
+      "from": 23,
+      "to": 14,
+      "event": 12,
+      "eventTitle": "Observe managed startup / API",
+      "kind": "event-established"
+    },
+    {
+      "from": 23,
+      "to": 20,
+      "event": 12,
+      "eventTitle": "Observe managed startup / API",
+      "kind": "event-established"
+    },
+    {
+      "from": 23,
+      "to": 20,
+      "event": 18,
+      "eventTitle": "Observe partial / changed / foreign state",
+      "kind": "event-established"
+    },
+    {
+      "from": 23,
+      "to": 21,
+      "event": 21,
+      "eventTitle": "Approve destructive rollback",
+      "kind": "action-requested"
+    }
+  ],
+  "provenance": {
+    "hapslandRepository": "https://github.com/dearlordylord/hapsland",
+    "hapslandCommit": "a0773f79ffa4babdba219c773832fa3a61cc803c",
+    "adaptation": "Independently authored .files policy, metadata, adapter and producer, borrowing only the Bend → checked adapter → projection → interactive SVG architecture described in Hapsland agent-flow-bend / agent-flow-projection / agent-flow-viz. No upstream source copied or distributed; no upstream license was exposed in the reference checkout. No review-product states, hooks, credentials or classifier calls. Hapsland pins Bend 2.0.36; this producer separately pins 2.0.37 and does not validate Hapsland artifacts.",
+    "producer": "Executing the actual compiled Flow.bend through adapter.mjs over every metadata state/event and meaningful synthetic fact fixtures",
+    "fixtureCount": 93,
+    "scope": "Design-level checked possibilities, not an exhaustive proof over all fact combinations and not a native runtime trace. Selected replay highlights only accepted executed transitions.",
+    "flowSha256": "a4319a3f801c1d3b486dc3d67cc4207d5a19317ad36a61919c22b31dbe7f038c",
+    "modelSha256": "8070101c1dfb1ae4623e3915b14d1818c0e31c88b6d51f077f0a485c5b14c9a4",
+    "compiledSha256": "86924cd7a18c100d11351cce8573b1880af31687b9b132536464af303895a54d"
+  }
+}
