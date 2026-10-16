@@ -1,0 +1,32 @@
+# Acceptance criterion 2: a CPU-only Job runs, logs, exits 0 and is cleaned up.
+#   kubectl create -f config/k3s/smoke/cpu-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-cpu-
+  namespace: factory
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: smoke
+          image: busybox:1.37
+          command: ["sh", "-c", "echo node=$NODE_NAME; uname -m; nproc; echo SMOKE_OK"]
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}

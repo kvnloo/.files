@@ -1,0 +1,21 @@
+# K3s server config for the desktop (groot). setup-k3s.sh renders @TS_IP@ and
+# installs the result as /etc/rancher/k3s/config.yaml. No secrets live here.
+node-ip: "@TS_IP@"
+advertise-address: "@TS_IP@"
+# Pod traffic between nodes rides the tailnet, so no LAN or public exposure.
+flannel-iface: tailscale0
+tls-san:
+  - "@TS_IP@"
+  - "@HOSTNAME@"
+# No ingress or LoadBalancer controller until a workload needs one.
+disable:
+  - traefik
+  - servicelb
+write-kubeconfig-mode: "0600"
+node-label:
+  - "z0.dev/role=server"
+  - "z0.dev/gpu=rtx3080ti"
+# The desktop also runs Hyprland, ollama and llama.cpp; keep room for them.
+kubelet-arg:
+  - "system-reserved=cpu=2,memory=4Gi"
+  - "eviction-hard=memory.available<1Gi"

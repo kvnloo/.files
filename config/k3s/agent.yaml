@@ -1,0 +1,11 @@
+# K3s agent config (mbp, the RTX 2080 Super PC). setup-k3s.sh renders the
+# placeholders. The join token is read from a root-only file, never from Git.
+server: "https://@SERVER_IP@:6443"
+token-file: /etc/rancher/k3s/join-token
+node-ip: "@TS_IP@"
+flannel-iface: tailscale0
+node-label:
+  - "z0.dev/role=agent"
+kubelet-arg:
+  - "system-reserved=cpu=1,memory=1Gi"
+  - "eviction-hard=memory.available<512Mi"
