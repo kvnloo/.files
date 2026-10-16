@@ -16,6 +16,8 @@ K3S_VERSION="${K3S_VERSION:-v1.37.1+k3s1}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CFG="$REPO/config/k3s"
 ETC=/etc/rancher/k3s
+# Cluster data (images, sqlite) stays off the root disk when /workspace exists.
+if [ -d /workspace ]; then K3S_DATA="${K3S_DATA:-/workspace/k3s-data}"; else K3S_DATA="${K3S_DATA:-/var/lib/rancher/k3s}"; fi
 
 die() { echo "setup-k3s: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
@@ -41,7 +43,7 @@ install_config() {
   local tmpl=$1 out=$ETC/config.yaml tmp
   tmp=$(mktemp)
   sed -e "s/@TS_IP@/$(ts_ip)/g" -e "s/@HOSTNAME@/$(hostname)/g" \
-      -e "s/@SERVER_IP@/${SERVER_IP:-}/g" "$tmpl" >"$tmp"
+      -e "s/@SERVER_IP@/${SERVER_IP:-}/g" -e "s|@K3S_DATA@|$K3S_DATA|g" "$tmpl" >"$tmp"
   install -d -m 0755 $ETC
   if [ -f $out ] && cmp -s "$tmp" $out; then rm -f "$tmp"; echo same; return; fi
   [ -f $out ] && cp -a $out "$out.bak.$(date +%Y%m%d%H%M%S)"
@@ -76,7 +78,7 @@ cmd_server() {
   install -d -m 0700 -o "$u" "$home/.kube"
   install -m 0600 -o "$u" $ETC/k3s.yaml "$home/.kube/k3s.yaml"
   say "kubeconfig: $home/.kube/k3s.yaml  (export KUBECONFIG=\$HOME/.kube/k3s.yaml)"
-  say "join token (root-only): /var/lib/rancher/k3s/server/node-token"
+  say "join token (root-only): ${K3S_DATA}/server/node-token"
 }
 
 cmd_agent() {
@@ -103,10 +105,10 @@ cmd_gpu() {
   fi
   # K3s detects the nvidia runtime on start and writes it into its containerd config.
   local svc=k3s; systemctl is-active -q k3s || svc=k3s-agent
-  if ! grep -q nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml 2>/dev/null; then
+  if ! grep -q nvidia ${K3S_DATA}/agent/etc/containerd/config.toml 2>/dev/null; then
     say "restarting $svc so containerd picks up the nvidia runtime"; systemctl restart $svc
   fi
-  grep -q nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml || die "nvidia runtime not detected by k3s"
+  grep -q nvidia ${K3S_DATA}/agent/etc/containerd/config.toml || die "nvidia runtime not detected by k3s"
   say "nvidia runtime registered; now run: scripts/setup-k3s.sh apply"
 }
 

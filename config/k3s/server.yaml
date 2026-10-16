@@ -19,3 +19,5 @@ node-label:
 kubelet-arg:
   - "system-reserved=cpu=2,memory=4Gi"
   - "eviction-hard=memory.available<1Gi"
+# Images and cluster state live here, not on the root disk.
+data-dir: "@K3S_DATA@"

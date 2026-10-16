@@ -41,7 +41,7 @@ The join token stays out of Git and off the clipboard:
 ```sh
 # on the agent, as root
 install -d -m 0755 /etc/rancher/k3s
-ssh kvn@0 'sudo cat /var/lib/rancher/k3s/server/node-token' | install -m 0600 /dev/stdin /etc/rancher/k3s/join-token
+ssh kvn@0 'sudo cat /workspace/k3s-data/server/node-token' | install -m 0600 /dev/stdin /etc/rancher/k3s/join-token
 sudo scripts/setup-k3s.sh agent 100.113.138.100
 ```
 
