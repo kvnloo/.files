@@ -27,6 +27,10 @@
             "enabled": true,
             "sourceUrl": "https://github.com/noctalia-dev/noctalia-plugins"
         },
+        "keybind-cheatsheet": {
+            "enabled": true,
+            "sourceUrl": "local"
+        },
         "linux-wallpaperengine-controller": {
             "enabled": true,
             "sourceUrl": "https://github.com/noctalia-dev/noctalia-plugins"
