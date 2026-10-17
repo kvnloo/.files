@@ -24,15 +24,20 @@ instance, and restored on stop, signals, or glow off. Restarts reuse active
 receipts so the watcher's own decoration values never become the baseline.
 
 A set request paints its full look and overrides submaps and keyd until the
-next real +/-layer event, a changed keyd snapshot, or set auto. Unchanged resync
+next real +/-layer event, a changed keyd snapshot, or set auto. Unchanged relay
 snapshots never expire the override. Without an override, a nonempty submap
 wins over observed keyd state. keyd-layers listen relays keyd's /layout snapshots
 and +/-normal changes; the root-owned relay drops all other layers, so modifier
 timing never reaches this process and it needs no keyd control-socket access.
 Snapshot layers settle together before comparing the observed state.
-One relay connection is kept open; there is no periodic reconnect (it exhausts
-keyd's listener table). An unrecognised layer event still triggers one resync. This assumes
-only the Wooting configuration has a normal layer. No key-event guessing.
+One relay connection is kept open; there is no periodic reconnect or keyd
+listener churn. A silent keyd clear() emits no -normal, so the observed
+mode stays stale. Reconnecting to the relay cannot repair this: its snapshots
+come from event counts which also stay stale after clear(). Correct recovery
+requires keyd to emit an authoritative reset/layer snapshot and the root-owned
+relay to replace its counts and forward that state. Unknown layers leave the
+observed normal state unchanged. This assumes only the Wooting configuration
+has a normal layer. No key-event guessing.
 
 Theme writes settle for 300ms, configreloaded for 100ms. Linux inotify watches
 inputs; unavailable inotify falls back to 5s stat. Keyd failures back off to 60s,
@@ -604,7 +609,6 @@ class Watcher:
         self.keyd = None
         self.keyd_buffer = b''
         self.keyd_retired = []
-        self.keyd_resync = None
         self.hypr_buffer = b''
         self.normal = None
         self.submap = ''
@@ -776,7 +780,6 @@ class Watcher:
         if LAYER_SOCKET.exists() and not os.access(LAYER_SOCKET, os.R_OK | os.W_OK):
             self.permission_denied = True
             self.keyd_retry = None
-            self.keyd_resync = None
             if not self.keyd_warned:
                 log('keyd socket permission denied; using submaps/state until permissions change')
                 self.keyd_warned = True
@@ -786,9 +789,8 @@ class Watcher:
                                          stderr=subprocess.STDOUT, bufsize=0)
             os.set_blocking(self.keyd.stdout.fileno(), False)
             self.selector.register(self.keyd.stdout, selectors.EVENT_READ, 'keyd')
-            # No periodic reconnect: keyd frees a listener slot only when a write to it fails,
-            # so reconnecting every 750 ms exhausts its listener table within seconds.
-            self.keyd_resync = None
+            # Keep the relay connection open; reconnecting cannot refresh its cached counts.
+            # The relay owns one keyd listener to avoid keyd's listener-table exhaustion.
             self.keyd_buffer = b''
             self.keyd_retry = None
             self.permission_denied = False
@@ -803,7 +805,6 @@ class Watcher:
         data = os.read(self.keyd.stdout.fileno(), 65536)
         if not data:
             self.retire_keyd()
-            self.keyd_resync = None
             self.keyd_snapshot = False
             self.normal = None
             if not self.keyd_warned:
@@ -897,7 +898,7 @@ class Watcher:
         self.start_keyd()
         self.schedule(force=True, recompute=True)
         while not self.done:
-            deadlines = [value for value in (self.pending, self.burst_due, self.keyd_retry, self.keyd_resync, stat_due) if value is not None]
+            deadlines = [value for value in (self.pending, self.burst_due, self.keyd_retry, stat_due) if value is not None]
             timeout = max(0, min(deadlines) - time.monotonic()) if deadlines else None
             for key, _ in self.selector.select(timeout):
                 if key.data == 'signal':
@@ -938,12 +939,6 @@ class Watcher:
                 self.input_changes({path for path in watched if fresh[path] != versions[path]})
                 versions = fresh
                 stat_due = now + 5
-            if self.keyd_resync is not None and now >= self.keyd_resync:
-                # keyd has no query command. Reconnecting listen obtains actual /layout +layers,
-                # including clear() changes which emitted no -normal. No blocking reads/waits.
-                self.keyd_resync = None
-                self.retire_keyd()
-                self.start_keyd()
             if self.keyd_retry is not None and now >= self.keyd_retry:
                 self.start_keyd()
             if self.pending is not None and now >= self.pending:
@@ -1125,6 +1120,7 @@ def selftest():
 
         with patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(root)}), \
              patch(__name__ + '.paths', return_value=test_paths), \
+             patch(__name__ + '.LAYER_SOCKET', root / 'keyd-layers.sock'), \
              patch('subprocess.run', side_effect=hyprctl), \
              patch('socket.socketpair', side_effect=pipe_pair), \
              patch('subprocess.Popen', side_effect=AssertionError('real process in selftest')):
@@ -1261,12 +1257,11 @@ def selftest():
             check(watcher.burst_due is None, 'glow off cancels burst')
             watcher.normal = True
             watcher.keyd_line('/main')
-            check(watcher.normal is False, 'clear snapshot returns to insert')
+            check(watcher.normal is False, 'received snapshot without normal returns to insert')
             watcher.keyd_line('+normal')
             check(watcher.normal is True, 'normal layer enters nav')
-            watcher.keyd_resync = time.monotonic() + .75
             watcher.keyd_line('+unrecognised')
-            check(watcher.normal and watcher.keyd_resync is not None, 'unknown layer waits for periodic actual-state snapshot')
+            check(watcher.normal is True, 'unknown layer preserves observed normal state')
             watcher.close()
             watcher = Watcher()
             watcher.instance = 'test-instance'
@@ -1301,7 +1296,7 @@ def selftest():
             with patch('time.monotonic', return_value=time.monotonic() + 31):
                 watcher.keyd_line('/main')
                 watcher.paint(watcher.effective_mode(), watcher.base_mode(), force=True)
-            check(calls[-1] == command, 'unchanged insert resync preserves manual nav beyond 30 seconds')
+            check(calls[-1] == command, 'unchanged insert snapshot preserves manual nav beyond 30 seconds')
             watcher.keyd_line('+normal')
             watcher.keyd_line('-normal')
             watcher.paint(watcher.effective_mode(), watcher.base_mode())
@@ -1332,7 +1327,7 @@ def selftest():
             mode_path.unlink()
             # Drive the actual selector/control loop, including a silent keyd clear().
             import threading
-            keyd_normal = [True]
+            relay_normal = [True]
             listeners = []
             class Listener:
                 def __init__(self, argv, **kwargs):
@@ -1340,7 +1335,7 @@ def selftest():
                     read_fd, self.write_fd = os.pipe()
                     self.stdout = os.fdopen(read_fd, 'rb', buffering=0)
                     self.returncode = None
-                    os.write(self.write_fd, b'/main\n' + (b'+normal\n' if keyd_normal[0] else b''))
+                    os.write(self.write_fd, b'/main\n' + (b'+normal\n' if relay_normal[0] else b''))
                     listeners.append(self)
                 def poll(self):
                     return self.returncode
@@ -1389,21 +1384,30 @@ def selftest():
                     control_write.send(b'repaint')
                     wait_until(lambda: len(calls) > before)
                     check(calls[-1]['decoration:shadow:range'] == '28', 'control requests force complete same-mode repaint')
-                    keyd_normal[0] = False  # No -normal event, as with keyd clear().
+                    # Silent clear() changes keyd but leaves the relay's counts stale.
+                    # Wait beyond the former 750ms reconnect interval, then force a repaint.
+                    time.sleep(.9)
+                    before = len(calls)
+                    control_write.send(b'repaint')
+                    wait_until(lambda: len(calls) > before)
+                    check(loop.last[0] == 'nav' and len(listeners) == 1,
+                          'silent clear is unobservable; listener stays connected')
+                    relay_normal[0] = False
+                    os.write(listeners[0].write_fd, b'-normal\n')
                     wait_until(lambda: loop.last[0] == 'insert')
-                    check(len(listeners) >= 2, 'periodic listener reconnect obtains real layer snapshot')
-                    check(calls[-1]['decoration:dim_inactive'] == '0', 'clear resync removes command dimming')
+                    check(calls[-1]['decoration:dim_inactive'] == '0', 'received -normal removes command dimming')
                     with patch('sys.argv', ['mode-border', 'set', 'nav']), \
                          patch(__name__ + '.nudge', side_effect=control_write.send), \
                          contextlib.redirect_stdout(io.StringIO()):
                         check(main() == 0, 'offline set nav command succeeds')
                     wait_until(lambda: loop.last[0] == 'nav' and loop.burst_due is None)
-                    before_listeners = len(listeners)
-                    wait_until(lambda: len(listeners) >= before_listeners + 2)
-                    wait_until(lambda: loop.pending is None)
+                    time.sleep(.9)
+                    before = len(calls)
+                    control_write.send(b'repaint')
+                    wait_until(lambda: len(calls) > before)
                     check(loop.last[0] == 'nav' and calls[-1]['decoration:shadow:range'] == '28'
-                          and calls[-1]['decoration:dim_inactive'] == '1',
-                          'control set nav keeps command look through unchanged insert resyncs')
+                          and calls[-1]['decoration:dim_inactive'] == '1' and len(listeners) == 1,
+                          'control set nav keeps command look without listener reconnects')
                     with patch('sys.argv', ['mode-border', 'set', 'auto']), \
                          patch(__name__ + '.nudge', side_effect=control_write.send), \
                          contextlib.redirect_stdout(io.StringIO()):
