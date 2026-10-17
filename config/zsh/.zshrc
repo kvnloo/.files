@@ -98,3 +98,9 @@ export PATH="/home/kvn/.local/bin:$PATH"
 export PATH="/home/kvn/.local/bin:$PATH"
 
 export PATH="$PATH:$HOME/.maestro/bin"
+
+# Empryo
+export PATH="$HOME/.empryo/bin:$PATH"
+
+# Added by Actual Computer installer
+export PATH="$HOME/.actual/bin:$PATH"

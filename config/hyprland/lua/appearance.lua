@@ -67,6 +67,7 @@ hl.animation({leaf="windowsMove",enabled=true,speed=4,bezier="smoothIn",style="s
 hl.animation({leaf="border",enabled=true,speed=10,bezier="default"})
 hl.animation({leaf="borderangle",enabled=true,speed=40,bezier="default",style="loop"})
 hl.animation({leaf="fade",enabled=true,speed=5,bezier="smoothIn"})
+hl.animation({leaf="fadeLayersIn",enabled=true,speed=1,bezier="linear"})
 hl.animation({leaf="fadeDim",enabled=true,speed=5,bezier="smoothIn"})
 hl.animation({leaf="workspaces",enabled=true,speed=6,bezier="overshot",style="slide"})
 
