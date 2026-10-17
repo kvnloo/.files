@@ -176,3 +176,14 @@ def test_full_ble_handshake_and_teardown(monkeypatch):
         bytes.fromhex("060720000000010000"),
         oura.REALTIME_OFF,
     ]
+
+
+def test_capture_private_outside_repository(tmp_path):
+    target = tmp_path / "oura.jsonl"
+    with oura.open_capture(target) as handle:
+        handle.write('{"t": 0, "x": 0, "y": 0, "z": 1000}\n')
+    assert target.stat().st_mode & 0o777 == 0o600
+    with pytest.raises(FileExistsError):
+        oura.open_capture(target)
+    with pytest.raises(ValueError, match="outside"):
+        oura.open_capture(ROOT / "secrets.jsonl")
