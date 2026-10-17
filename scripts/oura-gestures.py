@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import deque
+from contextlib import nullcontext
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
 import stat
 import subprocess
@@ -150,6 +152,16 @@ class GestureDetector:
         return events
 
 
+def open_capture(path: Path):
+    """Create a private, non-overwriting raw-motion trace outside the Git tree."""
+    target = path.expanduser().resolve()
+    if target.is_relative_to(Path(__file__).resolve().parents[1]):
+        raise ValueError("capture file must be outside the public .files Git checkout")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    return os.fdopen(fd, "w", encoding="utf8")
+
+
 def load_actions(path: Path) -> dict[str, list[str]]:
     with path.expanduser().open("rb") as handle:
         raw = tomllib.load(handle)
@@ -223,7 +235,7 @@ async def next_ext(responses: asyncio.Queue[bytes], ext_tag: int) -> bytes:
 
 
 async def listen(address: str, key: bytes, seconds: int, detector: GestureDetector,
-                 router: ActionRouter) -> None:
+                 router: ActionRouter, capture=None) -> None:
     try:
         from bleak import BleakClient
     except ImportError as error:
@@ -270,6 +282,9 @@ async def listen(address: str, key: bytes, seconds: int, detector: GestureDetect
             while time.monotonic() < end:
                 try:
                     stamp, xyz = await asyncio.wait_for(samples.get(), timeout=0.05)
+                    if capture is not None:
+                        capture.write(json.dumps({"t": stamp, "x": xyz[0],
+                                                  "y": xyz[1], "z": xyz[2]}) + "\n")
                     for gesture in detector.feed(stamp, xyz):
                         router.dispatch(gesture)
                 except asyncio.TimeoutError:
@@ -309,6 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--seconds", type=int, default=120)
     parser.add_argument("--tap-threshold", type=float, default=450.0)
+    parser.add_argument("--capture", type=Path, help="write private raw JSONL trace outside repository")
     parser.add_argument("--dry-run", action="store_true", help="detect but don't execute actions")
     args = parser.parse_args(argv)
     try:
@@ -327,7 +343,8 @@ def main(argv: list[str] | None = None) -> int:
             if not args.address or not args.key_file:
                 parser.error("listen needs --address and --key-file; never factory-resets or pairs")
             realtime_start(args.seconds)
-            asyncio.run(listen(args.address, read_key(args.key_file), args.seconds, detector, router))
+            with (open_capture(args.capture) if args.capture else nullcontext(None)) as capture:
+                asyncio.run(listen(args.address, read_key(args.key_file), args.seconds, detector, router, capture))
         return 0
     except (OSError, ValueError, RuntimeError, TimeoutError) as error:
         print(f"oura-gestures: {error}", file=sys.stderr)
