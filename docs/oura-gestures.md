@@ -52,7 +52,8 @@ Only the detector's offline tests have been verified; no Oura ring was available
    .venv/bin/python scripts/oura-gestures.py listen \
      --address 'RING_BLE_ADDRESS' \
      --key-file ~/.config/oura-gestures/key.hex \
-     --seconds 120 --dry-run
+     --seconds 120 --dry-run \
+     --capture ~/.local/state/oura-gestures/taps.jsonl
    ```
 
    When double and triple taps are distinguishable from ordinary motions:
@@ -63,6 +64,8 @@ Only the detector's offline tests have been verified; no Oura ring was available
      --key-file ~/.config/oura-gestures/key.hex \
      --tap-threshold 450 --seconds 120
    ```
+
+Use a new `--capture` filename for each session (it refuses overwrite, creates `0600` files, and rejects paths inside the Git checkout). Replay a private trace with `python scripts/oura-gestures.py replay ~/.local/state/oura-gestures/taps.jsonl`; replay never runs actions. Keep recordings private because motion traces are personal data.
 
 `--address` comes from `scan`. Raise `--tap-threshold` if incidental hand motion fires; lower it if deliberate taps are ignored. *Do not share actual auth keys, ring MACs, or raw BLE captures publicly.* The ring may allow only one active peripheral connection, so a phone connection can block desktop access. Linux pairing/link encryption may still be required by BlueZ before using GATT even with the application key; this tool deliberately does not initiate pairing.
 
