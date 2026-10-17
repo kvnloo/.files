@@ -68,7 +68,12 @@ def env_key(name: str) -> str:
 
 
 def http_json(url: str, *, headers: dict[str, str], timeout: float = 15.0) -> tuple[int, Any]:
-    req = urllib.request.Request(url, headers=headers, method="GET")
+    request_headers = {
+        "User-Agent": os.environ.get("CODEXBAR_HTTP_USER_AGENT", "CodexBar/1.0 (linux; usage-meter)"),
+        "Accept": "application/json",
+    }
+    request_headers.update(headers)
+    req = urllib.request.Request(url, headers=request_headers, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
@@ -84,8 +89,8 @@ def http_json(url: str, *, headers: dict[str, str], timeout: float = 15.0) -> tu
 
 def missing_key_message(env_name: str) -> str:
     return (
-        f"Missing {env_name}. Add it to ~/.config/codexbar/secrets.env "
-        f"or run: scripts/codexbar-sync-credentials.sh"
+        f"Missing {env_name}. Expected it from the environment or "
+        f"Bitwarden Secrets Manager, not a plaintext secrets.env"
     )
 
 
