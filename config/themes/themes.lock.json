@@ -1,0 +1,1004 @@
+{
+  "aetheria": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/aetheria",
+    "url": "https://github.com/JJDizz1L/aetheria",
+    "commit": "dcf698e2a16226b8ec8b5a70fe8b1fd153daf0d7"
+  },
+  "all-hallows-eve": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/all-hallows-eve",
+    "url": "https://github.com/guilhermetk/omarchy-all-hallows-eve-theme",
+    "commit": "21aa0f7d354aabe7b278117144773a07708db942"
+  },
+  "amberbyte": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/amberbyte",
+    "url": "https://github.com/tahfizhabib/omarchy-amberbyte-theme",
+    "commit": "8ea68b3471f9f67d5b10921f401737e99d53fb24"
+  },
+  "arc-blueberry": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/arc-blueberry",
+    "url": "https://github.com/vale-c/omarchy-arc-blueberry",
+    "commit": "56c0679f161ef7198ba089d070dd8cad0bad5b87"
+  },
+  "archwave": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/archwave",
+    "url": "https://github.com/davidguttman/archwave",
+    "commit": "b3e6b814989dc5dd58b25bc4c73667b4827bcb4c"
+  },
+  "artzen": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/artzen",
+    "url": "https://github.com/tahfizhabib/omarchy-artzen-theme",
+    "commit": "d4255350a0ca7acd3f681b5da49e46bd15f41b9a"
+  },
+  "ash": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ash",
+    "url": "https://github.com/bjarneo/omarchy-ash-theme",
+    "commit": "7f793a2e7bdf2dcf486c7c3253e6bceb756aa188"
+  },
+  "atelier": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/atelier",
+    "url": "https://github.com/atif-1402/omarchy-atelier-theme",
+    "commit": "4f68facf7a763aa5ab7fe02867e6b30536428908"
+  },
+  "aura": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/aura",
+    "url": "https://github.com/bjarneo/omarchy-aura-theme",
+    "commit": "f63d3dbffe844886be1e0fa555d2ddc16b5fa366"
+  },
+  "ayaka": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/ayaka",
+    "url": "https://github.com/abhijeet-swami/omarchy-ayaka-theme",
+    "commit": "00ae286b3513894c7911498c6de1709650a72bc4"
+  },
+  "azure-glow": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/azure-glow",
+    "url": "https://github.com/Hydradevx/omarchy-azure-glow-theme",
+    "commit": "72992693e04c303d1fb76fddb43eaeaba86572bf"
+  },
+  "batman": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/batman",
+    "url": "https://github.com/OldJobobo/omarchy-batman-theme",
+    "commit": "f7dac498aa3570b13bd10f50657dea4eb92345f8"
+  },
+  "batou": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/batou",
+    "url": "https://github.com/HANCORE-linux/omarchy-batou-theme",
+    "commit": "68af747b5b39839d54a5e5e518dfe25d5a0827bf"
+  },
+  "bauhaus": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/bauhaus",
+    "url": "https://github.com/somerocketeer/omarchy-bauhaus-theme",
+    "commit": "bfcabfddb89dc56e95441b7a43919c662a468a14"
+  },
+  "biscuit-de-mar-dark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/biscuit-de-mar-dark",
+    "url": "https://github.com/OldJobobo/omarchy-biscuit-de-mar-dark-theme",
+    "commit": "e87f5f2eba826c2a2863ba038fd708a7a38a1016"
+  },
+  "black-arch": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/black_arch",
+    "url": "https://github.com/ankur311sudo/black_arch",
+    "commit": "fe2c966306d1d2ea64973aaea56696bf59db8dbe"
+  },
+  "black-sand": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/black-sand",
+    "url": "https://github.com/pkovzz/omarchy-black-sand-theme",
+    "commit": "d4b77e86095160ea091209524442285f254e3ea8"
+  },
+  "blackgold": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/blackgold",
+    "url": "https://github.com/HANCORE-linux/omarchy-blackgold-theme",
+    "commit": "f5c4b0675fdc7b637126b0b3425eb269ebc366fe"
+  },
+  "blackturq": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/blackturq",
+    "url": "https://github.com/HANCORE-linux/omarchy-blackturq-theme",
+    "commit": "85b32f217e0303a73cd3973cc89fe16b12480ae0"
+  },
+  "bluedotrb": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/bluedotrb",
+    "url": "https://github.com/dotsilva/omarchy-bluedotrb-theme",
+    "commit": "2afc3c2d225bbaee9ba4cca8132876047c797d53"
+  },
+  "blueridge-dark": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/blueridge-dark",
+    "url": "https://github.com/hipsterusername/omarchy-blueridge-dark-theme",
+    "commit": "a9e8226138116491c17b3af4b434f3469d456096"
+  },
+  "castle-on-a-lake": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/castle-on-a-lake",
+    "url": "https://github.com/shmall03/omarchy-castle-on-a-lake-theme",
+    "commit": "ea91f869674eaa73537952c9b19b619316cbacd1"
+  },
+  "catppuccin": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/catppuccin",
+    "url": null,
+    "commit": null
+  },
+  "catppuccin-dark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/catppuccin-dark",
+    "url": "https://github.com/Luquatic/omarchy-catppuccin-dark",
+    "commit": "54b98a5c7302783298df05238ab55f312ec327ea"
+  },
+  "catppuccin-latte": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/catppuccin-latte",
+    "url": null,
+    "commit": null
+  },
+  "cincinnati": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/cincinnati",
+    "url": "https://github.com/jkwuc89/omarchy-cincinnati-theme",
+    "commit": "d89506161928cac5047f2102abe978cb55a5fc33"
+  },
+  "citrus-cynapse": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/citrus-cynapse",
+    "url": "https://github.com/Grey-007/citrus-cynapse",
+    "commit": "831ef747cfeaf4765dfcb824832f4656f9617c12"
+  },
+  "city-783": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/city-783",
+    "url": "https://github.com/OldJobobo/omarchy-city-783-theme",
+    "commit": "a9ef3ae0a2e16ec1e4664a9b7625e5450080059e"
+  },
+  "cobalt2": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/cobalt2",
+    "url": "https://github.com/hoblin/omarchy-cobalt2-theme",
+    "commit": "579fb7d8890000d315da9e18da6c0885de008ea3"
+  },
+  "coffee": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/coffee",
+    "url": "https://github.com/megabyte0x/omarchy-coffee-theme",
+    "commit": "5ee3a2ce7519398b7423e11f5a722806087de14f"
+  },
+  "coffee-latte": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/coffee-latte",
+    "url": "https://github.com/megabyte0x/omarchy-coffee-latte-theme",
+    "commit": "39d003d9344fe48ec75b5e6490a3f2e63d33cc70"
+  },
+  "commit": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/commit",
+    "url": "https://github.com/c0ze/omarchy-commit-theme",
+    "commit": "ba19bec9fbf72aff2a6de641a6fe0abb7c5486f7"
+  },
+  "cpunk": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/cpunk",
+    "url": "https://github.com/stannorbvb-cmd/cpunk",
+    "commit": "c4d726bea9e6e4b3feb477c052e25bfcb2832ea4"
+  },
+  "crimson-gold": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/crimson-gold",
+    "url": "https://github.com/knappkevin/omarchy-crimson-gold-theme",
+    "commit": "e0829993b3543207ea7fc74282685794378b0dda"
+  },
+  "darcula": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/darcula",
+    "url": "https://github.com/noahljungberg/omarchy-darcula-theme",
+    "commit": "f331656230901350d4ae9908b566f5d29f1f556a"
+  },
+  "demon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/demon",
+    "url": "https://github.com/HANCORE-linux/omarchy-demon-theme",
+    "commit": "f1912c517fc374bd0ef6d307d87164661fecc07f"
+  },
+  "dos-moos": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/dos-moos",
+    "url": "https://github.com/HANCORE-linux/omarchy-dos-moos-theme",
+    "commit": "5c608a4249a09a828bbac0054cabe5e19ec0d9dd"
+  },
+  "dotrb": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/dotrb",
+    "url": "https://github.com/dotsilva/omarchy-dotrb-theme",
+    "commit": "db1411af644663564fde386ace849e8e4aa81197"
+  },
+  "drac": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/drac",
+    "url": "https://github.com/ShehabShaef/omarchy-drac-theme",
+    "commit": "6fd9e1ac553fea7eedd8d18a67e7f795246ae63f"
+  },
+  "dracula": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/dracula",
+    "url": "https://github.com/catlee/omarchy-dracula-theme",
+    "commit": "f776b6543119dfc8682d9eac84d934d126193be9"
+  },
+  "ethereal": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ethereal",
+    "url": null,
+    "commit": null
+  },
+  "event-horizon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/event-horizon",
+    "url": "https://github.com/OldJobobo/omarchy-event-horizon-theme",
+    "commit": "3e306a897442da05c147f32ac98cf9e7896294ae"
+  },
+  "everforest": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/everforest",
+    "url": null,
+    "commit": null
+  },
+  "evergarden": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/evergarden",
+    "url": "https://github.com/celsobenedetti/omarchy-evergarden",
+    "commit": "1e5196cf9167e74c3a4fafb5be964cb15a3dc299"
+  },
+  "felix": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/felix",
+    "url": "https://github.com/TyRichards/omarchy-felix-theme",
+    "commit": "39fa9f3a8383f826488b0300ab78cbaa3f9b7f44"
+  },
+  "fireside": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/fireside",
+    "url": "https://github.com/bjarneo/omarchy-fireside-theme",
+    "commit": "d392f4cb697501388bd896300b5575ce5a461e65"
+  },
+  "flat-dracula": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/flat-dracula",
+    "url": "https://github.com/OldJobobo/omarchy-flat-dracula-theme",
+    "commit": "9c32902e6d7846e75aad7127727090b970895ae6"
+  },
+  "flexoki-dark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/flexoki-dark",
+    "url": "https://github.com/euandeas/omarchy-flexoki-dark-theme",
+    "commit": "aa418ffb68ec1eaa72a85b02970ada07ce6f3d26"
+  },
+  "flexoki-light": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/flexoki-light",
+    "url": null,
+    "commit": null
+  },
+  "forest-green": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/forest-green",
+    "url": "https://github.com/abhijeet-swami/omarchy-forest-green-theme",
+    "commit": "b17f9fef702c6e51fb60599bf7df55099c97b1d0"
+  },
+  "frost": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/frost",
+    "url": "https://github.com/bjarneo/omarchy-frost-theme",
+    "commit": "f702a288630c2c740101e6c677ed4c325a598df2"
+  },
+  "fuchsblau": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/fuchsblau",
+    "url": "https://github.com/fuchsblau/omarchy-fuchsblau-theme",
+    "commit": "aa7fde043ae60603c3ecc6fd6ac3b6674cacab04"
+  },
+  "futurism": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/futurism",
+    "url": "https://github.com/bjarneo/omarchy-futurism-theme",
+    "commit": "e60be451d92565da43bd7976c488af3e983370bc"
+  },
+  "futurist": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/futurist",
+    "url": "https://github.com/benwillems/omarchy-futurist-theme",
+    "commit": "8cd246945344c350d23ee8189a3004a2b2a5bf9d"
+  },
+  "gand": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/gand",
+    "url": "https://github.com/c0ze/omarchy-gand-theme",
+    "commit": "cf1bc5fc01eeaea429372574f24e83db4712e2e4"
+  },
+  "ghost-pastel": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ghost-pastel",
+    "url": "https://github.com/row-huh/omarchy-ghost-pastel-theme",
+    "commit": "d8e1b554412737240c6d6ba19c652d64c433092b"
+  },
+  "gold-rush": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/gold-rush",
+    "url": "https://github.com/tahayvr/omarchy-gold-rush-theme",
+    "commit": "157d3a1a67b924abafbd65d4dcbdc070b04c8ef7"
+  },
+  "golden-brown": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/golden-brown",
+    "url": "https://github.com/atif-1402/omarchy-golden-brown-theme",
+    "commit": "7cea2f2ffd84af2f46ad27b3db00774155dd7380"
+  },
+  "greek-noir": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/greek-noir",
+    "url": "https://github.com/HANCORE-linux/omarchy-greek-noir-theme",
+    "commit": "50152bb8392fae480950e2dae33b10c91035dc56"
+  },
+  "green-garden": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/green-garden",
+    "url": "https://github.com/kalk-ak/omarchy-green-garden-theme",
+    "commit": "bffbe36fcf004b90b130456ad3fabae47d48cccb"
+  },
+  "groot-baseline": {
+    "format": "pywal-json",
+    "source": "/mnt/zer0models/home-offload/kvn/offload-2026-09-21/cache/wal/colors.json",
+    "url": null,
+    "commit": null
+  },
+  "gruvbox": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/gruvbox",
+    "url": null,
+    "commit": null
+  },
+  "gruvbox-material": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/gruvbox-material",
+    "url": "https://github.com/curbol/omarchy-gruvbox-material",
+    "commit": "1bcf7f9339ce99fc7a93e1757da66d8ac7c5d47d"
+  },
+  "hackerman": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/hackerman",
+    "url": null,
+    "commit": null
+  },
+  "harbor": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/harbor",
+    "url": "https://github.com/HANCORE-linux/omarchy-harbor-theme",
+    "commit": "022eeb5f7e2082e35cc8c6a4499eea94c14ccd6a"
+  },
+  "harbordark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/harbordark",
+    "url": "https://github.com/HANCORE-linux/omarchy-harbordark-theme",
+    "commit": "61547cacbf834bf2fb7ac11925cfc75e7c0b4033"
+  },
+  "hermarchy": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/hermarchy",
+    "url": "https://github.com/archer-clawbot/omarchy-hermarchy-theme",
+    "commit": "12f3c5257f87237fa3fd549cf7be3f9fba76f9c8"
+  },
+  "infernium-dark": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/infernium-dark",
+    "url": "https://github.com/RiO7MAKK3R/omarchy-infernium-dark-theme",
+    "commit": "d5c3f288ee644e1f25f1e16cde2665361134a076"
+  },
+  "inkypinky": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/inkypinky",
+    "url": "https://github.com/HANCORE-linux/omarchy-inkypinky-theme",
+    "commit": "9577b6f5072c5795076c0985ef11ef17c56f8cb9"
+  },
+  "japan-night": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/japan-night",
+    "url": "https://github.com/devgtv/omarchy-japan-night-theme",
+    "commit": "dc25d9f18a9655c0b42a10b451f81e2693eeea55"
+  },
+  "kanagawa": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/kanagawa",
+    "url": null,
+    "commit": null
+  },
+  "lamplight": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/lamplight",
+    "url": "https://github.com/thisisgm/omarchy-lamplight-theme",
+    "commit": "55d6be776b9338c54a30985f05280c42f7b51c95"
+  },
+  "last-horizon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/last-horizon",
+    "url": null,
+    "commit": null
+  },
+  "lawson-night": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/lawson-night",
+    "url": "https://github.com/phuclh/omarchy-lawson-night-theme",
+    "commit": "28dfc0086cabb3c7a9032880bdd027e35dd968a0"
+  },
+  "lumon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/lumon",
+    "url": null,
+    "commit": null
+  },
+  "lupine": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/lupine",
+    "url": null,
+    "commit": null
+  },
+  "mapquest": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/mapquest",
+    "url": "https://github.com/ItsABigIgloo/omarchy-mapquest-theme",
+    "commit": "262598215854442321e89ead1b2be61e2697e181"
+  },
+  "mars": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/mars",
+    "url": "https://github.com/steve-lohmeyer/omarchy-mars-theme",
+    "commit": "255a8cb5331fc41cc9f976c643dbe5f9db38f4fd"
+  },
+  "matrix": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/matrix",
+    "url": "https://github.com/BVisagie/omarchy-matrix-theme",
+    "commit": "01b09c3603db68f4623923cb79d82bc49369075a"
+  },
+  "matte-black": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/matte-black",
+    "url": null,
+    "commit": null
+  },
+  "mechanoonna": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/mechanoonna",
+    "url": "https://github.com/HANCORE-linux/omarchy-mechanoonna-theme",
+    "commit": "ca6c427eb946217d9e1bc79da23473fbf1b3e1a5"
+  },
+  "miasma": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/miasma",
+    "url": null,
+    "commit": null
+  },
+  "midnight": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/midnight",
+    "url": "https://github.com/JaxonWright/omarchy-midnight-theme",
+    "commit": "e5f73f6d8d2cea929b730347d1f27e6d6b5da9dd"
+  },
+  "milkmatcha-light": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/milkmatcha-light",
+    "url": "https://github.com/hipsterusername/omarchy-milkmatcha-light-theme",
+    "commit": "f6383965db0779d51e1c89aeb0917779fe0c25a5"
+  },
+  "mini-jcw": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/mini-jcw",
+    "url": "https://github.com/davydotcom/omarchy-mini-jcw-theme",
+    "commit": "53c25ab31b241ef69a3f80da4dbf6e64cf59453f"
+  },
+  "monochrome": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/monochrome",
+    "url": "https://github.com/Swarnim114/omarchy-monochrome-theme",
+    "commit": "10aa54d4b31284f24d73c5aa5532795f4bc85046"
+  },
+  "monokai": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/monokai",
+    "url": "https://github.com/bjarneo/omarchy-monokai-theme",
+    "commit": "619b66e36f160b30bec5a421948316310aba32ab"
+  },
+  "moodpeak": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/moodpeak",
+    "url": "https://github.com/HANCORE-linux/omarchy-moodpeak-theme",
+    "commit": "f77b852780a23197fcbc095f9751004f83e277dd"
+  },
+  "nagai-poolside": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/nagai-poolside",
+    "url": "https://github.com/somerocketeer/omarchy-nagai-poolside-theme",
+    "commit": "37b9f95e26fd3e1152bfee2a8766328bdb5eb13a"
+  },
+  "neo-sploosh": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/neo-sploosh",
+    "url": "https://github.com/monoooki/omarchy-neo-sploosh-theme",
+    "commit": "0f526bd1b5c7a1dcdc0a263bc8f74733ef619c81"
+  },
+  "neon-dusk": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/neon-dusk",
+    "url": "https://github.com/daniel-felipe/omarchy-neon-dusk-theme",
+    "commit": "4817b64fa54af20d1cc98abdd18c80c67f1801d5"
+  },
+  "neovoid": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/neovoid",
+    "url": "https://github.com/RiO7MAKK3R/omarchy-neovoid-theme",
+    "commit": "7f4cde21d17aa6c91ac2f940f2756028eac985c8"
+  },
+  "neptune-blue": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/neptune-blue",
+    "url": "https://github.com/davydotcom/omarchy-neptune-blue-theme",
+    "commit": "e9e9ca978f9ab8455a9aeb104e7737e873528ee3"
+  },
+  "nes": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/nes",
+    "url": "https://github.com/bjarneo/omarchy-nes-theme",
+    "commit": "4ab5a95f4212848ef615c3f349c3f7d7376f4654"
+  },
+  "noir": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/noir",
+    "url": "https://github.com/tahadx/omarchy-noir-theme",
+    "commit": "47538cadce0e55aff49f15fd5b9a5d9209db5435"
+  },
+  "nord": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/nord",
+    "url": null,
+    "commit": null
+  },
+  "nujabes": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/nujabes",
+    "url": "https://github.com/HalmyLyseas/omarchy-nujabes-theme",
+    "commit": "7b4ad9f63cad7299d1bf41551764a292011c9ad5"
+  },
+  "oligarchy": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/oligarchy",
+    "url": "https://github.com/EF-Code/omarchy-oligarchy-theme",
+    "commit": "0ac0d3b70dea13454bae6ecfd86744a0c499da9d"
+  },
+  "omacarchy": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/omacarchy",
+    "url": "https://github.com/RiO7MAKK3R/omarchy-omacarchy-theme",
+    "commit": "ea60640c2e3113f9a4e1a74955c567efef4e47a0"
+  },
+  "omaled": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/omaled",
+    "url": "https://github.com/brianblakely/omarchy-omaled-theme",
+    "commit": "3912f2a2e264bda821457e759d8387ff586fc5df"
+  },
+  "omarchy": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/omarchy",
+    "url": "https://github.com/eldritch-theme/omarchy",
+    "commit": "714ed4420c6bc72f46b8dfc023980847169f59fe"
+  },
+  "one-dark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/one-dark",
+    "url": "https://github.com/joaopinto15/omarchy-one-dark-theme",
+    "commit": "a21d0775fc72a71147e8b626cc8530b87eb65bea"
+  },
+  "one-dark-pro": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/one-dark-pro",
+    "url": "https://github.com/sc0ttman/omarchy-one-dark-pro-theme",
+    "commit": "0874b66bf30f4525442f55fc88a443ce56a7decf"
+  },
+  "osaka-jade": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/osaka-jade",
+    "url": null,
+    "commit": null
+  },
+  "oxocarbon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/oxocarbon",
+    "url": "https://github.com/HANCORE-linux/omarchy-oxocarbon-theme",
+    "commit": "0fe21c279bcdec7dc80b403b32123ee7e124fab8"
+  },
+  "pagan": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/pagan",
+    "url": "https://github.com/c0ze/omarchy-pagan-theme",
+    "commit": "f4f95885310feb8586b26aba6b52ee034c8bc419"
+  },
+  "pandora": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/pandora",
+    "url": "https://github.com/imbypass/omarchy-pandora-theme",
+    "commit": "c57bc90f77b4fbe856b8f747ba14b33423315b9b"
+  },
+  "periphery": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/periphery",
+    "url": "https://github.com/r-bart/omarchy-periphery-theme",
+    "commit": "44d17f5289fd2213e59f1d879f9f4bc83d9bcedf"
+  },
+  "pina": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/pina",
+    "url": "https://github.com/bjarneo/omarchy-pina-theme",
+    "commit": "1a65543445d76ecc52a4a83b9b35be8c90a97ad0"
+  },
+  "pink-blood-omarchy": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/pink-blood-omarchy",
+    "url": "https://github.com/ITSZXY/pink-blood-omarchy-theme",
+    "commit": "2c704c2f656e14d1cc8e93aaec8b65b9e9d27064"
+  },
+  "pulsar": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/pulsar",
+    "url": "https://github.com/bjarneo/omarchy-pulsar-theme",
+    "commit": "b9af6225b5fb5731b9634d1a94cfa2fb06a3b5c9"
+  },
+  "purple-moon": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/purple-moon",
+    "url": "https://github.com/Grey-007/purple-moon",
+    "commit": "8a1e89036b8d8387dd4bf0f240c5ebf4ede200b6"
+  },
+  "purplewave": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/purplewave",
+    "url": "https://github.com/dotsilva/omarchy-purplewave-theme",
+    "commit": "ce01e9c583ce42b33fe63f5e6b9e6da13b9644ba"
+  },
+  "quattrocento-light": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/quattrocento-light",
+    "url": "https://github.com/r-bart/omarchy-quattrocento-light-theme",
+    "commit": "c3e4cbaf0b7b5fc1f42df98cd9623f5f0aa6a9c4"
+  },
+  "rainynight": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/rainynight",
+    "url": "https://github.com/atif-1402/omarchy-rainynight-theme",
+    "commit": "03fdd3f8552ca443c70d2e3d2b698ddd2ad785ec"
+  },
+  "red-monarch": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/red-monarch",
+    "url": "https://github.com/kamatealif/omarchy-red-monarch-theme",
+    "commit": "678355c69795dddff8ea46a10abeb5186823cd82"
+  },
+  "red-pill": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/red-pill",
+    "url": "https://github.com/ferlemes/omarchy-red-pill-theme",
+    "commit": "644c4a2ba19985c8a0ab20e58d896b4bbe5b5c0f"
+  },
+  "retro-82": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/retro-82",
+    "url": null,
+    "commit": null
+  },
+  "retropc": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/retropc",
+    "url": "https://github.com/rondilley/omarchy-retropc-theme",
+    "commit": "9cfab92e2b708dc6a4afca3f144b8f1c011ab379"
+  },
+  "ristretto": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ristretto",
+    "url": null,
+    "commit": null
+  },
+  "ristretto-light": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ristretto-light",
+    "url": "https://github.com/brokkoli71/omarchy-ristretto-light-theme",
+    "commit": "e9abefc5088485c994fc708a11f73f48c46457c9"
+  },
+  "robzee84": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/robzee84",
+    "url": "https://github.com/robzolkos/omarchy-robzee84-theme",
+    "commit": "814d02ea415a7aa95f2bfb0d6d2baada56503e44"
+  },
+  "rose-pine": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/rose-pine",
+    "url": null,
+    "commit": null
+  },
+  "rose-pine-dark": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/rose-pine-dark",
+    "url": "https://github.com/guilhermetk/omarchy-rose-pine-dark",
+    "commit": "ebe6ad030abd32cb6689b081ba0767c785441cb0"
+  },
+  "rose-pine-moon": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/rose-pine-moon",
+    "url": "https://github.com/Memnoc/omarchy-rose-pine-moon-theme",
+    "commit": "e44dcc84ac6c49f52340dc4aa53955b7143a4ccd"
+  },
+  "roseofdune": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/roseofdune",
+    "url": "https://github.com/HANCORE-linux/omarchy-roseofdune-theme",
+    "commit": "d53c6ac4fae4eba465fadbebf8b6b43bbf4f1739"
+  },
+  "ryu": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/ryu",
+    "url": "https://github.com/HANCORE-linux/omarchy-ryu-theme",
+    "commit": "8ec40701804590790def22d6a41d5b8cdc5626f7"
+  },
+  "saga": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/saga",
+    "url": "https://github.com/HANCORE-linux/omarchy-saga-theme",
+    "commit": "945902081bebf5fa79a70511808dad9a3f2832bd"
+  },
+  "sakura": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/sakura",
+    "url": "https://github.com/bjarneo/omarchy-sakura-theme",
+    "commit": "dfeae9b8d245af05e16cf8bf3b89b743c94573d3"
+  },
+  "sakura-mochi": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/sakura-mochi",
+    "url": "https://github.com/OldJobobo/omarchy-sakura-mochi-theme",
+    "commit": "a64fd93e43838366eab7884db6c49721e4d0d27c"
+  },
+  "sapphire": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/sapphire",
+    "url": "https://github.com/HANCORE-linux/omarchy-sapphire-theme",
+    "commit": "8d8592c183299579af147a1d2a5e93127926d08d"
+  },
+  "shadesofjade": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/shadesofjade",
+    "url": "https://github.com/HANCORE-linux/omarchy-shadesofjade-theme",
+    "commit": "b1b12ce9e98182fc115818a42b3727f13c883dc1"
+  },
+  "snow": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/snow",
+    "url": "https://github.com/bjarneo/omarchy-snow-theme",
+    "commit": "bfccca5bda969bc619af9db9f37da91e9fd52947"
+  },
+  "snow-black": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/snow_black",
+    "url": "https://github.com/ankur311sudo/snow_black",
+    "commit": "394d5d9f128b8c281c92a4e50ee15bcc16a825ed"
+  },
+  "solarized": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/solarized",
+    "url": "https://github.com/Gazler/omarchy-solarized-theme",
+    "commit": "236840f05449f1becfafd1f5995c2c5c9c79ca70"
+  },
+  "solarized-light": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/solarized-light",
+    "url": "https://github.com/dfrico/omarchy-solarized-light-theme",
+    "commit": "e7cd8f3024f34105e31faa8d83db1852a5131850"
+  },
+  "solarizedosaka": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/solarizedosaka",
+    "url": "https://github.com/motorsss/omarchy-solarizedosaka-theme",
+    "commit": "4cb12e9d4321f76dd7b7fdbb22c93a4d5633be95"
+  },
+  "solitude": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/solitude",
+    "url": null,
+    "commit": null
+  },
+  "space-monkey": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/space-monkey",
+    "url": "https://github.com/TyRichards/omarchy-space-monkey-theme",
+    "commit": "814af8923d701e779d2894bd1b2b1d4cbec820ff"
+  },
+  "starry-night": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/starry-night",
+    "url": "https://github.com/juangalt/omarchy-starry-night-theme",
+    "commit": "025b35a68d65ba8deeff7d3a63681e3ccf25fc3a"
+  },
+  "starsend": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/starsend",
+    "url": "https://github.com/r-bart/omarchy-starsend-theme",
+    "commit": "3fe4b3a0148b1cd65b772aa96c93578c1efd67ec"
+  },
+  "starship": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/starship",
+    "url": null,
+    "commit": null
+  },
+  "sunset": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/sunset",
+    "url": "https://github.com/rondilley/omarchy-sunset-theme",
+    "commit": "48d01770e062f0cd6fff7bb9b7dc48f8b1d65731"
+  },
+  "sunset-drive": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/sunset-drive",
+    "url": "https://github.com/tahayvr/omarchy-sunset-drive-theme",
+    "commit": "1e6804ed91d531c23fb7487b65db81bb5818c485"
+  },
+  "super-game-bro": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/super-game-bro",
+    "url": "https://github.com/TyRichards/omarchy-super-game-bro-theme",
+    "commit": "940e5a056a2324871bdde166eb82c6809a68a94f"
+  },
+  "synthwave84": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/synthwave84",
+    "url": "https://github.com/omacom-io/omarchy-synthwave84-theme",
+    "commit": "283dbcf17c3a500b7d3ddfce081e1dc2b3641172"
+  },
+  "temerald": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/temerald",
+    "url": "https://github.com/Ahmad-Mtr/omarchy-temerald-theme",
+    "commit": "d3c12b1881058860fede00ccf9f222f86dd94f6f"
+  },
+  "terminus": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/terminus",
+    "url": "https://github.com/r-bart/omarchy-terminus-theme",
+    "commit": "097faba47b7bae83be4bd2b13478359df70f5f6d"
+  },
+  "thegreek": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/thegreek",
+    "url": "https://github.com/HANCORE-linux/omarchy-thegreek-theme",
+    "commit": "b6754c11c81778f2748ce00308c2391cc875a1d1"
+  },
+  "tokyo-night": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/tokyo-night",
+    "url": null,
+    "commit": null
+  },
+  "tokyoled": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/tokyoled",
+    "url": "https://github.com/Justin-De-Sio/omarchy-tokyoled-theme",
+    "commit": "0dee4c1e1a783b5a8b3c4f4161e4e054e8e011c7"
+  },
+  "tycho": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/tycho",
+    "url": "https://github.com/leonardobetti/omarchy-tycho",
+    "commit": "8f759e7b568b3917544c42c52b4960c28fac7107"
+  },
+  "van-gogh": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/van-gogh",
+    "url": "https://github.com/Nirmal314/omarchy-van-gogh-theme",
+    "commit": "4afc00a392d7ee416e50b3634d429f0043166d9a"
+  },
+  "vantablack": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/vantablack",
+    "url": null,
+    "commit": null
+  },
+  "vault": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/vault",
+    "url": "https://github.com/r-bart/omarchy-vault-theme",
+    "commit": "8c4c10d4969e4aaa329508be17602ab0a4f736c5"
+  },
+  "velvetnight": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/velvetnight",
+    "url": "https://github.com/HANCORE-linux/omarchy-velvetnight-theme",
+    "commit": "41f3547c1e8425ea0a5f1a7cd5cfd171e2d8f657"
+  },
+  "venice-from-above-omarchy": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/venice-from-above-omarchy",
+    "url": "https://github.com/mattbbia/venice-from-above-omarchy",
+    "commit": "f19b64add63932b855d9b3b4cd2cb8e46f16fdb3"
+  },
+  "vesper": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/vesper",
+    "url": "https://github.com/thmoee/omarchy-vesper-theme",
+    "commit": "427bb540bdba152cd48f7f1e4274f96a11cd591e"
+  },
+  "vhs80": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/vhs80",
+    "url": "https://github.com/tahayvr/omarchy-vhs80-theme",
+    "commit": "c43b2397b5d6a46c14c4ea1072d807d97ae43621"
+  },
+  "void": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/void",
+    "url": "https://github.com/vyrx-dev/omarchy-void-theme",
+    "commit": "c1fc95a579bf5c5e1d3b9edd43b1df501b5bd5c9"
+  },
+  "vulkanite": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/vulkanite",
+    "url": "https://github.com/kyerpotts/omarchy-vulkanite-theme",
+    "commit": "8383b5cb1d451d3b76d60445b2f8f00b1d2a702a"
+  },
+  "waffle-cat": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/waffle-cat",
+    "url": "https://github.com/OldJobobo/omarchy-waffle-cat-theme",
+    "commit": "8ffff576d47cac48ca6606513b128bffa0c227fb"
+  },
+  "waveform-dark": {
+    "format": "omarchy-legacy",
+    "source": "/mnt/zer0models/themes/omarchy/waveform-dark",
+    "url": "https://github.com/hipsterusername/omarchy-waveform-dark-theme",
+    "commit": "9283fc20d116ab8f620820f797849857a0e3024a"
+  },
+  "white": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/white",
+    "url": null,
+    "commit": null
+  },
+  "whitegold": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/whitegold",
+    "url": "https://github.com/HANCORE-linux/omarchy-whitegold-theme",
+    "commit": "9c1be0b98adeef7d7677bf45d81dbdbf886c391b"
+  },
+  "windows-dark-mode": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/windows-dark-mode",
+    "url": "https://github.com/oldjobobo/omarchy-windows-dark-mode-theme",
+    "commit": "d21208fe6973f1fe9bbe9bfc5eee063473cccece"
+  },
+  "winslow": {
+    "format": "omarchy-colors-toml",
+    "source": "/mnt/zer0models/themes/omarchy/winslow",
+    "url": "https://github.com/chipkoziara/omarchy-winslow-theme",
+    "commit": "be08a1d6d36e79e8d11d59a76fbc5dc3e7076c65"
+  }
+}
