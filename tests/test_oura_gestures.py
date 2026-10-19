@@ -126,7 +126,7 @@ def test_actions_loaded_and_replay_never_executes(tmp_path, capsys):
         lines.append(json.dumps({"t": t, "x": 720 if i in (20, 31) else 0, "y": 0, "z": 1000}))
     trace.write_text("\n".join(lines) + "\n")
     assert oura.main(["replay", str(trace), "--config", str(cfg)]) == 0
-    assert 'double_tap: DRY RUN ["tern", "ctl", "carly", "open"]' in capsys.readouterr().out
+    assert 'double_tap: DRY RUN broker /v1/gesture' in capsys.readouterr().out
 
 
 def test_missing_auth_fails_before_ble(capsys):
