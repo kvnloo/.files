@@ -16,6 +16,17 @@ import subprocess
 import sys
 import time
 import tomllib
+import uuid
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+BROKER_OPENER = build_opener(NoRedirect()).open
 from typing import Callable
 
 SERVICE = "98ed0001-a541-11e4-b6a0-0002a5d5c51b"
@@ -33,8 +44,8 @@ def accel_samples(frame: bytes) -> list[tuple[int, int, int]]:
 
 
 def realtime_start(seconds: int) -> bytes:
-    if not 1 <= seconds <= 3600:
-        raise ValueError("seconds must be 1..3600 (bounded, not always-on)")
+    if not 1 <= seconds <= 300:
+        raise ValueError("seconds must be 1..300 (bounded, not always-on)")
     minutes = (seconds + 59) // 60
     return b"\x06\x07\x20\x00\x00\x00" + minutes.to_bytes(2, "little") + b"\x00"
 
@@ -209,6 +220,96 @@ class ActionRouter:
                 print(f"{gesture}: triggered", flush=True)
         except (OSError, subprocess.TimeoutExpired) as error:
             print(f"{gesture}: action unavailable: {error}", file=sys.stderr)
+
+
+class BrokerRouter:
+    """One paired source, one bounded listener lease; bearer never enters argv/logs."""
+
+    def __init__(self, base: str, token_file: Path | None, *, dry_run=False,
+                 fallback: ActionRouter | None = None, opener=BROKER_OPENER):
+        parsed = urlsplit(base)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username
+                or parsed.password or parsed.query or parsed.fragment
+                or parsed.path not in ("", "/")):
+            raise ValueError("broker must be an HTTPS origin without credentials/path")
+        self.base = base.rstrip("/")
+        self.dry_run, self.fallback, self.opener = dry_run, fallback, opener
+        self.device = None
+        self.lease_deadline = 0.0
+        self.token = ""
+        if not dry_run:
+            if token_file is None:
+                raise ValueError("listen requires --broker-token-file (paired z0live token, mode 600)")
+            with token_file.expanduser().open("r", encoding="ascii") as handle:
+                mode = os.fstat(handle.fileno()).st_mode
+                if not stat.S_ISREG(mode) or mode & 0o077:
+                    raise ValueError("broker token file must be regular and private (chmod 600)")
+                self.token = handle.read(4097).strip()
+            if (not self.token or len(self.token) > 4096
+                    or any(c.isspace() for c in self.token)):
+                raise ValueError("invalid broker token file")
+
+    def request(self, path: str, body=None):
+        request = Request(self.base + path,
+                          data=None if body is None else json.dumps(body).encode(),
+                          headers={"Authorization": "Bearer " + self.token,
+                                   "Content-Type": "application/json"},
+                          method="GET" if body is None else "POST")
+        # urllib follows redirects by default. Refuse cross-origin redirects before
+        # sending credentials using the dedicated no-redirect opener in production.
+        with self.opener(request, timeout=1.0) as response:
+            if urlsplit(response.geturl()).netloc != urlsplit(self.base).netloc:
+                raise RuntimeError("broker redirect refused")
+            result = json.loads(response.read(65537))
+        if not isinstance(result, dict):
+            raise RuntimeError("invalid broker response")
+        return result
+
+    def claim(self, seconds: int):
+        if self.dry_run:
+            return
+        self.device = self.request("/v1/devices/self").get("device_id")
+        if not isinstance(self.device, str) or not self.device or len(self.device) > 128:
+            raise RuntimeError("broker identity unavailable")
+        started = time.monotonic()
+        result = self.request("/v1/gesture/listener", {
+            "source_device": self.device, "enabled": True, "ttl_seconds": seconds})
+        if result.get("ok") is not True:
+            raise RuntimeError("listener lease refused")
+        self.lease_deadline = started + seconds
+
+    def release(self):
+        if self.dry_run or not self.device:
+            return
+        try:
+            self.request("/v1/gesture/listener", {
+                "source_device": self.device, "enabled": False, "ttl_seconds": 1})
+        except Exception:
+            print("Listener lease release unavailable; bounded expiry remains.", file=sys.stderr)
+        finally:
+            self.lease_deadline = 0.0
+
+    def dispatch(self, gesture: str) -> None:
+        if gesture not in {"double_tap", "triple_tap"}:
+            return
+        if self.dry_run:
+            print(f"{gesture}: DRY RUN broker /v1/gesture", flush=True)
+            return
+        if not self.device or time.monotonic() >= self.lease_deadline:
+            print("Gesture ignored: listener lease expired.", file=sys.stderr)
+            return
+        try:
+            result = self.request("/v1/gesture", {
+                "gesture": gesture, "source_device": self.device,
+                "ts": time.time(), "nonce": str(uuid.uuid4())})
+            if result.get("ok") is not True:
+                raise RuntimeError("gesture not accepted")
+            print(f"{gesture}: broker accepted (not an audio-start receipt)", flush=True)
+        except Exception:
+            # No retry with a new nonce: an ambiguous POST may already be accepted.
+            print(f"{gesture}: broker unavailable; microphone not started locally", file=sys.stderr)
+            if self.fallback:
+                self.fallback.dispatch(gesture)  # UI-only, explicitly requested fallback.
 
 
 async def scan() -> None:
