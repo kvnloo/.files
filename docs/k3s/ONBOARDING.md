@@ -12,7 +12,7 @@ can also be read-only clients. Setup is opt-in and never runs from
 | Desktop, RTX 3080 Ti | server + GPU worker | `sudo scripts/setup-k3s.sh server`, then `sudo scripts/setup-k3s.sh gpu`, then `scripts/setup-k3s.sh apply` |
 | mbp (CachyOS) | CPU agent for API-bound work (free-model relay jobs, tests). Joined 2026-10-19. | copy the token (below), then `sudo scripts/setup-k3s.sh agent <desktop-tailnet-ip>`, then `scripts/setup-k3s.sh admit mbp` from the desktop |
 | RTX 2080 Super PC | GPU agent, when it is back online | as mbp, then `sudo scripts/setup-k3s.sh gpu` after labelling it `z0.dev/gpu=rtx2080s` |
-| S25 Ultra, omarchy-phone | client only | `ssh 0 'KUBECONFIG=~/.kube/k3s.yaml kubectl get pods -A'` |
+| S25 Ultra, omarchy-phone | polite host-lane worker (no k3s: PRoot has no cgroups/netlink); kubectl client | `scripts/fleet enroll omarchy-phone` from the desktop; docs/fleet/README.md#phones |
 
 ## Changes from the original plan (issue #23)
 
@@ -60,7 +60,22 @@ kubectl create -f config/k3s/smoke/isolation-job.yaml  # expect ISOLATION_OK: DN
 kubectl create -f config/k3s/smoke/gateway-job.yaml    # expect GATEWAY_OK: only the token-gated factory gateway is reachable
 ```
 
+```sh
+kubectl create -f config/k3s/smoke/class-job.yaml      # expect CLASS_OK node=mbp (class-build)
+sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # CLASS_OK node=groot
+scripts/fleet health                                   # every node OK; see docs/fleet/README.md
+scripts/fleet run mbp -- uname -a                      # host lane as agentjob
+```
+
 Finished smoke Jobs delete themselves after 10 minutes.
+
+## Worker hardening, health and the host lane
+
+Node hardening (journald cap, key-only sshd, ufw on tailscale0, k3s restart and
+OOM protection, kubelet reservations and eviction), job-class labels, the
+`fleet health` cordon loop and the `fleet run` host lane are in
+[docs/fleet/README.md](../fleet/README.md). After joining a node, run
+`scripts/fleet enroll <node>` and `scripts/fleet labels`.
 
 ## Untrusted pods start only after their network policy is live
 

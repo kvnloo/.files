@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+"""fleet: run work on the owner's tailnet workers and keep them healthy (run on groot).
+
+  fleet nodes                                   registry + live probe, one line per node
+  fleet run [opts] -- CMD...                    run CMD on the least-loaded eligible node
+      --node NAME|auto  --class C  --arch amd64|arm64  --tolerate phone
+      --mem 2G  --cpus 2  --timeout 3600  --src DIR (default: cwd)  --no-src
+      --fetch PATH (repeatable, relative to the job dir)  --keep
+  fleet kill NODE JOB_ID                        stop a running host-lane job
+  fleet health [--node N] [--strikes K] [--set key=value]   probe, judge, cordon/uncordon
+  fleet labels                                  apply class labels/taints from config/fleet/nodes.yaml
+  fleet enroll NODE                             harden a registered Linux node over root ssh
+  fleet update NODE [--apply]                   show pending updates; --apply cordons, upgrades, uncordons
+  fleet install-timer                           user systemd timer: `fleet health` every 2 minutes
+
+Host-lane jobs (`fleet run`) are for our own builds and tests that need a host
+toolchain. They run as the unprivileged `agentjob` user inside a capped
+systemd scope (Linux) or under polite-run (phones). Untrusted code goes through
+the k3s `factory` queue instead (oss-factory `factory submit`).
+"""
+import argparse
+import concurrent.futures as cf
+import json
+import os
+import random
+import re
+import shlex
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import yaml
+
+REPO = Path(__file__).resolve().parent.parent
+REGISTRY = REPO / "config/fleet/nodes.yaml"
+STATE = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
+KUBECONFIG = os.environ.get("KUBECONFIG", str(Path.home() / ".kube/k3s.yaml"))
+KEY = os.environ.get("FLEET_SSH_KEY", str(Path.home() / ".ssh/id_ed25519"))
+ANNOT = "z0.dev/cordoned-by"
+
+
+def die(msg, code=1):
+    print(f"fleet: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def merge(a, b):
+    out = dict(a)
+    for k, v in (b or {}).items():
+        out[k] = merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def registry():
+    reg = yaml.safe_load(REGISTRY.read_text())
+    nodes = {}
+    for name, n in reg["nodes"].items():
+        n = merge({"health": reg["defaults"]["health"], "lane": reg["defaults"]["lane"]}, n)
+        n["name"] = name
+        n.setdefault("kind", "linux")
+        n.setdefault("ssh_user", "agentjob")
+        n.setdefault("ssh_port", 22)
+        n.setdefault("classes", [])
+        n.setdefault("taints", [])
+        n["k8s"] = n["kind"] == "linux"
+        n["lane_enabled"] = n["role"] == "worker"
+        nodes[name] = n
+    return reg, nodes
+
+
+def mb(s):
+    s = str(s).strip().upper()
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)([KMGT]?)I?B?", s)
+    if not m:
+        die(f"bad size {s}")
+    return int(float(m.group(1)) * {"": 1 / 2**20, "K": 1 / 1024, "M": 1, "G": 1024, "T": 2**20}[m.group(2)])
+
+
+def ssh_cmd(n, user=None, port=None):
+    user = user or n["ssh_user"]
+    port = port or n["ssh_port"]
+    ctl = Path.home() / ".ssh"
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "IdentitiesOnly=yes",
+            "-i", KEY, "-o", "ServerAliveInterval=30", "-o", "ControlMaster=auto",
+            "-o", f"ControlPath={ctl}/cm-fleet-%r@%h:%p", "-o", "ControlPersist=120",
+            "-p", str(port), f"{user}@{n['tailnet_ip']}"]
+
+
+def probe_path(n):
+    return "~/.local/lib/fleet/fleet-node-probe" if n["kind"] == "phone" else "/usr/local/bin/fleet-node-probe"
+
+
+def probe(n):
+    """Run the node's probe; groot probes itself locally."""
+    try:
+        if n["role"] == "server":
+            out = subprocess.run([sys.executable, str(REPO / "scripts/fleet-node-probe")],
+                                 capture_output=True, text=True, timeout=60).stdout
+        else:
+            out = subprocess.run(ssh_cmd(n) + [f"python3 {probe_path(n)}"], capture_output=True,
+                                 text=True, timeout=90).stdout
+        return json.loads(out.strip().splitlines()[-1])
+    except (subprocess.TimeoutExpired, IndexError, ValueError) as e:
+        return {"error": f"probe failed: {type(e).__name__}"}
+
+
+def kc(*args, check=True):
+    return subprocess.run(["kubectl", *args], env={**os.environ, "KUBECONFIG": KUBECONFIG},
+                          capture_output=True, text=True, check=check)
+
+
+def k8s_nodes():
+    try:
+        items = json.loads(kc("get", "nodes", "-o", "json").stdout)["items"]
+    except (subprocess.CalledProcessError, ValueError):
+        return {}
+    out = {}
+    for it in items:
+        conds = {c["type"]: c["status"] for c in it["status"].get("conditions", [])}
+        out[it["metadata"]["name"]] = {
+            "conditions": conds,
+            "unschedulable": bool(it["spec"].get("unschedulable")),
+            "cordoned_by": it["metadata"].get("annotations", {}).get(ANNOT),
+        }
+    return out
+
+
+def tailnet_online():
+    try:
+        st = json.loads(subprocess.run(["tailscale", "status", "--json"], capture_output=True,
+                                       text=True, timeout=20).stdout)
+    except (ValueError, subprocess.TimeoutExpired):
+        return {}
+    out = {st["Self"]["TailscaleIPs"][0]: True}
+    for p in st.get("Peer", {}).values():
+        if p.get("TailscaleIPs"):
+            out[p["TailscaleIPs"][0]] = bool(p.get("Online"))
+    return out
+
+
+# ---------------------------------------------------------------- health
+
+def judge(n, p, k8s, online, overrides):
+    """Return a list of failure reasons (empty = healthy) and a list of warnings."""
+    h = merge(n["health"], overrides)
+    bad, warn = [], []
+    # The probe crossing the tailnet is the stronger signal; a peer's Online flag can lag.
+    if "error" in p and not online.get(n["tailnet_ip"], False):
+        bad.append("tailscale offline")
+    if "error" in p:
+        bad.append(p["error"])
+        return bad, warn
+    if p["mem_available_mb"] < int(h["min_mem_available_mb"]):
+        bad.append(f"memory {p['mem_available_mb']}MiB < {h['min_mem_available_mb']}MiB")
+    for key in ("disk_root", "disk_k3s", "disk_lane"):
+        d = p.get(key)
+        if d and d["free_gb"] < float(h["min_disk_free_gb"]):
+            bad.append(f"{key} {d['free_gb']}GiB free < {h['min_disk_free_gb']}GiB")
+    if p.get("services"):
+        for unit, state in p["services"].items():
+            if unit.startswith("k3s") and not n["k8s"]:
+                continue
+            if state != "active":
+                bad.append(f"{unit} {state}")
+    if p.get("max_temp_c") and p["max_temp_c"] > float(h["max_temp_c"]):
+        bad.append(f"temperature {p['max_temp_c']}C")
+    pw = p.get("power") or {}
+    if pw.get("source") == "unreadable" and n["kind"] == "phone":
+        bad.append("battery unreadable (fail closed)")
+    for b in pw.get("batteries", []):
+        charging = pw.get("on_ac") or b.get("status") in ("Charging", "Full")
+        if not charging and b.get("pct") is not None and b["pct"] < int(h["min_battery_pct_on_battery"] if n["kind"] != "phone" else 50):
+            bad.append(f"on battery at {b['pct']}%")
+        elif not charging:
+            warn.append(f"on battery ({b.get('pct')}%)")
+    if n["kind"] == "phone":
+        if (pw.get("battery_temp_c") or 0) > 40:
+            bad.append(f"battery {pw['battery_temp_c']}C")
+        if (pw.get("android_thermal_status") or 0) > 1:
+            bad.append(f"android thermal status {pw['android_thermal_status']}")
+    if p.get("maintenance"):
+        bad.append("maintenance")
+    if n["k8s"]:
+        kn = k8s.get(n["name"])
+        if not kn:
+            bad.append("not a k8s node")
+        else:
+            c = kn["conditions"]
+            if c.get("Ready") != "True":
+                bad.append(f"k8s Ready={c.get('Ready')}")
+            for t in ("MemoryPressure", "DiskPressure", "PIDPressure"):
+                if c.get(t) == "True":
+                    bad.append(f"k8s {t}")
+    up = p.get("updates") or {}
+    if up.get("pending"):
+        warn.append(f"{up['pending']} updates pending ({up.get('core_pending', 0)} core)")
+    if p.get("reboot_required") or up.get("reboot_required"):
+        warn.append("reboot required (kernel updated)")
+    return bad, warn
+
+
+def cmd_health(args):
+    reg, nodes = registry()
+    sel = [nodes[args.node]] if args.node else list(nodes.values())
+    overrides = {}
+    for kv in args.set or []:
+        k, v = kv.split("=", 1)
+        overrides[k] = v
+    k8s = k8s_nodes()
+    online = tailnet_online()
+    with cf.ThreadPoolExecutor(8) as ex:
+        probes = dict(zip([n["name"] for n in sel], ex.map(probe, sel)))
+    hdir = STATE / "health"
+    hdir.mkdir(parents=True, exist_ok=True)
+    state_f = hdir / "state.json"
+    state = json.loads(state_f.read_text()) if state_f.exists() else {}
+    rc = 0
+    for n in sel:
+        name = n["name"]
+        bad, warn = judge(n, probes[name], k8s, online, overrides)
+        s = state.setdefault(name, {"bad": 0, "good": 0, "paused": False})
+        if bad:
+            s["bad"] += 1; s["good"] = 0
+        else:
+            s["good"] += 1; s["bad"] = 0
+        strikes = int(args.strikes or n["health"]["strikes"])
+        action = "none"
+        mode = n["health"]["on_unhealthy"]
+        kn = k8s.get(name)
+        if bad and s["bad"] >= strikes:
+            if mode == "cordon" and kn and not kn["unschedulable"]:
+                kc("cordon", name)
+                kc("annotate", "--overwrite", "node", name, f"{ANNOT}=fleet-health",
+                   f"z0.dev/unhealthy-reason={'; '.join(bad)[:250]}")
+                action = "cordoned"
+            elif mode == "pause" and not s["paused"]:
+                action = "paused"
+            s["paused"] = True
+        elif not bad and s["good"] >= strikes and s.get("paused"):
+            if mode == "cordon" and kn and kn["unschedulable"] and kn["cordoned_by"] == "fleet-health":
+                kc("uncordon", name)
+                kc("annotate", "node", name, f"{ANNOT}-", "z0.dev/unhealthy-reason-", check=False)
+                action = "uncordoned"
+            elif mode == "pause":
+                action = "resumed"
+            s["paused"] = False
+        rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
+               "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
+        (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
+        with open(hdir / "history.jsonl", "a") as f:
+            f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
+        flag = "OK " if not bad else "BAD"
+        print(f"{flag} {name:14} action={action:10} {'; '.join(bad) or '-'}"
+              + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
+        rc |= bool(bad)
+    state_f.write_text(json.dumps(state, indent=1) + "\n")
+    hist = hdir / "history.jsonl"
+    lines = hist.read_text().splitlines()
+    if len(lines) > 20000:
+        hist.write_text("\n".join(lines[-10000:]) + "\n")
+    return rc
+
+
+# ---------------------------------------------------------------- run
+
+def eligible(n, args, state):
+    if not n["lane_enabled"]:
+        return "no host lane"
+    if args.cls and args.cls not in n["classes"]:
+        return f"not class {args.cls}"
+    if args.arch and n.get("arch") != args.arch:
+        return f"arch {n.get('arch')}"
+    if args.node in (None, "auto") and any(t not in (args.tolerate or []) for t in n["taints"]):
+        return f"taint {n['taints']} not tolerated"
+    if state.get(n["name"], {}).get("paused"):
+        return "paused by fleet health"
+    return None
+
+
+def cmd_run(args):
+    reg, nodes = registry()
+    if not args.cmd:
+        die("usage: fleet run [opts] -- CMD...")
+    st_f = STATE / "health/state.json"
+    state = json.loads(st_f.read_text()) if st_f.exists() else {}
+    if args.node and args.node != "auto":
+        if args.node not in nodes:
+            die(f"unknown node {args.node}")
+        cands = [nodes[args.node]]
+        why = eligible(cands[0], args, {})
+        if why and not why.startswith("taint"):
+            die(f"{args.node}: {why}")
+    else:
+        cands, skipped = [], []
+        for n in nodes.values():
+            why = eligible(n, args, state)
+            (skipped.append(f"{n['name']}({why})") if why else cands.append(n))
+        if not cands:
+            die("no eligible node: " + ", ".join(skipped), 75)
+    k8s = k8s_nodes()
+    with cf.ThreadPoolExecutor(8) as ex:
+        probes = dict(zip([n["name"] for n in cands], ex.map(probe, cands)))
+    best, notes = None, []
+    for n in cands:
+        p = probes[n["name"]]
+        need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
+        if "error" in p:
+            notes.append(f"{n['name']}: {p['error']}"); continue
+        if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
+            notes.append(f"{n['name']}: cordoned"); continue
+        if p["mem_available_mb"] < need:
+            notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
+        score = p["load1"] / max(p["ncpu"], 1) + (1 if n["kind"] == "phone" else 0)
+        if best is None or score < best[0]:
+            best = (score, n, p)
+    if not best:
+        die("no node has room now: " + "; ".join(notes), 75)
+    _, n, p = best
+    jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
+    base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
+    jdir = f"{base}/{jid}"
+    logdir = STATE / "runs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    log = logdir / f"{jid}-{n['name']}.log"
+    print(f"fleet: job {jid} -> {n['name']} (load {p['load1']}/{p['ncpu']} cpu, "
+          f"{p['mem_available_mb']}MiB available); log {log}", file=sys.stderr)
+    ssh = ssh_cmd(n)
+    subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
+    if not args.no_src:
+        src = Path(args.src or os.getcwd()).resolve()
+        if (src / ".git").exists():
+            files = subprocess.run(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"],
+                                   capture_output=True, check=True).stdout
+            tar = subprocess.Popen(["tar", "-C", str(src), "--null", "-T", "-", "-czf", "-"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
+            tar.stdin.write(files); tar.stdin.close(); tar.stdout.close()
+            send.wait(); tar.wait()
+        else:
+            tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
+            send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
+            tar.stdout.close(); send.wait(); tar.wait()
+        if send.returncode:
+            die("source transfer failed")
+    cmd = " ".join(shlex.quote(c) for c in args.cmd)
+    mem = mb(args.mem or n["lane"]["default_mem"])
+    floor = int(n["lane"]["mem_floor_mb"])
+    if n["kind"] == "phone":
+        inner = (f"cd {jdir}/src && exec ~/.local/lib/fleet/polite-run --mem-mb {mem} --floor-mb {floor} "
+                 f"--cpus {n['lane'].get('cpus', '0-3')} --timeout {args.timeout} -- "
+                 f"env HOME=$HOME/{jdir[2:]} TMPDIR=$HOME/{jdir[2:]} bash -c {shlex.quote(cmd)}")
+    else:
+        cpu = f"{int(float(args.cpus) * 100)}%" if args.cpus else n["lane"]["cpu_quota"]
+        inner = (f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
+                 f"if [ $avail -lt {floor + mem} ]; then echo \"fleet: only ${{avail}}MiB available\" >&2; exit 75; fi; "
+                 f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
+                 f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
+                 f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; exit $?")
+    with open(log, "w") as lf:
+        lf.write(f"# fleet job {jid} node={n['name']} cmd={cmd}\n")
+        proc = subprocess.Popen(ssh + [inner], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        for line in proc.stdout:
+            sys.stdout.buffer.write(line); sys.stdout.flush()
+            lf.write(line.decode(errors="replace"))
+        rc = proc.wait()
+        lf.write(f"# exit {rc}\n")
+    for path in args.fetch or []:
+        dest = logdir / jid
+        dest.mkdir(exist_ok=True)
+        t = subprocess.Popen(ssh + [f"tar -C {jdir} -czf - {shlex.quote(path)}"], stdout=subprocess.PIPE)
+        subprocess.run(["tar", "-xzf", "-", "-C", str(dest)], stdin=t.stdout)
+        t.wait()
+        print(f"fleet: fetched {path} -> {dest}", file=sys.stderr)
+    if not args.keep:
+        subprocess.run(ssh + [f"rm -rf {jdir}"], check=False)
+    print(f"fleet: job {jid} on {n['name']} exited {rc}", file=sys.stderr)
+    return rc
+
+
+def cmd_kill(args):
+    _, nodes = registry()
+    n = nodes[args.node]
+    if n["kind"] == "phone":
+        r = subprocess.run(ssh_cmd(n) + [f"pkill -TERM -f -- 'fleet-jobs/{args.job}/' ; true"])
+    else:
+        r = subprocess.run(ssh_cmd(n) + [f"systemctl --user stop fleet-{args.job}.scope"])
+    return r.returncode
+
+
+def cmd_nodes(args):
+    reg, nodes = registry()
+    k8s = k8s_nodes()
+    online = tailnet_online()
+    with cf.ThreadPoolExecutor(8) as ex:
+        probes = dict(zip(nodes, ex.map(probe, nodes.values())))
+    print(f"{'NODE':14} {'KIND':6} {'ARCH':6} {'CLASSES':22} {'ONLINE':6} {'K8S':14} {'LOAD':9} {'MEM_AVAIL':9} POWER")
+    for name, n in nodes.items():
+        p = probes[name]
+        kn = k8s.get(name)
+        ks = "-" if not kn else ("cordoned" if kn["unschedulable"] else "Ready" if kn["conditions"].get("Ready") == "True" else "NotReady")
+        pw = p.get("power") or {}
+        b = (pw.get("batteries") or [{}])[0]
+        pws = "mains" if not pw.get("batteries") else f"{b.get('pct')}% {b.get('status')}"
+        load = f"{p.get('load1', '?')}/{p.get('ncpu', '?')}"
+        print(f"{name:14} {n['kind']:6} {n.get('arch', '?'):6} {','.join(n['classes']) or '-':22} "
+              f"{'yes' if online.get(n['tailnet_ip']) else 'no':6} {ks:14} {load:9} "
+              f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws}")
+    for name, c in reg.get("candidates", {}).items():
+        print(f"{name:14} (candidate) {c['note']}")
+
+
+def cmd_labels(args):
+    reg, nodes = registry()
+    k8s = k8s_nodes()
+    for name, n in nodes.items():
+        if not n["k8s"] or name not in k8s:
+            continue
+        labels = [f"z0.dev/class-{c}={'true' if c in n['classes'] else 'false'}" for c in reg["classes"]]
+        kc("label", "--overwrite", "node", name, *labels)
+        for t in n["taints"]:
+            kc("taint", "node", name, t, "--overwrite")
+        print(f"{name}: {' '.join(labels)} {' '.join(n['taints'])}")
+
+
+def cmd_enroll(args):
+    reg, nodes = registry()
+    if args.node not in nodes:
+        die(f"{args.node} is not under nodes in {REGISTRY}; add it there first")
+    n = nodes[args.node]
+    if n["kind"] == "phone":
+        return subprocess.run([str(REPO / "scripts/fleet-phone-setup.sh"), f"{n['ssh_user']}@{n['tailnet_ip']}",
+                               "--port", str(n["ssh_port"])] + (["--model", n["model"]] if n.get("model") else [])).returncode
+    root = ssh_cmd(n, user="root", port=args.port or n["ssh_port"])
+    _, server = next((k, v) for k, v in nodes.items() if v["role"] == "server")
+    kl = n.get("kubelet", {})
+    kargs = []
+    for flag, key in (("system-reserved", "system_reserved"), ("kube-reserved", "kube_reserved"),
+                      ("eviction-hard", "eviction_hard"), ("eviction-soft", "eviction_soft"),
+                      ("eviction-soft-grace-period", "eviction_soft_grace")):
+        if kl.get(key):
+            kargs += ["--kubelet-arg", f"{flag}={kl[key]}"]
+    lane = n["lane"]
+    remote = ["bash", "/opt/dotfiles-k3s/scripts/fleet-harden.sh", "worker",
+              "--controller-ip", server["tailnet_ip"], "--controller-key", "/opt/dotfiles-k3s/controller.pub",
+              "--lane-mem-max", lane["mem_max"], "--lane-cpu-quota", lane["cpu_quota"],
+              "--lane-tasks-max", str(lane["tasks_max"]), *kargs]
+    tar = subprocess.Popen(["tar", "-C", str(REPO), "-cf", "-", "scripts/fleet-harden.sh", "scripts/fleet-node-probe",
+                            "scripts/setup-k3s.sh", "config/k3s"], stdout=subprocess.PIPE)
+    r = subprocess.run(root + ["install -d -m 0700 /opt/dotfiles-k3s && tar -xf - -C /opt/dotfiles-k3s"], stdin=tar.stdout)
+    tar.wait()
+    if r.returncode:
+        die("copy to node failed")
+    pub = Path(KEY + ".pub").read_text()
+    subprocess.run(root + ["install -m 0644 /dev/stdin /opt/dotfiles-k3s/controller.pub"], input=pub.encode(), check=True)
+    return subprocess.run(root + [" ".join(shlex.quote(a) for a in remote)]).returncode
+
+
+def cmd_update(args):
+    _, nodes = registry()
+    n = nodes[args.node]
+    if n["kind"] != "linux" or n["role"] != "worker":
+        die("fleet update handles Linux workers; update groot and phones by hand")
+    p = probe(n)
+    print(json.dumps(p.get("updates"), indent=1))
+    if not args.apply:
+        return 0
+    root = ssh_cmd(n, user="root")
+    kc("cordon", n["name"])
+    kc("annotate", "--overwrite", "node", n["name"], f"{ANNOT}=fleet-update")
+    kc("drain", n["name"], "--ignore-daemonsets", "--delete-emptydir-data", "--timeout=600s", check=False)
+    r = subprocess.run(root + ["touch /var/lib/fleet/maintenance; pacman -Syu --noconfirm; rc=$?; "
+                               "rm -f /var/lib/fleet/maintenance; /usr/local/lib/fleet/updates-check; exit $rc"])
+    if r.returncode == 0:
+        kc("uncordon", n["name"])
+        kc("annotate", "node", n["name"], f"{ANNOT}-", check=False)
+    else:
+        print("fleet: upgrade failed; node stays cordoned for a look", file=sys.stderr)
+    print(json.dumps(probe(n).get("updates"), indent=1))
+    return r.returncode
+
+
+def cmd_install_timer(args):
+    d = Path.home() / ".config/systemd/user"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "fleet-health.service").write_text(f"""[Unit]
+Description=fleet: probe workers, cordon unhealthy ones ({REPO}/scripts/fleet)
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=KUBECONFIG={KUBECONFIG}
+ExecStart={sys.executable} {REPO}/scripts/fleet health
+TimeoutStartSec=240
+MemoryMax=256M
+""")
+    (d / "fleet-health.timer").write_text("""[Unit]
+Description=fleet: health check every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target
+""")
+    env = dict(os.environ)
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path={env['XDG_RUNTIME_DIR']}/bus")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True, env=env)
+    subprocess.run(["systemctl", "--user", "enable", "--now", "fleet-health.timer"], check=True, env=env)
+    print("fleet-health.timer enabled; reports in", STATE / "health")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="fleet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd_name", required=True)
+    sub.add_parser("nodes")
+    r = sub.add_parser("run")
+    r.add_argument("--node"); r.add_argument("--class", dest="cls"); r.add_argument("--arch")
+    r.add_argument("--tolerate", action="append"); r.add_argument("--mem"); r.add_argument("--cpus")
+    r.add_argument("--timeout", type=int, default=3600); r.add_argument("--src"); r.add_argument("--no-src", action="store_true")
+    r.add_argument("--fetch", action="append"); r.add_argument("--keep", action="store_true")
+    r.add_argument("cmd", nargs=argparse.REMAINDER)
+    k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
+    h = sub.add_parser("health"); h.add_argument("--node"); h.add_argument("--strikes", type=int)
+    h.add_argument("--set", action="append", help="override a health threshold, e.g. min_disk_free_gb=99999")
+    sub.add_parser("labels")
+    e = sub.add_parser("enroll"); e.add_argument("node"); e.add_argument("--port", type=int)
+    u = sub.add_parser("update"); u.add_argument("node"); u.add_argument("--apply", action="store_true")
+    sub.add_parser("install-timer")
+    argv = sys.argv[1:]
+    # `fleet run mbp [opts] -- CMD` is shorthand for `fleet run --node mbp [opts] -- CMD`.
+    if len(argv) > 1 and argv[0] == "run" and argv[1] in registry()[1]:
+        argv = ["run", "--node", argv[1], *argv[2:]]
+    args = ap.parse_args(argv)
+    if args.cmd_name == "run" and args.cmd and args.cmd[0] == "--":
+        args.cmd = args.cmd[1:]
+    fn = {"nodes": cmd_nodes, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,
+          "enroll": cmd_enroll, "update": cmd_update, "install-timer": cmd_install_timer}[args.cmd_name]
+    sys.exit(fn(args) or 0)
+
+
+if __name__ == "__main__":
+    main()

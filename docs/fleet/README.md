@@ -1,0 +1,264 @@
+# Fleet: permanent workers over Tailscale
+
+groot (the desktop) is the controller and the k3s server. Other devices take
+work in two lanes:
+
+| Lane | For | How | Isolation |
+| --- | --- | --- | --- |
+| **k3s** (`factory`, `lanes`, `z0` queues) | untrusted repo work, anything that fits a container | oss-factory `factory submit`, or a Job with `kueue.x-k8s.io/queue-name` | restricted Pod Security, `netpol-ready` gate, egress only to DNS + internet (docs/k3s/ONBOARDING.md) |
+| **host** (`fleet run`) | our own builds/tests that need the host toolchain (cargo, bun, make, ...) | `scripts/fleet run <node> -- <cmd>` | unprivileged `agentjob` user, capped systemd scope, no LAN/tailnet egress; phones: polite-run |
+
+The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
+re-running a command with the same registry changes nothing.
+
+## Devices (2026-10-20)
+
+| Device | Role | State |
+| --- | --- | --- |
+| groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
+| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane | hardened and verified |
+| omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
+| Galaxy S22+ | planned polite worker | offline; pending owner (see [Phones](#phones)) |
+| localhost, cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
+| RTX 2080 Super PC, Oracle Always Free ARM VM | future workers | not on the tailnet |
+
+Full facts: `zer0/data/operations/fleet/inventory-20261020.json`.
+
+## Running work
+
+```sh
+scripts/fleet nodes                                  # registry + live load/memory/power
+scripts/fleet run mbp -- uname -a                    # on a named node
+scripts/fleet run -- make test                       # least-loaded eligible node, ships the cwd's git files
+scripts/fleet run --class build --mem 3G --cpus 4 --fetch src/dist -- make release
+scripts/fleet run --arch arm64 --tolerate phone -- make test   # allow the phone
+scripts/fleet kill mbp <job-id>
+```
+
+- **Source**: by default `fleet run` sends the current directory. In a git
+  worktree it sends tracked and untracked-but-not-ignored files (`git ls-files
+  -co --exclude-standard`), so `.git`, build output and ignored files stay
+  home. `--src DIR` picks another directory; `--no-src` sends nothing.
+- **Placement**: candidates are nodes with a host lane, the asked class/arch,
+  tolerated taints, not cordoned and not paused by `fleet health`. Each is
+  probed live; a node qualifies only when `MemAvailable >= mem_floor + --mem`.
+  The lowest `load1 / cpus` wins; phones get a +1 penalty so they only take
+  work when the Linux workers are full. The remote side re-checks the floor
+  right before starting (exit 75 = "no room, retry later").
+- **Limits (Linux)**: the job runs as `agentjob` in
+  `systemd-run --user --scope` with `MemoryMax=--mem`, `MemorySwapMax=512M`,
+  `CPUQuota=--cpus` and `timeout`. The whole `agentjob` user slice is capped
+  root-side (mbp: 4 GiB, 600 % CPU, 4096 tasks) and cannot reach 10/8,
+  172.16/12, 192.168/16, 100.64/10 (tailnet), link-local or ULA addresses.
+  Internet works. A job that passes its memory cap is OOM-killed inside its
+  scope (exit 137); the host and k3s are untouched.
+- **Results**: output streams back and is saved to
+  `~/.local/state/fleet/runs/<job-id>-<node>.log`; `--fetch PATH` (relative to
+  the job dir, e.g. `src/dist`) copies files back to
+  `~/.local/state/fleet/runs/<job-id>/`. The remote job dir is deleted unless
+  `--keep`. Exit code = the job's exit code (75 no room/drained, 124 timeout,
+  137 memory).
+- **Trust**: the host lane is for the owner's own agents' code. Anything from
+  an unknown repo goes through the k3s `factory` queue.
+
+## Job classes (k3s)
+
+`scripts/fleet labels` writes `z0.dev/class-{cpu-heavy,build,render}=true|false`
+on every node from the registry, and taints groot
+`z0.dev/host=interactive:PreferNoSchedule`. The per-node Kueue flavors carry the
+same labels, so a queued Job with `nodeSelector: {z0.dev/class-render: "true"}`
+goes to groot and `class-build` goes to mbp
+(`config/k3s/smoke/class-job.yaml` proves both). A dedicated node (for example a
+future render box) gets a `NoSchedule` taint in the registry, and only Jobs that
+tolerate it land there.
+
+## Health
+
+`scripts/fleet health` (a user timer on groot every 2 minutes, installed with
+`scripts/fleet install-timer`) probes every node with `fleet-node-probe` and
+judges it on groot:
+
+- tailnet reachable (the probe crossing the tailnet counts), k8s `Ready` and no
+  Memory/Disk/PID pressure
+- `MemAvailable` and free disk (root, k3s data dir, lane home) above the
+  registry thresholds; temperature under 95 C
+- `k3s-agent`/`k3s`, `tailscaled`, `sshd` active
+- laptops: not on battery under 40 %; phones: battery >= 50 % or charging,
+  battery <= 40 C, Android thermal status <= 1
+- not in maintenance (`/var/lib/fleet/maintenance`)
+
+After 2 bad checks in a row a `cordon` node is cordoned and annotated
+`z0.dev/cordoned-by=fleet-health` with the reason; after 2 good checks it is
+uncordoned. A node someone cordoned by hand is never uncordoned. groot is
+report-only (it hosts the control plane, Kueue and the factory gateway). Phones
+are `pause`d: `fleet run` skips them. Reports: `~/.local/state/fleet/health/<node>.json`
+and `history.jsonl` (bounded). Warnings (pending updates, reboot needed) do not cordon.
+
+Forced test (what the PR verified):
+
+```sh
+scripts/fleet health --node mbp --strikes 1 --set min_disk_free_gb=100000   # BAD ... action=cordoned
+kubectl get node mbp                                                       # Ready,SchedulingDisabled
+scripts/fleet health --node mbp --strikes 1                                # OK ... action=uncordoned
+```
+
+## Node hardening (`scripts/fleet-harden.sh`)
+
+`scripts/fleet enroll <node>` copies the scripts to `/opt/dotfiles-k3s` on the
+node over root ssh and runs `fleet-harden.sh worker` with the registry's
+values. Each file is written only when it changes; services reload only when
+their file changed; nothing reboots. `fleet-harden.sh plan worker|server`
+renders everything into a temp dir without root.
+
+| Area | Worker setting | Why |
+| --- | --- | --- |
+| journald | persistent, `SystemMaxUse=500M`, `SystemKeepFree=2G`, 1 month | logs survive reboots, never fill the disk |
+| sshd | key-only, `PermitRootLogin prohibit-password`, `MaxAuthTries 3`, `LoginGraceTime 20`; agentjob: keys in root-owned `/etc/ssh/fleet_authorized_keys/agentjob` with `from="<groot>",restrict`, no TTY/forwarding | a job cannot add keys or open tunnels |
+| ufw | incoming deny; `2222/tcp` on tailscale0 **from groot only**; k3s 10250/8472 on tailscale0 | LAN sees nothing; the tailnet sees only k3s ports |
+| fail2ban | **not installed** | password auth is off and 2222 accepts only groot's address, so there is nothing to brute-force; a ban list could only lock groot's agents out |
+| k3s | `Restart=always`, no start limit, `OOMScoreAdjust=-900`; kubelet `system-reserved`, `kube-reserved`, `eviction-hard memory.available<1Gi,nodefs<10%,imagefs<10%`, `eviction-soft 1536Mi/1m` via `/etc/rancher/k3s/config.yaml.d/50-fleet.yaml` | pods together are capped below RAM (mbp allocatable 14.0 -> 11.5 GiB) and evicted before the host starves |
+| logind (laptops) | lid close on AC does nothing | a closed laptop keeps working; on battery the default applies and health cordons it under 40 % |
+| agentjob | own user, home 0700, no groups (not docker/wheel), password locked, lingering user manager, slice caps + IP deny | host jobs cannot see the owner's files, docker or sudo |
+| updates | `fleet-updates.timer` daily: `checkupdates -d` downloads, writes `/var/lib/fleet/updates.json` | see below |
+
+### Updates policy (CachyOS/Arch)
+
+Arch has no security-only channel and an unattended `pacman -Syu` can break a
+node (manual interventions, partial kernel/module states), so updates are
+**downloaded automatically and applied on purpose**:
+
+1. Daily, the node downloads pending packages into its cache and records counts
+   (`pending`, `kernel_pending`, `core_pending` for openssh/openssl/glibc/sudo/
+   systemd/tailscale, `reboot_required`). `fleet health` shows them as warnings.
+2. `scripts/fleet update mbp` shows them; `scripts/fleet update mbp --apply`
+   cordons and drains the node, runs `pacman -Syu --noconfirm`, and uncordons
+   only if it succeeded. It never reboots; after a kernel update health warns
+   `reboot required` until the owner reboots.
+3. Apply at least weekly, and the same day when `core_pending > 0`.
+
+### groot (server)
+
+Needs the owner's sudo, once (it restarts the k3s server, a short API blip;
+pods keep running):
+
+```sh
+cd /workspace/.files-k3s
+sudo scripts/fleet-harden.sh server --restart-k3s \
+  --kubelet-arg system-reserved=cpu=2,memory=4Gi --kubelet-arg kube-reserved=cpu=1,memory=1Gi \
+  --kubelet-arg 'eviction-hard=memory.available<1Gi,nodefs.available<10%,imagefs.available<10%' \
+  --kubelet-arg 'eviction-soft=memory.available<1536Mi' --kubelet-arg eviction-soft-grace-period=memory.available=2m
+```
+
+It sets journald, key-only sshd (only because `~/.ssh/authorized_keys` exists;
+console login is unaffected), the k3s unit drop-in, kubelet reservations,
+the update report and the k3s firewall ports. It does not touch groot's port 22
+exposure or anything else on the desktop.
+
+## Adding a Linux worker
+
+For the RTX 2080 Super PC, the Oracle VM, and cursor/cos/localhost once identified:
+
+1. On the device: install Linux (CachyOS, or Ubuntu 24.04 arm64 on Oracle), then
+   `tailscale up` (Oracle: `--advertise-tags=tag:worker`), and `ufw enable` with
+   `ufw allow in on tailscale0 to any port 22 proto tcp` if you use Tailscale SSH.
+2. From groot, prove access: `ssh root@<tailnet-ip> true` (Tailscale SSH; approve
+   the check URL once) or put groot's key in `/root/.ssh/authorized_keys`.
+3. Add the node under `nodes:` in `config/fleet/nodes.yaml` (copy mbp; set
+   `tailnet_ip`, `ssh_port: 22` for the first enroll, `arch`, `classes`, kubelet
+   reservations sized to its RAM) and a `node-<name>` flavor in
+   `config/k3s/kueue/queues.yaml`.
+4. Join k3s (docs/k3s/ONBOARDING.md "Joining an agent"), then from groot:
+   ```sh
+   scripts/fleet enroll <name> --port 22     # hardening; opens 2222 for groot
+   # set ssh_port: 2222 in the registry
+   scripts/setup-k3s.sh admit <name>         # isolation proof, untaints
+   scripts/fleet labels && scripts/setup-k3s.sh kueue
+   scripts/fleet health --node <name> && scripts/fleet run <name> -- uname -a
+   ```
+5. GPU box: `sudo scripts/setup-k3s.sh gpu` on it, label `z0.dev/gpu=<model>`,
+   add `render` to its classes.
+
+Oracle notes: arm64, so container images must be multi-arch; open nothing in
+the Oracle security list (tailnet only); the VM is reclaimed when idle, so keep
+the `fleet-updates` timer and a cheap k3s workload on it.
+
+## Phones
+
+Phones run the host lane only. The S25's Linux guest (`omarchy-phone`) is
+Arch Linux ARM inside Omalauncher (`dev.omalauncher`), started through PRoot
+without Android root. k3s cannot run there: no cgroup v2 mount, netlink is
+denied (iptables/nft fail), no systemd. So the phone gets `scripts/fleet-polite-run`:
+
+- the job runs under `nice 19`, `ionice idle`, `taskset` cores 0-3 (half the
+  phone), in `~/fleet-jobs/<id>`, with `HOME`/`TMPDIR` pointed there
+- gate before start and every 30 s: battery >= 50 % or charging, battery <= 40 C,
+  Android thermal status <= 1, `MemAvailable >= 1200 MiB`, no
+  `~/.config/fleet/pause` file. Battery and thermal come from read-only
+  `adb shell dumpsys battery|thermalservice` over the guest's wireless-debugging
+  link to its own phone (the guest cannot read `/sys/class/power_supply`); if adb
+  is unreadable the gate fails closed
+- PRoot traces every process, so `SIGSTOP` does not pause a job (tested). Two
+  failed gates in a row **drain** the job (TERM, then KILL; exit 75); it is
+  killed when its process group passes `--mem` RSS (default 1 GiB, max 2 GiB)
+  or the phone drops under 800 MiB available
+- Tern, its daemon and remote serve are not touched and keep running. Android
+  apps and settings are not touched. Jobs in the guest run as the Omalauncher
+  app's uid and can read the guest's `/root`, so only the owner's own work goes
+  there; it is tainted `phone` and needs `--tolerate phone` or `--node`.
+- Owner switch: `touch ~/.config/fleet/pause` in the guest stops phone work
+  (running jobs drain within a minute); `rm` it to resume.
+
+If Android restarts wireless debugging, its port changes and the gate closes
+(battery unreadable). Re-pair: in the guest `adb connect <android-tailnet-ip>:<new port>`,
+then `scripts/fleet enroll omarchy-phone` to re-pin the device.
+
+### Setting up the Galaxy S22+ like the S25 (owner steps)
+
+The S25 guest was built this way (inspected read-only on 2026-10-20):
+
+1. Install Omalauncher (`kvnloo/omalauncher`, app id `dev.omalauncher`) and let
+   it create its Arch Linux ARM guest. Keep the Android Tailscale app signed in
+   (it carries the guest's traffic).
+2. In the guest terminal:
+   ```sh
+   pacman -Syu --needed tailscale openssh android-tools python
+   mkdir -p /run/tailscale ~/.local/state/tailscale
+   tailscaled --tun=userspace-networking --state=$HOME/.local/state/tailscale/tailscaled.state \
+     --socket=/run/tailscale/tailscaled.sock --socks5-server=127.0.0.1:1055 &
+   tailscale up --accept-dns=false --accept-routes=false --hostname=s22-phone   # approve in the same tailnet
+   ```
+3. Let groot in: append groot's public key (`cat ~/.ssh/id_ed25519.pub` on groot;
+   send it with Taildrop) to the guest's `/root/.ssh/authorized_keys`, then
+   `ssh-keygen -A && /usr/bin/sshd`.
+4. Battery access: Android Settings -> Developer options -> Wireless debugging ->
+   Pair device with pairing code; in the guest `adb pair <ip>:<pair-port> <code>`,
+   then `adb connect <the S22's Android tailnet IP>:<port shown>`; `adb devices`
+   must list it as `device`.
+5. Tell the agent the guest's tailnet IP. The agent then runs, from groot:
+   ```sh
+   scripts/fleet-phone-clone.sh root@100.104.42.85 root@<s22-guest-ip> --model SM-S906U1
+   # adds Tern launcher + helpers and the key-only sshd policy (no keys or state copied),
+   # installs polite-run and pins the adb device
+   ```
+   and adds `galaxy-s22plus` under `nodes:` (copy `omarchy-phone`, new IP and
+   model), then `scripts/fleet health --node galaxy-s22plus` and
+   `scripts/fleet run galaxy-s22plus -- uname -a`.
+6. Open Tern once on the S22 so its launcher starts tailscaled, sshd and the Tern
+   daemon after each Omalauncher restart.
+
+## Tailscale SSH
+
+`fleet` uses key-only OpenSSH on 2222 and does not depend on Tailscale SSH.
+Interactive `ssh root@mbp` on :22 still uses Tailscale SSH `check` mode, which
+expires every 12 h. The ACL change that fixes this properly is in
+`zer0/data/operations/fleet/tailscale-acl-proposal.md` (owner edit).
+
+## Rollback
+
+- Host lane on a node: `userdel -r agentjob; rm -r /etc/ssh/fleet_authorized_keys /etc/systemd/system/user-1001.slice.d`.
+- Any hardening file: delete it (`/etc/systemd/journald.conf.d/50-fleet.conf`,
+  `/etc/rancher/k3s/config.yaml.d/50-fleet.yaml`, `/etc/systemd/system/k3s-agent.service.d/50-fleet.conf`,
+  `/etc/systemd/logind.conf.d/50-fleet-worker.conf`, `fleet-updates.{service,timer}`),
+  `systemctl daemon-reload`, restart the matching service.
+- Health timer: `systemctl --user disable --now fleet-health.timer`.
+- Phone lane: `rm -r ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs` in the guest.
