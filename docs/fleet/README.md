@@ -18,8 +18,8 @@ re-running a command with the same registry changes nothing.
 | groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
 | mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane | hardened and verified |
 | omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
-| Galaxy S22+ | planned polite worker | offline; pending owner (see [Phones](#phones)) |
-| localhost, cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
+| galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only, lowest priority | installed and verified 2026-10-20; ssh on 8022; works when charging or >= 50 % |
+| cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
 | RTX 2080 Super PC, Oracle Always Free ARM VM | future workers | not on the tailnet |
 
 Full facts: `zer0/data/operations/fleet/inventory-20261020.json`.
@@ -156,7 +156,7 @@ exposure or anything else on the desktop.
 
 ## Adding a Linux worker
 
-For the RTX 2080 Super PC, the Oracle VM, and cursor/cos/localhost once identified:
+For the RTX 2080 Super PC, the Oracle VM, and cursor/cos once identified:
 
 1. On the device: install Linux (CachyOS, or Ubuntu 24.04 arm64 on Oracle), then
    `tailscale up` (Oracle: `--advertise-tags=tag:worker`), and `ufw enable` with
@@ -212,39 +212,83 @@ If Android restarts wireless debugging, its port changes and the gate closes
 (battery unreadable). Re-pair: in the guest `adb connect <android-tailnet-ip>:<new port>`,
 then `scripts/fleet enroll omarchy-phone` to re-pin the device.
 
-### Setting up the Galaxy S22+ like the S25 (owner steps)
+### Galaxy S22+ (`galaxy-s22plus`, alias `s22`)
 
-The S25 guest was built this way (inspected read-only on 2026-10-20):
+The spare S22+ (SM-S906U1) runs the same polite lane as the S25. Differences:
 
-1. Install Omalauncher (`kvnloo/omalauncher`, app id `dev.omalauncher`) and let
-   it create its Arch Linux ARM guest. Keep the Android Tailscale app signed in
-   (it carries the guest's traffic).
-2. In the guest terminal:
-   ```sh
-   pacman -Syu --needed tailscale openssh android-tools python
-   mkdir -p /run/tailscale ~/.local/state/tailscale
-   tailscaled --tun=userspace-networking --state=$HOME/.local/state/tailscale/tailscaled.state \
-     --socket=/run/tailscale/tailscaled.sock --socks5-server=127.0.0.1:1055 &
-   tailscale up --accept-dns=false --accept-routes=false --hostname=s22-phone   # approve in the same tailnet
-   ```
-3. Let groot in: append groot's public key (`cat ~/.ssh/id_ed25519.pub` on groot;
-   send it with Taildrop) to the guest's `/root/.ssh/authorized_keys`, then
-   `ssh-keygen -A && /usr/bin/sshd`.
-4. Battery access: Android Settings -> Developer options -> Wireless debugging ->
-   Pair device with pairing code; in the guest `adb pair <ip>:<pair-port> <code>`,
-   then `adb connect <the S22's Android tailnet IP>:<port shown>`; `adb devices`
-   must list it as `device`.
-5. Tell the agent the guest's tailnet IP. The agent then runs, from groot:
-   ```sh
-   scripts/fleet-phone-clone.sh root@100.104.42.85 root@<s22-guest-ip> --model SM-S906U1
-   # adds Tern launcher + helpers and the key-only sshd policy (no keys or state copied),
-   # installs polite-run and pins the adb device
-   ```
-   and adds `galaxy-s22plus` under `nodes:` (copy `omarchy-phone`, new IP and
-   model), then `scripts/fleet health --node galaxy-s22plus` and
-   `scripts/fleet run galaxy-s22plus -- uname -a`.
-6. Open Tern once on the S22 so its launcher starts tailscaled, sshd and the Tern
-   daemon after each Omalauncher restart.
+- Its guest is the tailnet node `localhost-0` (100.97.11.22); the Android
+  Tailscale app node `galaxy-s22` (100.72.191.23) is the same phone. There is no
+  Tailscale SSH in this guest: groot reaches it with key-only OpenSSH on port 8022
+  (`ssh s22`; the host key is pinned in groot's `~/.ssh/known_hosts`). The
+  registry says `ssh_port: 8022`.
+- Omalauncher ships Tern 0.9.5 at `/opt/tern/tern/tern` and launches it
+  directly, so the S25's `~/.local/bin/tern` wrapper (which starts tailscaled,
+  sshd, the daemon and remote serve on the S25) does not apply. The clone script
+  copies only the S25's start helpers and the peer-credential shim, and installs
+  the autostart hook below.
+- Jobs get cpus 0-3, the four small cores.
+
+Rebuild or repair it from groot (idempotent):
+
+```sh
+scripts/fleet-phone-clone.sh root@100.104.42.85 root@100.97.11.22 --port 8022 --model SM-S906U1
+scripts/fleet nodes && scripts/fleet health --node s22
+scripts/fleet run s22 --tolerate phone --no-src -- uname -a   # exit 75 + reason while the guard is closed
+```
+
+Verified 2026-10-20:
+- `fleet nodes` lists `galaxy-s22plus`.
+- `fleet run s22 ... uname -a` was refused with `battery 35% and not charging` (exit 75).
+- With the pause file, the run was refused with `paused by ~/.config/fleet/pause`.
+- In a drill, a running polite-run job drained 64 s after `touch ~/.config/fleet/pause`
+  (the drill used a temporary copy with the battery floor lowered to 30 %).
+
+### Autostart on phones without systemd
+
+PRoot kills every process a launcher window started when that window closes,
+and the launcher starts nothing for us. `scripts/fleet-phone-clone.sh` therefore
+installs two files in the guest:
+
+- `/etc/profile.d/zz-fleet-autostart.sh`. Every login shell runs it in the
+  background and silently: the launcher's home-screen Terminal tile (it opens with
+  Omalauncher), Tern's login-environment probe at startup, new Tern panes and
+  interactive ssh logins. It starts the watcher below.
+- `~/.local/bin/fleet-phone-autostart --watch`. A single watcher (flock) checks
+  every 60 s and starts each of these that is down:
+  - userspace `tailscaled`, with the guest's existing state; it never runs `tailscale up`
+  - key-only `sshd`
+  - `tern remote serve --user --no-iroh`, through the S25's `tern-remote-start`,
+    with the peer-credential shim
+
+  Log: `~/.local/state/fleet-autostart/log`. Off switch:
+  `touch ~/.config/fleet/no-autostart`.
+
+Verified on the S22+:
+- With remote serve and the watcher stopped, one `bash -l` restarted remote serve
+  within 1 s.
+- With only remote serve stopped, the watcher restarted it at its next 60 s tick.
+- `tern remote doctor root@100.97.11.22` then passed (UDP 8376, pinned host key, auth accepted).
+
+Limits:
+- A service lives in the PRoot of the window that started it. If that window
+  closes, the service comes back at the next watcher tick or login shell.
+- After a full launcher restart, the home Terminal tile (or opening Tern once)
+  is the trigger.
+
+### Setting up another phone like the S25
+
+1. Install Omalauncher (`kvnloo/omalauncher`, app id `dev.omalauncher`) and let it
+   create its Arch Linux ARM guest. Turn on Tailscale inside the guest (its own
+   userspace node) and keep the Android Tailscale app signed in.
+2. Let groot in: append groot's `~/.ssh/id_ed25519.pub` to the guest's
+   `/root/.ssh/authorized_keys` and run `sshd` there (port 8022 if 22 is taken).
+3. Battery access: Android Settings -> Developer options -> Wireless debugging ->
+   Pair device with pairing code; in the guest `adb pair <IP:port> <code>`, then
+   `adb connect <IP:port on the Wireless debugging screen>`; `adb devices` must
+   list it as `device`.
+4. From groot: `pacman -S --needed python` in the guest if missing, then
+   `scripts/fleet-phone-clone.sh root@100.104.42.85 root@<guest-ip> --port <port> --model <model>`.
+   Add the phone under `nodes:` (copy `galaxy-s22plus`).
 
 ## Tailscale SSH
 

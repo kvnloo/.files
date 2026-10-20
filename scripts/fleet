@@ -69,6 +69,13 @@ def registry():
     return reg, nodes
 
 
+def resolve(nodes, name):
+    """A node's registry name; also accepts its `aliases` (s22 -> galaxy-s22plus)."""
+    if not name or name in nodes:
+        return name
+    return next((k for k, n in nodes.items() if name in n.get("aliases", [])), name)
+
+
 def mb(s):
     s = str(s).strip().upper()
     m = re.fullmatch(r"(\d+(?:\.\d+)?)([KMGT]?)I?B?", s)
@@ -531,10 +538,13 @@ def main():
     u = sub.add_parser("update"); u.add_argument("node"); u.add_argument("--apply", action="store_true")
     sub.add_parser("install-timer")
     argv = sys.argv[1:]
+    nodes = registry()[1]
     # `fleet run mbp [opts] -- CMD` is shorthand for `fleet run --node mbp [opts] -- CMD`.
-    if len(argv) > 1 and argv[0] == "run" and argv[1] in registry()[1]:
+    if len(argv) > 1 and argv[0] == "run" and resolve(nodes, argv[1]) in nodes:
         argv = ["run", "--node", argv[1], *argv[2:]]
     args = ap.parse_args(argv)
+    if getattr(args, "node", None) and args.node != "auto":
+        args.node = resolve(nodes, args.node)
     if args.cmd_name == "run" and args.cmd and args.cmd[0] == "--":
         args.cmd = args.cmd[1:]
     fn = {"nodes": cmd_nodes, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,

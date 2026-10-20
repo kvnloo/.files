@@ -11,6 +11,7 @@
 # lane:      limits for host jobs (`fleet run`): the agentjob user slice is capped at
 #            mem_max/cpu_quota; a job only starts when MemAvailable >= mem_floor_mb
 #            plus the job's own --mem.
+# aliases:   other names scripts/fleet accepts for the node (`fleet run s22 ...`).
 defaults:
   health:
     min_mem_available_mb: 1024
@@ -66,6 +67,32 @@ nodes:
       default_mem: 1G
       mem_max: 2G
       cpus: 0-3
+  galaxy-s22plus:
+    # Spare Galaxy S22+ (SM-S906U1, Snapdragon 8 Gen 1: cores 0-3 are the small
+    # ones), Arch Linux ARM in Omalauncher's PRoot like omarchy-phone. Its guest is
+    # its own tailnet node `localhost-0`; the Android Tailscale app node
+    # `galaxy-s22` (100.72.191.23) is the same phone. No Tailscale SSH in this
+    # guest: key-only OpenSSH on 8022 (`ssh s22` on groot). Same polite lane,
+    # lowest priority: nice 19, ionice idle, half the cores, phone taint.
+    role: worker
+    kind: phone
+    aliases: [s22]
+    tailnet_ip: 100.97.11.22
+    ssh_user: root
+    ssh_port: 8022
+    arch: arm64
+    classes: [phone]
+    taints: [phone]
+    model: SM-S906U1
+    health:
+      min_mem_available_mb: 1200
+      min_disk_free_gb: 5
+      on_unhealthy: pause
+    lane:
+      mem_floor_mb: 1200
+      default_mem: 1G
+      mem_max: 2G
+      cpus: 0-3
   groot:
     role: server
     tailnet_ip: 100.113.138.100
@@ -86,9 +113,7 @@ nodes:
 # Known devices that are not workers (yet). `fleet enroll` refuses anything not
 # listed under nodes; move an entry up once the device is verified online.
 candidates:
-  galaxy-s22plus: {note: "Galaxy S22+ (100.72.191.23, Android app node, offline since 2026-10-20 03:29Z). Pending owner: set up Omalauncher like the S25 (docs/fleet/README.md#phones), then scripts/fleet-phone-setup.sh and move it under nodes as kind: phone."}
   pc-2080s:   {note: "RTX 2080 Super desktop; not on the tailnet. GPU worker: classes [render, build, cpu-heavy]."}
   oracle-arm: {note: "Oracle Always Free Ampere A1 (arm64, 4 OCPU/24 GB). 24/7 CPU worker; images must be multi-arch."}
   cursor:     {note: "linux, offline since 2026-09-26; identify before enrolling."}
   cos:        {note: "linux, offline since 2026-09-05; identify before enrolling."}
-  localhost:  {note: "linux, joined 2026-10-20 19:34Z, offline; identify (rename with `tailscale set --hostname`)."}
