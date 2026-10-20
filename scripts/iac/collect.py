@@ -8,6 +8,7 @@ services, edits /etc, changes mounts, or reads secret-bearing credential files.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import json
 import os
@@ -195,11 +196,12 @@ def collect(repo_root: Path) -> dict[str, Any]:
         },
     }
 
-    for name, argv in COMMANDS.items():
-        raw = _run(argv)
-        observed["observations"][name] = (
-            _json_result(raw) if name in JSON_COMMANDS else _lines_result(raw)
-        )
+    # Independent probes share no writes; one timeout must not serialize the fleet snapshot.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for name, raw in zip(COMMANDS, pool.map(_run, COMMANDS.values())):
+            observed["observations"][name] = (
+                _json_result(raw) if name in JSON_COMMANDS else _lines_result(raw)
+            )
 
     return observed
 
