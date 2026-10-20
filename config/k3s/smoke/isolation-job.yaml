@@ -1,0 +1,42 @@
+# Isolation check for the untrusted factory namespace. Expects DNS and the public
+# internet to work, and the host, tailnet and LAN to be unreachable.
+# Prints ISOLATION_OK only when every expectation holds.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-isolation-
+  namespace: factory
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: busybox:1.37
+          command: ["sh", "-c"]
+          args:
+            - |
+              fail=0
+              expect() { want=$1; shift; if "$@" >/dev/null 2>&1; then got=open; else got=blocked; fi
+                echo "$want/$got $*"; [ "$want" = "$got" ] || fail=1; }
+              expect open    nslookup example.com
+              expect open    nc -z -w 5 1.1.1.1 443
+              expect blocked nc -z -w 5 100.113.138.100 6443
+              expect blocked nc -z -w 5 100.113.138.100 11501
+              expect blocked nc -z -w 5 172.19.0.1 11501
+              expect blocked nc -z -w 5 192.168.1.1 80
+              expect blocked nc -z -w 5 10.43.0.1 443
+              [ $fail = 0 ] && echo ISOLATION_OK || { echo ISOLATION_FAIL; exit 1; }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 64Mi}
