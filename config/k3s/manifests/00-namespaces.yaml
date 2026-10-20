@@ -1,5 +1,6 @@
-# factory: untrusted OSS contribution tests. Restricted pods, six-pod ceiling
-#          (defense in depth; oss-factory owns worker claims).
+# factory: untrusted OSS repo jobs. Restricted pods. Kueue (kueue/queues.yaml) admits
+#          and places them per node; this ResourceQuota is the outer ceiling above
+#          Kueue's 20 pods (defense in depth; oss-factory owns worker claims).
 # z0:      z0intelligence services and unsloth/GPU jobs (trusted, our code).
 # lanes:   relay jobs that call free model APIs; CPU and network only.
 apiVersion: v1
@@ -30,10 +31,10 @@ metadata:
   namespace: factory
 spec:
   hard:
-    pods: "6"
-    requests.cpu: "6"
+    pods: "24"
+    requests.cpu: "8"
     requests.memory: 12Gi
-    limits.memory: 16Gi
+    limits.memory: 24Gi
     requests.nvidia.com/gpu: "0"
 ---
 apiVersion: v1
