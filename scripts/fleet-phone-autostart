@@ -23,16 +23,41 @@ mkdir -p "$state"
 : "${XDG_RUNTIME_DIR:=/run/user/0}"
 export XDG_RUNTIME_DIR
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$state/log"; }
+# Size caps: each log keeps at most ~256 KiB plus one rotated copy.
+cap_logs() {
+    for f in "$state/log" "$state/sshd.log" "$state/tailscaled.log"; do
+        [ -f "$f" ] && [ "$(wc -c <"$f")" -gt 262144 ] && mv -f "$f" "$f.1"
+    done
+    return 0
+}
 
 tern_binary() {
-    # The launcher's own Tern (S22+) wins; older guests keep it under ~/.local/opt (S25).
+    # The launcher's own Tern (S22+) wins; older guests keep it under ~/.local/opt (S25),
+    # where the ~/.local/bin/tern wrapper names the one in use.
     if [ -x /opt/tern/tern/tern ]; then echo /opt/tern/tern/tern; return; fi
+    b=$(sed -n 's/^TERN_BINARY=//p' "$HOME/.local/bin/tern" 2>/dev/null | head -1)
+    if [ -n "$b" ] && [ -x "$b" ]; then echo "$b"; return; fi
     ls -d "$HOME"/.local/opt/tern-*/tern/tern-bin 2>/dev/null | sort -V | tail -1
+}
+
+remote_serve_alive() { # any Tern binary: the S25 wrapper and this script may name different ones
+    pid=$(cat "$HOME/.local/state/tern-remote/pid" 2>/dev/null)
+    case $pid in '' | *[!0-9]*) return 1 ;; esac
+    tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q ' remote serve --user '
 }
 
 ensure_tailscale() {
     sock=/run/tailscale/tailscaled.sock
     tailscale --socket="$sock" status --json >/dev/null 2>&1 && return 0
+    # The S25's own helper also runs the SOCKS5 proxy and syncs /etc/hosts; prefer it.
+    if [ -x "$HOME/.local/bin/tern-tailscale-start" ]; then
+        if "$HOME/.local/bin/tern-tailscale-start" >>"$state/log" 2>&1 </dev/null 7>&- 8>&-; then
+            log "started tailscaled (tern-tailscale-start)"
+        else
+            log "tern-tailscale-start failed; see ~/.local/state/tailscale/daemon.log"
+        fi
+        return 0
+    fi
     for st in /var/lib/tailscale/tailscaled.state "$HOME/.local/state/tailscale/tailscaled.state"; do
         [ -s "$st" ] || continue
         mkdir -p /run/tailscale
@@ -59,6 +84,7 @@ ensure_sshd() {
 }
 
 ensure_tern_remote() {
+    remote_serve_alive && return 0
     bin=$(tern_binary)
     [ -n "$bin" ] && [ -x "$HOME/.local/bin/tern-remote-start" ] || return 0
     # Peer-credential shim for sockets across separate PRoot launches (as on the S25).
@@ -95,6 +121,8 @@ case ${1:-} in
         log "watcher $$ started"
         while :; do
             once
+            cap_logs
+            date +%s >"$state/heartbeat" # fleet-node-probe: the watcher is alive
             sleep 60 7>&- # a stray sleep must not keep the watcher lock after the watcher dies
         done
         ;;

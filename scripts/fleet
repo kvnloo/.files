@@ -25,6 +25,7 @@ import os
 import random
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -146,6 +147,71 @@ def tailnet_online():
     return out
 
 
+# ---------------------------------------------------------------- phone keep-alive
+
+def tern_doctor(n):
+    """`tern remote doctor` from groot: does the phone's `tern remote serve` accept us?"""
+    tern = shutil.which("tern") or str(Path.home() / ".local/bin/tern")
+    try:
+        r = subprocess.run([tern, "remote", "doctor", f"{n['ssh_user']}@{n['tailnet_ip']}"],
+                           capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"failed: {type(e).__name__}"
+    lines = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()]
+    if any(l.startswith("ok") and " auth " in f"{l} " for l in lines):
+        return "ok"
+    bad = [l for l in lines if not l.startswith(("ok", "warn", "skip"))]
+    return " ".join((bad[0] if bad else f"exit {r.returncode}").split())[:160]
+
+
+def adb_device(host):
+    """groot's adb serial for a phone's Android tailnet IP (the port changes), or None."""
+    try:
+        out = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=15).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 2 and f[1] == "device" and f[0].startswith(host + ":"):
+            return f[0]
+    return None
+
+
+def android_state(n):
+    """Read-only: is Omalauncher's foreground service (it holds the guest) up, is the screen on?"""
+    host = (n.get("android") or {}).get("adb_host")
+    serial = adb_device(host) if host else None
+    if not serial:
+        return None
+
+    def sh(cmd):
+        return subprocess.run(["adb", "-s", serial, "shell", cmd], capture_output=True, text=True,
+                              timeout=20).stdout
+    try:
+        svc = sh("dumpsys activity services dev.omalauncher")
+        wake = sh("dumpsys power | grep -m1 mWakefulness=").strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return {"adb": serial, "error": "adb timeout"}
+    return {"adb": serial, "omalauncher_fgs": "isForeground=true" in svc,
+            "wakefulness": wake.split("=")[-1] or None}
+
+
+def maybe_revive(n, st, s):
+    """Opt-in (`android.revive: true`): reopen Omalauncher, whose MainActivity is the only
+    thing that starts the Linux guest, when its service is gone (process killed). Only while
+    the screen is off and at most every 15 min, so it never takes over a screen in use."""
+    if not (n.get("android") or {}).get("revive") or not st or "error" in st:
+        return None
+    if st.get("omalauncher_fgs") or st.get("wakefulness") in (None, "Awake"):
+        return None
+    if time.time() - s.get("revived_ts", 0) < 900:
+        return None
+    subprocess.run(["adb", "-s", st["adb"], "shell", "am start -n dev.omalauncher/.MainActivity"],
+                   capture_output=True, text=True, timeout=20)
+    s["revived_ts"] = int(time.time())
+    return "revived"
+
+
 # ---------------------------------------------------------------- health
 
 def judge(n, p, k8s, online, overrides):
@@ -155,6 +221,11 @@ def judge(n, p, k8s, online, overrides):
     # The probe crossing the tailnet is the stronger signal; a peer's Online flag can lag.
     if "error" in p and not online.get(n["tailnet_ip"], False):
         bad.append("tailscale offline")
+    if n["kind"] == "phone":
+        if p.get("tern_doctor") not in (None, "ok"):
+            bad.append(f"tern remote doctor: {p['tern_doctor']}")
+        if (p.get("android") or {}).get("omalauncher_fgs") is False:
+            bad.append("omalauncher service not running (app process killed)")
     if "error" in p:
         bad.append(p["error"])
         return bad, warn
@@ -218,6 +289,13 @@ def cmd_health(args):
     online = tailnet_online()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in sel], ex.map(probe, sel)))
+        phones = [n for n in sel if n["kind"] == "phone"]
+        doctors = dict(zip([n["name"] for n in phones], ex.map(tern_doctor, phones)))
+    for n in phones:  # adb is one server; ask it serially
+        probes[n["name"]]["tern_doctor"] = doctors[n["name"]]
+        st = android_state(n)
+        if st:
+            probes[n["name"]]["android"] = st
     hdir = STATE / "health"
     hdir.mkdir(parents=True, exist_ok=True)
     state_f = hdir / "state.json"
@@ -235,6 +313,8 @@ def cmd_health(args):
         action = "none"
         mode = n["health"]["on_unhealthy"]
         kn = k8s.get(name)
+        if bad and s["bad"] >= strikes and n["kind"] == "phone":
+            action = maybe_revive(n, probes[name].get("android"), s) or action
         if bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)
@@ -257,15 +337,21 @@ def cmd_health(args):
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
             f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
+        if n["kind"] == "phone":  # keep-alive log: services, doctor, Android side
+            pr = probes[name]
+            with open(hdir / "phone-keepalive.jsonl", "a") as f:
+                f.write(json.dumps({"node": name, "ts": rec["ts"], "reachable": "error" not in pr,
+                                    "services": pr.get("services"), "tern_doctor": pr.get("tern_doctor"),
+                                    "android": pr.get("android"), "action": action}) + "\n")
         flag = "OK " if not bad else "BAD"
         print(f"{flag} {name:14} action={action:10} {'; '.join(bad) or '-'}"
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
         rc |= bool(bad)
     state_f.write_text(json.dumps(state, indent=1) + "\n")
-    hist = hdir / "history.jsonl"
-    lines = hist.read_text().splitlines()
-    if len(lines) > 20000:
-        hist.write_text("\n".join(lines[-10000:]) + "\n")
+    for hist in (hdir / "history.jsonl", hdir / "phone-keepalive.jsonl"):
+        lines = hist.read_text().splitlines() if hist.exists() else []
+        if len(lines) > 20000:
+            hist.write_text("\n".join(lines[-10000:]) + "\n")
     return rc
 
 

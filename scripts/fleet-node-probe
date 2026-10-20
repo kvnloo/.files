@@ -131,6 +131,52 @@ def lane_jobs():
     return {"agentjob_procs": procs}
 
 
+def guest_services():
+    """Omalauncher guest (no systemd): are the keep-alive watcher's services up?
+
+    Same shape as systemd's `services` ("active" or why not), so groot judges
+    both alike. Reads only pidfiles and /proc of the guest's own processes.
+    """
+    home = os.path.expanduser("~")
+
+    def cmdline(pidfile):
+        pid = read(pidfile, "")
+        if not pid or not pid.isdigit():
+            return None
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                return f.read().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:
+            return None
+
+    out = {}
+    try:
+        st = json.loads(subprocess.run(
+            ["tailscale", "--socket=/run/tailscale/tailscaled.sock", "status", "--json"],
+            capture_output=True, text=True, timeout=15).stdout or "{}")
+        out["tailscaled"] = "active" if st.get("BackendState") == "Running" else f"state {st.get('BackendState', 'down')}"
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        out["tailscaled"] = "down"
+    try:
+        sshd = os.readlink(f"/proc/{read('/run/sshd.pid', 'x')}/exe") == "/usr/bin/sshd"
+    except OSError:
+        sshd = False
+    out["sshd"] = "active" if sshd else "down"
+    serve = cmdline(f"{home}/.local/state/tern-remote/pid") or ""
+    out["tern-remote"] = "active" if " remote serve --user " in serve else "down"
+    state = f"{home}/.local/state/fleet-autostart"
+    hb = read(f"{state}/heartbeat", "")
+    age = int(time.time()) - int(hb) if hb.isdigit() else None
+    watcher = "fleet-phone-autostart" in (cmdline(f"{state}/watch.pid") or "")
+    if not os.path.exists(f"{home}/.local/bin/fleet-phone-autostart"):
+        out["fleet-autostart"] = "not installed"
+    elif watcher and age is not None and age < 300:
+        out["fleet-autostart"] = "active"
+    else:
+        out["fleet-autostart"] = "down" if not watcher else f"stale heartbeat {age}s"
+    return out
+
+
 def main():
     m = meminfo()
     load = (read("/proc/loadavg", "0 0 0") or "0 0 0").split()
@@ -168,7 +214,8 @@ def main():
         "disk_root": disk("/"), "disk_k3s": disk(data_dir),
         "disk_lane": disk("/home/agentjob") if os.path.isdir("/home/agentjob") else None,
         "systemd": systemd,
-        "services": {u: active(u) for u in (k3s_unit, "tailscaled", "sshd")} if systemd else None,
+        "services": ({u: active(u) for u in (k3s_unit, "tailscaled", "sshd")} if systemd
+                     else guest_services() if android else None),
         "power": pw,
         "max_temp_c": max_temp_c(),
         "updates": updates,

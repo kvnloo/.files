@@ -275,6 +275,76 @@ Limits:
 - After a full launcher restart, the home Terminal tile (or opening Tern once)
   is the trigger.
 
+### Keep-alive: what kills the guest, and what stops it
+
+Omalauncher holds its Linux guest in one app process with a `specialUse`
+foreground service (`LinuxService`, the "Linux session running"
+notification). The service is `START_NOT_STICKY`, and only the app's
+`MainActivity` starts Linux. So once Android kills the process, the guest stays
+down until the app is opened again. Every guest process lives inside the PRoot
+of the window that started it (`--kill-on-exit`).
+
+The S25's `dumpsys activity exit-info dev.omalauncher` (Oct 11-20) shows what
+killed it:
+
+| Cause | Seen | Countermeasure |
+| --- | --- | --- |
+| `LOW_MEMORY` (lmkd), even while the service runs (importance 125) | 6x | none from adb: no root, so the app's oom score cannot change. Keep the guest's memory down. App fix below |
+| `REMOVE TASK`: card swiped out of Recents | 1x | Recents card > **Lock** (Samsung "keep open"). Swiping a Linux *window* card also closes that window and kills every service it started |
+| Samsung `AL_Kill : over 1 slots` while cached | 1x | foreground service plus the Doze/background whitelist below |
+| `PACKAGE UPDATED` (APK reinstall) | 8x | expected. Reopen the app afterwards |
+| Doze/app standby cutting network for the app uid | S22+ was not whitelisted | `deviceidle` whitelist (the uid now sits in netpolicy's power-save allowlist) |
+| Android 12+ phantom-process killer (a cap of 32 child processes per app; every guest process counts) | S22+ had it on (default) | `settings_enable_monitor_phantom_procs=false`, `max_phantom_processes=2147483647` |
+
+`scripts/fleet-phone-keepalive.sh root@<guest-ip> [--port N]` runs on groot and
+is idempotent. `fleet-phone-clone.sh` calls it too. It installs:
+
+- **Android side** (`scripts/fleet-phone-android-harden`, through the guest's
+  own adb, or from groot with `-s ip:port`). For `dev.omalauncher` and
+  `com.tailscale.ipn`: `deviceidle` user whitelist,
+  appops `RUN_ANY_IN_BACKGROUND`/`RUN_IN_BACKGROUND` allow, standby bucket
+  `active` if lower. Phone-wide: the phantom-process killer off. Each change
+  records its undo command first. `... status` shows the current state; `... undo`
+  restores the originals. Undo files (original values) are in
+  `~/.local/state/fleet/android-harden/<model>-<serial>.undo.sh` on groot
+  (S25: `SM-S938U-R5CY93G2WNH`, S22+: `SM-S906U1-RFCTA1RZAQY`, also in the
+  S22+ guest). Run with `ADB_SERIAL=<current ip:port> sh <file>`.
+- **Guest side**: the flock'd watcher (`fleet-phone-autostart --watch`, see
+  above). It now also caps its logs at 256 KiB plus one rotated copy, writes a
+  `heartbeat`, accepts a `remote serve` started by any Tern binary, and on the S25
+  reuses its own `tern-tailscale-start` (SOCKS5 proxy and hosts sync).
+- **Health** (`fleet health`, groot timer every 2 min). On phones, the probe reports
+  `services` = tailscaled / sshd / tern-remote / fleet-autostart (pidfiles and
+  /proc, no systemd). groot adds `tern remote doctor <user>@<ip>`, and, when
+  groot's adb reaches the phone (`android.adb_host`), whether Omalauncher's
+  service is up and whether the screen is on. Any of these down makes the node
+  BAD. Log: `~/.local/state/fleet/health/phone-keepalive.jsonl` (bounded).
+  `android.revive: true` (off by default) reopens Omalauncher when its service is
+  gone, only while the screen is off, at most every 15 min.
+
+Verified 2026-10-20:
+- S22+: the watcher restarted a killed `remote serve` and sshd listener 28 s
+  later (`started sshd` / `started tern remote serve`, 18:17:17). The brief
+  "Connection refused" on 8022 at 18:17 was this test.
+- S22+: Doze forced with `force-idle` while the screen was off
+  (18:24:10-18:25:02, then someone woke the screen). ssh, the same sshd/serve
+  pids and `tern remote doctor` auth stayed ok. Service pids were unchanged
+  through 18:30.
+- `dumpsys netpolicy`: both apps' uids are in the power-save allowlist (S22+
+  10339, S25 10756).
+- S25 not Doze-tested: the owner was using it.
+
+Owner steps (adb cannot do these):
+1. Recents: lock the Omalauncher card. Don't swipe away the window that started
+   Tern/sshd; if you do, the watcher restarts them within 60 s, as long as another
+   guest window or home Terminal tile is open.
+2. Settings > Battery > Background usage limits > **Never sleeping apps**: add
+   Omalauncher and Tailscale (Samsung's own list).
+3. After the app is killed (update, low memory), open Omalauncher once. A real
+   fix is in the app: return `START_STICKY` from `LinuxService` and start
+   `Runtime` from the service's `onCreate`. The deviceidle whitelist already lets
+   it start a foreground service from the background.
+
 ### Setting up another phone like the S25
 
 1. Install Omalauncher (`kvnloo/omalauncher`, app id `dev.omalauncher`) and let it

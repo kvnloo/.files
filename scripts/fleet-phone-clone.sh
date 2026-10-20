@@ -11,7 +11,9 @@
 # Read-only on the source phone. On the target it writes only inside the guest:
 # ~/.local/bin/{tern-remote-start,tern-ssh-start,fleet-phone-autostart},
 # ~/.local/lib/proot-peercred.so, /etc/ssh/sshd_config.d/50-omalauncher.conf,
-# /etc/profile.d/zz-fleet-autostart.sh, plus what fleet-phone-setup.sh writes.
+# /etc/profile.d/zz-fleet-autostart.sh, plus what fleet-phone-keepalive.sh (Android
+# battery/phantom-process hardening via the guest's adb, with an undo file) and
+# fleet-phone-setup.sh write.
 # When the target ships its own Tern (/opt/tern/tern/tern, newer Omalauncher),
 # the S25's older Tern and its ~/.local/bin/tern launcher are NOT copied (they
 # would shadow the newer Tern); otherwise they are, as on the S25.
@@ -54,13 +56,8 @@ ssh "${O[@]}" "$SRC" "cd / && tar -cf - ${files//$'\n'/ }" |
     install -m 0644 "$tmp"/etc/ssh/sshd_config.d/50-omalauncher.conf /etc/ssh/sshd_config.d/
     rm -rf "$tmp"; /usr/bin/sshd -t && echo "sshd policy ok"'
 
-echo "==> installing the autostart hook (tailscaled, sshd, tern remote serve)"
-tar -C "$REPO" -cf - scripts/fleet-phone-autostart config/fleet/phone/zz-fleet-autostart.sh |
-  "${D[@]}" 'set -e; tmp=$(mktemp -d); tar -xf - -C "$tmp"
-    install -m 0755 "$tmp"/scripts/fleet-phone-autostart /root/.local/bin/fleet-phone-autostart
-    install -m 0644 "$tmp"/config/fleet/phone/zz-fleet-autostart.sh /etc/profile.d/zz-fleet-autostart.sh
-    rm -rf "$tmp"; /root/.local/bin/fleet-phone-autostart
-    l=/root/.local/state/fleet-autostart/log; if [ -s $l ]; then tail -3 $l; else echo "autostart: all already running"; fi'
+echo "==> keep-alive: guest watcher + Android hardening (scripts/fleet-phone-keepalive.sh)"
+"$REPO/scripts/fleet-phone-keepalive.sh" "$DST" --port "$PORT"
 
 echo "==> installing the polite fleet lane"
 "$REPO/scripts/fleet-phone-setup.sh" "$DST" --port "$PORT" "${MODEL_ARGS[@]}"

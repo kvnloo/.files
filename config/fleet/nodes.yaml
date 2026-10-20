@@ -58,6 +58,9 @@ nodes:
     classes: [phone]
     taints: [phone]         # `fleet run` picks it only with --tolerate phone or --node
     model: SM-S938U
+    android:                # groot's adb to the phone itself (fleet health; read-only)
+      adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
+      revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
       min_mem_available_mb: 1200
       min_disk_free_gb: 5
@@ -84,6 +87,9 @@ nodes:
     classes: [phone]
     taints: [phone]
     model: SM-S906U1
+    android:
+      adb_host: 100.72.191.23    # galaxy-s22 Android app node; groot has no adb pairing yet
+      revive: false
     health:
       min_mem_available_mb: 1200
       min_disk_free_gb: 5
