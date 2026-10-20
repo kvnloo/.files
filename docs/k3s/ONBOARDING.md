@@ -10,7 +10,7 @@ can also be read-only clients. Setup is opt-in and never runs from
 | Device | Role | Command (run on that device) |
 | --- | --- | --- |
 | Desktop, RTX 3080 Ti | server + GPU worker | `sudo scripts/setup-k3s.sh server`, then `sudo scripts/setup-k3s.sh gpu`, then `scripts/setup-k3s.sh apply` |
-| mbp (CachyOS) | CPU agent for API-bound work (free-model relay jobs, tests) | copy the token (below), then `sudo scripts/setup-k3s.sh agent <desktop-tailnet-ip>` |
+| mbp (CachyOS) | CPU agent for API-bound work (free-model relay jobs, tests). Joined 2026-10-19. | copy the token (below), then `sudo scripts/setup-k3s.sh agent <desktop-tailnet-ip>`, then `scripts/setup-k3s.sh admit mbp` from the desktop |
 | RTX 2080 Super PC | GPU agent, when it is back online | as mbp, then `sudo scripts/setup-k3s.sh gpu` after labelling it `z0.dev/gpu=rtx2080s` |
 | S25 Ultra, omarchy-phone | client only | `ssh 0 'KUBECONFIG=~/.kube/k3s.yaml kubectl get pods -A'` |
 
@@ -60,6 +60,24 @@ kubectl create -f config/k3s/smoke/isolation-job.yaml  # expect ISOLATION_OK: DN
 ```
 
 Finished smoke Jobs delete themselves after 10 minutes.
+
+## Untrusted pods start only after their network policy is live
+
+K3s installs a pod's firewall rules a moment after the pod starts. On a fresh agent
+(mbp) an untrusted pod could reach the K8s API in its first second (3/3 probes).
+So every `factory`/`lanes` pod must start with the `netpol-ready` init container
+(copy it from `config/k3s/smoke/cpu-job.yaml`); it waits until the API is
+unreachable before any untrusted container runs. `manifests/40-netpol-ready-gate.yaml`
+refuses pods without it. With the gate, 5/5 probes at main-container start were blocked.
+
+## Adding a node
+
+New agents join with the taint `z0.dev/onboarding=true:NoSchedule` and take no work.
+From the desktop, `scripts/setup-k3s.sh admit <node>` runs the isolation smoke on that
+node and removes the taint only on `ISOLATION_OK`. Then
+`kubectl create -f config/k3s/smoke/agent-job.yaml` should print `AGENT_SMOKE_OK`.
+Root over Tailscale SSH (`ssh root@<node>`) is enough to run the agent install; the
+join token goes `sudo cat <data-dir>/server/node-token | ssh root@<node> 'install -m 0600 /dev/stdin /etc/rancher/k3s/join-token'`.
 
 ## Queues (Kueue)
 

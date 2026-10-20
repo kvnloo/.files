@@ -6,6 +6,10 @@ node-ip: "@TS_IP@"
 flannel-iface: tailscale0
 node-label:
   - "z0.dev/role=agent"
+# A new node takes no work until `setup-k3s.sh admit <node>` proves network
+# policy is enforced on it (its policy controller needs a moment after joining).
+node-taint:
+  - "z0.dev/onboarding=true:NoSchedule"
 kubelet-arg:
   - "system-reserved=cpu=1,memory=1Gi"
   - "eviction-hard=memory.available<512Mi"

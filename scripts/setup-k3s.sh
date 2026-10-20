@@ -5,6 +5,8 @@
 #   sudo scripts/setup-k3s.sh gpu           enable NVIDIA containers + device plugin on this node
 #   sudo scripts/setup-k3s.sh agent <ip>    join this host as an agent of the server at <ip>
 #        scripts/setup-k3s.sh apply         apply config/k3s/manifests (as the desktop user)
+#   sudo scripts/setup-k3s.sh firewall [server|agent]  open k3s ports on tailscale0 only (ufw)
+#        scripts/setup-k3s.sh admit <node>  prove isolation on a new node, then let it take work
 #        scripts/setup-k3s.sh kueue         install pinned Kueue + config/k3s/kueue queues (as the desktop user)
 #        scripts/setup-k3s.sh status        node, pod and GPU status
 #        scripts/setup-k3s.sh check         offline validation of this script and manifests
@@ -66,7 +68,7 @@ run_installer() {
 }
 
 cmd_server() {
-  need_root; preflight
+  need_root; preflight; open_firewall server
   local changed svc=k3s
   changed=$(install_config "$CFG/server.yaml")
   if [ "$(installed_version)" != "$K3S_VERSION" ]; then
@@ -85,8 +87,19 @@ cmd_server() {
   say "join token (root-only): ${K3S_DATA}/server/node-token"
 }
 
+# Cluster traffic is allowed on tailscale0 only: API (server), kubelet, flannel VXLAN.
+# ufw ignores rules it already has, so re-running is a no-op.
+open_firewall() {
+  command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active' || return 0
+  local role=$1
+  [ "$role" = server ] && ufw allow in on tailscale0 to any port 6443 proto tcp comment k3s-api >/dev/null
+  ufw allow in on tailscale0 to any port 10250 proto tcp comment k3s-kubelet >/dev/null
+  ufw allow in on tailscale0 to any port 8472 proto udp comment k3s-flannel >/dev/null
+  say "ufw: k3s ports open on tailscale0 ($role)"
+}
+
 cmd_agent() {
-  need_root; preflight
+  need_root; preflight; open_firewall agent
   SERVER_IP=${1:-}; [ -n "$SERVER_IP" ] || die "usage: setup-k3s.sh agent <server-tailnet-ip>"
   [ -s $ETC/join-token ] || die "copy the server's node-token to $ETC/join-token (mode 0600) first"
   chmod 0600 $ETC/join-token
@@ -136,6 +149,36 @@ cmd_kueue() {
   die "kueue queues did not apply"
 }
 
+# Run the isolation smoke pinned to <node> (tolerating the onboarding taint) and
+# remove the taint only when it prints ISOLATION_OK. Retries while the node's
+# policy controller finishes its first sync. Safe to re-run.
+cmd_admit() {
+  [ "$(id -u)" -ne 0 ] || die "run admit as your user, not root"
+  local node=${1:-}; [ -n "$node" ] || die "usage: setup-k3s.sh admit <node>"
+  kc wait --for=condition=Ready "node/$node" --timeout=300s >/dev/null
+  local i job spec
+  for i in 1 2 3 4 5; do
+    spec=$(python3 - "$CFG/smoke/isolation-job.yaml" "$node" <<'PY'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+s = d["spec"]["template"]["spec"]
+s["nodeSelector"] = {"kubernetes.io/hostname": sys.argv[2]}
+s["tolerations"] = [{"key": "z0.dev/onboarding", "operator": "Exists", "effect": "NoSchedule"}]
+print(yaml.safe_dump(d))
+PY
+)
+    job=$(echo "$spec" | kc create -f - -o name)
+    kc -n factory wait --for=condition=complete "$job" --timeout=150s >/dev/null 2>&1 || true
+    if kc -n factory logs "$job" 2>/dev/null | grep -qx ISOLATION_OK; then
+      kc taint node "$node" z0.dev/onboarding- >/dev/null 2>&1 || true
+      say "$node admitted: ISOLATION_OK on attempt $i"; return 0
+    fi
+    say "$node: isolation not enforced yet (attempt $i), retrying in 20s"; sleep 20
+  done
+  kc -n factory logs "$job" || true
+  die "$node stays tainted: isolation failed"
+}
+
 cmd_status() {
   kc get nodes -o wide
   kc get pods -A
@@ -164,8 +207,10 @@ case "${1:-}" in
   gpu) cmd_gpu ;;
   apply) cmd_apply ;;
   kueue) cmd_kueue ;;
+  admit) shift; cmd_admit "$@" ;;
+  firewall) need_root; open_firewall "${2:-server}" ;;
   status) cmd_status ;;
   check) cmd_check ;;
   uninstall) shift; cmd_uninstall "$@" ;;
-  *) sed -n '2,13p' "$0"; exit 2 ;;
+  *) sed -n '2,15p' "$0"; exit 2 ;;
 esac

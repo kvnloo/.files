@@ -16,27 +16,47 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
-        seccompProfile: {type: RuntimeDefault}
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: probe
-          image: busybox:1.37
-          command: ["sh", "-c"]
-          args:
-            - |
-              fail=0
-              expect() { want=$1; shift; if "$@" >/dev/null 2>&1; then got=open; else got=blocked; fi
-                echo "$want/$got $*"; [ "$want" = "$got" ] || fail=1; }
-              expect open    nslookup example.com
-              expect open    nc -z -w 5 1.1.1.1 443
-              expect blocked nc -z -w 5 100.113.138.100 6443
-              expect blocked nc -z -w 5 100.113.138.100 11501
-              expect blocked nc -z -w 5 172.19.0.1 11501
-              expect blocked nc -z -w 5 192.168.1.1 80
-              expect blocked nc -z -w 5 10.43.0.1 443
-              [ $fail = 0 ] && echo ISOLATION_OK || { echo ISOLATION_FAIL; exit 1; }
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities: {drop: [ALL]}
-          resources:
-            requests: {cpu: 50m, memory: 32Mi}
-            limits: {cpu: 200m, memory: 64Mi}
+      - name: probe
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - "fail=0\nexpect() { want=$1; shift; if \"$@\" >/dev/null 2>&1; then got=open; else got=blocked; fi\n  echo \"$want/$got $*\"; [ \"$want\" = \"$got\" ] || fail=1; }\nexpect open    nslookup example.com\n\
+          expect open    nc -z -w 5 1.1.1.1 443\nexpect blocked nc -z -w 5 100.113.138.100 6443\nexpect blocked nc -z -w 5 100.113.138.100 11501\nexpect blocked nc -z -w 5 172.19.0.1 11501\nexpect blocked\
+          \ nc -z -w 5 192.168.1.1 80\nexpect blocked nc -z -w 5 10.43.0.1 443\n[ $fail = 0 ] && echo ISOLATION_OK || { echo ISOLATION_FAIL; exit 1; }\n"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+      initContainers:
+      - name: netpol-ready
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 32Mi

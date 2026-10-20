@@ -1,0 +1,48 @@
+# Untrusted pods (factory, lanes) must not run any code before their network policy
+# is enforced. K3s's policy controller installs a pod's firewall chain a moment after
+# the pod starts (observed on a fresh agent: the K8s API was reachable in the first
+# second). So every pod in these namespaces must start with the `netpol-ready` init
+# container below, which waits until the API is unreachable, i.e. the pod's egress
+# rules are in place, before any untrusted container runs. The pod's firewall chain
+# covers the whole pod IP, so it then also covers the main containers.
+#
+# This policy refuses pods that do not carry that exact init container first.
+# Copy `initContainers` from config/k3s/smoke/cpu-job.yaml into any factory/lanes Job.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: untrusted-netpol-ready
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  variables:
+    - name: first
+      expression: "has(object.spec.initContainers) && size(object.spec.initContainers) > 0 ? object.spec.initContainers[0] : null"
+  validations:
+    - expression: >-
+        variables.first != null &&
+        variables.first.name == 'netpol-ready' &&
+        variables.first.image == 'busybox:1.37' &&
+        has(variables.first.command) && variables.first.command == ['sh', '-c'] &&
+        has(variables.first.args) && size(variables.first.args) == 1 &&
+        variables.first.args[0] == 'i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1'
+      message: "factory/lanes pods must start with the netpol-ready init container (see config/k3s/manifests/40-netpol-ready-gate.yaml)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: untrusted-netpol-ready
+spec:
+  policyName: untrusted-netpol-ready
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [factory, lanes]
