@@ -1,0 +1,89 @@
+# Kueue queues. A Job joins a queue by carrying the label
+# kueue.x-k8s.io/queue-name=<namespace>; Jobs without it are not managed, so
+# nothing that exists today changes behaviour.
+#
+# Quotas sit inside the namespace ResourceQuotas and the node's allocatable
+# (groot: 18 CPU, ~18Gi, 1 GPU after system-reserved). When a second node joins,
+# raise the nominal quotas here; the GPU flavor pins GPU work to labelled nodes.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: cpu
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-rtx3080ti
+spec:
+  nodeLabels:
+    z0.dev/gpu: rtx3080ti
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: factory
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: factory}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: cpu
+          resources:
+            - {name: cpu, nominalQuota: "6"}
+            - {name: memory, nominalQuota: 12Gi}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: lanes
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: lanes}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: cpu
+          resources:
+            - {name: cpu, nominalQuota: "4"}
+            - {name: memory, nominalQuota: 4Gi}
+---
+# z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
+# instead of failing to schedule.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: z0
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: z0}
+  queueingStrategy: StrictFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: cpu
+          resources:
+            - {name: cpu, nominalQuota: "8"}
+            - {name: memory, nominalQuota: 12Gi}
+    - coveredResources: [nvidia.com/gpu]
+      flavors:
+        - name: gpu-rtx3080ti
+          resources:
+            - {name: nvidia.com/gpu, nominalQuota: "1"}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: factory, namespace: factory}
+spec: {clusterQueue: factory}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: lanes, namespace: lanes}
+spec: {clusterQueue: lanes}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: z0, namespace: z0}
+spec: {clusterQueue: z0}

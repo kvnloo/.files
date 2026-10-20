@@ -5,6 +5,7 @@
 #   sudo scripts/setup-k3s.sh gpu           enable NVIDIA containers + device plugin on this node
 #   sudo scripts/setup-k3s.sh agent <ip>    join this host as an agent of the server at <ip>
 #        scripts/setup-k3s.sh apply         apply config/k3s/manifests (as the desktop user)
+#        scripts/setup-k3s.sh kueue         install pinned Kueue + config/k3s/kueue queues (as the desktop user)
 #        scripts/setup-k3s.sh status        node, pod and GPU status
 #        scripts/setup-k3s.sh check         offline validation of this script and manifests
 #   sudo scripts/setup-k3s.sh uninstall --yes
@@ -13,6 +14,9 @@
 set -euo pipefail
 
 K3S_VERSION="${K3S_VERSION:-v1.37.1+k3s1}"
+# Bump both together; the hash is of the release's manifests.yaml.
+KUEUE_VERSION=v0.20.2
+KUEUE_SHA256=1ab14ecd590575ac57f50fa4cbcf529766bc2c32ba974bda1614381281ec52b4
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CFG="$REPO/config/k3s"
 ETC=/etc/rancher/k3s
@@ -120,6 +124,18 @@ cmd_apply() {
   kc -n kube-system rollout status ds/nvidia-device-plugin --timeout=180s || true
 }
 
+cmd_kueue() {
+  [ "$(id -u)" -ne 0 ] || die "run kueue as your user, not root"
+  local tmp; tmp=$(mktemp); trap 'rm -f "$tmp"' RETURN
+  curl -fsSL "https://github.com/kubernetes-sigs/kueue/releases/download/$KUEUE_VERSION/manifests.yaml" -o "$tmp"
+  echo "$KUEUE_SHA256  $tmp" | sha256sum -c --quiet - || die "kueue $KUEUE_VERSION manifest hash mismatch"
+  kc apply --server-side --force-conflicts -f "$tmp" >/dev/null
+  kc -n kueue-system rollout status deploy/kueue-controller-manager --timeout=300s
+  # The admission webhook can lag the rollout by a few seconds.
+  local i; for i in 1 2 3 4 5 6; do kc apply -f "$CFG/kueue/" && return 0; sleep 10; done
+  die "kueue queues did not apply"
+}
+
 cmd_status() {
   kc get nodes -o wide
   kc get pods -A
@@ -128,7 +144,7 @@ cmd_status() {
 
 cmd_check() {
   bash -n "$0" && say "script syntax ok"
-  for f in "$CFG"/manifests/*.yaml "$CFG"/smoke/*.yaml; do
+  for f in "$CFG"/manifests/*.yaml "$CFG"/smoke/*.yaml "$CFG"/kueue/*.yaml; do
     python3 -c 'import sys,yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "$f" || die "bad yaml: $f"
   done
   say "manifests parse"
@@ -147,8 +163,9 @@ case "${1:-}" in
   agent) shift; cmd_agent "$@" ;;
   gpu) cmd_gpu ;;
   apply) cmd_apply ;;
+  kueue) cmd_kueue ;;
   status) cmd_status ;;
   check) cmd_check ;;
   uninstall) shift; cmd_uninstall "$@" ;;
-  *) sed -n '2,12p' "$0"; exit 2 ;;
+  *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

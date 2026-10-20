@@ -55,7 +55,25 @@ kubectl create -f config/k3s/smoke/gpu-job.yaml   # expect GPU_SMOKE_OK
 kubectl -n factory logs job/<name>
 ```
 
+```sh
+kubectl create -f config/k3s/smoke/isolation-job.yaml  # expect ISOLATION_OK: DNS and internet open; host, tailnet, LAN blocked
+```
+
 Finished smoke Jobs delete themselves after 10 minutes.
+
+## Queues (Kueue)
+
+`scripts/setup-k3s.sh kueue` installs the pinned Kueue release (hash-checked) and
+`config/k3s/kueue/queues.yaml`: one queue per namespace (`factory`, `lanes`, `z0`),
+with the single GPU behind the `z0` queue. A Job opts in with the label
+`kueue.x-k8s.io/queue-name: <namespace>` and `suspend: true`; Jobs without the label
+are untouched. Proof that GPU work queues instead of failing:
+
+```sh
+kubectl create -f config/k3s/smoke/gpu-queue-job.yaml
+kubectl create -f config/k3s/smoke/gpu-queue-job.yaml
+kubectl -n z0 get workloads   # one Admitted, one waiting; the second starts when the first ends
+```
 
 ## Remote read-only access
 
