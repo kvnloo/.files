@@ -31,7 +31,7 @@ changes three things:
    need the cluster most, and both need the GPU. There is no GPU sharing,
    KAI or vCluster.
 3. **Namespaces split by trust:** `factory` (untrusted OSS code, restricted,
-   six pods), `z0` (our own services and GPU jobs), and `lanes` (free-model
+   a 24-pod ceiling above Kueue's per-node quotas; it was six pods on one node), `z0` (our own services and GPU jobs), and `lanes` (free-model
    relays, restricted, CPU only).
 
 ## Joining an agent
@@ -57,6 +57,7 @@ kubectl -n factory logs job/<name>
 
 ```sh
 kubectl create -f config/k3s/smoke/isolation-job.yaml  # expect ISOLATION_OK: DNS and internet open; host, tailnet, LAN blocked
+kubectl create -f config/k3s/smoke/gateway-job.yaml    # expect GATEWAY_OK: only the token-gated factory gateway is reachable
 ```
 
 Finished smoke Jobs delete themselves after 10 minutes.
@@ -69,6 +70,21 @@ So every `factory`/`lanes` pod must start with the `netpol-ready` init container
 (copy it from `config/k3s/smoke/cpu-job.yaml`); it waits until the API is
 unreachable before any untrusted container runs. `manifests/40-netpol-ready-gate.yaml`
 refuses pods without it. With the gate, 5/5 probes at main-container start were blocked.
+
+## Factory gateway (the one host door for untrusted pods)
+
+Factory jobs sometimes need GitHub data or a model call, and both need the owner's
+credentials. The credentials stay on groot, in the oss-factory `ghcache` service
+(`tools/factory/install-user-units.sh`): a caching, budgeted GitHub read proxy
+whose *pod listener* binds groot's `cni0` address `10.42.0.1:18091`.
+`manifests/50-factory-gateway.yaml` adds a small TCP forwarder in `z0`
+(`factory-gateway.z0.svc:8080`, pinned to groot) and the two network policies that
+let pods labelled `z0.dev/gateway-client=true` reach that forwarder and nothing
+else. Pods on mbp cannot reach `10.42.0.1` directly (the host drops it), but
+pod-to-pod traffic works, which is why the forwarder exists. The pod listener
+refuses requests without a live per-job token, serves only GET reads of public
+repos, and meters model-relay calls per job. `smoke/gateway-job.yaml` proves it
+(`GATEWAY_OK`, run it pinned to each node).
 
 ## Adding a node
 
@@ -85,7 +101,13 @@ join token goes `sudo cat <data-dir>/server/node-token | ssh root@<node> 'instal
 `config/k3s/kueue/queues.yaml`: one queue per namespace (`factory`, `lanes`, `z0`),
 with the single GPU behind the `z0` queue. A Job opts in with the label
 `kueue.x-k8s.io/queue-name: <namespace>` and `suspend: true`; Jobs without the label
-are untouched. Proof that GPU work queues instead of failing:
+are untouched. The `factory` queue has one ResourceFlavor per node (`node-mbp`,
+then `node-groot`): Kueue fills mbp's share first and spills to a small groot share,
+and writes the flavor's node label into the admitted pod, so quota decides
+placement. `pods` is a covered resource (16 on mbp, 4 on groot) because measured
+factory jobs are network-bound and small; the namespace ResourceQuota (24 pods)
+stays as the outer ceiling. When a node joins, add a flavor for it. Proof that GPU
+work queues instead of failing:
 
 ```sh
 kubectl create -f config/k3s/smoke/gpu-queue-job.yaml
