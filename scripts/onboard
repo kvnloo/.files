@@ -220,7 +220,8 @@ run_core_links() {
   mkdir -p "$HOME/Downloads/Taildrop"
 
   mkdir -p "$HOME/.config/systemd/user"
-  for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service; do
+  for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service \
+    workspace-copilot-rerank.service workspace-copilot-rerank.timer; do
     [[ -e "$repo/config/systemd/user/$unit" ]] && \
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done

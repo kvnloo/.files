@@ -1,0 +1,13 @@
+[Unit]
+Description=Retrain the workspace-copilot next-action re-ranker
+After=workspace-copilot.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/workspace-copilot rerank-train
+Environment=OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2
+Nice=19
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
