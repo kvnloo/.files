@@ -196,12 +196,21 @@ def collect(repo_root: Path) -> dict[str, Any]:
         },
     }
 
-    # Independent probes share no writes; one timeout must not serialize the fleet snapshot.
+    # Keep package/hardware probes serial: shared filesystem/CPU contention can
+    # turn successful inventories into timeouts. Only overlap service inventory.
+    raw_results = {
+        name: _run(argv) for name, argv in COMMANDS.items() if argv[0] != "systemctl"
+    }
+    service_commands = {
+        name: argv for name, argv in COMMANDS.items() if argv[0] == "systemctl"
+    }
     with ThreadPoolExecutor(max_workers=4) as pool:
-        for name, raw in zip(COMMANDS, pool.map(_run, COMMANDS.values())):
-            observed["observations"][name] = (
-                _json_result(raw) if name in JSON_COMMANDS else _lines_result(raw)
-            )
+        raw_results.update(zip(service_commands, pool.map(_run, service_commands.values())))
+    for name in COMMANDS:
+        raw = raw_results[name]
+        observed["observations"][name] = (
+            _json_result(raw) if name in JSON_COMMANDS else _lines_result(raw)
+        )
 
     return observed
 
