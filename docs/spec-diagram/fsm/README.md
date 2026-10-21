@@ -1,6 +1,6 @@
 # Bend statecharts as Hapsland layers
 
-The two z0 agent-work statecharts, drawn as CSS-3D planes in the real Hapsland
+The three z0 agent-work statecharts, drawn as CSS-3D planes in the real Hapsland
 dashboard next to the `.files` architecture view (`../`):
 
 | Plane | Machine | Upstream |
@@ -90,6 +90,34 @@ The browser re-runs each step and shows whether it matches the receipt-bound
 ```sh
 node node_modules/vite/bin/vite.js build --config packages/agent-flow-viz/vite.fsm.config.ts
 ```
+
+## Loop 3 · integration owner
+
+Adds a fourth plane (the shared-resources plane is still part of Loop 2),
+backed by unchanged `IntegrationOwner.bend` from z0intelligence#188 at
+`1ef432f91223e74dcfb756c590aae82a950999ed`. The kernel receipt passes for
+I1–I5 monitor/safety laws, including all-event merge entry safety. Parking
+needs an explicit reason and expiry; an expired park requeues. The per-repo
+lease cannot be stolen before expiry. Integration requires independent review.
+
+`extract-integration-tapes.py /private/integration-20261021.json` produces five
+allowlisted snapshot tapes in `integration-tapes.json`. Initial states come
+from the checker; every action/probe is labelled WHAT-IF, including all owner
+acceptance and merge events. These are not fabricated historical deployments.
+NOOP checkout drift is not a claim about the installed phone's source revision.
+Missing runtime SHA evidence remains unverified, not a green deploy.
+
+The producer and browser concatenate these tapes after the original 12. Current
+receipt: 17 tapes, 96 steps, 73 edges; Mermaid comparison has zero missing and
+zero extra edges. Earlier counts in this README describe the original two-loop
+snapshot. Both the original and Loop 3 inputs remain hash-bound by the producer.
+
+The isolated headless browser was exercised at 412×915: all five new tapes
+completed and every prefix matched the receipt-bound compiled Bend replay.
+No owner desktop/phone was used. The full upstream check:fast was attempted
+through fleet-build on the MBP and is blocked by missing vitest in that clean
+remote source shipment; the bounded Vite bundle and browser proof passed.
+This is not a full Hapsland source-qualification claim.
 
 ## Scope
 

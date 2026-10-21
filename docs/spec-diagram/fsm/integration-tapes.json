@@ -1,0 +1,297 @@
+{
+ "schema": 1,
+ "provenance": {
+  "report": "integration-20261021.json",
+  "sha256": "9977d0f7b0e483544c9d32f38068962ae64c05135a0bfc811a5126e5e1997b1e",
+  "generatedAt": "2026-10-21T07:44:00.303336+00:00",
+  "privacy": "Allowlisted ids, times, short SHAs, finding codes only.",
+  "scope": "Observed snapshot initial states; ALL event steps are explicitly what-if guard probes. Not historical deployment/action logs."
+ },
+ "observations": [
+  {
+   "id": "kvnloo/dash#78",
+   "head": "7a9b0bb77d29",
+   "state": "DraftPR",
+   "codes": [
+    "STACK_BASE_STALE"
+   ]
+  },
+  {
+   "id": "kvnloo/noop#93",
+   "head": "e12cd056822a",
+   "state": "OnIntegrationBranch",
+   "codes": [
+    "STACK_BASE_STALE"
+   ]
+  },
+  {
+   "id": "kvnloo/company-os#7",
+   "head": "7b39d1a03156",
+   "state": "DraftPR",
+   "codes": [
+    "DRAFT_OVERDUE"
+   ]
+  },
+  {
+   "id": "kvnloo/z0evals#105",
+   "head": "d8a9658dec11",
+   "state": "Conflicted",
+   "codes": []
+  },
+  {
+   "id": "kvnloo/.files#34",
+   "head": "43aef224e01a",
+   "state": "DraftPR",
+   "codes": []
+  }
+ ],
+ "scenarios": [
+  {
+   "id": "integration-dash-stack",
+   "machine": "integration",
+   "title": "Loop 3 \u00b7 kvnloo/dash#78",
+   "summary": "Snapshot: child recorded base does not contain its parent's current head. All events are probes, not historical actions.",
+   "item": "kvnloo/dash#78",
+   "initial": {
+    "tag": "DraftPR"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Queue"
+     },
+     "facts": {},
+     "note": "What-if: queue this observed draft.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "lease": false,
+      "stack": false,
+      "independent": false
+     },
+     "facts": {},
+     "note": "Guard probe: STACK_BASE_STALE; no recorded lease or independent review. Not an actual integration attempt.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    }
+   ]
+  },
+  {
+   "id": "integration-noop-stale",
+   "machine": "integration",
+   "title": "Loop 3 \u00b7 kvnloo/noop#93",
+   "summary": "Observed containment of PR #93 is separate from stale S25-build checkout. No phone action or claim about installed source revision.",
+   "item": "kvnloo/noop#93",
+   "initial": {
+    "tag": "OnIntegrationBranch"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Deploy",
+      "equal": false
+     },
+     "facts": {},
+     "note": "Guard probe: NOOP checkout differs from remote integration head; installed build SHA remains unknown.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "owner": false
+     },
+     "facts": {},
+     "note": "What-if agent acceptance: refused, and not eligible before deployed evidence.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Merge"
+     },
+     "facts": {},
+     "note": "What-if merge without owner acceptance: refused.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    }
+   ]
+  },
+  {
+   "id": "integration-company-park",
+   "machine": "integration",
+   "title": "Loop 3 \u00b7 kvnloo/company-os#7",
+   "summary": "Observed overdue, uncontained draft. Parking and expiry are illustrative continuations, never recorded owner consent.",
+   "item": "kvnloo/company-os#7",
+   "initial": {
+    "tag": "DraftPR"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Park",
+      "reason": false,
+      "future": false
+     },
+     "facts": {},
+     "note": "Guard probe: there is no explicit reason/expiry parking decision.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Park",
+      "reason": true,
+      "future": true
+     },
+     "facts": {},
+     "note": "What-if Kevin explicitly parks this exact head with reason + expiry; not a real decision.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Expire",
+      "expired": true
+     },
+     "facts": {},
+     "note": "What-if expiry: requeue, never silently forget the change.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    }
+   ]
+  },
+  {
+   "id": "integration-evals-conflict",
+   "machine": "integration",
+   "title": "Loop 3 \u00b7 kvnloo/z0evals#105",
+   "summary": "Snapshot: GitHub reports CONFLICTING. Repair/resume are hypothetical; no conflict was changed by this checker.",
+   "item": "kvnloo/z0evals#105",
+   "initial": {
+    "tag": "Conflicted"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Merge"
+     },
+     "facts": {},
+     "note": "What-if shortcut: a conflict cannot bypass OwnerAccepted.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Resume"
+     },
+     "facts": {},
+     "note": "What-if independently repaired and re-tested: requeue.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "lease": false,
+      "stack": true,
+      "independent": false
+     },
+     "facts": {},
+     "note": "Guard probe: no recorded integration lease/reviewer; still refused.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    }
+   ]
+  },
+  {
+   "id": "integration-files-owner-gate",
+   "machine": "integration",
+   "title": "Loop 3 \u00b7 kvnloo/.files#34",
+   "summary": "Observed .files draft; the remainder teaches the acceptance gate. Hypothetical positive facts are not operational authorization.",
+   "item": "kvnloo/.files#34",
+   "initial": {
+    "tag": "DraftPR"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Queue"
+     },
+     "facts": {},
+     "note": "What-if: queue the observed visualization draft.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "lease": true,
+      "stack": true,
+      "independent": true
+     },
+     "facts": {},
+     "note": "What-if: designated branch, valid lease and independent reviewer. None are asserted by this snapshot.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Deploy",
+      "equal": false
+     },
+     "facts": {},
+     "note": "Guard probe: running artifact revision is not attested by checkout HEAD.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Deploy",
+      "equal": true
+     },
+     "facts": {},
+     "note": "What-if exact build/runtime evidence becomes available.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "owner": false
+     },
+     "facts": {},
+     "note": "What-if author self-approval: refused.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "owner": true
+     },
+     "facts": {},
+     "note": "What-if Kevin later accepts. Not recorded consent.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    },
+    {
+     "event": {
+      "tag": "Merge"
+     },
+     "facts": {},
+     "note": "What-if merge only after that explicit acceptance. This tool never merges.",
+     "source": "what-if",
+     "at": "2026-10-21T07:44:00.303336+00:00"
+    }
+   ]
+  }
+ ]
+}

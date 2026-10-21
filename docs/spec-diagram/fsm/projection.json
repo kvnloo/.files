@@ -409,6 +409,210 @@
    "laws": [
     "W6"
    ]
+  },
+  {
+   "machine": "integration",
+   "from": 0,
+   "to": 1,
+   "event": "Draft",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 0,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 0,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 1,
+   "to": 2,
+   "event": "Queue",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 1,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 1,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 2,
+   "to": 3,
+   "event": "Integrate",
+   "laws": [
+    "I3",
+    "I4"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 2,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 2,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 3,
+   "to": 4,
+   "event": "Deploy",
+   "laws": [
+    "I2"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 3,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 3,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 4,
+   "to": 3,
+   "event": "Observe",
+   "laws": [
+    "I2"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 4,
+   "to": 5,
+   "event": "Accept",
+   "laws": [
+    "I5"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 4,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 4,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 5,
+   "to": 3,
+   "event": "Observe",
+   "laws": [
+    "I2"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 5,
+   "to": 6,
+   "event": "Merge",
+   "laws": [
+    "I5"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 5,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 5,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 7,
+   "to": 2,
+   "event": "Expire",
+   "laws": [
+    "I1"
+   ]
+  },
+  {
+   "machine": "integration",
+   "from": 7,
+   "to": 2,
+   "event": "Resume",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 7,
+   "to": 8,
+   "event": "Conflict",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 8,
+   "to": 2,
+   "event": "Resume",
+   "laws": []
+  },
+  {
+   "machine": "integration",
+   "from": 8,
+   "to": 7,
+   "event": "Park",
+   "laws": [
+    "I1"
+   ]
   }
  ],
  "selfLoops": [
@@ -513,13 +717,13 @@
   }
  ],
  "documentedComparison": {
-  "documentedEdges": 39,
+  "documentedEdges": 64,
   "documentedNotProducedByBend": [],
   "producedByBendNotDocumented": []
  },
  "provenance": {
   "producer": "Executing Runtime.generated.mjs through adapter.mjs over representative states, events and facts",
-  "calls": 26547,
+  "calls": 26700,
   "scope": "Design-level checked possibilities, not an exhaustive proof. The proofs live in LAWS.bend/PROOF.bend upstream."
  }
 }

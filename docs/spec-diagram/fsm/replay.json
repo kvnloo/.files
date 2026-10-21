@@ -1386,5 +1386,230 @@
     }
    }
   ]
+ },
+ {
+  "id": "integration-dash-stack",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "refused",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-noop-stale",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-company-park",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "DraftPR"
+    }
+   },
+   {
+    "before": 1,
+    "state": 7,
+    "verdict": "accepted",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "Parked"
+    }
+   },
+   {
+    "before": 7,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-evals-conflict",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 8,
+    "state": 8,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Conflicted"
+    }
+   },
+   {
+    "before": 8,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "refused",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-files-owner-gate",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "Deployed"
+    }
+   },
+   {
+    "before": 4,
+    "state": 4,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Deployed"
+    }
+   },
+   {
+    "before": 4,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OwnerAccepted"
+    }
+   },
+   {
+    "before": 5,
+    "state": 6,
+    "verdict": "accepted",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Merged"
+    }
+   }
+  ]
  }
 ]

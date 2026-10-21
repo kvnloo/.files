@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-21T06:49:54.963Z",
+  "generatedAt": "2026-10-21T07:48:00.738Z",
   "compiler": {
     "version": "bend 2.0.34",
     "executableSha256": "66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317",
@@ -8,21 +8,25 @@
     "producerPlatform": "linux",
     "producerArchitecture": "x64"
   },
-  "rawCompilerOutputSha256": "e5ca9dde6e90489d1ed7b1378ae3d40a89c2aa90d37fba1cceecc8d068a1e8e9",
+  "rawCompilerOutputSha256": "cdb8fc775baffc5e5e7c79431858479be8171b207bd99ebf64ee5939b1cca8f3",
   "artifacts": {
-    "Runtime.bend": "8771fe9c940fcd00370cd82472479a1453e12d5a91c954ab7a3b69e38ad1b2b5",
+    "Runtime.bend": "154e4e154dd8be153d32be58ad05420ed4de5df9a8e8572ba82ea7fa4dfb1fde",
     "WorkItem.bend": "f0465c394b77fed96e577568a7523b139e184dcabf973017bfbe681e74aaf29f",
     "WorkerSupervision.bend": "5acf2bd7deb05bc78ea0ec36836957da625a4e4bde54fb59726fed4338d4f61a",
-    "model.json": "33713e9bc23b6701fb2e44cfc785fab93d44d168027289c1c07390b39ee680a0",
+    "IntegrationOwner.bend": "85cee91b17c81c817f7ed2d0c951fa0ad49d77f3289ceb6deae82349cf303a2a",
+    "model.json": "fe41cd1c297b9b8544d5ad0db039de5d2a83f6872d5c9112b16e8b6e967301e9",
     "scenarios.json": "4c56d18d3cd8c36602a19eb98bb5ebb643fb14ac540eb272438f3a7fb1a836f3",
-    "adapter.mjs": "4b1f8034cfa835e3c15d2f05105f2229ff5e72a5a85fb56f718df676debd0527",
-    "build.mjs": "1a986368f056e2f810562429b83b399d7be48a04f28ba05761cf877e56447cf1",
+    "adapter.mjs": "fe7da04145bfddae18bfefa5c6745bc4d4984c4c27647f8f4bb1393ed9d89c1b",
+    "build.mjs": "31292fecbac2cf338cf669bbfb5d9636a5e8272d031cf5dc9c69e2c05f1ec2b5",
     "extract-tapes.py": "0deedd25add7c0041b64da722d1309a5e8821e4bdcf59af2e889054bc067a2dc",
+    "extract-integration-tapes.py": "116c03fb82cf9e52abaa72d54b62d78f0e79035c6d20ec2d706b5d33cb44ba06",
     "work-item.mmd": "18aa666dae6736dcf20f34149103c19e4d7f0b368c2c9c7cac328ada81ab1127",
     "worker-supervision.mmd": "43b6af2dac6bddf361d1b86e82a9664e5ed5dd30be383adcc66038a98dc2cd0a",
-    "Runtime.generated.mjs": "eac0e3053b94f7cba05d8400c50a64c01d40322102118111cf809133ac03ccd3",
-    "projection.json": "0443d5b6bb4c4f9f8474d5a18c18d9158550780cbfde80ee1a3b24cc321d5a40",
-    "replay.json": "57b7f9b7db3388f7d13d06a1826aab680b69c0242a137c4cfebd63e2f38a2e40"
+    "integration-owner.mmd": "3a1e37a5892b7a9821c275fccdb2c58b196c5acb48db9f6a444326ccf7835ea9",
+    "integration-tapes.json": "9ba955cc61981fc4f7de40ad8590ddad9ad81ddbf63ae5772107059950b700ee",
+    "Runtime.generated.mjs": "856c6d60860ddccdc09598fdbde48a031d171a89b9330ea4d809e792853b44a1",
+    "projection.json": "8ccf18e65dcd08b1bb47c9b83999d8beaf750e821ea1a4fc128ab4f7eb9a224e",
+    "replay.json": "b0a2bb1425d1aff8c0e44186091705aa40ba1cde6beb48a7f2aa5b205f4a3229"
   },
   "sources": [
     {
@@ -52,6 +56,20 @@
       "gitBlob": "11edb752608ed203970019f963b32768017b58ce",
       "kind": "documented-statechart",
       "sha256": "43b6af2dac6bddf361d1b86e82a9664e5ed5dd30be383adcc66038a98dc2cd0a"
+    },
+    {
+      "path": "IntegrationOwner.bend",
+      "upstream": "kvnloo/z0intelligence@1ef432f91223e74dcfb756c590aae82a950999ed:bend/integration_owner_fsm/fsm.bend",
+      "gitBlob": "beb728aad382ebcad19f8d602ab6a5cdafd9fe75",
+      "kind": "bend-model",
+      "sha256": "85cee91b17c81c817f7ed2d0c951fa0ad49d77f3289ceb6deae82349cf303a2a"
+    },
+    {
+      "path": "integration-owner.mmd",
+      "upstream": "kvnloo/z0intelligence@1ef432f91223e74dcfb756c590aae82a950999ed:docs/fsm/integration-owner.mmd",
+      "gitBlob": "ba3f617a2362e65bbc2fa9a6872601d9e795fd55",
+      "kind": "documented-statechart",
+      "sha256": "3a1e37a5892b7a9821c275fccdb2c58b196c5acb48db9f6a444326ccf7835ea9"
     }
   ],
   "proofs": [
@@ -76,6 +94,15 @@
       "bend": "2.0.34",
       "verifiedAt": "2026-10-21T05:08:25Z",
       "scope": "bend-emitted-book; source_semantics_attested=false"
+    },
+    {
+      "project": "bend/integration_owner_fsm",
+      "pr": "kvnloo/z0intelligence#188",
+      "commit": "1ef432f91223e74dcfb756c590aae82a950999ed",
+      "verdict": "pass",
+      "bend": "2.0.34",
+      "verifiedAt": "2026-10-21T07:40:49.968160+00:00",
+      "scope": "bend-emitted-book; source_semantics_attested=false"
     }
   ],
   "tapes": {
@@ -90,13 +117,20 @@
       "generatedAt": "2026-10-21T05:31:00+00:00"
     },
     "privacy": "Only ids, timestamps, event kinds, short SHAs and finding codes are copied; log paths, commands, goals and home paths are not.",
-    "assumptions": "Worker hosts are not in the supervise events; report tapes start on groot with light load (Hermes agent sessions). Times are minutes since the worker's first event; the limit is the report's 2 h."
+    "assumptions": "Worker hosts are not in the supervise events; report tapes start on groot with light load (Hermes agent sessions). Times are minutes since the worker's first event; the limit is the report's 2 h.",
+    "integration": {
+      "report": "integration-20261021.json",
+      "sha256": "9977d0f7b0e483544c9d32f38068962ae64c05135a0bfc811a5126e5e1997b1e",
+      "generatedAt": "2026-10-21T07:44:00.303336+00:00",
+      "privacy": "Allowlisted ids, times, short SHAs, finding codes only.",
+      "scope": "Observed snapshot initial states; ALL event steps are explicitly what-if guard probes. Not historical deployment/action logs."
+    }
   },
   "checks": {
     "compilation": "The pinned Bend compiler emitted Runtime.generated.mjs from the unchanged fsm.bend files; no handwritten transition table",
     "sources": "WorkItem.bend, WorkerSupervision.bend and the .mmd drawings are byte-identical to their upstream git blobs",
-    "replay": "12 tapes replayed through the compiled module; outcomes in replay.json",
-    "projection": "48 display edges enumerated by executing the compiled module (26547 calls)",
+    "replay": "17 tapes replayed through the compiled module; outcomes in replay.json",
+    "projection": "73 display edges enumerated by executing the compiled module (26700 calls)",
     "theoremProofs": "Upstream PROOF.bend pass receipts (bend-emitted-book scope); not re-run here",
     "nativeRuntime": "None. No host, service, adb or GitHub is contacted"
   }

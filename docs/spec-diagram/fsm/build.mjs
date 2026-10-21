@@ -16,13 +16,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const directory = dirname(fileURLToPath(import.meta.url));
 const compilerPin = 'bend 2.0.34';
 const compilerIdentity = '66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317';
-const bendInputs = ['Runtime.bend', 'WorkItem.bend', 'WorkerSupervision.bend'];
-const artifactNames = [...bendInputs, 'model.json', 'scenarios.json', 'adapter.mjs', 'build.mjs', 'extract-tapes.py',
-  'work-item.mmd', 'worker-supervision.mmd', 'Runtime.generated.mjs', 'projection.json', 'replay.json'];
+const bendInputs = ['Runtime.bend', 'WorkItem.bend', 'WorkerSupervision.bend', 'IntegrationOwner.bend'];
+const artifactNames = [...bendInputs, 'model.json', 'scenarios.json', 'adapter.mjs', 'build.mjs', 'extract-tapes.py', 'extract-integration-tapes.py',
+  'work-item.mmd', 'worker-supervision.mmd', 'integration-owner.mmd', 'integration-tapes.json', 'Runtime.generated.mjs', 'projection.json', 'replay.json'];
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const gitBlob = (b) => createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${b.length}\0`), b])).digest('hex');
 const bytes = (name) => readFileSync(join(directory, name));
 const json = (name) => JSON.parse(bytes(name).toString('utf8'));
+const loadScenarios = () => {
+  const base = json('scenarios.json'), integration = json('integration-tapes.json');
+  return { ...base, provenance: { ...base.provenance, integration: integration.provenance },
+    scenarios: [...base.scenarios, ...integration.scenarios] };
+};
 const hash = (name) => sha256(bytes(name));
 const stable = (v) => JSON.stringify(v, null, 1) + '\n';
 
@@ -96,7 +101,11 @@ function samples() {
     { machine: 'work-item', states: wiStates, events: wiEvents, facts: [{ availability: 'DeepWork' }, { availability: 'Off' }] },
     { machine: 'worker', states: ws, events: wsEvents, facts: [{ limit: 120 }] },
     { machine: 'lease', states: leases, events: leaseEvents, facts: [{}] },
-    { machine: 'device', states: devices, events: deviceEvents, facts: [{}] }
+    { machine: 'device', states: devices, events: deviceEvents, facts: [{}] },
+    { machine: 'integration', states: ['Branch','DraftPR','Queued','OnIntegrationBranch','Deployed','OwnerAccepted','Merged','Parked','Conflicted'].map(tag => ({tag})),
+      events: [ {tag:'Draft'}, {tag:'Queue'}, {tag:'Merge'}, {tag:'Conflict'}, {tag:'Resume'},
+        ...[true,false].flatMap(ok => [{tag:'Integrate',lease:ok,stack:ok,independent:ok},{tag:'Deploy',equal:ok},{tag:'Accept',owner:ok},
+          {tag:'Park',reason:ok,future:ok},{tag:'Observe',equal:ok},{tag:'Expire',expired:ok}])], facts:[{}] }
   ];
 }
 
@@ -118,7 +127,7 @@ function enumerate(adapter, model) {
   const sort = (list) => [...list].sort((a, b) => order.indexOf(a.machine) - order.indexOf(b.machine) || a.from - b.from || a.to - b.to || a.event.localeCompare(b.event));
   // Compare with the documented Mermaid statecharts (drawing vs compiled code).
   const documented = [];
-  for (const [machine, file] of [['work-item', 'work-item.mmd'], ['worker', 'worker-supervision.mmd']]) {
+  for (const [machine, file] of [['work-item', 'work-item.mmd'], ['worker', 'worker-supervision.mmd'], ['integration', 'integration-owner.mmd']]) {
     const ids = new Map(model.states[machine].map((s) => [s.title, s.id]).concat(model.states[machine].map((s) => [s.tag, s.id])));
     for (const line of bytes(file).toString('utf8').split('\n')) {
       const m = line.match(/^\s*(\w+)\s*-->\s*(\w+)\s*:\s*(.*)$/);
@@ -135,7 +144,7 @@ function enumerate(adapter, model) {
     documentedComparison: {
       documentedEdges: documented.length,
       documentedNotProducedByBend: documented.filter((e) => e.from !== e.to && !has(all, e)),
-      producedByBendNotDocumented: sort(all.filter((e) => (e.machine === 'work-item' || e.machine === 'worker') && !has(documented, e)))
+      producedByBendNotDocumented: sort(all.filter((e) => (e.machine === 'work-item' || e.machine === 'worker' || e.machine === 'integration') && !has(documented, e)))
     },
     provenance: { producer: 'Executing Runtime.generated.mjs through adapter.mjs over representative states, events and facts', calls,
       scope: 'Design-level checked possibilities, not an exhaustive proof. The proofs live in LAWS.bend/PROOF.bend upstream.' }
@@ -163,7 +172,7 @@ async function check() {
   for (const name of artifactNames) if (receipt.artifacts[name] !== hash(name)) throw new Error(`Stale artifact: ${name}; rebuild`);
   checkSources(model);
   const adapter = await loadAdapter();
-  const replay = replayAll(adapter, json('scenarios.json'));
+  const replay = replayAll(adapter, loadScenarios());
   if (stable(replay) !== bytes('replay.json').toString('utf8')) throw new Error('Compiled Bend no longer reproduces replay.json');
   const projection = enumerate(adapter, model);
   const committed = json('projection.json');
@@ -202,11 +211,11 @@ if (process.argv.includes('--check')) {
     rmSync(temporary, { recursive: true, force: true });
   }
   const adapter = await loadAdapter();
-  const replay = replayAll(adapter, json('scenarios.json'));
+  const replay = replayAll(adapter, loadScenarios());
   publish('replay.json', stable(replay));
   const projection = enumerate(adapter, model);
   publish('projection.json', `${JSON.stringify(projection, null, 1)}\n`);
-  const scenarios = json('scenarios.json');
+  const scenarios = loadScenarios();
   const receipt = {
     schema: 1,
     generatedAt: new Date().toISOString(),

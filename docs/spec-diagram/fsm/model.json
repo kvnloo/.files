@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "title": "Bend statecharts for agent work \u00b7 Hapsland layers",
- "scope": "Two statecharts written in Bend and proven against their laws (LAWS.bend / PROOF.bend in kvnloo/z0intelligence). This view replays event tapes through the JavaScript the pinned Bend compiler emitted from those exact fsm.bend files. Tapes marked report come from the 2026-10-21 replay/supervise reports; steps marked what-if are illustrative continuations.",
+ "scope": "Three Bend control-plane loops. Loop 3 snapshot tapes derive from the integration inventory; guard probes are what-if, never invented historical deployments. Runtime/build SHA gaps remain unverified.",
  "trustBoundary": "Bend decides every next state. The adapter only converts JSON to Bend constructors and back, and labels an unchanged state with the guarding law from this file. A replay is not an authorization, an admission or verified success, and it does not observe any live host.",
  "machines": {
   "work-item": {
@@ -46,6 +46,14 @@
    "eventType": "WorkerSupervision.PEv",
    "step": "WorkerSupervision.pstep(device, event) + WorkerSupervision.peff(device, event)",
    "plane": "shared",
+   "facts": {}
+  },
+  "integration": {
+   "title": "Loop 3 \u00b7 integration owner",
+   "stateType": "IntegrationOwner.St",
+   "eventType": "IntegrationOwner.Ev",
+   "step": "IntegrationOwner.step(state, event)",
+   "plane": "integration",
    "facts": {}
   }
  },
@@ -356,6 +364,49 @@
     "Typed": {
      "a": "Nat",
      "app": "Nat"
+    }
+   }
+  },
+  "IntegrationOwner.St": {
+   "ctors": {
+    "Branch": {},
+    "DraftPR": {},
+    "Queued": {},
+    "OnIntegrationBranch": {},
+    "Deployed": {},
+    "OwnerAccepted": {},
+    "Merged": {},
+    "Parked": {},
+    "Conflicted": {}
+   }
+  },
+  "IntegrationOwner.Ev": {
+   "ctors": {
+    "Draft": {},
+    "Queue": {},
+    "Integrate": {
+     "lease": "Bool",
+     "stack": "Bool",
+     "independent": "Bool"
+    },
+    "Deploy": {
+     "equal": "Bool"
+    },
+    "Accept": {
+     "owner": "Bool"
+    },
+    "Merge": {},
+    "Park": {
+     "reason": "Bool",
+     "future": "Bool"
+    },
+    "Conflict": {},
+    "Resume": {},
+    "Observe": {
+     "equal": "Bool"
+    },
+    "Expire": {
+     "expired": "Bool"
     }
    }
   }
@@ -697,6 +748,117 @@
      "y": 422
     }
    }
+  ],
+  "integration": [
+   {
+    "id": 0,
+    "tag": "Branch",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Branch",
+    "summary": "Loop 3: Branch",
+    "point": {
+     "x": 24,
+     "y": 34
+    }
+   },
+   {
+    "id": 1,
+    "tag": "DraftPR",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "DraftPR",
+    "summary": "Loop 3: DraftPR",
+    "point": {
+     "x": 244,
+     "y": 34
+    }
+   },
+   {
+    "id": 2,
+    "tag": "Queued",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Queued",
+    "summary": "Loop 3: Queued",
+    "point": {
+     "x": 464,
+     "y": 34
+    }
+   },
+   {
+    "id": 3,
+    "tag": "OnIntegrationBranch",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "OnIntegrationBranch",
+    "summary": "Loop 3: OnIntegrationBranch",
+    "point": {
+     "x": 684,
+     "y": 34
+    }
+   },
+   {
+    "id": 4,
+    "tag": "Deployed",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Deployed",
+    "summary": "Exact running/build SHA equals integration head; checkout HEAD alone is insufficient.",
+    "point": {
+     "x": 684,
+     "y": 228
+    }
+   },
+   {
+    "id": 5,
+    "tag": "OwnerAccepted",
+    "machine": "integration",
+    "owner": "Kevin",
+    "title": "OwnerAccepted",
+    "summary": "Loop 3: OwnerAccepted",
+    "point": {
+     "x": 464,
+     "y": 228
+    }
+   },
+   {
+    "id": 6,
+    "tag": "Merged",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Merged",
+    "summary": "Loop 3: Merged",
+    "point": {
+     "x": 244,
+     "y": 228
+    },
+    "terminal": true
+   },
+   {
+    "id": 7,
+    "tag": "Parked",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Parked",
+    "summary": "Explicit reason + future expiry in the head-bound decision record. Expiry requeues.",
+    "point": {
+     "x": 24,
+     "y": 422
+    }
+   },
+   {
+    "id": 8,
+    "tag": "Conflicted",
+    "machine": "integration",
+    "owner": "Integration owner",
+    "title": "Conflicted",
+    "summary": "Repair in isolation, re-test, then requeue.",
+    "point": {
+     "x": 244,
+     "y": 422
+    }
+   }
   ]
  },
  "laws": [
@@ -854,6 +1016,66 @@
     "count": 11,
     "label": "of 23 S25 inputs sent with no foreground check",
     "source": "supervise-20261021 L6:input_without_foreground_check"
+   }
+  },
+  {
+   "id": "I1",
+   "loop": "3",
+   "name": "Draft deadline",
+   "text": "Within 24 h: contained or explicitly parked, with reason and expiry. Unknown branch is an evidence gap, not verified non-containment.",
+   "prevents": "Within 24 h: contained or explicitly parked, with reason and expiry. Unknown branch is an evidence gap, not verified non-containment.",
+   "incidents": {
+    "count": 53,
+    "label": "findings / evidence gaps (not all proven violations)",
+    "source": "integration-20261021.json"
+   }
+  },
+  {
+   "id": "I2",
+   "loop": "3",
+   "name": "Runtime equals integration",
+   "text": "Exact served/build SHA must equal integration head. Stale checkouts and unattested runtimes stay red.",
+   "prevents": "Exact served/build SHA must equal integration head. Stale checkouts and unattested runtimes stay red.",
+   "incidents": {
+    "count": 7,
+    "label": "findings / evidence gaps (not all proven violations)",
+    "source": "integration-20261021.json"
+   }
+  },
+  {
+   "id": "I3",
+   "loop": "3",
+   "name": "One leased integration owner",
+   "text": "One unexpired per-repository lease. An active holder cannot be displaced.",
+   "prevents": "One unexpired per-repository lease. An active holder cannot be displaced.",
+   "incidents": {
+    "count": 8,
+    "label": "findings / evidence gaps (not all proven violations)",
+    "source": "integration-20261021.json"
+   }
+  },
+  {
+   "id": "I4",
+   "loop": "3",
+   "name": "Consistent stacked chains",
+   "text": "A child's recorded base must contain its parent's current head.",
+   "prevents": "A child's recorded base must contain its parent's current head.",
+   "incidents": {
+    "count": 11,
+    "label": "findings / evidence gaps (not all proven violations)",
+    "source": "integration-20261021.json"
+   }
+  },
+  {
+   "id": "I5",
+   "loop": "3",
+   "name": "Owner accepts before merge",
+   "text": "Only OwnerAccepted reaches Merged. Agents never approve their own work.",
+   "prevents": "Only OwnerAccepted reaches Merged. Agents never approve their own work.",
+   "incidents": {
+    "count": 0,
+    "label": "findings / evidence gaps (not all proven violations)",
+    "source": "integration-20261021.json"
    }
   }
  ],
@@ -1146,6 +1368,72 @@
     "W5"
    ],
    "text": "The install lock is already held by someone else."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Integrate",
+   "laws": [
+    "I3",
+    "I4"
+   ],
+   "text": "A held lease, consistent stack and independent review are required."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Deploy",
+   "laws": [
+    "I2"
+   ],
+   "text": "Need exact runtime equality evidence, not checkout HEAD."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Accept",
+   "laws": [
+    "I5"
+   ],
+   "text": "Only an independently identified owner can accept."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Merge",
+   "laws": [
+    "I5"
+   ],
+   "text": "Only OwnerAccepted can merge."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Park",
+   "laws": [
+    "I1"
+   ],
+   "text": "Need explicit reason and a future expiry."
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Expire",
+   "laws": [
+    "I1"
+   ],
+   "text": "An expired parking decision returns to the queue.",
+   "kind": "observation"
+  },
+  {
+   "machine": "integration",
+   "from": "*",
+   "event": "Observe",
+   "laws": [
+    "I2"
+   ],
+   "text": "Drift revokes deployment and owner acceptance.",
+   "kind": "observation"
   }
  ],
  "planes": [
@@ -1229,6 +1517,18 @@
      }
     }
    ]
+  },
+  {
+   "id": "integration",
+   "title": "Loop 3 \u00b7 Integration owner",
+   "owner": "Independent integration agent \u00b7 Kevin accepts",
+   "color": "#d7a96a",
+   "machines": [
+    "integration"
+   ],
+   "summary": "Keep draft work on an integration branch; deploy its exact head; batch owner acceptance. Unknown runtime SHA is not green.",
+   "width": 894,
+   "height": 530
   }
  ],
  "nodeSize": {
@@ -1277,7 +1577,8 @@
    ]
   },
   "lease": {},
-  "device": {}
+  "device": {},
+  "integration": {}
  },
  "roles": [
   {
@@ -1322,10 +1623,11 @@
   }
  ],
  "explainer": {
-  "intro": "Two small state machines, written in Bend and proven against their laws, now drawn as layers. Pick a tape and press Step: every move is decided by the compiled Bend code.",
+  "intro": "Three small Bend control-plane loops, drawn as layers. Every guard probe runs the same compiled Bend model.",
   "loops": [
    "Loop 1 follows one piece of work: Proposed \u2192 Claimed (Opus or Sol only) \u2192 Implementing \u2192 Verifying (CI, not the author, checks a receipt for that exact commit) \u2192 Draft PR \u2192 Integrated \u2192 Deployed (the service must run exactly that commit) \u2192 OwnerAccepted (only Kevin) \u2192 Merged. Blocked, Interrupted and Abandoned are the side exits.",
-   "Loop 2 follows one delegated agent: Dispatched \u2192 Running (heartbeats) \u2192 Completed \u2192 Integrated. If it goes quiet it Stalls, then counts as Interrupted; a successor must resume from its log, or someone abandons it once its background processes are reaped. Past 2 h with no decision it turns Overdue and lands in Kevin's queue instead of vanishing. Beside it: one owner per worktree (the lease) and the S25 rules (install lock, look before you tap)."
+   "Loop 2 follows one delegated agent: Dispatched \u2192 Running (heartbeats) \u2192 Completed \u2192 Integrated. If it goes quiet it Stalls, then counts as Interrupted; a successor must resume from its log, or someone abandons it once its background processes are reaped. Past 2 h with no decision it turns Overdue and lands in Kevin's queue instead of vanishing. Beside it: one owner per worktree (the lease) and the S25 rules (install lock, look before you tap).",
+   "Loop 3 follows integration ownership: Branch \u2192 DraftPR \u2192 Queued \u2192 OnIntegrationBranch \u2192 Deployed \u2192 OwnerAccepted \u2192 Merged. Parked needs a reason and expiry. Conflicted needs repair. Snapshot tapes are evidence-backed what-if probes, not historical action logs."
   ],
   "statechart": "This is poteto's statechart idea with Bend standing in for TLA+: draw the flow, write the laws, let the prover check the model, then replay real history through it to find where reality broke the rules. Here the laws are proven theorems about the same code that runs in this page, and the reports supply the incident counts.",
   "roles": "The guards are ROLES-v0 in code: only Opus/Sol write code, CI and Opus land work but never their own, Kevin alone accepts and is treated as a batched queue, free models/Jev/SLMs pick and rank but never implement."
@@ -1354,6 +1656,18 @@
    "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:docs/fsm/worker-supervision.mmd",
    "gitBlob": "11edb752608ed203970019f963b32768017b58ce",
    "kind": "documented-statechart"
+  },
+  {
+   "path": "IntegrationOwner.bend",
+   "upstream": "kvnloo/z0intelligence@1ef432f91223e74dcfb756c590aae82a950999ed:bend/integration_owner_fsm/fsm.bend",
+   "gitBlob": "beb728aad382ebcad19f8d602ab6a5cdafd9fe75",
+   "kind": "bend-model"
+  },
+  {
+   "path": "integration-owner.mmd",
+   "upstream": "kvnloo/z0intelligence@1ef432f91223e74dcfb756c590aae82a950999ed:docs/fsm/integration-owner.mmd",
+   "gitBlob": "ba3f617a2362e65bbc2fa9a6872601d9e795fd55",
+   "kind": "documented-statechart"
   }
  ],
  "proofs": [
@@ -1377,6 +1691,15 @@
    "verdict": "pass",
    "bend": "2.0.34",
    "verifiedAt": "2026-10-21T05:08:25Z",
+   "scope": "bend-emitted-book; source_semantics_attested=false"
+  },
+  {
+   "project": "bend/integration_owner_fsm",
+   "pr": "kvnloo/z0intelligence#188",
+   "commit": "1ef432f91223e74dcfb756c590aae82a950999ed",
+   "verdict": "pass",
+   "bend": "2.0.34",
+   "verifiedAt": "2026-10-21T07:40:49.968160+00:00",
    "scope": "bend-emitted-book; source_semantics_attested=false"
   }
  ],

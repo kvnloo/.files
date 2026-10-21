@@ -1,3 +1,22 @@
+diff --git c/AGENTS.md w/AGENTS.md
+index a8eba37..b8b1fb9 100644
+--- c/AGENTS.md
++++ w/AGENTS.md
+@@ -154,3 +154,14 @@ generated inventories, and diagrams in their appropriate formats; do not
+ convert them to Markdown to satisfy this rule. Preserve pre-execution
+ declarations as declarations made at that time, with later outcomes or
+ amendments identified separately.
++
++<!-- BEGIN:turborepo-agent-rules -->
++
++# This is NOT the Turborepo you know
++
++Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
++
++Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
++
++This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
++<!-- END:turborepo-agent-rules -->
 diff --git c/packages/agent-flow-viz/README.md w/packages/agent-flow-viz/README.md
 index b02b0c4..106ac2d 100644
 --- c/packages/agent-flow-viz/README.md
@@ -78,16 +97,17 @@ index 0000000..79a4f05
 +</html>
 diff --git c/packages/agent-flow-viz/fsm.html w/packages/agent-flow-viz/fsm.html
 new file mode 100644
-index 0000000..47918f2
+index 0000000..8dc3de6
 --- /dev/null
 +++ w/packages/agent-flow-viz/fsm.html
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,14 @@
 +<!doctype html>
 +<html lang="en">
 +  <head>
 +    <meta charset="UTF-8" />
 +    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 +    <meta name="description" content="Bend-checked statecharts for agent work, as layers in the Hapsland dashboard." />
++    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23b48035' d='M2 2h28v8H2zm0 10h28v8H2zm0 10h28v8H2z'/%3E%3C/svg%3E" />
 +    <title>Bend statecharts · Hapsland</title>
 +  </head>
 +  <body>
@@ -1298,12 +1318,13 @@ index 0000000..ebd4e1d
 +  })
 diff --git c/packages/agent-flow-viz/src/fsm/projection.ts w/packages/agent-flow-viz/src/fsm/projection.ts
 new file mode 100644
-index 0000000..bfb097d
+index 0000000..d026c4d
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/projection.ts
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,237 @@
 +import modelText from "@fsm-diagram/model.json?raw"
 +import scenarioText from "@fsm-diagram/scenarios.json?raw"
++import integrationText from "@fsm-diagram/integration-tapes.json?raw"
 +import projectionText from "@fsm-diagram/projection.json?raw"
 +import replayText from "@fsm-diagram/replay.json?raw"
 +import receiptText from "@fsm-diagram/receipt.json?raw"
@@ -1348,8 +1369,9 @@ index 0000000..bfb097d
 +
 +export const fsm: FsmModel = JSON.parse(modelText)
 +const scenarioFile: { readonly scenarios: readonly Scenario[]; readonly provenance: Readonly<Record<string, Json>> } = JSON.parse(scenarioText)
-+export const scenarios = scenarioFile.scenarios
-+export const tapeProvenance = scenarioFile.provenance
++const integrationFile: typeof scenarioFile = JSON.parse(integrationText)
++export const scenarios = [...scenarioFile.scenarios, ...integrationFile.scenarios]
++export const tapeProvenance = { ...scenarioFile.provenance, integration: integrationFile.provenance }
 +export const projection: {
 +  readonly edges: readonly Edge[]; readonly selfLoops: readonly Edge[]
 +  readonly documentedComparison: { readonly documentedEdges: number; readonly documentedNotProducedByBend: readonly Edge[]; readonly producedByBendNotDocumented: readonly Edge[] }
@@ -1367,7 +1389,7 @@ index 0000000..bfb097d
 +export const stateMeta = (machine: string, id: number) => fsm.states[machine]?.find((state) => state.id === id)
 +export const nodeId = (machine: string, id: number) => `node:${machine}:${id}`
 +export const eventTags = (machine: string) => Object.keys(fsm.types[machine === "work-item" ? "WorkItem.Ev"
-+  : machine === "worker" ? "WorkerSupervision.Ev" : machine === "lease" ? "WorkerSupervision.LEv" : "WorkerSupervision.PEv"].ctors ?? {})
++  : machine === "integration" ? "IntegrationOwner.Ev" : machine === "worker" ? "WorkerSupervision.Ev" : machine === "lease" ? "WorkerSupervision.LEv" : "WorkerSupervision.PEv"].ctors ?? {})
 +
 +/** One drawn route per (machine, from, to); several Bend events can share it. */
 +export type Route = { readonly id: string; readonly machine: string; readonly from: number; readonly to: number; readonly events: readonly string[]; readonly laws: readonly string[] }
@@ -1390,6 +1412,8 @@ index 0000000..bfb097d
 +    ["Blocked", 0, 3], ["DraftPR", 1, 3], ["Merged", 0, 4], ["Integrated", 1, 4], ["Accepted", 0, 5], ["Deployed", 1, 5]],
 +  worker: [["Dispatched", 0, 0], ["Running", 1, 0], ["Stalled", 0, 1], ["Completed", 1, 1], ["Interrupted", 0, 2], ["Integrated", 1, 2],
 +    ["Overdue", 0, 3], ["Resumed", 1, 3], ["Abandoned", 0, 4]],
++  integration: [["Branch", 0, 0], ["DraftPR", 1, 0], ["Parked", 0, 1], ["Queued", 1, 1],
++    ["Conflicted", 0, 2], ["OnIntegrationBranch", 1, 2], ["Merged", 0, 3], ["Deployed", 1, 3], ["OwnerAccepted", 1, 4]],
 +  lease: [["Free", 0, 0], ["Held", 1, 0]],
 +  device: [["free-unknown", 0, 1], ["free-seen", 1, 1], ["held-unknown", 0, 2], ["held-seen", 1, 2]]
 +}
@@ -1502,6 +1526,8 @@ index 0000000..bfb097d
 +    if (v.at !== undefined) parts.push(`interrupted t+${v.at} min`)
 +    if (v.bg !== undefined) parts.push(`${v.bg} background`)
 +    if (v.by !== undefined) parts.push(`by ${scenario.actors[String(v.by)] ?? `#${v.by}`}`)
++  } else if (machine === "integration") {
++    parts.push("snapshot / labelled guard probe")
 +  } else if (machine === "lease") {
 +    if (v.o !== undefined) parts.push(scenario.actors[String(v.o)] ?? `holder #${v.o}`)
 +  } else {
@@ -1570,7 +1596,7 @@ index 0000000..e3ab014
 +}
 diff --git c/packages/agent-flow-viz/src/fsm/view.ts w/packages/agent-flow-viz/src/fsm/view.ts
 new file mode 100644
-index 0000000..02d45ff
+index 0000000..9db0a48
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/view.ts
 @@ -0,0 +1,286 @@
@@ -1588,7 +1614,7 @@ index 0000000..02d45ff
 +} from "./projection"
 +
 +const verdictWord = (verdict: string) => verdict === "accepted" ? "ACCEPTED" : verdict === "held" ? "HELD" : verdict === "no-change" ? "NO CHANGE" : "REFUSED"
-+const lawColor = (id: string) => id.startsWith("W") ? "#31836a" : "#386eb1"
++const lawColor = (id: string) => id.startsWith("I") ? "#b48035" : id.startsWith("W") ? "#31836a" : "#386eb1"
 +
 +function planeDiagram(model: Model, h: HtmlBuilder<Message>, index: number, layout: PlaneLayout, layer: boolean) {
 +  const plane = planes[index]
@@ -1760,7 +1786,7 @@ index 0000000..02d45ff
 +    h.section([h.Id("agent-ensemble"), h.Class(`ensemble-panel ${model.camera.flat ? "is-flat" : "is-spatial"}`)], [
 +      h.div([h.Class("ensemble-heading")], [h.div([], [
 +        h.p([h.Class("eyebrow")], ["Z0 STATECHARTS / BEND-PROVEN LAWS"]),
-+        h.h2([], ["Two loops. One compiled Bend."]),
++        h.h2([], ["Three loops. One compiled Bend."]),
 +        h.p([], ["Each plane is one statechart. States are boxes, arrows are the moves Bend allows, and badges name the law guarding each move."])
 +      ])]),
 +      h.div([h.Class("ensemble-toolbar")], [
@@ -1796,7 +1822,7 @@ index 0000000..02d45ff
 +        })
 +      ]),
 +      ensembleCameraView(h, model.camera, (field, raw) => Message.CameraChanged({ field, raw })),
-+      h.p([h.Class("ensemble-evidence-key")], ["Blue badges = loop-1 laws (L1–L7) · green = loop-2 laws (W1–W6) · dashed grey = unguarded move · amber box = needs-Kevin queue · red box = side exit. The highlight moves only on a Bend-accepted step."])
++      h.p([h.Class("ensemble-evidence-key")], ["Blue badges = loop-1 laws (L1–L7) · green = loop-2 laws (W1–W6) · amber = loop-3 laws (I1–I5) · dashed grey = unguarded move · amber box = needs-Kevin queue · red box = side exit. The highlight moves only on a Bend-accepted step."])
 +    ]),
 +    h.section([h.Class("chart-panel simulation-panel"), h.Id("inspect"), h.AriaLabel("Inspector and history")], [
 +      h.h2([], ["Inspector"]),

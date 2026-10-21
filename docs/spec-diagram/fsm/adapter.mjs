@@ -111,6 +111,8 @@ export function transition(machine, state, event, facts = {}) {
     held = call('WorkItem.is_off', avail) && call('WorkItem.owner_event', ev);
   } else if (machine === 'worker') {
     raw = call('WorkerSupervision.step', before, ev, toBend('Nat', facts.limit ?? m.facts.limit.default, 'facts.limit'));
+  } else if (machine === 'integration') {
+    raw = call('IntegrationOwner.step', before, ev);
   } else if (machine === 'lease') {
     raw = call('WorkerSupervision.lstep', before, ev);
   } else {
