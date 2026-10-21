@@ -1,0 +1,525 @@
+{
+ "edges": [
+  {
+   "machine": "work-item",
+   "from": 0,
+   "to": 1,
+   "event": "Claim",
+   "laws": [
+    "L6"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 0,
+   "to": 11,
+   "event": "Abandon",
+   "laws": [
+    "L5"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 1,
+   "to": 2,
+   "event": "Start",
+   "laws": [
+    "L2"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 1,
+   "to": 10,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 1,
+   "to": 11,
+   "event": "Abandon",
+   "laws": [
+    "L5"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 2,
+   "to": 3,
+   "event": "Submit",
+   "laws": [
+    "L2"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 2,
+   "to": 9,
+   "event": "Block",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 2,
+   "to": 10,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 3,
+   "to": 2,
+   "event": "Verify",
+   "laws": [
+    "L2",
+    "L3"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 3,
+   "to": 4,
+   "event": "Verify",
+   "laws": [
+    "L2",
+    "L3"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 3,
+   "to": 9,
+   "event": "Block",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 3,
+   "to": 10,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 4,
+   "to": 5,
+   "event": "Integrate",
+   "laws": [
+    "L2",
+    "L3"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 5,
+   "to": 6,
+   "event": "Deploy",
+   "laws": [
+    "L4"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 6,
+   "to": 5,
+   "event": "Observe",
+   "laws": [
+    "L4"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 6,
+   "to": 7,
+   "event": "Accept",
+   "laws": [
+    "L1",
+    "L2",
+    "L7"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 7,
+   "to": 8,
+   "event": "Merge",
+   "laws": [
+    "L1"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 9,
+   "to": 2,
+   "event": "Unblock",
+   "laws": []
+  },
+  {
+   "machine": "work-item",
+   "from": 9,
+   "to": 11,
+   "event": "Abandon",
+   "laws": [
+    "L5"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 10,
+   "to": 2,
+   "event": "Resume",
+   "laws": [
+    "L5",
+    "L6"
+   ]
+  },
+  {
+   "machine": "work-item",
+   "from": 10,
+   "to": 11,
+   "event": "Abandon",
+   "laws": [
+    "L5"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 0,
+   "to": 1,
+   "event": "Start",
+   "laws": [
+    "W4"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 0,
+   "to": 3,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 0,
+   "to": 7,
+   "event": "Abandon",
+   "laws": [
+    "W3"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 2,
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 3,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 5,
+   "event": "Finish",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 2,
+   "to": 1,
+   "event": "Beat",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 2,
+   "to": 3,
+   "event": "Interrupt",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 2,
+   "to": 3,
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 2,
+   "to": 5,
+   "event": "Finish",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 3,
+   "to": 4,
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 3,
+   "to": 6,
+   "event": "Resume",
+   "laws": [
+    "W2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 3,
+   "to": 7,
+   "event": "Abandon",
+   "laws": [
+    "W3"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 4,
+   "to": 6,
+   "event": "Resume",
+   "laws": [
+    "W2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 4,
+   "to": 7,
+   "event": "Abandon",
+   "laws": [
+    "W3"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 5,
+   "to": 7,
+   "event": "Abandon",
+   "laws": [
+    "W3"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 5,
+   "to": 8,
+   "event": "Integrate",
+   "laws": [
+    "W3"
+   ]
+  },
+  {
+   "machine": "lease",
+   "from": 0,
+   "to": 1,
+   "event": "Acquire",
+   "laws": []
+  },
+  {
+   "machine": "lease",
+   "from": 1,
+   "to": 0,
+   "event": "Release",
+   "laws": [
+    "W1"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 0,
+   "to": 1,
+   "event": "Peek",
+   "laws": []
+  },
+  {
+   "machine": "device",
+   "from": 0,
+   "to": 2,
+   "event": "Lock",
+   "laws": [
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 1,
+   "to": 0,
+   "event": "Input",
+   "laws": [
+    "W6"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 1,
+   "to": 3,
+   "event": "Lock",
+   "laws": [
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 2,
+   "to": 0,
+   "event": "Unlock",
+   "laws": [
+    "W1",
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 2,
+   "to": 3,
+   "event": "Peek",
+   "laws": []
+  },
+  {
+   "machine": "device",
+   "from": 3,
+   "to": 1,
+   "event": "Unlock",
+   "laws": [
+    "W1",
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 3,
+   "to": 2,
+   "event": "Input",
+   "laws": [
+    "W6"
+   ]
+  }
+ ],
+ "selfLoops": [
+  {
+   "machine": "work-item",
+   "from": 2,
+   "to": 2,
+   "event": "Push",
+   "laws": [
+    "L2"
+   ]
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 1,
+   "event": "Beat",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 1,
+   "event": "Reap",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 1,
+   "to": 1,
+   "event": "Spawn",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 2,
+   "to": 2,
+   "event": "Reap",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 3,
+   "to": 3,
+   "event": "Reap",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 4,
+   "to": 4,
+   "event": "Reap",
+   "laws": []
+  },
+  {
+   "machine": "worker",
+   "from": 5,
+   "to": 5,
+   "event": "Reap",
+   "laws": []
+  },
+  {
+   "machine": "lease",
+   "from": 1,
+   "to": 1,
+   "event": "Reclaim",
+   "laws": [
+    "W1"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 1,
+   "to": 1,
+   "event": "Peek",
+   "laws": []
+  },
+  {
+   "machine": "device",
+   "from": 2,
+   "to": 2,
+   "event": "Install",
+   "laws": [
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 3,
+   "to": 3,
+   "event": "Install",
+   "laws": [
+    "W5"
+   ]
+  },
+  {
+   "machine": "device",
+   "from": 3,
+   "to": 3,
+   "event": "Peek",
+   "laws": []
+  }
+ ],
+ "documentedComparison": {
+  "documentedEdges": 39,
+  "documentedNotProducedByBend": [],
+  "producedByBendNotDocumented": []
+ },
+ "provenance": {
+  "producer": "Executing Runtime.generated.mjs through adapter.mjs over representative states, events and facts",
+  "calls": 26547,
+  "scope": "Design-level checked possibilities, not an exhaustive proof. The proofs live in LAWS.bend/PROOF.bend upstream."
+ }
+}

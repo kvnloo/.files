@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-21T06:49:54.963Z",
+  "compiler": {
+    "version": "bend 2.0.34",
+    "executableSha256": "66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317",
+    "target": "ES module (-o Runtime.mjs)",
+    "producerPlatform": "linux",
+    "producerArchitecture": "x64"
+  },
+  "rawCompilerOutputSha256": "e5ca9dde6e90489d1ed7b1378ae3d40a89c2aa90d37fba1cceecc8d068a1e8e9",
+  "artifacts": {
+    "Runtime.bend": "8771fe9c940fcd00370cd82472479a1453e12d5a91c954ab7a3b69e38ad1b2b5",
+    "WorkItem.bend": "f0465c394b77fed96e577568a7523b139e184dcabf973017bfbe681e74aaf29f",
+    "WorkerSupervision.bend": "5acf2bd7deb05bc78ea0ec36836957da625a4e4bde54fb59726fed4338d4f61a",
+    "model.json": "33713e9bc23b6701fb2e44cfc785fab93d44d168027289c1c07390b39ee680a0",
+    "scenarios.json": "4c56d18d3cd8c36602a19eb98bb5ebb643fb14ac540eb272438f3a7fb1a836f3",
+    "adapter.mjs": "4b1f8034cfa835e3c15d2f05105f2229ff5e72a5a85fb56f718df676debd0527",
+    "build.mjs": "1a986368f056e2f810562429b83b399d7be48a04f28ba05761cf877e56447cf1",
+    "extract-tapes.py": "0deedd25add7c0041b64da722d1309a5e8821e4bdcf59af2e889054bc067a2dc",
+    "work-item.mmd": "18aa666dae6736dcf20f34149103c19e4d7f0b368c2c9c7cac328ada81ab1127",
+    "worker-supervision.mmd": "43b6af2dac6bddf361d1b86e82a9664e5ed5dd30be383adcc66038a98dc2cd0a",
+    "Runtime.generated.mjs": "eac0e3053b94f7cba05d8400c50a64c01d40322102118111cf809133ac03ccd3",
+    "projection.json": "0443d5b6bb4c4f9f8474d5a18c18d9158550780cbfde80ee1a3b24cc321d5a40",
+    "replay.json": "57b7f9b7db3388f7d13d06a1826aab680b69c0242a137c4cfebd63e2f38a2e40"
+  },
+  "sources": [
+    {
+      "path": "WorkItem.bend",
+      "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:bend/work_item_fsm/fsm.bend",
+      "gitBlob": "3e0e9922c8d9b13eb6f7647f8fb6128adcf009ea",
+      "kind": "bend-model",
+      "sha256": "f0465c394b77fed96e577568a7523b139e184dcabf973017bfbe681e74aaf29f"
+    },
+    {
+      "path": "WorkerSupervision.bend",
+      "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:bend/worker_supervision_fsm/fsm.bend",
+      "gitBlob": "30db3271ad03a4d59857dbb83842c8358f2be1ef",
+      "kind": "bend-model",
+      "sha256": "5acf2bd7deb05bc78ea0ec36836957da625a4e4bde54fb59726fed4338d4f61a"
+    },
+    {
+      "path": "work-item.mmd",
+      "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:docs/fsm/work-item.mmd",
+      "gitBlob": "c5d3e07d02d6edb5171c70017811dda628a8a4ff",
+      "kind": "documented-statechart",
+      "sha256": "18aa666dae6736dcf20f34149103c19e4d7f0b368c2c9c7cac328ada81ab1127"
+    },
+    {
+      "path": "worker-supervision.mmd",
+      "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:docs/fsm/worker-supervision.mmd",
+      "gitBlob": "11edb752608ed203970019f963b32768017b58ce",
+      "kind": "documented-statechart",
+      "sha256": "43b6af2dac6bddf361d1b86e82a9664e5ed5dd30be383adcc66038a98dc2cd0a"
+    }
+  ],
+  "proofs": [
+    {
+      "project": "bend/work_item_fsm",
+      "pr": "kvnloo/z0intelligence#183",
+      "commit": "eef21051b1910bcda14542fe5859414f629e4fad",
+      "lawsBlob": "b564659c0471b66022c813933c4a99c0b342011e",
+      "proofBlob": "db234e6c68f363dbe56571dc749cc9203b3614ea",
+      "verdict": "pass",
+      "bend": "2.0.34",
+      "verifiedAt": "2026-10-21T03:45:45Z",
+      "scope": "bend-emitted-book; source_semantics_attested=false"
+    },
+    {
+      "project": "bend/worker_supervision_fsm",
+      "pr": "kvnloo/z0intelligence#184",
+      "commit": "b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74",
+      "lawsBlob": "5b5709d78a04205df93c4723a5577951053b7ae4",
+      "proofBlob": "f12965b9db0b19ed39c4dda25bee7f3a19b7f27e",
+      "verdict": "pass",
+      "bend": "2.0.34",
+      "verifiedAt": "2026-10-21T05:08:25Z",
+      "scope": "bend-emitted-book; source_semantics_attested=false"
+    }
+  ],
+  "tapes": {
+    "replayReport": {
+      "name": "replay-20261021.json",
+      "sha256": "5ddf0c294f7f9cf172c61d4fffcd312572868219195000afc9acb3a946ead3b0",
+      "generatedAt": "2026-10-21T03:57:03.352647+00:00"
+    },
+    "superviseReport": {
+      "name": "worker-supervision-20261021.json",
+      "sha256": "f9ec8a927130a3b5b310fc14cf292676b6b65858717626fba4c93957fc4a2b9c",
+      "generatedAt": "2026-10-21T05:31:00+00:00"
+    },
+    "privacy": "Only ids, timestamps, event kinds, short SHAs and finding codes are copied; log paths, commands, goals and home paths are not.",
+    "assumptions": "Worker hosts are not in the supervise events; report tapes start on groot with light load (Hermes agent sessions). Times are minutes since the worker's first event; the limit is the report's 2 h."
+  },
+  "checks": {
+    "compilation": "The pinned Bend compiler emitted Runtime.generated.mjs from the unchanged fsm.bend files; no handwritten transition table",
+    "sources": "WorkItem.bend, WorkerSupervision.bend and the .mmd drawings are byte-identical to their upstream git blobs",
+    "replay": "12 tapes replayed through the compiled module; outcomes in replay.json",
+    "projection": "48 display edges enumerated by executing the compiled module (26547 calls)",
+    "theoremProofs": "Upstream PROOF.bend pass receipts (bend-emitted-book scope); not re-run here",
+    "nativeRuntime": "None. No host, service, adb or GitHub is contacted"
+  }
+}

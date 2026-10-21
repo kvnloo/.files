@@ -1,0 +1,1389 @@
+{
+ "schema": 1,
+ "title": "Bend statecharts for agent work \u00b7 Hapsland layers",
+ "scope": "Two statecharts written in Bend and proven against their laws (LAWS.bend / PROOF.bend in kvnloo/z0intelligence). This view replays event tapes through the JavaScript the pinned Bend compiler emitted from those exact fsm.bend files. Tapes marked report come from the 2026-10-21 replay/supervise reports; steps marked what-if are illustrative continuations.",
+ "trustBoundary": "Bend decides every next state. The adapter only converts JSON to Bend constructors and back, and labels an unchanged state with the guarding law from this file. A replay is not an authorization, an admission or verified success, and it does not observe any live host.",
+ "machines": {
+  "work-item": {
+   "title": "Loop 1 \u00b7 work-item lifecycle",
+   "stateType": "WorkItem.Item",
+   "eventType": "WorkItem.Ev",
+   "step": "WorkItem.astep(availability, state, event)",
+   "plane": "work-item",
+   "facts": {
+    "availability": {
+     "type": "WorkItem.Avail",
+     "default": "DeepWork",
+     "description": "Kevin's self-reported availability (ROLES-v0): an owner action while Off is held in the needs-Kevin queue (L7)."
+    }
+   }
+  },
+  "worker": {
+   "title": "Loop 2 \u00b7 worker supervision",
+   "stateType": "WorkerSupervision.St",
+   "eventType": "WorkerSupervision.Ev",
+   "step": "WorkerSupervision.step(state, event, limit)",
+   "plane": "worker",
+   "facts": {
+    "limit": {
+     "type": "Nat",
+     "default": 120,
+     "description": "Supervision limit in minutes (the report used 2 h)."
+    }
+   }
+  },
+  "lease": {
+   "title": "Loop 2 \u00b7 worktree lease / install lock",
+   "stateType": "WorkerSupervision.Lease",
+   "eventType": "WorkerSupervision.LEv",
+   "step": "WorkerSupervision.lstep(lease, event)",
+   "plane": "shared",
+   "facts": {}
+  },
+  "device": {
+   "title": "Loop 2 \u00b7 owner's S25",
+   "stateType": "WorkerSupervision.Device",
+   "eventType": "WorkerSupervision.PEv",
+   "step": "WorkerSupervision.pstep(device, event) + WorkerSupervision.peff(device, event)",
+   "plane": "shared",
+   "facts": {}
+  }
+ },
+ "types": {
+  "WorkItem.Role": {
+   "enum": [
+    "Owner",
+    "Opus",
+    "Sol",
+    "Chat",
+    "Free",
+    "Jev",
+    "Slm",
+    "Ci"
+   ]
+  },
+  "WorkItem.Actor": {
+   "ctors": {
+    "Actor": {
+     "id": "Nat",
+     "role": "WorkItem.Role"
+    }
+   }
+  },
+  "WorkItem.Receipt": {
+   "ctors": {
+    "Receipt": {
+     "sha": "Nat",
+     "pass": "Bool"
+    }
+   }
+  },
+  "WorkItem.Avail": {
+   "enum": [
+    "DeepWork",
+    "LowEnergy",
+    "Off"
+   ]
+  },
+  "WorkItem.Item": {
+   "ctors": {
+    "Proposed": {},
+    "Claimed": {
+     "au": "WorkItem.Actor"
+    },
+    "Implementing": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat"
+    },
+    "Verifying": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat"
+    },
+    "DraftPR": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat"
+    },
+    "Integrated": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat",
+     "ig": "Nat"
+    },
+    "Deployed": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat",
+     "ig": "Nat",
+     "dp": "Nat"
+    },
+    "Accepted": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat",
+     "ig": "Nat",
+     "ap": "WorkItem.Actor"
+    },
+    "Merged": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat",
+     "ig": "Nat",
+     "ap": "WorkItem.Actor"
+    },
+    "Blocked": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat"
+    },
+    "Interrupted": {
+     "au": "WorkItem.Actor",
+     "hd": "Nat"
+    },
+    "Abandoned": {}
+   }
+  },
+  "WorkItem.Ev": {
+   "ctors": {
+    "Claim": {
+     "a": "WorkItem.Actor"
+    },
+    "Start": {
+     "a": "WorkItem.Actor"
+    },
+    "Push": {
+     "a": "WorkItem.Actor",
+     "sha": "Nat"
+    },
+    "Submit": {
+     "a": "WorkItem.Actor"
+    },
+    "Verify": {
+     "a": "WorkItem.Actor",
+     "r": "WorkItem.Receipt"
+    },
+    "Integrate": {
+     "a": "WorkItem.Actor",
+     "ish": "Nat",
+     "r": "WorkItem.Receipt"
+    },
+    "Deploy": {
+     "a": "WorkItem.Actor",
+     "served": "Nat"
+    },
+    "Observe": {
+     "served": "Nat"
+    },
+    "Accept": {
+     "a": "WorkItem.Actor"
+    },
+    "Merge": {
+     "a": "WorkItem.Actor"
+    },
+    "Block": {
+     "a": "WorkItem.Actor"
+    },
+    "Unblock": {
+     "a": "WorkItem.Actor"
+    },
+    "Interrupt": {},
+    "Resume": {
+     "a": "WorkItem.Actor"
+    },
+    "Abandon": {
+     "a": "WorkItem.Actor"
+    }
+   }
+  },
+  "WorkerSupervision.Host": {
+   "enum": [
+    "Groot",
+    "Mbp",
+    "Phone"
+   ]
+  },
+  "WorkerSupervision.Load": {
+   "enum": [
+    "Light",
+    "Heavy"
+   ]
+  },
+  "WorkerSupervision.Exc": {
+   "enum": [
+    "NoExc",
+    "Gpu",
+    "Toolchain"
+   ]
+  },
+  "WorkerSupervision.W": {
+   "ctors": {
+    "W": {
+     "id": "Nat",
+     "wt": "Nat",
+     "load": "WorkerSupervision.Load",
+     "exc": "WorkerSupervision.Exc"
+    }
+   }
+  },
+  "WorkerSupervision.St": {
+   "ctors": {
+    "Dispatched": {
+     "w": "WorkerSupervision.W"
+    },
+    "Running": {
+     "w": "WorkerSupervision.W",
+     "h": "WorkerSupervision.Host",
+     "hb": "Nat",
+     "bg": "Nat"
+    },
+    "Stalled": {
+     "w": "WorkerSupervision.W",
+     "h": "WorkerSupervision.Host",
+     "hb": "Nat",
+     "bg": "Nat"
+    },
+    "Interrupted": {
+     "w": "WorkerSupervision.W",
+     "at": "Nat",
+     "bg": "Nat"
+    },
+    "Overdue": {
+     "w": "WorkerSupervision.W",
+     "at": "Nat",
+     "bg": "Nat"
+    },
+    "Completed": {
+     "w": "WorkerSupervision.W",
+     "bg": "Nat"
+    },
+    "Resumed": {
+     "w": "WorkerSupervision.W",
+     "by": "Nat",
+     "bg": "Nat"
+    },
+    "Abandoned": {
+     "w": "WorkerSupervision.W"
+    },
+    "Integrated": {
+     "w": "WorkerSupervision.W"
+    }
+   }
+  },
+  "WorkerSupervision.Ev": {
+   "ctors": {
+    "Start": {
+     "h": "WorkerSupervision.Host",
+     "t": "Nat"
+    },
+    "Beat": {
+     "t": "Nat"
+    },
+    "Spawn": {},
+    "Reap": {},
+    "Tick": {
+     "now": "Nat"
+    },
+    "Finish": {},
+    "Interrupt": {
+     "t": "Nat"
+    },
+    "Resume": {
+     "by": "Nat",
+     "log": "Bool"
+    },
+    "Abandon": {},
+    "Integrate": {}
+   }
+  },
+  "WorkerSupervision.Lease": {
+   "ctors": {
+    "Free": {},
+    "Held": {
+     "o": "Nat"
+    }
+   }
+  },
+  "WorkerSupervision.LEv": {
+   "ctors": {
+    "Acquire": {
+     "a": "Nat"
+    },
+    "Release": {
+     "a": "Nat"
+    },
+    "Reclaim": {
+     "a": "Nat",
+     "dead": "Bool"
+    }
+   }
+  },
+  "WorkerSupervision.Fg": {
+   "ctors": {
+    "Unknown": {},
+    "Seen": {
+     "app": "Nat"
+    }
+   }
+  },
+  "WorkerSupervision.Device": {
+   "ctors": {
+    "Dev": {
+     "lk": "WorkerSupervision.Lease",
+     "fg": "WorkerSupervision.Fg"
+    }
+   }
+  },
+  "WorkerSupervision.PEv": {
+   "ctors": {
+    "Lock": {
+     "a": "Nat"
+    },
+    "Unlock": {
+     "a": "Nat"
+    },
+    "Peek": {
+     "app": "Nat"
+    },
+    "Install": {
+     "a": "Nat"
+    },
+    "Input": {
+     "a": "Nat",
+     "app": "Nat"
+    }
+   }
+  },
+  "WorkerSupervision.Eff": {
+   "ctors": {
+    "NoEff": {},
+    "Installed": {
+     "a": "Nat"
+    },
+    "Typed": {
+     "a": "Nat",
+     "app": "Nat"
+    }
+   }
+  }
+ },
+ "states": {
+  "work-item": [
+   {
+    "id": 0,
+    "tag": "Proposed",
+    "machine": "work-item",
+    "owner": "PROPOSED",
+    "title": "Proposed",
+    "summary": "Someone wrote down a piece of work. Nobody owns it yet.",
+    "point": {
+     "x": 24,
+     "y": 34
+    }
+   },
+   {
+    "id": 1,
+    "tag": "Claimed",
+    "machine": "work-item",
+    "owner": "CLAIMED",
+    "title": "Claimed",
+    "summary": "A coding lane (Opus or Sol only) took it. That actor becomes the author.",
+    "point": {
+     "x": 244,
+     "y": 34
+    }
+   },
+   {
+    "id": 2,
+    "tag": "Implementing",
+    "machine": "work-item",
+    "owner": "IMPLEMENTING",
+    "title": "Implementing",
+    "summary": "The author is writing code and pushing commits; the head SHA moves.",
+    "point": {
+     "x": 464,
+     "y": 34
+    }
+   },
+   {
+    "id": 3,
+    "tag": "Verifying",
+    "machine": "work-item",
+    "owner": "VERIFYING",
+    "title": "Verifying",
+    "summary": "The author submitted. A CI actor who is not the author checks a receipt bound to this exact head.",
+    "point": {
+     "x": 684,
+     "y": 34
+    }
+   },
+   {
+    "id": 4,
+    "tag": "DraftPR",
+    "machine": "work-item",
+    "owner": "DRAFT PR",
+    "title": "DraftPR",
+    "summary": "A passing receipt for the head opened a draft PR.",
+    "point": {
+     "x": 684,
+     "y": 228
+    }
+   },
+   {
+    "id": 5,
+    "tag": "Integrated",
+    "machine": "work-item",
+    "owner": "INTEGRATED",
+    "title": "Integrated",
+    "summary": "Ci or Opus (not the author) landed it on an integration branch with a passing receipt for that head.",
+    "point": {
+     "x": 684,
+     "y": 422
+    }
+   },
+   {
+    "id": 6,
+    "tag": "Deployed",
+    "machine": "work-item",
+    "owner": "DEPLOYED \u00b7 NEEDS KEVIN",
+    "title": "Deployed",
+    "summary": "The running service serves exactly the integrated head. The item now waits in the batched needs-Kevin queue.",
+    "point": {
+     "x": 464,
+     "y": 422
+    }
+   },
+   {
+    "id": 7,
+    "tag": "Accepted",
+    "machine": "work-item",
+    "owner": "OWNER ACCEPTED",
+    "title": "OwnerAccepted",
+    "summary": "Kevin (the owner, never the author) looked at the deployed result and said yes.",
+    "point": {
+     "x": 244,
+     "y": 422
+    }
+   },
+   {
+    "id": 8,
+    "tag": "Merged",
+    "machine": "work-item",
+    "owner": "MERGED",
+    "title": "Merged",
+    "summary": "Ci or the owner merged to the default branch, carrying the owner's acceptance.",
+    "point": {
+     "x": 24,
+     "y": 422
+    },
+    "terminal": true
+   },
+   {
+    "id": 9,
+    "tag": "Blocked",
+    "machine": "work-item",
+    "owner": "BLOCKED",
+    "title": "Blocked",
+    "summary": "Stuck on something outside the work. Only the owner or Opus unblocks or abandons.",
+    "point": {
+     "x": 464,
+     "y": 228
+    }
+   },
+   {
+    "id": 10,
+    "tag": "Interrupted",
+    "machine": "work-item",
+    "owner": "INTERRUPTED",
+    "title": "Interrupted",
+    "summary": "The worker died or was stopped. Its pushed head is kept; only Resume or an explicit Abandon moves it.",
+    "point": {
+     "x": 244,
+     "y": 228
+    }
+   },
+   {
+    "id": 11,
+    "tag": "Abandoned",
+    "machine": "work-item",
+    "owner": "ABANDONED",
+    "title": "Abandoned",
+    "summary": "An explicit decision by the owner or Opus to drop the work.",
+    "point": {
+     "x": 24,
+     "y": 228
+    },
+    "terminal": true
+   }
+  ],
+  "worker": [
+   {
+    "id": 0,
+    "tag": "Dispatched",
+    "machine": "worker",
+    "owner": "DISPATCHED",
+    "title": "Dispatched",
+    "summary": "A delegated worker exists but has not started on a host yet.",
+    "point": {
+     "x": 24,
+     "y": 34
+    }
+   },
+   {
+    "id": 1,
+    "tag": "Running",
+    "machine": "worker",
+    "owner": "RUNNING",
+    "title": "Running",
+    "summary": "Working on a host and sending heartbeats.",
+    "point": {
+     "x": 244,
+     "y": 34
+    }
+   },
+   {
+    "id": 2,
+    "tag": "Stalled",
+    "machine": "worker",
+    "owner": "STALLED",
+    "title": "Stalled",
+    "summary": "No heartbeat for longer than the limit. One more limit of silence and it counts as interrupted.",
+    "point": {
+     "x": 464,
+     "y": 34
+    }
+   },
+   {
+    "id": 3,
+    "tag": "Interrupted",
+    "machine": "worker",
+    "owner": "INTERRUPTED",
+    "title": "Interrupted",
+    "summary": "The worker stopped mid-task. A successor must resume it from its log, or someone abandons it explicitly.",
+    "point": {
+     "x": 244,
+     "y": 228
+    }
+   },
+   {
+    "id": 4,
+    "tag": "Overdue",
+    "machine": "worker",
+    "owner": "OVERDUE \u00b7 NEEDS KEVIN",
+    "title": "Overdue",
+    "summary": "Interrupted for longer than the limit with no decision. It sits in the needs-Kevin queue instead of vanishing.",
+    "point": {
+     "x": 464,
+     "y": 228
+    }
+   },
+   {
+    "id": 5,
+    "tag": "Completed",
+    "machine": "worker",
+    "owner": "COMPLETED",
+    "title": "Completed",
+    "summary": "Finished. Its background processes must be reaped before it can be integrated or dropped.",
+    "point": {
+     "x": 684,
+     "y": 34
+    }
+   },
+   {
+    "id": 6,
+    "tag": "Resumed",
+    "machine": "worker",
+    "owner": "RESUMED",
+    "title": "Resumed",
+    "summary": "A successor read the log and took the work (and its background processes) over.",
+    "point": {
+     "x": 354,
+     "y": 422
+    },
+    "terminal": true
+   },
+   {
+    "id": 7,
+    "tag": "Abandoned",
+    "machine": "worker",
+    "owner": "ABANDONED",
+    "title": "Abandoned",
+    "summary": "Dropped on purpose, with no background process left running.",
+    "point": {
+     "x": 24,
+     "y": 228
+    },
+    "terminal": true
+   },
+   {
+    "id": 8,
+    "tag": "Integrated",
+    "machine": "worker",
+    "owner": "INTEGRATED",
+    "title": "Integrated",
+    "summary": "Its result landed, with no background process left running.",
+    "point": {
+     "x": 684,
+     "y": 228
+    },
+    "terminal": true
+   }
+  ],
+  "lease": [
+   {
+    "id": 0,
+    "tag": "Free",
+    "machine": "lease",
+    "owner": "LEASE \u00b7 FREE",
+    "title": "Lease free",
+    "summary": "No session owns this worktree/branch (or the S25 install lock).",
+    "point": {
+     "x": 24,
+     "y": 34
+    }
+   },
+   {
+    "id": 1,
+    "tag": "Held",
+    "machine": "lease",
+    "owner": "LEASE \u00b7 HELD",
+    "title": "Lease held",
+    "summary": "Exactly one session owns it. Only the holder writes or releases; a takeover needs Reclaim with evidence the holder is dead.",
+    "point": {
+     "x": 244,
+     "y": 34
+    }
+   }
+  ],
+  "device": [
+   {
+    "id": 0,
+    "tag": "free-unknown",
+    "machine": "device",
+    "owner": "S25 \u00b7 LOCK FREE",
+    "title": "Foreground unknown",
+    "summary": "Nobody holds the install lock and nobody has looked at the screen since the last input.",
+    "point": {
+     "x": 24,
+     "y": 228
+    }
+   },
+   {
+    "id": 1,
+    "tag": "free-seen",
+    "machine": "device",
+    "owner": "S25 \u00b7 LOCK FREE",
+    "title": "Foreground seen",
+    "summary": "Someone just looked: the foreground app is known, so one input may go to that app.",
+    "point": {
+     "x": 244,
+     "y": 228
+    }
+   },
+   {
+    "id": 2,
+    "tag": "held-unknown",
+    "machine": "device",
+    "owner": "S25 \u00b7 LOCK HELD",
+    "title": "Foreground unknown",
+    "summary": "A worker holds the install lock; the screen has not been looked at since the last input.",
+    "point": {
+     "x": 24,
+     "y": 422
+    }
+   },
+   {
+    "id": 3,
+    "tag": "held-seen",
+    "machine": "device",
+    "owner": "S25 \u00b7 LOCK HELD",
+    "title": "Foreground seen",
+    "summary": "Lock held and the foreground app is known.",
+    "point": {
+     "x": 244,
+     "y": 422
+    }
+   }
+  ]
+ },
+ "laws": [
+  {
+   "id": "L1",
+   "loop": "work-item",
+   "name": "No merge without owner acceptance",
+   "text": "Merged is reachable only from OwnerAccepted, and that acceptance came from the owner, who is not the author.",
+   "prevents": "Agents (which act under Kevin's GitHub account) merging to main before Kevin has seen the deployed result.",
+   "incidents": {
+    "count": 6,
+    "label": "PRs merged with no recorded owner acceptance of a deployed head",
+    "source": "replay-20261021 law1:merged_without_owner_acceptance"
+   }
+  },
+  {
+   "id": "L2",
+   "loop": "work-item",
+   "name": "No self-approval",
+   "text": "Verify (Ci), Integrate (Ci or Opus) and Accept (owner) are each passed only by an actor of the right role who is not the author.",
+   "prevents": "An agent grading or landing its own work.",
+   "incidents": {
+    "count": 5,
+    "label": "integrations by the author's own account (indeterminate: agents share the owner's GitHub identity)",
+    "source": "replay-20261021 law2:self_integrated"
+   }
+  },
+  {
+   "id": "L3",
+   "loop": "work-item",
+   "name": "Receipt bound to the head",
+   "text": "A draft PR needs a passing test receipt for exactly the head SHA; integration needs one for the integration head.",
+   "prevents": "\"Tests passed\" on an older commit being used to land a newer one.",
+   "incidents": {
+    "count": 39,
+    "label": "integrated while the head had no passing receipt",
+    "source": "replay-20261021 law3:integrated_without_head_receipt"
+   }
+  },
+  {
+   "id": "L4",
+   "loop": "work-item",
+   "name": "Deployed == integrated",
+   "text": "Deploy succeeds only when the service serves exactly the integrated head; observing any other head takes \"deployed\" away.",
+   "prevents": "The stale-service bug: a service quietly running an old or diverged build.",
+   "incidents": {
+    "count": 6,
+    "label": "services stale (1), diverged (1) or missing merged commits (4)",
+    "source": "replay-20261021 law4:*"
+   }
+  },
+  {
+   "id": "L5",
+   "loop": "work-item",
+   "name": "Interrupted is never dropped",
+   "text": "Interrupted leaves only by Resume (a coder takes the pushed head over) or an explicit Abandon by the owner or Opus.",
+   "prevents": "Half-done work silently disappearing when a worker dies.",
+   "incidents": {
+    "count": 13,
+    "label": "interrupted items with no resume, PR or abandon decision",
+    "source": "replay-20261021 law5:interrupted_dropped"
+   }
+  },
+  {
+   "id": "L6",
+   "loop": "work-item",
+   "name": "Free models never implement",
+   "text": "Only Opus or Sol can claim or resume work; free models, Jev, SLMs and chat apps pick, rank and advise.",
+   "prevents": "Code written by a lane the owner ruled out for code.",
+   "incidents": {
+    "count": 0,
+    "label": "no free-model claims seen; the model makes them unreachable",
+    "source": "fsm-work-item-v0 proof"
+   }
+  },
+  {
+   "id": "L7",
+   "loop": "work-item",
+   "name": "Owner is a batched queue, not a blocker",
+   "text": "While Kevin is Off, an owner action is held and the item waits in the needs-Kevin queue; everything else keeps moving.",
+   "prevents": "Pinging Kevin outside a deep-work block, or one owner decision freezing other work.",
+   "incidents": {
+    "count": 3,
+    "label": "items in the needs-Kevin queue at report time (availability: off)",
+    "source": "replay-20261021 needs_kevin"
+   }
+  },
+  {
+   "id": "W1",
+   "loop": "worker",
+   "name": "One owner per worktree",
+   "text": "A held lease passes on only by Reclaim with evidence the holder is dead; only the holder writes or releases.",
+   "prevents": "Two sessions editing the same worktree or branch at once.",
+   "incidents": {
+    "count": 419,
+    "label": "writes by a second session while another held the worktree (19 worktrees)",
+    "source": "supervise-20261021 L1:worktree_two_owners"
+   }
+  },
+  {
+   "id": "W2",
+   "loop": "worker",
+   "name": "Resume from the log, or decide, within 2 h",
+   "text": "An interrupted worker is resumed from its log or explicitly abandoned; past the limit it turns Overdue (needs Kevin).",
+   "prevents": "Successors restarting blind, and interrupted workers rotting unnoticed.",
+   "incidents": {
+    "count": 36,
+    "label": "26 interrupted past the 2 h limit + 10 resumed without reading the log",
+    "source": "supervise-20261021 L2:*"
+   }
+  },
+  {
+   "id": "W3",
+   "loop": "worker",
+   "name": "Reap or adopt background processes",
+   "text": "A worker reaches Abandoned or Integrated only with zero background processes; Resume hands them to the successor.",
+   "prevents": "Orphaned servers and jobs eating groot's memory after their owner died.",
+   "incidents": {
+    "count": 1,
+    "label": "orphaned process still alive (plus 21 children reaped by Hermes, result lost)",
+    "source": "supervise-20261021 L3:*"
+   }
+  },
+  {
+   "id": "W4",
+   "loop": "worker",
+   "name": "Heavy work off groot",
+   "text": "Heavy work starts on groot only with a declared GPU or toolchain exception; otherwise it runs on the MBP or a phone.",
+   "prevents": "Builds starving the memory-tight desktop and killing other workers.",
+   "incidents": {
+    "count": 1695,
+    "label": "heavy commands on groot with no exception (97 since the fleet came online; 1,310 excepted)",
+    "source": "supervise-20261021 L4:heavy_on_groot"
+   }
+  },
+  {
+   "id": "W5",
+   "loop": "worker",
+   "name": "Phone installs serialized",
+   "text": "Only the holder of the S25 install lock may install.",
+   "prevents": "Two agents installing builds over each other on the owner's phone.",
+   "incidents": {
+    "count": 7,
+    "label": "of 17 S25 installs ran outside the lock",
+    "source": "supervise-20261021 L5:install_without_lock"
+   }
+  },
+  {
+   "id": "W6",
+   "loop": "worker",
+   "name": "Look before you tap",
+   "text": "Input goes only to the app last seen in the foreground, and each input spends that look.",
+   "prevents": "Taps landing in whatever app Kevin happens to have open.",
+   "incidents": {
+    "count": 11,
+    "label": "of 23 S25 inputs sent with no foreground check",
+    "source": "supervise-20261021 L6:input_without_foreground_check"
+   }
+  }
+ ],
+ "guards": [
+  {
+   "machine": "work-item",
+   "from": "Proposed",
+   "event": "Claim",
+   "laws": [
+    "L6"
+   ],
+   "text": "Only Opus or Sol may claim; free models, Jev, SLMs and chat apps never implement."
+  },
+  {
+   "machine": "work-item",
+   "from": "*",
+   "event": "Abandon",
+   "laws": [
+    "L5"
+   ],
+   "text": "Only the owner or the Opus orchestrator may abandon."
+  },
+  {
+   "machine": "work-item",
+   "from": "Claimed",
+   "event": "Start",
+   "laws": [
+    "L2"
+   ],
+   "text": "Only the claimant (author) starts."
+  },
+  {
+   "machine": "work-item",
+   "from": "Implementing",
+   "event": "Push",
+   "laws": [
+    "L2"
+   ],
+   "text": "Only the author pushes."
+  },
+  {
+   "machine": "work-item",
+   "from": "Implementing",
+   "event": "Submit",
+   "laws": [
+    "L2"
+   ],
+   "text": "Only the author submits."
+  },
+  {
+   "machine": "work-item",
+   "from": "Verifying",
+   "event": "Verify",
+   "laws": [
+    "L2",
+    "L3"
+   ],
+   "text": "A Ci actor who is not the author decides; only a passing receipt for exactly this head opens the draft PR."
+  },
+  {
+   "machine": "work-item",
+   "from": "DraftPR",
+   "event": "Integrate",
+   "laws": [
+    "L2",
+    "L3"
+   ],
+   "text": "Ci or Opus, not the author, with a passing receipt bound to the integration head."
+  },
+  {
+   "machine": "work-item",
+   "from": "Integrated",
+   "event": "Deploy",
+   "laws": [
+    "L4"
+   ],
+   "text": "An operator deploys, and the served head must equal the integrated head."
+  },
+  {
+   "machine": "work-item",
+   "from": "Deployed",
+   "event": "Observe",
+   "laws": [
+    "L4"
+   ],
+   "text": "A service seen serving any other head drops back to Integrated.",
+   "kind": "observation"
+  },
+  {
+   "machine": "work-item",
+   "from": "Deployed",
+   "event": "Accept",
+   "laws": [
+    "L1",
+    "L2",
+    "L7"
+   ],
+   "text": "Only the owner, who is not the author, accepts."
+  },
+  {
+   "machine": "work-item",
+   "from": "Accepted",
+   "event": "Merge",
+   "laws": [
+    "L1"
+   ],
+   "text": "Ci or the owner merges after acceptance."
+  },
+  {
+   "machine": "work-item",
+   "from": "*",
+   "event": "Merge",
+   "laws": [
+    "L1"
+   ],
+   "text": "Merge is possible only from OwnerAccepted."
+  },
+  {
+   "machine": "work-item",
+   "from": "*",
+   "event": "Accept",
+   "laws": [
+    "L1"
+   ],
+   "text": "Acceptance is possible only for a deployed result."
+  },
+  {
+   "machine": "work-item",
+   "from": "*",
+   "event": "Integrate",
+   "laws": [
+    "L3"
+   ],
+   "text": "Integration is possible only from a draft PR that passed verification."
+  },
+  {
+   "machine": "work-item",
+   "from": "Blocked",
+   "event": "Unblock",
+   "laws": [],
+   "text": "Only the owner or Opus unblocks."
+  },
+  {
+   "machine": "work-item",
+   "from": "Interrupted",
+   "event": "Resume",
+   "laws": [
+    "L5",
+    "L6"
+   ],
+   "text": "A coder (Opus or Sol) resumes, keeping the pushed head."
+  },
+  {
+   "machine": "worker",
+   "from": "Dispatched",
+   "event": "Start",
+   "laws": [
+    "W4"
+   ],
+   "text": "Heavy work starts on groot only with a declared GPU or toolchain exception."
+  },
+  {
+   "machine": "worker",
+   "from": "Running",
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ],
+   "text": "Heartbeat clock: still within the limit.",
+   "kind": "clock"
+  },
+  {
+   "machine": "worker",
+   "from": "Stalled",
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ],
+   "text": "Heartbeat clock: not yet two limits of silence.",
+   "kind": "clock"
+  },
+  {
+   "machine": "worker",
+   "from": "Interrupted",
+   "event": "Tick",
+   "laws": [
+    "W2"
+   ],
+   "text": "Decision clock: still within the limit.",
+   "kind": "clock"
+  },
+  {
+   "machine": "worker",
+   "from": "Interrupted",
+   "event": "Resume",
+   "laws": [
+    "W2"
+   ],
+   "text": "A successor may resume only from the worker's log."
+  },
+  {
+   "machine": "worker",
+   "from": "Overdue",
+   "event": "Resume",
+   "laws": [
+    "W2"
+   ],
+   "text": "A successor may resume only from the worker's log."
+  },
+  {
+   "machine": "worker",
+   "from": "*",
+   "event": "Abandon",
+   "laws": [
+    "W3"
+   ],
+   "text": "Abandon only once every background process is reaped."
+  },
+  {
+   "machine": "worker",
+   "from": "Completed",
+   "event": "Integrate",
+   "laws": [
+    "W3"
+   ],
+   "text": "Integrate only once every background process is reaped."
+  },
+  {
+   "machine": "lease",
+   "from": "Held",
+   "event": "Acquire",
+   "laws": [
+    "W1"
+   ],
+   "text": "A held lease cannot be taken; only Reclaim with evidence the holder is dead."
+  },
+  {
+   "machine": "lease",
+   "from": "Held",
+   "event": "Release",
+   "laws": [
+    "W1"
+   ],
+   "text": "Only the holder releases."
+  },
+  {
+   "machine": "lease",
+   "from": "Held",
+   "event": "Reclaim",
+   "laws": [
+    "W1"
+   ],
+   "text": "Reclaim needs evidence the holder is dead."
+  },
+  {
+   "machine": "device",
+   "from": "*",
+   "event": "Install",
+   "laws": [
+    "W5"
+   ],
+   "text": "Only the install-lock holder installs.",
+   "acceptance": "effect"
+  },
+  {
+   "machine": "device",
+   "from": "*",
+   "event": "Input",
+   "laws": [
+    "W6"
+   ],
+   "text": "Input only into the app last seen in the foreground; each input spends the look.",
+   "acceptance": "effect"
+  },
+  {
+   "machine": "device",
+   "from": "*",
+   "event": "Unlock",
+   "laws": [
+    "W1",
+    "W5"
+   ],
+   "text": "Only the holder releases the install lock."
+  },
+  {
+   "machine": "device",
+   "from": "*",
+   "event": "Lock",
+   "laws": [
+    "W5"
+   ],
+   "text": "The install lock is already held by someone else."
+  }
+ ],
+ "planes": [
+  {
+   "id": "work-item",
+   "title": "Loop 1 \u00b7 Work item",
+   "owner": "PROPOSED \u2192 MERGED",
+   "color": "#386eb1",
+   "machines": [
+    "work-item"
+   ],
+   "summary": "One piece of work from proposal to merge. Draft PR kvnloo/z0intelligence#183.",
+   "width": 880,
+   "height": 505
+  },
+  {
+   "id": "worker",
+   "title": "Loop 2 \u00b7 Worker",
+   "owner": "DISPATCHED \u2192 RESUMED / INTEGRATED",
+   "color": "#31836a",
+   "machines": [
+    "worker"
+   ],
+   "summary": "One delegated agent from dispatch to an honest ending. Draft PR kvnloo/z0intelligence#184.",
+   "width": 880,
+   "height": 505
+  },
+  {
+   "id": "shared",
+   "title": "Loop 2 \u00b7 Shared resources",
+   "owner": "LEASE \u00b7 S25",
+   "color": "#a4772e",
+   "machines": [
+    "lease",
+    "device"
+   ],
+   "summary": "The worktree lease (also the S25 install lock) and the owner's phone.",
+   "width": 880,
+   "height": 505,
+   "lawCards": [
+    {
+     "law": "W1",
+     "point": {
+      "x": 464,
+      "y": 34
+     }
+    },
+    {
+     "law": "W5",
+     "point": {
+      "x": 684,
+      "y": 34
+     }
+    },
+    {
+     "law": "W6",
+     "point": {
+      "x": 464,
+      "y": 228
+     }
+    },
+    {
+     "law": "W4",
+     "point": {
+      "x": 684,
+      "y": 228
+     }
+    },
+    {
+     "law": "W3",
+     "point": {
+      "x": 464,
+      "y": 422
+     }
+    },
+    {
+     "law": "W2",
+     "point": {
+      "x": 684,
+      "y": 422
+     }
+    }
+   ]
+  }
+ ],
+ "nodeSize": {
+  "width": 172,
+  "height": 74
+ },
+ "curves": {
+  "work-item": {
+   "Blocked>Abandoned": [
+    [
+     550,
+     362
+    ],
+    [
+     110,
+     362
+    ]
+   ],
+   "Verifying>Interrupted": -30
+  },
+  "worker": {
+   "Running>Completed": -22,
+   "Overdue>Abandoned": [
+    [
+     550,
+     340
+    ],
+    [
+     150,
+     340
+    ]
+   ],
+   "Completed>Abandoned": [
+    [
+     870,
+     71
+    ],
+    [
+     870,
+     390
+    ],
+    [
+     70,
+     390
+    ]
+   ]
+  },
+  "lease": {},
+  "device": {}
+ },
+ "roles": [
+  {
+   "id": "Owner",
+   "who": "Kevin",
+   "note": "Taste, credentials, physical world, irreversible approvals. Attention is the bottleneck: one batched needs-Kevin queue."
+  },
+  {
+   "id": "Opus",
+   "who": "Claude Opus lane",
+   "note": "Design, verification, hard code, orchestration. May claim, integrate, unblock, abandon."
+  },
+  {
+   "id": "Sol",
+   "who": "Sol via pi/SoL-Pi or Codex",
+   "note": "Bulk well-specified coding. May claim and resume."
+  },
+  {
+   "id": "Chat",
+   "who": "ChatGPT app, Grok, Muse",
+   "note": "Advice and specs; no sandbox, no origin actions."
+  },
+  {
+   "id": "Free",
+   "who": "Free models",
+   "note": "Scans, triage, summaries. Never code (owner rule, L6)."
+  },
+  {
+   "id": "Jev",
+   "who": "Jev",
+   "note": "Fast chooser among prevalidated options; never writes."
+  },
+  {
+   "id": "Slm",
+   "who": "Shadow network",
+   "note": "Shadow-only until promoted; never writes."
+  },
+  {
+   "id": "Ci",
+   "who": "Deterministic code",
+   "note": "CI, tests, service-branch checks, replay. Verifies and integrates; never the author."
+  }
+ ],
+ "explainer": {
+  "intro": "Two small state machines, written in Bend and proven against their laws, now drawn as layers. Pick a tape and press Step: every move is decided by the compiled Bend code.",
+  "loops": [
+   "Loop 1 follows one piece of work: Proposed \u2192 Claimed (Opus or Sol only) \u2192 Implementing \u2192 Verifying (CI, not the author, checks a receipt for that exact commit) \u2192 Draft PR \u2192 Integrated \u2192 Deployed (the service must run exactly that commit) \u2192 OwnerAccepted (only Kevin) \u2192 Merged. Blocked, Interrupted and Abandoned are the side exits.",
+   "Loop 2 follows one delegated agent: Dispatched \u2192 Running (heartbeats) \u2192 Completed \u2192 Integrated. If it goes quiet it Stalls, then counts as Interrupted; a successor must resume from its log, or someone abandons it once its background processes are reaped. Past 2 h with no decision it turns Overdue and lands in Kevin's queue instead of vanishing. Beside it: one owner per worktree (the lease) and the S25 rules (install lock, look before you tap)."
+  ],
+  "statechart": "This is poteto's statechart idea with Bend standing in for TLA+: draw the flow, write the laws, let the prover check the model, then replay real history through it to find where reality broke the rules. Here the laws are proven theorems about the same code that runs in this page, and the reports supply the incident counts.",
+  "roles": "The guards are ROLES-v0 in code: only Opus/Sol write code, CI and Opus land work but never their own, Kevin alone accepts and is treated as a batched queue, free models/Jev/SLMs pick and rank but never implement."
+ },
+ "sources": [
+  {
+   "path": "WorkItem.bend",
+   "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:bend/work_item_fsm/fsm.bend",
+   "gitBlob": "3e0e9922c8d9b13eb6f7647f8fb6128adcf009ea",
+   "kind": "bend-model"
+  },
+  {
+   "path": "WorkerSupervision.bend",
+   "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:bend/worker_supervision_fsm/fsm.bend",
+   "gitBlob": "30db3271ad03a4d59857dbb83842c8358f2be1ef",
+   "kind": "bend-model"
+  },
+  {
+   "path": "work-item.mmd",
+   "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:docs/fsm/work-item.mmd",
+   "gitBlob": "c5d3e07d02d6edb5171c70017811dda628a8a4ff",
+   "kind": "documented-statechart"
+  },
+  {
+   "path": "worker-supervision.mmd",
+   "upstream": "kvnloo/z0intelligence@b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74:docs/fsm/worker-supervision.mmd",
+   "gitBlob": "11edb752608ed203970019f963b32768017b58ce",
+   "kind": "documented-statechart"
+  }
+ ],
+ "proofs": [
+  {
+   "project": "bend/work_item_fsm",
+   "pr": "kvnloo/z0intelligence#183",
+   "commit": "eef21051b1910bcda14542fe5859414f629e4fad",
+   "lawsBlob": "b564659c0471b66022c813933c4a99c0b342011e",
+   "proofBlob": "db234e6c68f363dbe56571dc749cc9203b3614ea",
+   "verdict": "pass",
+   "bend": "2.0.34",
+   "verifiedAt": "2026-10-21T03:45:45Z",
+   "scope": "bend-emitted-book; source_semantics_attested=false"
+  },
+  {
+   "project": "bend/worker_supervision_fsm",
+   "pr": "kvnloo/z0intelligence#184",
+   "commit": "b4c06eefb1fb276e4b999f9e59bbf58bbd9a6f74",
+   "lawsBlob": "5b5709d78a04205df93c4723a5577951053b7ae4",
+   "proofBlob": "f12965b9db0b19ed39c4dda25bee7f3a19b7f27e",
+   "verdict": "pass",
+   "bend": "2.0.34",
+   "verifiedAt": "2026-10-21T05:08:25Z",
+   "scope": "bend-emitted-book; source_semantics_attested=false"
+  }
+ ],
+ "provenance": {
+  "producer": "docs/spec-diagram/fsm/build.mjs",
+  "compilerPin": "bend 2.0.34",
+  "compilerIdentitySha256": "66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317",
+  "note": "Same compiler identity that produced the PROOF.bend pass receipts. The .files architecture diagram keeps its own 2.0.37 pin."
+ }
+}

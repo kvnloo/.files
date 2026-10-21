@@ -1,0 +1,1250 @@
+{
+ "schema": 1,
+ "provenance": {
+  "replayReport": {
+   "name": "replay-20261021.json",
+   "sha256": "5ddf0c294f7f9cf172c61d4fffcd312572868219195000afc9acb3a946ead3b0",
+   "generatedAt": "2026-10-21T03:57:03.352647+00:00"
+  },
+  "superviseReport": {
+   "name": "worker-supervision-20261021.json",
+   "sha256": "f9ec8a927130a3b5b310fc14cf292676b6b65858717626fba4c93957fc4a2b9c",
+   "generatedAt": "2026-10-21T05:31:00+00:00"
+  },
+  "privacy": "Only ids, timestamps, event kinds, short SHAs and finding codes are copied; log paths, commands, goals and home paths are not.",
+  "assumptions": "Worker hosts are not in the supervise events; report tapes start on groot with light load (Hermes agent sessions). Times are minutes since the worker's first event; the limit is the report's 2 h."
+ },
+ "scenarios": [
+  {
+   "id": "owner-acceptance",
+   "machine": "work-item",
+   "title": "Loop 1 \u00b7 dash#72: self-approval refused at every gate",
+   "summary": "Real tape for kvnloo/dash#72: an Opus agent claimed, pushed and then integrated its own PR under the owner's GitHub account. Bend refuses the self-integration (L2). The what-if continuation shows the owner-acceptance gate refusing the author's own Accept and holding Kevin's Accept while he is off (L1, L2, L7).",
+   "item": "kvnloo/dash#72",
+   "initial": {
+    "tag": "Proposed"
+   },
+   "actors": {
+    "1": "kvnloo",
+    "2": "github-checks",
+    "3": "service-branch-check",
+    "4": "Kevin (owner, distinct identity)"
+   },
+   "shas": {
+    "1": "751a8a6"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Claim",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": "2026-10-20T11:41:04Z",
+     "note": "An Opus agent (kvnloo) claims the PR's work: Opus may write code.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Start",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Push",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      },
+      "sha": 1
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Submit",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Verify",
+      "a": {
+       "id": 2,
+       "role": "Ci"
+      },
+      "r": {
+       "sha": 1,
+       "pass": true
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "GitHub checks (Ci, not the author) pass on exactly the pushed head: Draft PR.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      },
+      "ish": 1,
+      "r": {
+       "sha": 1,
+       "pass": true
+      }
+     },
+     "source": "report",
+     "at": "2026-10-20T16:42:20Z",
+     "note": "Recorded: the author's own account integrated it. Same actor as the author, so the gate refuses.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      },
+      "ish": 1,
+      "r": {
+       "sha": 1,
+       "pass": true
+      }
+     },
+     "note": "What-if: a Ci actor that is not the author lands it with a receipt for that head.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Deploy",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      },
+      "served": 1
+     },
+     "note": "The service serves exactly the integrated head, so Deployed holds. Now it needs Kevin.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "note": "The author (an Opus agent acting as kvnloo) tries to accept its own work.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "a": {
+       "id": 4,
+       "role": "Owner"
+      }
+     },
+     "note": "Kevin accepts, but he is off right now: the action is held in the needs-Kevin queue.",
+     "source": "what-if",
+     "facts": {
+      "availability": "Off"
+     }
+    },
+    {
+     "event": {
+      "tag": "Accept",
+      "a": {
+       "id": 4,
+       "role": "Owner"
+      }
+     },
+     "note": "Next deep-work block: Kevin accepts the deployed result.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Merge",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      }
+     },
+     "note": "Deterministic code merges on his recorded acceptance.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "merge-without-acceptance",
+   "machine": "work-item",
+   "title": "Loop 1 \u00b7 company-os#4: merged from Verifying",
+   "summary": "Real tape for kvnloo/company-os#4: merged to main 2 minutes after the claim, from Verifying, with no verification, deployment or owner acceptance. Bend refuses the merge (L1).",
+   "item": "kvnloo/company-os#4",
+   "initial": {
+    "tag": "Proposed"
+   },
+   "actors": {
+    "1": "kvnloo"
+   },
+   "shas": {
+    "1": "6959a0b"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Claim",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": "2026-10-01T06:09:03Z",
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Start",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Push",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      },
+      "sha": 1
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Submit",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Merge",
+      "a": {
+       "id": 1,
+       "role": "Owner"
+      }
+     },
+     "source": "report",
+     "at": "2026-10-01T06:10:58Z",
+     "note": "Recorded merge by the owner's account while the item was still Verifying.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "stale-service",
+   "machine": "work-item",
+   "title": "Loop 1 \u00b7 company-os-static: stale service",
+   "summary": "Real tape for the company-os-static service: integrated at 248126e but serving 3d0f6eb, 31 commits behind. Bend refuses \"deployed\" (L4). Receipts in this tape were marked 'assumed' by the replay.",
+   "item": "service:company-os-static",
+   "initial": {
+    "tag": "Proposed"
+   },
+   "actors": {
+    "1": "integration",
+    "2": "github-checks",
+    "3": "service-branch-check"
+   },
+   "shas": {
+    "1": "248126e",
+    "2": "3d0f6eb"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Claim",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Start",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Push",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      },
+      "sha": 1
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Submit",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Verify",
+      "a": {
+       "id": 2,
+       "role": "Ci"
+      },
+      "r": {
+       "sha": 1,
+       "pass": true
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      },
+      "ish": 1,
+      "r": {
+       "sha": 1,
+       "pass": true
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Deploy",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      },
+      "served": 2
+     },
+     "source": "report",
+     "at": null,
+     "note": "Recorded: the service serves 3d0f6eb, not the integrated 248126e.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Deploy",
+      "a": {
+       "id": 3,
+       "role": "Ci"
+      },
+      "served": 1
+     },
+     "note": "What-if: restart the service on the integrated head.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Observe",
+      "served": 2
+     },
+     "note": "What-if: the service is later seen serving the old head again, so Deployed is taken away.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "interrupted-not-dropped",
+   "machine": "work-item",
+   "title": "Loop 1 \u00b7 z0live QR pairing: interrupted 35 h",
+   "summary": "Real tape for worker deleg_14619e78/task-0, interrupted 35 h before the report with no resume, PR or abandon decision (one of 13 such). Interrupted cannot be left silently: only a coder's Resume or an explicit Abandon moves it.",
+   "item": "worker:deleg_14619e78/task-0",
+   "initial": {
+    "tag": "Proposed"
+   },
+   "actors": {
+    "1": "deleg_14619e78/task-0",
+    "2": "free-model",
+    "3": "sol-lane"
+   },
+   "shas": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "Claim",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": "2026-10-19 11:43:50",
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Start",
+      "a": {
+       "id": 1,
+       "role": "Opus"
+      }
+     },
+     "source": "report",
+     "at": null,
+     "note": "",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Interrupt"
+     },
+     "source": "report",
+     "at": "2026-10-19T16:59:19.870265+00:00",
+     "note": "Recorded interruption.",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Resume",
+      "a": {
+       "id": 2,
+       "role": "Free"
+      }
+     },
+     "note": "What-if: a free model tries to pick it up. Free models never implement (L6).",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Abandon",
+      "a": {
+       "id": 3,
+       "role": "Sol"
+      }
+     },
+     "note": "What-if: the Sol lane tries to drop it. Only the owner or Opus may abandon (L5).",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    },
+    {
+     "event": {
+      "tag": "Resume",
+      "a": {
+       "id": 3,
+       "role": "Sol"
+      }
+     },
+     "note": "What-if: the Sol lane resumes it and becomes the author; the pushed head is kept.",
+     "source": "what-if",
+     "facts": {
+      "availability": "DeepWork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "worker-resumed",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 interrupted, then resumed from its log",
+   "summary": "Real tape for deleg_ec0465e5/task-0 (fframestudio hosted demo): interrupted after 24 min; a successor read its log and took over 31 s later. One of 37 resumed workers.",
+   "item": "deleg_ec0465e5/task-0",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Light",
+     "exc": "NoExc"
+    }
+   },
+   "actors": {
+    "1": "deleg_ec0465e5/task-0",
+    "2": "deleg_aa6048ca/task-0"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "report",
+     "at": "2026-10-17T22:56:44+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Beat",
+      "t": 25
+     },
+     "source": "report",
+     "at": "2026-10-17T23:21:18+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Interrupt",
+      "t": 25
+     },
+     "source": "report",
+     "at": "2026-10-17T23:21:18+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Tick",
+      "now": 25
+     },
+     "source": "report",
+     "at": "2026-10-17T23:21:49+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Resume",
+      "by": 2,
+      "log": true
+     },
+     "source": "report",
+     "at": "2026-10-17T23:21:49+00:00",
+     "note": "Successor deleg_aa6048ca/task-0 resumes from the log.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Tick",
+      "now": 4714
+     },
+     "source": "report",
+     "at": "2026-10-21T05:31:00+00:00",
+     "note": "Resumed is final for this worker; later ticks change nothing.",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "resume-without-log",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 resumed without reading the log \u2192 Overdue",
+   "summary": "Real tape for deleg_9c151b34/task-1 (E2E tester G02): a successor took over without reading the log (one of 10). Bend refuses that resume (W2), so the worker is still interrupted; three days later the clock makes it Overdue and it lands in Kevin's queue.",
+   "item": "deleg_9c151b34/task-1",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Light",
+     "exc": "NoExc"
+    }
+   },
+   "actors": {
+    "1": "deleg_9c151b34/task-1",
+    "2": "deleg_656fb990/task-0"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "report",
+     "at": "2026-10-18T04:02:58+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Spawn"
+     },
+     "source": "report",
+     "at": "2026-10-18T04:02:58+00:00",
+     "note": "It started one background process...",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Beat",
+      "t": 61
+     },
+     "source": "report",
+     "at": "2026-10-18T05:03:54+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Reap"
+     },
+     "source": "report",
+     "at": "2026-10-18T05:03:54+00:00",
+     "note": "...and reaped it.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Interrupt",
+      "t": 61
+     },
+     "source": "report",
+     "at": "2026-10-18T05:03:54+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Tick",
+      "now": 63
+     },
+     "source": "report",
+     "at": "2026-10-18T05:05:31+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Resume",
+      "by": 2,
+      "log": false
+     },
+     "source": "report",
+     "at": "2026-10-18T05:05:31+00:00",
+     "note": "Successor deleg_656fb990/task-0 took over without reading the log.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Tick",
+      "now": 4408
+     },
+     "source": "report",
+     "at": "2026-10-21T05:31:00+00:00",
+     "note": "Report time: 72 h past the interruption.",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "overdue-abandon",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 overdue 6 days \u2192 needs Kevin",
+   "summary": "Real tape for deleg_e07e87da/task-1 (night lane stone-25): interrupted on 15 Oct, no decision for 6 days (one of 26 past the 2 h limit). The report recommends abandon: nothing left to recover.",
+   "item": "deleg_e07e87da/task-1",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Light",
+     "exc": "NoExc"
+    }
+   },
+   "actors": {
+    "1": "deleg_e07e87da/task-1"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "report",
+     "at": "2026-10-15T00:51:54+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Beat",
+      "t": 247
+     },
+     "source": "report",
+     "at": "2026-10-15T04:59:06+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Interrupt",
+      "t": 247
+     },
+     "source": "report",
+     "at": "2026-10-15T04:59:06+00:00",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Tick",
+      "now": 8919
+     },
+     "source": "report",
+     "at": "2026-10-21T05:31:00+00:00",
+     "note": "Report time: 6 days later. Overdue = needs Kevin.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Abandon"
+     },
+     "note": "What-if: Kevin takes the recommended decision. No background process is left, so abandon is allowed.",
+     "source": "what-if",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "heavy-on-groot",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 heavy build on groot refused",
+   "summary": "Shaped from a real finding (job fg:20260921_132641_1896a\u2026, 2026-09-21): an `npm run build` ran on groot with no GPU or toolchain exception, one of 1,695. Bend refuses the start on groot (W4) and accepts it on the MBP, as fleet-build routes it.",
+   "item": "fg:20260921_132641_1896ab:1790022782.161",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Heavy",
+     "exc": "NoExc"
+    }
+   },
+   "actors": {
+    "1": "fg:20260921_132641_1896ab:1790022782.161"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "report",
+     "note": "Recorded: heavy build started on groot, no exception declared.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Mbp",
+      "t": 0
+     },
+     "source": "what-if",
+     "note": "What-if: fleet-build sends it to the MBP.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Beat",
+      "t": 3
+     },
+     "source": "what-if",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Finish"
+     },
+     "source": "what-if",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate"
+     },
+     "source": "what-if",
+     "note": "No background process left, so it can be integrated.",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "gpu-exception",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 GPU job on groot allowed",
+   "summary": "Contrast: 1,291 heavy groot jobs declared a GPU exception (19 a toolchain exception). With the exception declared, Bend lets heavy work start on groot.",
+   "item": "gpu-exception",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Heavy",
+     "exc": "Gpu"
+    }
+   },
+   "actors": {
+    "1": "gpu-exception"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "what-if",
+     "note": "Heavy + declared GPU exception on groot.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Finish"
+     },
+     "source": "what-if",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "orphan-background",
+   "machine": "worker",
+   "title": "Loop 2 \u00b7 background process must be reaped",
+   "summary": "Shaped from the one orphan in the report (proc_6553b4f28d81, started 2026-10-20T17:52Z, still alive after its owner session ended). Bend will not integrate or abandon a worker that still has a background process (W3).",
+   "item": "proc_6553b4f28d81",
+   "initial": {
+    "tag": "Dispatched",
+    "w": {
+     "id": 1,
+     "wt": 0,
+     "load": "Light",
+     "exc": "NoExc"
+    }
+   },
+   "actors": {
+    "1": "proc_6553b4f28d81"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Start",
+      "h": "Groot",
+      "t": 0
+     },
+     "source": "report",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Spawn"
+     },
+     "source": "report",
+     "note": "Recorded: it started a background process.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Finish"
+     },
+     "source": "what-if",
+     "note": "The worker finishes but leaves the process running.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate"
+     },
+     "source": "what-if",
+     "note": "Integrate is refused: one background process left.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Reap"
+     },
+     "source": "what-if",
+     "note": "Reap it.",
+     "facts": {
+      "limit": 120
+     }
+    },
+    {
+     "event": {
+      "tag": "Integrate"
+     },
+     "source": "what-if",
+     "note": "",
+     "facts": {
+      "limit": 120
+     }
+    }
+   ]
+  },
+  {
+   "id": "lease-clash",
+   "machine": "lease",
+   "title": "Loop 2 \u00b7 lease clash in oss-factory",
+   "summary": "Real finding: while a subagent session held the oss-factory worktree, a local session wrote to it (2026-10-20T05:29Z). One of 419 such writes across 19 worktrees. Bend refuses every takeover except Reclaim with evidence the holder is dead (W1).",
+   "item": "oss-factory",
+   "initial": {
+    "tag": "Free"
+   },
+   "actors": {
+    "1": "holder 20261019_235644_02e626",
+    "2": "intruder local-be1ae19e1fe2ae\u2026"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Acquire",
+      "a": 1
+     },
+     "source": "report",
+     "note": "The holder session takes the worktree.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Acquire",
+      "a": 2
+     },
+     "source": "report",
+     "note": "Recorded: a second session writes while the lease is held.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Release",
+      "a": 2
+     },
+     "source": "what-if",
+     "note": "The intruder cannot release someone else's lease.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Reclaim",
+      "a": 2,
+      "dead": false
+     },
+     "source": "what-if",
+     "note": "Reclaim without evidence the holder is dead is refused.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Release",
+      "a": 1
+     },
+     "source": "what-if",
+     "note": "The holder finishes and releases.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Acquire",
+      "a": 2
+     },
+     "source": "what-if",
+     "note": "Now the second session may take it.",
+     "facts": {}
+    }
+   ]
+  },
+  {
+   "id": "s25-lock-and-look",
+   "machine": "device",
+   "title": "Loop 2 \u00b7 S25: install lock and look-before-tap",
+   "summary": "Real findings from session 20261019_115453_bfed46: a Lawnchair install outside the install lock (2026-10-19T17:08Z; 7 of 17 installs) and input with no foreground check (2026-10-19T16:59Z; 11 of 23 inputs). Bend gives neither any effect (W5, W6).",
+   "item": "20261019_115453_bfed46",
+   "initial": {
+    "lk": {
+     "tag": "Free"
+    },
+    "fg": {
+     "tag": "Unknown"
+    }
+   },
+   "actors": {
+    "1": "session 20261019_115453_bfed46",
+    "app 1": "Lawnchair (launcher)"
+   },
+   "steps": [
+    {
+     "event": {
+      "tag": "Install",
+      "a": 1
+     },
+     "source": "report",
+     "note": "Recorded: adb install without holding the lock.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Lock",
+      "a": 1
+     },
+     "source": "what-if",
+     "note": "Take the install lock first.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Install",
+      "a": 1
+     },
+     "source": "what-if",
+     "note": "Now the install goes through.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Unlock",
+      "a": 1
+     },
+     "source": "what-if",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Input",
+      "a": 1,
+      "app": 1
+     },
+     "source": "report",
+     "note": "Recorded: input sent without looking at the screen.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Peek",
+      "app": 1
+     },
+     "source": "what-if",
+     "note": "Look first: the launcher is in the foreground.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Input",
+      "a": 1,
+      "app": 1
+     },
+     "source": "what-if",
+     "note": "One input into the app just seen.",
+     "facts": {}
+    },
+    {
+     "event": {
+      "tag": "Input",
+      "a": 1,
+      "app": 1
+     },
+     "source": "what-if",
+     "note": "A second input needs a fresh look: the first may have changed the screen.",
+     "facts": {}
+    }
+   ]
+  }
+ ]
+}
