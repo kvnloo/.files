@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> Dispatched
+    Dispatched --> Running: Start(host) [L4]
+    Dispatched --> Interrupted: Interrupt [L2]
+    Dispatched --> Abandoned: Abandon [L2]
+    Running --> Stalled: Tick(now) [L2]
+    Running --> Completed: Finish
+    Running --> Interrupted: Interrupt [L2]
+    Stalled --> Running: Beat
+    Stalled --> Interrupted: Tick(now) / Interrupt [L2]
+    Stalled --> Completed: Finish
+    Interrupted --> Overdue: Tick(now) [L2]
+    Interrupted --> Resumed: Resume(by, from log) [L3]
+    Interrupted --> Abandoned: Abandon [L3]
+    Overdue --> Resumed: Resume(by, from log) [L3]
+    Overdue --> Abandoned: Abandon [L3]
+    Completed --> Integrated: Integrate [L3]
+    Completed --> Abandoned: Abandon [L3]
+    Resumed --> [*]
+    Abandoned --> [*]
+    Integrated --> [*]
+    note right of Overdue: needs-Kevin queue (L2)
+    note left of Running: Lease (L1) - one owner per worktree/branch<br/>phone install lock (L5) - S25 input needs a fresh foreground look (L6)

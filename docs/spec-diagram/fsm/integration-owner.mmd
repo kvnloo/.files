@@ -1,0 +1,27 @@
+stateDiagram-v2
+  [*] --> Branch
+  Branch --> DraftPR: Draft
+  Branch --> Parked: Park
+  Branch --> Conflicted: Conflict
+  DraftPR --> Queued: Queue
+  DraftPR --> Parked: Park
+  DraftPR --> Conflicted: Conflict
+  Queued --> OnIntegrationBranch: Integrate
+  Queued --> Parked: Park
+  Queued --> Conflicted: Conflict
+  OnIntegrationBranch --> Deployed: Deploy
+  OnIntegrationBranch --> Parked: Park
+  OnIntegrationBranch --> Conflicted: Conflict
+  Deployed --> OwnerAccepted: Accept
+  Deployed --> Parked: Park
+  Deployed --> Conflicted: Conflict
+  Deployed --> OnIntegrationBranch: Observe
+  OwnerAccepted --> Merged: Merge
+  OwnerAccepted --> Parked: Park
+  OwnerAccepted --> Conflicted: Conflict
+  OwnerAccepted --> OnIntegrationBranch: Observe
+  Parked --> Conflicted: Conflict
+  Parked --> Queued: Expire / Resume
+  Conflicted --> Parked: Park
+  Conflicted --> Queued: Resume
+  Merged --> [*]

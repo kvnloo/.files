@@ -1,0 +1,1615 @@
+[
+ {
+  "id": "owner-acceptance",
+  "machine": "work-item",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "L6"
+    ],
+    "value": {
+     "tag": "Claimed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     }
+    }
+   },
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 2,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Verifying",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "L2",
+     "L3"
+    ],
+    "value": {
+     "tag": "DraftPR",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 4,
+    "state": 4,
+    "verdict": "refused",
+    "laws": [
+     "L2",
+     "L3"
+    ],
+    "value": {
+     "tag": "DraftPR",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 4,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [
+     "L2",
+     "L3"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1
+    }
+   },
+   {
+    "before": 5,
+    "state": 6,
+    "verdict": "accepted",
+    "laws": [
+     "L4"
+    ],
+    "value": {
+     "tag": "Deployed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "dp": 1
+    }
+   },
+   {
+    "before": 6,
+    "state": 6,
+    "verdict": "refused",
+    "laws": [
+     "L1",
+     "L2",
+     "L7"
+    ],
+    "value": {
+     "tag": "Deployed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "dp": 1
+    }
+   },
+   {
+    "before": 6,
+    "state": 6,
+    "verdict": "held",
+    "laws": [
+     "L1",
+     "L2",
+     "L7"
+    ],
+    "value": {
+     "tag": "Deployed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "dp": 1
+    }
+   },
+   {
+    "before": 6,
+    "state": 7,
+    "verdict": "accepted",
+    "laws": [
+     "L1",
+     "L2",
+     "L7"
+    ],
+    "value": {
+     "tag": "Accepted",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "ap": {
+      "id": 4,
+      "role": "Owner"
+     }
+    }
+   },
+   {
+    "before": 7,
+    "state": 8,
+    "verdict": "accepted",
+    "laws": [
+     "L1"
+    ],
+    "value": {
+     "tag": "Merged",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "ap": {
+      "id": 4,
+      "role": "Owner"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "merge-without-acceptance",
+  "machine": "work-item",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "L6"
+    ],
+    "value": {
+     "tag": "Claimed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     }
+    }
+   },
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 2,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Verifying",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "L1"
+    ],
+    "value": {
+     "tag": "Verifying",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "stale-service",
+  "machine": "work-item",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "L6"
+    ],
+    "value": {
+     "tag": "Claimed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     }
+    }
+   },
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 2,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Verifying",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "L2",
+     "L3"
+    ],
+    "value": {
+     "tag": "DraftPR",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1
+    }
+   },
+   {
+    "before": 4,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [
+     "L2",
+     "L3"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1
+    }
+   },
+   {
+    "before": 5,
+    "state": 5,
+    "verdict": "refused",
+    "laws": [
+     "L4"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1
+    }
+   },
+   {
+    "before": 5,
+    "state": 6,
+    "verdict": "accepted",
+    "laws": [
+     "L4"
+    ],
+    "value": {
+     "tag": "Deployed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1,
+     "dp": 1
+    }
+   },
+   {
+    "before": 6,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [
+     "L4"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 1,
+     "ig": 1
+    }
+   }
+  ]
+ },
+ {
+  "id": "interrupted-not-dropped",
+  "machine": "work-item",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "L6"
+    ],
+    "value": {
+     "tag": "Claimed",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     }
+    }
+   },
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L2"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 2,
+    "state": 10,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Interrupted",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 10,
+    "state": 10,
+    "verdict": "refused",
+    "laws": [
+     "L5",
+     "L6"
+    ],
+    "value": {
+     "tag": "Interrupted",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 10,
+    "state": 10,
+    "verdict": "refused",
+    "laws": [
+     "L5"
+    ],
+    "value": {
+     "tag": "Interrupted",
+     "au": {
+      "id": 1,
+      "role": "Opus"
+     },
+     "hd": 0
+    }
+   },
+   {
+    "before": 10,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "L5",
+     "L6"
+    ],
+    "value": {
+     "tag": "Implementing",
+     "au": {
+      "id": 3,
+      "role": "Sol"
+     },
+     "hd": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "worker-resumed",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 25,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 25,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "no-change",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 25,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 6,
+    "verdict": "accepted",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Resumed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "by": 2,
+     "bg": 0
+    }
+   },
+   {
+    "before": 6,
+    "state": 6,
+    "verdict": "no-change",
+    "laws": [],
+    "value": {
+     "tag": "Resumed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "by": 2,
+     "bg": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "resume-without-log",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 61,
+     "bg": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 61,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 61,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "no-change",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 61,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 61,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Overdue",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 61,
+     "bg": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "overdue-abandon",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 247,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Interrupted",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 247,
+     "bg": 0
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "W2"
+    ],
+    "value": {
+     "tag": "Overdue",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "at": 247,
+     "bg": 0
+    }
+   },
+   {
+    "before": 4,
+    "state": 7,
+    "verdict": "accepted",
+    "laws": [
+     "W3"
+    ],
+    "value": {
+     "tag": "Abandoned",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "heavy-on-groot",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 0,
+    "verdict": "refused",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Dispatched",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "NoExc"
+     }
+    }
+   },
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "NoExc"
+     },
+     "h": "Mbp",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "NoExc"
+     },
+     "h": "Mbp",
+     "hb": 3,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Completed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "NoExc"
+     },
+     "bg": 0
+    }
+   },
+   {
+    "before": 5,
+    "state": 8,
+    "verdict": "accepted",
+    "laws": [
+     "W3"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "NoExc"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "gpu-exception",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "Gpu"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Completed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Heavy",
+      "exc": "Gpu"
+     },
+     "bg": 0
+    }
+   }
+  ]
+ },
+ {
+  "id": "orphan-background",
+  "machine": "worker",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "W4"
+    ],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 0
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Running",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "h": "Groot",
+     "hb": 0,
+     "bg": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Completed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "bg": 1
+    }
+   },
+   {
+    "before": 5,
+    "state": 5,
+    "verdict": "refused",
+    "laws": [
+     "W3"
+    ],
+    "value": {
+     "tag": "Completed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "bg": 1
+    }
+   },
+   {
+    "before": 5,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Completed",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     },
+     "bg": 0
+    }
+   },
+   {
+    "before": 5,
+    "state": 8,
+    "verdict": "accepted",
+    "laws": [
+     "W3"
+    ],
+    "value": {
+     "tag": "Integrated",
+     "w": {
+      "id": 1,
+      "wt": 0,
+      "load": "Light",
+      "exc": "NoExc"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "lease-clash",
+  "machine": "lease",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Held",
+     "o": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "W1"
+    ],
+    "value": {
+     "tag": "Held",
+     "o": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "W1"
+    ],
+    "value": {
+     "tag": "Held",
+     "o": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "W1"
+    ],
+    "value": {
+     "tag": "Held",
+     "o": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 0,
+    "verdict": "accepted",
+    "laws": [
+     "W1"
+    ],
+    "value": {
+     "tag": "Free"
+    }
+   },
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Held",
+     "o": 2
+    }
+   }
+  ]
+ },
+ {
+  "id": "s25-lock-and-look",
+  "machine": "device",
+  "steps": [
+   {
+    "before": 0,
+    "state": 0,
+    "verdict": "refused",
+    "laws": [
+     "W5"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 0,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "W5"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Held",
+      "o": 1
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "W5"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Held",
+      "o": 1
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 2,
+    "state": 0,
+    "verdict": "accepted",
+    "laws": [
+     "W1",
+     "W5"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 0,
+    "state": 0,
+    "verdict": "refused",
+    "laws": [
+     "W6"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Seen",
+      "app": 1
+     }
+    }
+   },
+   {
+    "before": 1,
+    "state": 0,
+    "verdict": "accepted",
+    "laws": [
+     "W6"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   },
+   {
+    "before": 0,
+    "state": 0,
+    "verdict": "refused",
+    "laws": [
+     "W6"
+    ],
+    "value": {
+     "lk": {
+      "tag": "Free"
+     },
+     "fg": {
+      "tag": "Unknown"
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-dash-stack",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "refused",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-noop-stale",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-company-park",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "DraftPR"
+    }
+   },
+   {
+    "before": 1,
+    "state": 7,
+    "verdict": "accepted",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "Parked"
+    }
+   },
+   {
+    "before": 7,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "I1"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-evals-conflict",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 8,
+    "state": 8,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Conflicted"
+    }
+   },
+   {
+    "before": 8,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "refused",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "Queued"
+    }
+   }
+  ]
+ },
+ {
+  "id": "integration-files-owner-gate",
+  "machine": "integration",
+  "steps": [
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [],
+    "value": {
+     "tag": "Queued"
+    }
+   },
+   {
+    "before": 2,
+    "state": 3,
+    "verdict": "accepted",
+    "laws": [
+     "I3",
+     "I4"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "OnIntegrationBranch"
+    }
+   },
+   {
+    "before": 3,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "I2"
+    ],
+    "value": {
+     "tag": "Deployed"
+    }
+   },
+   {
+    "before": 4,
+    "state": 4,
+    "verdict": "refused",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Deployed"
+    }
+   },
+   {
+    "before": 4,
+    "state": 5,
+    "verdict": "accepted",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "OwnerAccepted"
+    }
+   },
+   {
+    "before": 5,
+    "state": 6,
+    "verdict": "accepted",
+    "laws": [
+     "I5"
+    ],
+    "value": {
+     "tag": "Merged"
+    }
+   }
+  ]
+ }
+]

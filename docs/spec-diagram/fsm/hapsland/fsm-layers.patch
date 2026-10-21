@@ -1,0 +1,3086 @@
+diff --git c/AGENTS.md w/AGENTS.md
+index a8eba37..b8b1fb9 100644
+--- c/AGENTS.md
++++ w/AGENTS.md
+@@ -154,3 +154,14 @@ generated inventories, and diagrams in their appropriate formats; do not
+ convert them to Markdown to satisfy this rule. Preserve pre-execution
+ declarations as declarations made at that time, with later outcomes or
+ amendments identified separately.
++
++<!-- BEGIN:turborepo-agent-rules -->
++
++# This is NOT the Turborepo you know
++
++Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
++
++Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
++
++This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
++<!-- END:turborepo-agent-rules -->
+diff --git c/packages/agent-flow-viz/README.md w/packages/agent-flow-viz/README.md
+index b02b0c4..106ac2d 100644
+--- c/packages/agent-flow-viz/README.md
++++ w/packages/agent-flow-viz/README.md
+@@ -356,6 +356,54 @@ The Monkey Business panel renders one to six agent diagrams as planes in CSS
+ The installed stack is FoldKit + SVG; CSS `preserve-3d` keeps labels and stage
+ selection available without another rendering dependency.
+ 
++The bounded SVG presentation owner is `src/topology.ts`: `topologyNodeView`,
++`topologyRouteView`, and `topologySurfaceView` are consumed by both production
++flow and the dotfiles architecture view. Production flow still owns its state,
++stage content, route geometry, and route paint; the shared owner has no policy
++or projection dependency. Callers supply node content and directed geometry.
++The surface retains the production scroll frame and accepts an optional
++`viewBox` for a focused viewport; route labels and inspection are opt-in.
++
++### Isolated .files dashboard
++
++`dotfiles.html` mounts the complete production dashboard presentation with
++`.files`-owned architecture and compiled Bend decisions. It does not replace
++the default Hapsland product or construct review-product projection records.
++The shared source owners are `dashboard-shell.ts` (original header/navigation),
++`ensemble-presentation.ts` (original CSS-3D planes and camera controls),
++`ensemble-camera.ts` (pointer, wheel and pinch gestures),
++`inspection-presentation.ts` (original stage-inspector frame),
++`history-presentation.ts` (retained rows and native timeline slider), and
++`timeline-presentation.ts` (original lane chart geometry). The original
++production entry consumes the same extracted components and keeps its resident,
++advicee and timing-evidence semantics. Both entries retain `style.css`.
++
++The four .files planes are explicit specification regions: clients/host,
++ordinary setup, separately opted-in runtime, and evidence/external authority.
++They are not advicees or simulated workers. They reference one committed FoldKit
++model and one immutable history of actual compiled Bend results. Play/Step and
++forward seeking call the `.files` adapter only for unrecorded positions;
++rewinding and seeking retained positions reuse those results. Resetting or
++choosing a scenario clears that scenario's history. The timeline axis is event
++position, never fabricated elapsed time. Native status remains **K3s NOT
++INSTALLED** independently of all replay outcomes.
++
++The complete 14-concept/20-relationship topology remains in the 2D architecture
++card, including on mobile. Diagram nodes and numbered routes, the keyboard
++inspector, region selection, retained history, scenario controls, camera ranges,
++orbit/pinch/wheel, Reset view, and 2D zoom/pan are real presentation controls.
++Only sourced fields are displayed; inapplicable review capacity, Jev, synthetic
++native profiles and import-budget data are omitted.
++
++From the checkout root, launch with
++`bunx --no-install vite --config packages/agent-flow-viz/vite.dotfiles.config.ts`
++and open `http://127.0.0.1:4183/dotfiles.html`. The existing configuration checks
++the neighboring `.files/docs/spec-diagram` receipt and source hashes before
++serving. Regenerate artifacts through their existing producer when genuinely
++stale; do not bypass the receipt or install another dependency set. The isolated
++checkout remains the source owner of upstream UI code.
++
++
+ Set **Agents** and choose **Start resident**. One Monkey Business Run owns the
+ canonical state, event queue, clock, capacity ledger and Jev request pool.
+ Its `sessions` array supplies independent SessionGenerators with distinct
+diff --git c/packages/agent-flow-viz/dotfiles.html w/packages/agent-flow-viz/dotfiles.html
+new file mode 100644
+index 0000000..79a4f05
+--- /dev/null
++++ w/packages/agent-flow-viz/dotfiles.html
+@@ -0,0 +1,13 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <meta name="description" content="Read-only .files architecture using actual Hapsland topology components and checked Bend replay." />
++    <title>.files architecture · Hapsland</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/dotfiles/entry.ts"></script>
++  </body>
++</html>
+diff --git c/packages/agent-flow-viz/fsm.html w/packages/agent-flow-viz/fsm.html
+new file mode 100644
+index 0000000..8dc3de6
+--- /dev/null
++++ w/packages/agent-flow-viz/fsm.html
+@@ -0,0 +1,14 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <meta name="description" content="Bend-checked statecharts for agent work, as layers in the Hapsland dashboard." />
++    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23b48035' d='M2 2h28v8H2zm0 10h28v8H2zm0 10h28v8H2z'/%3E%3C/svg%3E" />
++    <title>Bend statecharts · Hapsland</title>
++  </head>
++  <body>
++    <div id="root"></div>
++    <script type="module" src="/src/fsm/entry.ts"></script>
++  </body>
++</html>
+diff --git c/packages/agent-flow-viz/src/dashboard-shell.ts w/packages/agent-flow-viz/src/dashboard-shell.ts
+new file mode 100644
+index 0000000..b18d578
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dashboard-shell.ts
+@@ -0,0 +1,20 @@
++import type { HtmlBuilder } from "foldkit/html"
++import productIcon from "./brand/product-icon.svg?url"
++
++/** The production dashboard's header and section navigation; content belongs to its caller. */
++export const dashboardHeaderView = <Message>(h: HtmlBuilder<Message>, content: {
++  readonly title: string
++  readonly intro: string
++  readonly boundary: string
++  readonly sections: readonly { readonly href: string; readonly title: string; readonly description: string }[]
++}) => h.header([h.Class("page-header")], [
++  h.p([h.Class("eyebrow product-brand")], [
++    h.img([h.Src(productIcon), h.Alt(""), h.Width("40"), h.Height("40")]), "HAPSLAND"
++  ]),
++  h.h1([], [content.title]),
++  h.p([h.Class("intro")], [content.intro]),
++  h.p([h.Class("dashboard-boundary")], [content.boundary]),
++  h.nav([h.Class("dashboard-navigation"), h.AriaLabel("Dashboard sections")], content.sections.map((section) =>
++    h.a([h.Href(section.href)], [h.strong([], [section.title]), h.span([], [section.description])])
++  ))
++])
+diff --git c/packages/agent-flow-viz/src/dotfiles/adapter.d.ts w/packages/agent-flow-viz/src/dotfiles/adapter.d.ts
+new file mode 100644
+index 0000000..0a1e9d1
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/adapter.d.ts
+@@ -0,0 +1,11 @@
++declare module "@dotfiles-diagram/adapter.mjs" {
++  export const initialState: number
++  export function transition(state: number, event: number, facts?: Readonly<Record<string, boolean>>): {
++    readonly before: number
++    readonly state: number
++    readonly event: number
++    readonly accepted: boolean
++    readonly reason: string
++    readonly outputs: readonly { readonly kind: string; readonly code: number; readonly label: string }[]
++  }
++}
+diff --git c/packages/agent-flow-viz/src/dotfiles/entry.ts w/packages/agent-flow-viz/src/dotfiles/entry.ts
+new file mode 100644
+index 0000000..2d30dbd
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/entry.ts
+@@ -0,0 +1,29 @@
++import { Runtime, Subscription } from "foldkit"
++import { Schema, Stream } from "effect"
++import { cameraGestures } from "../ensemble-camera"
++import { Message, Model, init, update } from "./model"
++import { view } from "./view"
++import "../style.css"
++import "./style.css"
++
++const subscriptions = Subscription.make<Model, Message>()((entry) => ({
++  viewport: Subscription.persistent(Subscription.fromMediaQuery({
++    query: "(max-width: 700px)", mapMatches: (mobile) => Message.Responsive({ mobile })
++  })),
++  ensembleCamera: entry({ flat: Schema.Boolean }, {
++    modelToDependencies: (model) => ({ flat: model.camera.flat }),
++    keepAliveEquivalence: (before, after) => before.flat === after.flat,
++    dependenciesToStream: ({ flat }: { readonly flat: boolean }) => flat ? Stream.never
++      : cameraGestures((movement) => movement.kind === "zoom"
++        ? Message.CameraZoomed({ factor: movement.factor })
++        : Message.CameraRotated({ dx: movement.dx, dy: movement.dy }))
++  }),
++  playback: Subscription.animationFrame<Model, Message>({
++    isActive: (model) => model.playing,
++    toMessage: (deltaMs) => Message.PlaybackTick({ deltaMs })
++  })
++}))
++
++Runtime.run(Runtime.makeApplication({
++  Model, init, update, view, subscriptions, container: document.getElementById("root")
++}))
+diff --git c/packages/agent-flow-viz/src/dotfiles/model.ts w/packages/agent-flow-viz/src/dotfiles/model.ts
+new file mode 100644
+index 0000000..1bb0dba
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/model.ts
+@@ -0,0 +1,110 @@
++import { Schema } from "effect"
++import { type Runtime, type Update } from "foldkit"
++import { defineMessageUnion } from "foldkit/message"
++import { transition } from "@dotfiles-diagram/adapter.mjs"
++import { scenarios } from "./projection"
++import { orbitEnsembleCamera, zoomEnsembleCamera } from "../ensemble-presentation"
++
++const Outcome = Schema.Struct({
++  before: Schema.Number, state: Schema.Number, event: Schema.Number, accepted: Schema.Boolean, reason: Schema.String,
++  outputs: Schema.Array(Schema.Struct({ kind: Schema.String, code: Schema.Number, label: Schema.String }))
++})
++const Camera = Schema.Struct({
++  tilt: Schema.String, turn: Schema.String, spacing: Schema.String, zoom: Schema.String,
++  cameraEpoch: Schema.Number, flat: Schema.Boolean
++})
++const initialCamera = { tilt: "48", turn: "-16", spacing: "130", zoom: "72", cameraEpoch: 0, flat: false }
++export const Model = Schema.Struct({
++  mobile: Schema.Boolean, focus: Schema.String, selected: Schema.String, active: Schema.Number,
++  scenario: Schema.Number, cursor: Schema.Number, state: Schema.Number,
++  last: Schema.NullOr(Outcome), history: Schema.Array(Outcome), replayStarted: Schema.Boolean,
++  playing: Schema.Boolean, elapsed: Schema.Number, timelineEpoch: Schema.Number, refusalsOnly: Schema.Boolean,
++  camera: Camera,
++  zoom: Schema.Number, panX: Schema.Number, panY: Schema.Number,
++  dragging: Schema.Boolean, dragX: Schema.Number, dragY: Schema.Number, dragScale: Schema.Number
++})
++export type Model = typeof Model.Type
++export const Message = defineMessageUnion({
++  Focused: { focus: Schema.String }, Selected: { id: Schema.String }, Responsive: { mobile: Schema.Boolean },
++  LayerSelected: { index: Schema.Number }, CameraChanged: { field: Schema.String, raw: Schema.String },
++  CameraZoomed: { factor: Schema.Number }, CameraRotated: { dx: Schema.Number, dy: Schema.Number },
++  CameraReset: {}, FlatToggled: {}, PlayToggled: {}, PlaybackTick: { deltaMs: Schema.Number },
++  ScenarioSelected: { index: Schema.Number }, Next: {}, Reset: {},
++  Seek: { position: Schema.Number, scrub: Schema.Boolean }, RefusalsToggled: {},
++  Zoomed: { factor: Schema.Number }, Fit: {}, Panned: { dx: Schema.Number, dy: Schema.Number },
++  DragStarted: { x: Schema.Number, y: Schema.Number, scale: Schema.Number },
++  Dragged: { x: Schema.Number, y: Schema.Number }, DragEnded: {}
++})
++export type Message = typeof Message.Type
++export const init: Runtime.ApplicationInit<Model, Message> = () => ({ model: {
++  mobile: window.matchMedia("(max-width: 700px)").matches, focus: "overview", selected: "", active: 0,
++  scenario: 0, cursor: 0, state: scenarios[0].initialState, last: null, replayStarted: false, history: [],
++  playing: false, elapsed: 0, timelineEpoch: 0, refusalsOnly: false, camera: initialCamera,
++  zoom: 1, panX: 0, panY: 0, dragging: false, dragX: 0, dragY: 0, dragScale: 1
++} })
++
++/** Seeking records missing checked results once and preserves the recorded future. */
++const seekHistory = (model: Model, requested: number, scrub = false): Model => {
++  const scenario = scenarios[model.scenario]
++  const cursor = Math.max(0, Math.min(scenario.steps.length, Math.trunc(requested)))
++  if (!Number.isFinite(cursor)) return model
++  let history = model.history
++  if (cursor > history.length) {
++    const extended = [...history]
++    let state = extended.at(-1)?.state ?? scenario.initialState
++    for (let index = extended.length; index < cursor; index++) {
++      const step = scenario.steps[index]
++      // The actual compiled .files Bend reducer is the only transition authority.
++      const outcome = transition(state, step.event, step.facts)
++      extended.push(outcome)
++      state = outcome.state
++    }
++    history = extended
++  }
++  const last = history[cursor - 1] ?? null
++  return { ...model, history, cursor, state: last?.state ?? scenario.initialState, last,
++    replayStarted: cursor > 0, timelineEpoch: model.timelineEpoch + (scrub ? 0 : 1),
++    playing: model.playing && cursor < scenario.steps.length }
++}
++
++export const update = (model: Model, message: Message): Update.Return<Model, Message> =>
++  Message.match(message, {
++    Focused: ({ focus }) => ({ model: { ...model, focus, zoom: 1, panX: 0, panY: 0 } }),
++    Selected: ({ id }) => ({ model: { ...model, selected: model.selected === id ? "" : id } }),
++    Responsive: ({ mobile }) => ({ model: { ...model, mobile, zoom: 1, panX: 0, panY: 0 } }),
++    LayerSelected: ({ index }) => ({ model: { ...model, active: index, selected: "" } }),
++    CameraChanged: ({ field, raw }) => ({ model: ["tilt", "turn", "spacing", "zoom"].includes(field)
++      ? { ...model, camera: { ...model.camera, [field]: raw } } : model }),
++    CameraZoomed: ({ factor }) => ({ model: { ...model, camera: zoomEnsembleCamera(model.camera, factor) } }),
++    CameraRotated: ({ dx, dy }) => ({ model: { ...model, camera: orbitEnsembleCamera(model.camera, dx, dy) } }),
++    CameraReset: () => ({ model: { ...model, camera: { ...initialCamera, cameraEpoch: model.camera.cameraEpoch + 1 } } }),
++    FlatToggled: () => ({ model: { ...model, camera: { ...model.camera, flat: !model.camera.flat } } }),
++    PlayToggled: () => ({ model: { ...model, playing: !model.playing && model.cursor < scenarios[model.scenario].steps.length, elapsed: 0 } }),
++    PlaybackTick: ({ deltaMs }) => {
++      if (!model.playing) return { model }
++      const elapsed = model.elapsed + deltaMs
++      if (elapsed < 900) return { model: { ...model, elapsed } }
++      return { model: seekHistory({ ...model, elapsed: 0 }, model.cursor + 1) }
++    },
++    ScenarioSelected: ({ index }) => ({ model: scenarios[index] ? {
++      ...model, scenario: index, cursor: 0, state: scenarios[index].initialState, last: null, replayStarted: false,
++      history: [], playing: false, elapsed: 0, timelineEpoch: model.timelineEpoch + 1
++    } : model }),
++    Next: () => ({ model: seekHistory({ ...model, playing: false }, model.cursor + 1) }),
++    Seek: ({ position, scrub }) => ({ model: seekHistory({ ...model, playing: false }, position, scrub) }),
++    Reset: () => ({ model: {
++      ...model, cursor: 0, state: scenarios[model.scenario].initialState, last: null, replayStarted: false,
++      history: [], playing: false, elapsed: 0, timelineEpoch: model.timelineEpoch + 1
++    } }),
++    RefusalsToggled: () => ({ model: { ...model, refusalsOnly: !model.refusalsOnly } }),
++    Zoomed: ({ factor }) => ({ model: { ...model, zoom: Math.min(3, Math.max(1, model.zoom * factor)) } }),
++    Fit: () => ({ model: { ...model, zoom: 1, panX: 0, panY: 0 } }),
++    Panned: ({ dx, dy }) => ({ model: { ...model, panX: model.panX + dx / model.zoom, panY: model.panY + dy / model.zoom } }),
++    DragStarted: ({ x, y, scale }) => ({ model: { ...model, dragging: true, dragX: x, dragY: y, dragScale: scale } }),
++    Dragged: ({ x, y }) => ({ model: model.dragging ? {
++      ...model, dragX: x, dragY: y,
++      panX: model.panX - (x - model.dragX) * model.dragScale / model.zoom,
++      panY: model.panY - (y - model.dragY) * model.dragScale / model.zoom
++    } : model }),
++    DragEnded: () => ({ model: { ...model, dragging: false } })
++  })
+diff --git c/packages/agent-flow-viz/src/dotfiles/projection.ts w/packages/agent-flow-viz/src/dotfiles/projection.ts
+new file mode 100644
+index 0000000..7aabd9b
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/projection.ts
+@@ -0,0 +1,187 @@
++import architectureText from "@dotfiles-diagram/architecture.json?raw"
++import modelText from "@dotfiles-diagram/model.json?raw"
++import scenarioText from "@dotfiles-diagram/scenarios.json?raw"
++import receiptText from "@dotfiles-diagram/receipt.json?raw"
++
++export type Citation = { readonly path: string; readonly symbol: string }
++export type Concept = {
++  readonly id: string; readonly group: string; readonly title: string; readonly owner: string
++  readonly summary: string; readonly kind: string; readonly citations: readonly Citation[]; readonly states: readonly number[]
++}
++export type Relationship = {
++  readonly id: string; readonly from: string; readonly to: string; readonly label: string
++  readonly kind: string; readonly status: string; readonly citations: readonly Citation[]
++}
++type Architecture = {
++  readonly nodes: readonly Concept[]; readonly edges: readonly Relationship[]
++  readonly stateToNode: readonly { readonly state: number; readonly node: string }[]
++}
++export type Scenario = {
++  readonly id: string; readonly title: string; readonly summary: string; readonly initialState: number
++  readonly steps: readonly { readonly event: number; readonly facts: Readonly<Record<string, boolean>>; readonly note: string }[]
++}
++const architecture: Architecture = JSON.parse(architectureText)
++export const architectureData = architecture
++export const policyModel: {
++  readonly states: readonly { readonly id: number; readonly title: string }[]
++  readonly events: readonly { readonly id: number; readonly title: string }[]
++  readonly trustBoundary: string
++} = JSON.parse(modelText)
++export const scenarios: readonly Scenario[] = JSON.parse(scenarioText)
++export const receipt: {
++  readonly generatedAt: string; readonly compiler: { readonly version: string }
++  readonly artifacts: Readonly<Record<string, string>>
++} = JSON.parse(receiptText)
++export type Focus = "overview" | "onboarding" | "k3s"
++export type Point = { readonly x: number; readonly y: number }
++export type Placement = Point & { readonly width: number; readonly height: number }
++export interface ArchitectureLayout {
++  readonly places: Map<string, Placement>
++  readonly edges: readonly Relationship[]
++  readonly width: number
++  readonly height: number
++}
++
++export const conceptForState = (state: number) => architecture.stateToNode.find((item) => item.state === state)?.node
++export const concepts = new Map(architecture.nodes.map((node) => [node.id, node]))
++export const relationships = new Map(architecture.edges.map((edge) => [edge.id, edge]))
++
++const presentation: Record<string, readonly [string, string, string]> = {
++  phone: ["Phone · Tern / OMP", "CONTROLLER", "No server credentials"],
++  transport: ["Private access", "AUTHENTICATION", "Verify host identity"],
++  groot: ["Groot · native host", "HOST OWNER", "Storage / admin / network"],
++  checkout: [".files checkout", "DESIRED CONFIG", "Reviewed source, not state"],
++  onboarding: ["Status → consent", "ORDINARY SETUP", "Ask, select, or defer"],
++  modules: ["Shared modules", "APPROVED SELECTION", "Links · fonts · agent skills"],
++  preflight: ["K3s opt-in / check", "SEPARATE APPROVAL", "Read-only before apply"],
++  k3s: ["Private K3s server", "DESIRED · NOT INSTALLED", "CPU · SQLite · containerd"],
++  boundary: ["Namespace guardrails", "SEPARATE MANIFEST APPLY", "PSA · quota · deny traffic"],
++  "cpu-job": ["Bounded CPU Job", "RESTRICTED WORKLOAD", "No token · limits · deadline"],
++  evidence: ["Private evidence", "OBSERVATION BOUNDARY", "Results · controls · TTL"],
++  factory: ["Factory / human", "EXTERNAL AUTHORITY", "Claims · work orders · HITL"],
++  macbook: ["MacBook · client", "EXISTING CLIENT", "No server / admin copy"],
++  "deferred-capacity": ["Later agent / GPU", "DEFERRED · NOT INSTALLED", "Separate design + approval"]
++}
++export const conceptPresentation = (id: string) => presentation[id]
++
++const shortLabels: Record<string, string> = {
++  "phone-access": "Saved host", "macbook-access": "Client access", "desktop-auth": "Authenticate",
++  "host-checkout": "Reviewed checkout", "checkout-onboard": "Setup contract", "onboard-modules": "Approved selection",
++  "modules-host": "Configure host", "host-preflight": "Separate opt-in", "checkout-preflight": "Server defaults",
++  "preflight-server": "Check → approved apply", "host-server": "Owns private runtime", "server-boundary": "Separate apply",
++  "boundary-job": "Constrain Pods", "server-job": "Schedule / run", "factory-work": "Claims / HITL",
++  "job-evidence": "Results + logs", "boundary-evidence": "Test controls", "ttl-evidence": "Observe TTL",
++  "evidence-phone": "Read private logs", "future-agent": "Later approval"
++}
++export const relationshipLabel = (id: string) => shortLabels[id]
++
++/** Explicit specification regions, not workers or independently simulated runtimes. */
++export const specificationLayers = [
++  { id: "access", title: "Clients & host", owner: "ACCESS / HOST OWNERSHIP", color: "#386eb1",
++    summary: "Clients authenticate to the host; neither client becomes the private server.",
++    nodes: ["phone", "macbook", "transport", "groot"] },
++  { id: "setup", title: "Ordinary setup", owner: "CHECKOUT / APPROVED MODULES", color: "#31836a",
++    summary: "Reviewed desired configuration, explicit consent and shared module selection.",
++    nodes: ["checkout", "onboarding", "modules"] },
++  { id: "runtime", title: "Opt-in runtime", owner: "PREFLIGHT / RESTRICTED WORK", color: "#79559c",
++    summary: "Separate K3s opt-in, guardrails and bounded CPU work. Desired design, not installed.",
++    nodes: ["preflight", "k3s", "boundary", "cpu-job"] },
++  { id: "evidence", title: "Evidence & authority", owner: "PRIVATE RESULTS / HUMAN BOUNDARY", color: "#a4772e",
++    summary: "Private observations and external human authority; future capacity stays deferred.",
++    nodes: ["factory", "evidence", "deferred-capacity"] }
++] as const
++
++export function specificationLayerLayout(index: number) {
++  const layer = specificationLayers[index]
++  const places = new Map<string, Placement>(layer.nodes.map((id, position) => [id, {
++    x: position % 2 === 0 ? 28 : 448, y: position < 2 ? 44 : 292, width: 310, height: 116
++  }]))
++  const edges = architecture.edges.filter((edge) => places.has(edge.from) && places.has(edge.to))
++  return { places, edges, width: 830, height: 505 }
++}
++
++// Coordinates are a .files architectural presentation, not another policy model.
++const compactOverview = [
++  ["phone", 18, 18], ["transport", 218, 18], ["checkout", 18, 150], ["groot", 218, 150],
++  ["onboarding", 18, 282], ["modules", 218, 282], ["preflight", 18, 414], ["k3s", 218, 414],
++  ["boundary", 18, 546], ["cpu-job", 218, 546], ["factory", 18, 678], ["evidence", 218, 678],
++  ["macbook", 18, 810], ["deferred-capacity", 218, 810]
++] as const
++const compactOnboarding = [
++  ["phone", 18, 24], ["transport", 218, 24], ["checkout", 18, 194], ["groot", 218, 194],
++  ["onboarding", 18, 364], ["modules", 218, 364]
++] as const
++const compactK3s = [
++  ["groot", 18, 18], ["preflight", 218, 18], ["boundary", 18, 150], ["k3s", 218, 150],
++  ["cpu-job", 18, 282], ["evidence", 218, 282], ["factory", 18, 414], ["deferred-capacity", 218, 414]
++] as const
++const desktop = [
++  ["phone", 30, 30], ["transport", 290, 30], ["groot", 550, 30], ["checkout", 810, 30], ["macbook", 1070, 30],
++  ["factory", 30, 260], ["k3s", 290, 260], ["preflight", 550, 260], ["onboarding", 810, 260], ["modules", 1070, 260],
++  ["deferred-capacity", 30, 490], ["boundary", 290, 490], ["cpu-job", 550, 490], ["evidence", 810, 490]
++] as const
++
++export function layout(focus: string, mobile: boolean) {
++  const compact = focus === "onboarding" ? compactOnboarding : focus === "k3s" ? compactK3s : compactOverview
++  const ids = new Set<string>(compact.map(([id]) => id))
++  const entries = mobile ? compact : focus === "overview" ? desktop : desktop.filter(([id]) => ids.has(id))
++  const places = new Map<string, Placement>(entries.map(([id, x, y]) => [id, { x, y, width: mobile ? 162 : 216, height: mobile ? 78 : 104 }]))
++  const edges = architecture.edges.filter((edge) => places.has(edge.from) && places.has(edge.to))
++  return { places, edges, width: mobile ? 398 : 1320, height: mobile ? (focus === "overview" ? 910 : 514) : 664 }
++}
++
++// Only a checked accepted transition can light an existing matching relationship.
++// State changes within a concept stay there; absent structural arrows are not invented.
++export function activeRelationship(before: number, after: number, accepted: boolean) {
++  if (!accepted) return undefined
++  const from = conceptForState(before)
++  const to = conceptForState(after)
++  if (from === to) return undefined
++  return architecture.edges.find((edge) => edge.from === from && edge.to === to)?.id
++}
++
++export function routePlacement(edge: Relationship, places: Map<string, Placement>, mobile: boolean) {
++  const a = places.get(edge.from)!
++  const b = places.get(edge.to)!
++  const ac = { x: a.x + a.width / 2, y: a.y + a.height / 2 }
++  const bc = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
++  let points: Point[]
++  if (Math.abs(ac.y - bc.y) < 1) {
++    const right = ac.x < bc.x
++    const start = { x: right ? a.x + a.width : a.x, y: ac.y }
++    const end = { x: right ? b.x : b.x + b.width, y: bc.y }
++    if (Math.abs(ac.x - bc.x) > a.width * 2) {
++      const lane = Math.max(8, Math.min(a.y, b.y) - (edge.id === "macbook-access" ? 17 : 9))
++      points = [start, { x: start.x, y: lane }, { x: end.x, y: lane }, end]
++    } else points = [start, end]
++  } else if (Math.abs(ac.x - bc.x) < 1) {
++    const down = ac.y < bc.y
++    const start = { x: ac.x, y: down ? a.y + a.height : a.y }
++    const end = { x: bc.x, y: down ? b.y : b.y + b.height }
++    if (Math.abs(ac.y - bc.y) > a.height * 2.6) {
++      const lane = mobile ? (ac.x > 200 ? 384 : 14) : a.x - 16
++      points = [start, { x: lane, y: start.y + (down ? 14 : -14) }, { x: lane, y: end.y + (down ? -14 : 14) }, end]
++    } else points = [start, end]
++  } else {
++    const down = ac.y < bc.y
++    const start = { x: ac.x, y: down ? a.y + a.height : a.y }
++    const end = { x: bc.x, y: down ? b.y : b.y + b.height }
++    let lane = (start.y + end.y) / 2
++    if (edge.id === "boundary-evidence") lane = a.y - 28
++    if (edge.id === "server-job") lane = a.y + a.height + 24
++    points = [start, { x: start.x, y: lane }, { x: end.x, y: lane }, end]
++  }
++  const middle = points.length === 2
++    ? { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 }
++    : { x: (points[1].x + points[2].x) / 2, y: (points[1].y + points[2].y) / 2 }
++  const tip = points[points.length - 1]
++  const prior = points[points.length - 2]
++  return {
++    path: points.map((p, index) => `${index === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" "),
++    tip, toward: { x: tip.x - prior.x, y: tip.y - prior.y }, badge: middle,
++    labelPoint: {
++      x: mobile ? Math.max(78, Math.min(320, middle.x)) : middle.x,
++      y: Math.abs(ac.y - bc.y) < 1 && points.length === 2 ? a.y - 8 : middle.y - 16
++    }
++  }
++}
+diff --git c/packages/agent-flow-viz/src/dotfiles/style.css w/packages/agent-flow-viz/src/dotfiles/style.css
+new file mode 100644
+index 0000000..02b1db7
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/style.css
+@@ -0,0 +1,17 @@
++/* The dashboard, ensemble, inspector, history and timeline use the production theme unchanged. */
++.dotfiles-camera { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem; }
++.dotfiles-canvas { touch-action: none; user-select: none; cursor: grab; }
++.dotfiles-canvas.dragging { cursor: grabbing; }
++.dotfiles-topology .topology-scroll { overflow: hidden; scrollbar-gutter: auto; }
++.dotfiles-topology .topology-scroll svg { width: 100%; min-width: 0; height: auto; }
++:is(.dotfiles-topology, .dotfiles-layer-topology) .topology-node.selected > rect { stroke: #245bb8; stroke-width: 4px; }
++:is(.dotfiles-topology, .dotfiles-layer-topology) .topology-route { cursor: pointer; }
++:is(.dotfiles-topology, .dotfiles-layer-topology) .topology-route:focus-visible path { stroke-width: 5px; opacity: 1; }
++:is(.dotfiles-topology, .dotfiles-layer-topology) .topology-route-label { paint-order: stroke; stroke: #fcfdff; stroke-width: 4px; stroke-linejoin: round; }
++.dotfiles-citations code, .dotfiles-receipt dd { overflow-wrap: anywhere; }
++.dotfiles-dashboard .simulation-stage-inspector select { max-width: 100%; }
++.dotfiles-dashboard .topology-route-key button { text-align: left; }
++@media (max-width: 700px) {
++  .dotfiles-topology .topology-node text:nth-of-type(2) { font-size: 12px; }
++  .dotfiles-topology .topology-route-label { font-size: 10px; }
++}
+diff --git c/packages/agent-flow-viz/src/dotfiles/view.ts w/packages/agent-flow-viz/src/dotfiles/view.ts
+new file mode 100644
+index 0000000..b7c72f7
+--- /dev/null
++++ w/packages/agent-flow-viz/src/dotfiles/view.ts
+@@ -0,0 +1,307 @@
++import { Option } from "effect"
++import type { Document, HtmlBuilder } from "foldkit/html"
++import { dashboardHeaderView } from "../dashboard-shell"
++import { ensembleCameraView, ensembleViewportView } from "../ensemble-presentation"
++import { retainedHistoryView } from "../history-presentation"
++import { stageInspectorView } from "../inspection-presentation"
++import { timelinePanelView } from "../timeline-presentation"
++import { topologyNodeView, topologyRouteView, topologySurfaceView } from "../topology"
++import { Message, type Model } from "./model"
++import {
++  activeRelationship, architectureData, conceptForState, conceptPresentation, concepts, layout,
++  policyModel, receipt, relationshipLabel, relationships, routePlacement, scenarios,
++  specificationLayers, specificationLayerLayout, type ArchitectureLayout, type Citation
++} from "./projection"
++
++const stateTitle = (id: number) => policyModel.states.find((state) => state.id === id)?.title ?? String(id)
++const eventTitle = (id: number) => policyModel.events.find((event) => event.id === id)?.title ?? String(id)
++
++function architectureDiagram(model: Model, h: HtmlBuilder<Message>, graph: ArchitectureLayout, layer = false) {
++  const activeNode = model.replayStarted ? conceptForState(model.state) : undefined
++  const activeEdge = model.last ? activeRelationship(model.last.before, model.last.state, model.last.accepted) : undefined
++  const mobile = model.mobile && !layer
++  const width = graph.width / model.zoom, height = graph.height / model.zoom
++  return topologySurfaceView(h, {
++    width: graph.width, height: graph.height,
++    ...(layer ? {} : { viewBox: `${(graph.width - width) / 2 + model.panX} ${(graph.height - height) / 2 + model.panY} ${width} ${height}` }),
++    ariaLabel: `.files architecture: ${graph.places.size} concepts and ${graph.edges.length} directed structural relationships`,
++    role: "group", domainClass: layer ? "dotfiles-layer-topology" : "dotfiles-topology"
++  }, [
++    ...graph.edges.map((edge) => {
++      const route = routePlacement(edge, graph.places, mobile)
++      const index = architectureData.edges.findIndex((item) => item.id === edge.id) + 1
++      const external = edge.kind.startsWith("external")
++      return topologyRouteView(h, {
++        id: edge.id, title: `${index}. ${edge.label} (${edge.status} architecture; not native execution)`,
++        path: route.path, tip: route.tip, toward: route.toward,
++        badge: { point: route.badge, label: String(index) },
++        color: external ? "#9c742b" : edge.status === "deferred" ? "#7d8da2" : "#547dc0",
++        active: activeEdge === edge.id, dashed: external || edge.status === "deferred", external,
++        label: relationshipLabel(edge.id), labelPoint: route.labelPoint,
++        onInspect: () => Message.Selected({ id: edge.id })
++      })
++    }),
++    ...Array.from(graph.places, ([id, point]) => {
++      const concept = concepts.get(id)!
++      const [title, owner, caption] = conceptPresentation(id)
++      return topologyNodeView(h, {
++        id, point, width: point.width, height: point.height, title, owner, detail: concept.summary,
++        active: activeNode === id, selected: model.selected === id,
++        palette: concept.group === "runtime" ? { fill: "#edf1f6", stroke: "#7d8da2" }
++          : concept.group === "evidence" ? { fill: "#fff7e5", stroke: "#b08b46" }
++          : { fill: "#e9f1ff", stroke: "#547dc0" },
++        onInspect: () => Message.Selected({ id })
++      }, [h.text([
++        h.X(String(point.x + 13)), h.Y(String(point.y + (mobile ? 66 : 76))),
++        h.FontSize(mobile ? "10" : "11"), h.Fill("#435670")
++      ], [caption])])
++    })
++  ])
++}
++
++function inspector(model: Model, h: HtmlBuilder<Message>) {
++  const selected = model.selected || specificationLayers[model.active].nodes[0]
++  const node = concepts.get(selected)
++  const edge = relationships.get(selected)
++  const citations: readonly Citation[] = node?.citations ?? edge?.citations ?? []
++  return stageInspectorView(h, { focused: true, preparation: false, selected, children: [
++    h.details([h.Open(true)], [
++      h.summary([], ["Inspect a diagram concept or relationship by keyboard"]),
++      h.select([h.AriaLabel("Diagram stage"), h.Value(selected), h.OnChange((id) => Message.Selected({ id }))], [
++        ...architectureData.nodes.map((item) => h.option([h.Value(item.id)], [item.title])),
++        ...architectureData.edges.map((item) => h.option([h.Value(item.id)], [`${concepts.get(item.from)?.title} → ${concepts.get(item.to)?.title}: ${item.label}`]))
++      ])
++    ]),
++    h.h3([], [node?.title ?? edge?.label ?? "Architecture"]),
++    h.p([], [node?.summary ?? `${concepts.get(edge!.from)?.title} → ${concepts.get(edge!.to)?.title}. ${edge!.kind}; ${edge!.status} architecture, not observed execution.`]),
++    ...(node ? [
++      h.p([], [node.owner]),
++      h.p([], [node.states.length ? `Mapped Bend states: ${node.states.map(stateTitle).join(" · ")}` : "Architectural concept; no policy state is invented for this boundary."]),
++      h.h4([], ["Directed relationships"]),
++      h.ul([], architectureData.edges.filter((item) => item.from === node.id || item.to === node.id).map((item) =>
++        h.li([], [h.button([h.Type("button"), h.OnClick(Message.Selected({ id: item.id }))], [
++          `${concepts.get(item.from)?.title} → ${concepts.get(item.to)?.title}: ${item.label}`
++        ])])
++      ))
++    ] : []),
++    h.h4([], ["Source citations"]),
++    h.ul([h.Class("dotfiles-citations")], citations.map((citation) => h.li([], [h.code([], [citation.path]), ` · ${citation.symbol}`])))
++  ] })
++}
++
++function scenarioSelect(model: Model, h: HtmlBuilder<Message>) {
++  return h.label([], ["Scenario ", h.select([
++    h.Id("dotfiles-scenario"), h.Value(String(model.scenario)),
++    h.OnChange((value) => Message.ScenarioSelected({ index: Number(value) }))
++  ], scenarios.map((item, index) => h.option([h.Value(String(index))], [item.title])))])
++}
++
++function replay(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const step = scenario.steps[model.cursor - 1]
++  const next = scenario.steps[model.cursor]
++  return h.section([h.Class("card canonical-replay"), h.Id("canonical-replay")], [
++    h.h2([], ["Guided .files replay"]),
++    h.p([h.Class("section-guidance")], ["Choose a supplied-fact scenario and follow one checked event at a time. Replay cannot verify a host, install K3s or change the deployment status."]),
++    scenarioSelect(model, h),
++    h.p([h.Class("description")], [scenario.summary]),
++    h.div([h.Class("canonical-step-controls")], [
++      h.button([h.Type("button"), h.Disabled(model.cursor === 0), h.OnClick(Message.Seek({ position: model.cursor - 1, scrub: false }))], ["← Previous checked event"]),
++      h.button([h.Type("button"), h.Id("replay-next"), h.Disabled(!next), h.OnClick(Message.Next())], [next ? "Next checked event →" : "Scenario complete"]),
++      h.button([h.Type("button"), h.Disabled(model.cursor === 0), h.OnClick(Message.Seek({ position: 0, scrub: false }))], ["Return to start · retain history"]),
++      h.button([h.Type("button"), h.Id("replay-reset"), h.OnClick(Message.Reset())], ["Reset scenario"])
++    ]),
++    h.p([h.Class(`status${model.last && !model.last.accepted ? " blocked" : ""}`), h.AriaLive("polite"), h.DataAttribute("replay-state", String(model.state))], [
++      `Model state: ${stateTitle(model.state)}. `,
++      model.last ? `${model.last.accepted ? "ACCEPTED" : "REFUSED"}: ${model.last.reason}` : "No replay event run."
++    ]),
++    h.p([h.Class("progress")], [`${model.cursor} / ${scenario.steps.length} scenario events · ${model.history.length} retained checked results`]),
++    ...(step ? [h.p([], [step.note])] : []),
++    h.div([h.Class("canonical-commands")], [
++      h.h3([], ["Ordered Bend outputs"]),
++      model.last ? h.ol([], model.last.outputs.map((item) => h.li([], [`${item.kind}: ${item.label}`]))) : h.p([], ["No outputs before the first checked event."])
++    ]),
++    ...(next ? [h.p([], [`Next supplied event: ${eventTitle(next.event)}`])] : []),
++    h.details([h.Class("simulation-details")], [
++      h.summary([], ["Supplied facts / compilation receipt"]),
++      h.p([], [policyModel.trustBoundary]),
++      h.pre([h.Tabindex(0)], [JSON.stringify(step?.facts ?? next?.facts ?? {}, null, 2)]),
++      h.p([], [`${receipt.compiler.version} · generated ${receipt.generatedAt}`]),
++      h.dl([h.Class("dotfiles-receipt")], Object.entries(receipt.artifacts).flatMap(([name, hash]) => [h.dt([], [name]), h.dd([], [h.code([], [hash])])]))
++    ])
++  ])
++}
++
++function ensemble(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const active = specificationLayers[model.active]
++  return h.div([h.Id("monkey-business"), h.Class("ensemble")], [
++    h.section([h.Id("agent-ensemble"), h.Class(`ensemble-panel ${model.camera.flat ? "is-flat" : "is-spatial"}`)], [
++      h.div([h.Class("ensemble-heading")], [h.div([], [
++        h.p([h.Class("eyebrow")], [".FILES / SHARED SPECIFICATION SNAPSHOT"]),
++        h.h2([], ["Four regions. One checked model."]),
++        h.p([], ["Clients, setup, opt-in runtime and evidence are architectural regions—not advicees, workers or running clusters."])
++      ])]),
++      h.p([h.Class("section-guidance")], ["Play or Step the compiled Bend scenario, select a region, then select a concept or relationship to inspect its source. The complete connected 2D architecture remains below."]),
++      h.div([h.Class("ensemble-toolbar")], [
++        h.button([h.Type("button"), h.Class("ensemble-primary"), h.OnClick(Message.Reset())], ["Start scenario"]),
++        h.button([h.Type("button"), h.Id("dotfiles-play"), h.Disabled(model.cursor >= scenario.steps.length), h.OnClick(Message.PlayToggled())], [model.playing ? "Pause replay" : "Play replay"]),
++        h.button([h.Type("button"), h.Id("dotfiles-step"), h.Disabled(model.cursor >= scenario.steps.length), h.OnClick(Message.Next())], ["Step replay"]),
++        h.span([h.Class("ensemble-toolbar-divider")], []),
++        h.button([h.Type("button"), h.Id("dotfiles-flat"), h.Class(model.camera.flat ? "selected" : ""), h.OnClick(Message.FlatToggled())], [model.camera.flat ? "3D layers" : "Focus selected region"]),
++        h.button([h.Type("button"), h.Id("dotfiles-camera-reset"), h.OnClick(Message.CameraReset())], ["Reset view"])
++      ]),
++      h.p([h.Class("ensemble-feedback"), h.Role("status")], [`${scenario.title} · ${model.playing ? "Playing supplied events" : "Paused"} · ${model.cursor} / ${scenario.steps.length} checked events`]),
++      h.div([h.Class("shared-resident")], [
++        h.div([h.Class("shared-resident-heading")], [h.strong([], ["ONE COMPILED BEND SNAPSHOT"]), h.span([], [`${architectureData.nodes.length} concepts · ${architectureData.edges.length} sourced relationships`])]),
++        h.p([], [`${stateTitle(model.state)} · ${model.last ? (model.last.accepted ? "accepted" : "refused") : "initial state"}`]),
++        h.small([h.DataAttribute("deployment-status", "foreign-active-unverified")], ["Foreign K3s service ACTIVE · .files deployment UNVERIFIED · ownership/storage/admin/network review required. Health, Job, quota, CNI and TTL are unproved. Scenario outcomes are not deployment observations."])
++      ]),
++      h.div([h.Class("ensemble-layout")], [
++        h.aside([h.Class("ensemble-agents"), h.AriaLabel("Specification layers")], [
++          h.p([h.Class("ensemble-sidebar-label")], ["SPECIFICATION LAYERS"]),
++          h.p([h.Class("ensemble-hover-hint")], ["Select a region to inspect its sources. Hover or keyboard focus reveals its plane."]),
++          ...specificationLayers.map((layer, index) => h.button([
++            h.Type("button"), h.Class(`ensemble-agent agent-index-${index} ${index === model.active ? "selected" : ""}`),
++            h.Style({ borderLeftColor: layer.color }), h.OnClick(Message.LayerSelected({ index })),
++            h.AriaLabel(`Select ${layer.title}`), h.AriaPressed(String(index === model.active)), h.DataAttribute("layer", layer.id)
++          ], [
++            h.strong([], [layer.title]), h.span([], [layer.owner]),
++            h.span([], [`${layer.nodes.length} sourced concepts`]), h.small([], [layer.summary])
++          ])),
++          h.p([h.Class("ensemble-scope")], ["All planes reference one model snapshot. Cross-region arrows appear in the complete architecture below; vertical placement does not imply runtime communication."])
++        ]),
++        ensembleViewportView(h, model.camera, {
++          active: model.active, ariaLabel: "Three-dimensional .files specification regions",
++          orientation: `${active.title.toUpperCase()} / INSPECTION VIEW`,
++          layers: specificationLayers.map((layer, index) => ({
++            index, color: layer.color, title: layer.title.toUpperCase(), caption: "SOURCED DESIGN · NOT LIVE ACTIVITY",
++            diagram: architectureDiagram(model, h, specificationLayerLayout(index), true)
++          }))
++        })
++      ]),
++      ensembleCameraView(h, model.camera, (field, raw) => Message.CameraChanged({ field, raw })),
++      h.p([h.Class("ensemble-evidence-key")], ["Blue = setup / control · slate = opted-in runtime · gold dashed = external authority / evidence. Highlighting comes only from checked Bend outcomes."]),
++      h.div([h.Class("ensemble-resource-key")], [
++        h.span([h.Class("capacity-key")], ["● One retained event history"]),
++        h.span([h.Class("jev-key")], ["● Separate native deployment evidence"]),
++        h.p([], ["The browser sends no shell commands, Kubernetes API requests or model calls. No simulated result promotes the host to installed or running."])
++      ])
++    ]),
++    h.div([h.Class("ensemble-inspector-heading")], [h.h2([], [`Specification controls · ${active.title} selected`]), h.p([], ["Inspect source-owned concepts, checked transitions and retained results from this scenario."])]),
++    h.section([h.Class("chart-panel simulation-panel"), h.AriaLabel("Specification controls and event history")], [
++      h.h2([], ["Specification controls & event history"]),
++      h.p([], ["Compiled Bend decisions; supplied facts are not host observations."]),
++      h.nav([h.Class("simulation-navigation"), h.AriaLabel("Specification inspection sections")], [
++        h.a([h.Href("#resident-stage-inspector")], ["Inspect a concept"]),
++        h.a([h.Href("#resident-event-history")], ["Read event history"]),
++        h.a([h.Href("#canonical-replay")], ["Choose a scenario"]),
++        h.a([h.Href("#timing-diagrams")], ["Read transition timeline"])
++      ]),
++      inspector(model, h),
++      h.details([h.Class("simulation-details")], [
++        h.summary([], ["Checked event, ordered outputs and refusals"]),
++        h.p([], ["Supplied environment facts and checked model outcomes are separate from native evidence."]),
++        h.pre([h.Tabindex(0)], [JSON.stringify(model.last ? { facts: scenario.steps[model.cursor - 1].facts, result: model.last } : { state: model.state }, null, 2)])
++      ]),
++      h.h3([h.Id("resident-event-history"), h.Tabindex(-1)], ["Retained checked events"]),
++      h.button([h.Type("button"), h.OnClick(Message.RefusalsToggled())], [model.refusalsOnly ? "Show all events" : "Show refusals only"]),
++      ...retainedHistoryView(h, {
++        rows: [{ position: 0, label: `Start · ${stateTitle(scenario.initialState)}` }, ...model.history.flatMap((entry, index) =>
++          model.refusalsOnly && entry.accepted ? [] : [{ position: index + 1, label: `${index + 1}. ${eventTitle(entry.event)} · ${entry.accepted ? "accepted" : "refused"} · ${stateTitle(entry.state)}` }])],
++        position: model.cursor, minimum: 0, maximum: model.history.length,
++        epoch: `${model.scenario}:${model.timelineEpoch}`,
++        select: (position, scrub) => Message.Seek({ position, scrub })
++      })
++    ])
++  ])
++}
++
++function flatArchitecture(model: Model, h: HtmlBuilder<Message>) {
++  const graph = layout(model.focus, model.mobile)
++  const button = (label: string, message: Message, ariaLabel: string) => h.button([h.Type("button"), h.OnClick(message), h.AriaLabel(ariaLabel)], [label])
++  return h.section([h.Id("import-graph"), h.Class("card import-graph-section"), h.AriaLabel("Connected architectural relationships")], [
++    h.h2([], ["Complete .files architecture"]),
++    h.p([h.Class("section-guidance")], ["The approved 2D view: source-owned concepts and directed relationships. Choose a focus or inspect any numbered relationship; no import graph or runtime topology is fabricated."]),
++    h.div([h.Class("trace-options"), h.AriaLabel("Architecture focus")], [
++      ...([ ["overview", "Overview · all 14 concepts"], ["onboarding", "Onboarding"], ["k3s", "K3s · separate opt-in"] ] as const).map(([focus, label]) =>
++        h.button([h.Type("button"), h.Class(`trace${model.focus === focus ? " selected" : ""}`), h.DataAttribute("focus", focus), h.AriaPressed(String(model.focus === focus)), h.OnClick(Message.Focused({ focus }))], [label]))
++    ]),
++    h.div([h.Class("dotfiles-camera"), h.AriaLabel("Graph camera")], [
++      button("−", Message.Zoomed({ factor: 1 / 1.25 }), "Zoom out"),
++      button(`${Math.round(model.zoom * 100)}% · Fit`, Message.Fit(), "Fit architecture"),
++      button("+", Message.Zoomed({ factor: 1.25 }), "Zoom in"),
++      button("←", Message.Panned({ dx: -90, dy: 0 }), "Pan left"), button("↑", Message.Panned({ dx: 0, dy: -90 }), "Pan up"),
++      button("↓", Message.Panned({ dx: 0, dy: 90 }), "Pan down"), button("→", Message.Panned({ dx: 90, dy: 0 }), "Pan right")
++    ]),
++    h.div([
++      h.Class(`dotfiles-canvas${model.dragging ? " dragging" : ""}`), h.Id("dotfiles-canvas"),
++      h.OnPointerDown((_type, button, x, y, _time, _cx, _cy, _id, target) => {
++        if (button !== 0) return Option.none()
++        const element = target instanceof Element ? target.closest(".dotfiles-canvas") : null
++        const bounds = element?.getBoundingClientRect()
++        return Option.some(Message.DragStarted({ x, y, scale: graph.width / Math.max(1, bounds?.width ?? graph.width) }))
++      }),
++      h.OnPointerMove((x, y) => model.dragging ? Option.some(Message.Dragged({ x, y })) : Option.none()),
++      h.OnPointerUp(() => Option.some(Message.DragEnded())), h.OnPointerLeave(() => Option.some(Message.DragEnded()))
++    ], [architectureDiagram(model, h, graph)]),
++    h.details([h.Class("topology-route-key")], [
++      h.summary([], ["All 20 sourced relationships · inspect endpoints and citations"]),
++      h.ol([], architectureData.edges.map((edge) => h.li([], [
++        h.button([h.Type("button"), h.OnClick(Message.Selected({ id: edge.id }))], [
++          `${concepts.get(edge.from)?.title} → ${concepts.get(edge.to)?.title}: ${edge.label}`
++        ])
++      ])))
++    ]),
++    ...(model.selected ? [h.div([h.Class("flow-stage-inspector")], [
++      h.h3([], [concepts.get(model.selected)?.title ?? relationships.get(model.selected)?.label ?? "Selected architecture"]),
++      h.p([], [concepts.get(model.selected)?.summary ?? "Inspect the selected relationship's direction, status and source citations in the specification inspector."]),
++      h.a([h.Href("#resident-stage-inspector")], ["Open source inspector ↑"])
++    ])] : [])
++  ])
++}
++
++function timeline(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  return h.section([h.Id("timing-diagrams"), h.Class("card timeline-section")], [
++    h.h2([], ["When the checked model changes"]),
++    h.p([h.Class("timeline-context")], ["Ordered compiled Bend events · no measured runtime timestamps or implied deployment latency"]),
++    h.div([h.Class("timeline-case-heading")], [h.h3([], [scenario.title]), h.span([h.Class("timeline-badge requirement")], ["SUPPLIED-FACT REPLAY"])]),
++    h.p([h.Class("description")], ["Only retained compiled results are plotted. Seeking never replaces a recorded future; choosing or resetting a scenario starts a separate history."]),
++    timelinePanelView(h, {
++      title: "Retained transitions", status: "CHECKED MODEL / NOT NATIVE OBSERVATION",
++      outcome: model.history.length ? `${model.history.length} checked results retained; inspecting position ${model.cursor}. Native snapshot remains foreign K3s service ACTIVE; .files deployment UNVERIFIED.` : "Step or play the scenario to record compiled Bend results. No native timing evidence is asserted.",
++      entries: model.history.map((entry, index) => ({
++        lane: entry.accepted ? "result" : "refusal", at: index + 1, kind: "checked transition",
++        label: `${index + 1}. ${eventTitle(entry.event)}`
++      }))
++    }, Math.max(1, scenario.steps.length), {
++      lanes: { result: "Accepted model events", refusal: "Refused model events" },
++      description: "Event position · not elapsed time", ariaLabel: "checked event position, not wall-clock time",
++      valueLabel: "Event position", tick: (value) => Number.isInteger(value) ? String(value) : "", value: (value) => `#${value}`
++    }),
++    h.div([h.Class("trace-options timeline-options"), h.Role("group"), h.AriaLabel("Select checked scenario")], scenarios.map((item, index) =>
++      h.button([h.Type("button"), h.Class(index === model.scenario ? "trace selected" : "trace"), h.OnClick(Message.ScenarioSelected({ index }))], [item.title]))),
++    h.div([h.Class("timeline-sources")], [h.strong([], ["Source authority: "]), h.code([], ["docs/spec-diagram/Flow.bend"]), h.code([], ["Flow.generated.mjs"]), h.code([], ["scenarios.json"]), h.a([h.Href("#canonical-replay")], ["Supplied facts and compiler receipt"])])
++  ])
++}
++
++export function view(model: Model, h: HtmlBuilder<Message>): Document {
++  return {
++    title: ".files · Hapsland guided replay",
++    body: h.main([h.Class("page dotfiles-dashboard")], [
++      dashboardHeaderView(h, {
++        title: "From clients to setup and private runtime",
++        intro: "Explore .files architecture, the checked Bend decisions and the evidence behind each transition.",
++        boundary: "Source-backed architectural design · supplied-fact compiled Bend replay · foreign K3s service ACTIVE; .files deployment UNVERIFIED. This page does not inspect or change your hosts, agent sessions or cluster.",
++        sections: [
++          { href: "#monkey-business", title: "Specification simulator", description: "Play checked events, select a region, then inspect its concepts and sources." },
++          { href: "#canonical-replay", title: "Guided replay", description: "Choose a scenario and follow one compiled Bend event at a time." },
++          { href: "#import-graph", title: "Architecture exploration", description: "See all 14 concepts and 20 directed, cited relationships in 2D." },
++          { href: "#timing-diagrams", title: "Transition timeline", description: "Compare retained model outcomes and their stated evidence boundaries." }
++        ]
++      }),
++      ensemble(model, h), replay(model, h), flatArchitecture(model, h), timeline(model, h)
++    ])
++  }
++}
+diff --git c/packages/agent-flow-viz/src/ensemble-presentation.ts w/packages/agent-flow-viz/src/ensemble-presentation.ts
+new file mode 100644
+index 0000000..2077dc2
+--- /dev/null
++++ w/packages/agent-flow-viz/src/ensemble-presentation.ts
+@@ -0,0 +1,88 @@
++import type { Html, HtmlBuilder } from "foldkit/html"
++
++export interface EnsembleCamera {
++  readonly flat: boolean
++  readonly tilt: string
++  readonly turn: string
++  readonly spacing: string
++  readonly zoom: string
++  readonly cameraEpoch: number
++}
++export const boundedCamera = (raw: string, low: number, high: number, fallback: number) =>
++  Number.isFinite(Number(raw)) ? Math.max(low, Math.min(high, Number(raw))) : fallback
++
++/** Gesture deltas update only the camera fields, preserving the caller's model snapshot. */
++export const zoomEnsembleCamera = <Camera extends EnsembleCamera>(camera: Camera, factor: number) => ({
++  ...camera,
++  cameraEpoch: camera.cameraEpoch + 1,
++  zoom: String(Math.round(Math.max(20, Math.min(200, Number(camera.zoom) * factor)) * 10) / 10)
++})
++
++export const orbitEnsembleCamera = <Camera extends EnsembleCamera>(camera: Camera, dx: number, dy: number) => ({
++  ...camera,
++  cameraEpoch: camera.cameraEpoch + 1,
++  turn: String(Math.round((((((Number(camera.turn) + dx * 0.35 + 180) % 360) + 360) % 360) - 180) * 10) / 10),
++  tilt: String(Math.round(Math.max(0, Math.min(65, Number(camera.tilt) - dy * 0.25)) * 10) / 10)
++})
++
++/** Production fleet camera controls, shared without coupling the scene to review policy. */
++export const ensembleCameraView = <Message>(h: HtmlBuilder<Message>, model: EnsembleCamera,
++  changed: (field: string, raw: string) => Message) => {
++  const range = (name: string, field: string, min: number, max: number, value: string) => h.label([], [
++    name,
++    h.input([
++      h.Type("range"), h.AriaLabel(name), h.Min(String(min)), h.Max(String(max)),
++      h.Key(`camera:${field}:${model.cameraEpoch}`),
++      { _tag: "Prop", key: "defaultValue", value },
++      h.OnInput((raw) => changed(field, raw))
++    ])
++  ])
++  return h.div([h.Class("ensemble-camera")], [
++    range("Tilt", "tilt", 0, 65, model.tilt),
++    range("Rotation", "turn", -180, 180, model.turn),
++    range("Layer spacing", "spacing", 70, 190, model.spacing),
++    range("Zoom", "zoom", 20, 200, model.zoom)
++  ])
++}
++
++/** The production CSS-3D planes and viewport. Layers are presentation, never policy records. */
++export const ensembleViewportView = <Message>(h: HtmlBuilder<Message>, model: EnsembleCamera, content: {
++  readonly active: number
++  readonly ariaLabel: string
++  readonly orientation: string
++  readonly layers: readonly {
++    readonly index: number
++    readonly color: string
++    readonly title: string
++    readonly caption: string
++    readonly diagram: Html
++  }[]
++  readonly connectors?: readonly Html[]
++}) => {
++  const { layers } = content
++  const spacing = boundedCamera(model.spacing, 70, 190, 130)
++  const sceneHeight = model.flat ? 660 : 630 + Math.max(0, layers.length - 3) * 75
++  return h.div([
++    h.Class("ensemble-viewport"),
++    h.Style({ height: model.flat ? "auto" : `${sceneHeight}px` }),
++    h.AriaLabel(content.ariaLabel)
++  ], [
++    h.div([h.Class("ensemble-scene"), h.Style({
++      transform: model.flat ? "none"
++        : `translateY(${-35 + Math.max(0, layers.length - 3) * 30}px) scale(${boundedCamera(model.zoom, 20, 200, 72) / 100}) rotateX(${boundedCamera(model.tilt, 0, 65, 48)}deg) rotateZ(${boundedCamera(model.turn, -180, 180, -16)}deg) translateZ(${(-(layers.length - 1) * spacing) / 2}px)`
++    })], [
++      ...layers.filter((layer) => !model.flat || layer.index === content.active).map((layer) => h.div([
++        h.Class(`ensemble-layer agent-index-${layer.index} ${layer.index === content.active ? "is-selected" : ""}`),
++        h.Style({ transform: model.flat ? "none" : `translateZ(${(layers.length - 1 - layer.index) * spacing}px)`, borderColor: layer.color })
++      ], [
++        h.div([h.Class("ensemble-layer-title"), h.Style({ color: layer.color })], [
++          h.strong([], [layer.title]), h.span([], [layer.caption])
++        ]),
++        layer.diagram
++      ])),
++      ...(!model.flat ? content.connectors ?? [] : [])
++    ]),
++    ...(!model.flat ? [h.div([h.Class("ensemble-gesture-hint")], ["Drag to rotate · wheel or pinch to zoom · touch: scroll vertically"])] : []),
++    ...(model.flat ? [h.div([h.Class("ensemble-orientation")], [content.orientation])] : [])
++  ])
++}
+diff --git c/packages/agent-flow-viz/src/fleet-simulation.ts w/packages/agent-flow-viz/src/fleet-simulation.ts
+index 0e7bd78..b21ffaf 100644
+--- c/packages/agent-flow-viz/src/fleet-simulation.ts
++++ w/packages/agent-flow-viz/src/fleet-simulation.ts
+@@ -1,5 +1,6 @@
+ import { Schema } from "effect"
+ import { createKeyedLazy, createLazy, type HtmlBuilder } from "foldkit/html"
++import { boundedCamera as bounded, ensembleCameraView, ensembleViewportView } from "./ensemble-presentation"
+ import { numberRecords } from "@hapsland/agent-flow-projection"
+ import { preparationSnapshot } from "./preparation-mini"
+ import { productionFlowView } from "./production-flow/view"
+@@ -139,8 +140,6 @@ export const continueSimulation = (model: SimulationModel, generation: number):
+ }
+ 
+ const colors = AGENT_COLORS
+-const bounded = (raw: string, low: number, high: number, fallback: number) =>
+-  Number.isFinite(Number(raw)) ? Math.max(low, Math.min(high, Number(raw))) : fallback
+ // Checked snapshots are immutable; graph frames often share the same snapshot.
+ // Weak keys release lenses together with retired display history.
+ const agentProjections = new WeakMap<Parameters<typeof projectAgent>[0], Map<number, ReturnType<typeof projectAgent>>>()
+@@ -299,27 +298,9 @@ export const simulationView = <Message>(
+ ) => {
+   const button = (label: string, name: string, selected = false) =>
+     h.button([h.Type("button"), h.Class(selected ? "selected" : ""), h.OnClick(action(name))], [label])
+-  // Pointer/key edits own the native thumb; gesture/reset epochs synchronize external changes.
+-  const range = (name: string, field: string, min: number, max: number, value: string) =>
+-    h.label(
+-      [],
+-      [
+-        name,
+-        h.input([
+-          h.Type("range"),
+-          h.AriaLabel(name),
+-          h.Min(String(min)),
+-          h.Max(String(max)),
+-          h.Key(`camera:${field}:${model.cameraEpoch}`),
+-          { _tag: "Prop", key: "defaultValue", value },
+-          h.OnInput((raw) => changed(field, raw))
+-        ])
+-      ]
+-    )
+   const scene = sceneFor(model.resident)
+   const { run, current, projection, scopes, layers, eventOwner } = scene
+   const spacing = bounded(model.spacing, 70, 190, 130)
+-  const sceneHeight = model.flat ? 660 : 630 + Math.max(0, layers.length - 3) * 75
+   const active = layers[Math.min(model.active, layers.length - 1)]
+   return h.div(
+     [h.Id("monkey-business"), h.Class("ensemble")],
+@@ -466,120 +447,42 @@ export const simulationView = <Message>(
+                   )
+                 ]
+               ),
+-              h.div(
+-                [
+-                  h.Class("ensemble-viewport"),
+-                  h.Style({ height: model.flat ? "auto" : `${sceneHeight}px` }),
+-                  h.AriaLabel("Three-dimensional advicee diagram")
+-                ],
+-                [
+-                  h.div(
+-                    [
+-                      h.Class("ensemble-scene"),
+-                      h.Style({
+-                        transform: model.flat
+-                          ? "none"
+-                          : `translateY(${-35 + Math.max(0, layers.length - 3) * 30}px) scale(${bounded(model.zoom, 20, 200, 72) / 100}) rotateX(${bounded(model.tilt, 0, 65, 48)}deg) rotateZ(${bounded(model.turn, -180, 180, -16)}deg) translateZ(${(-(layers.length - 1) * spacing) / 2}px)`
+-                      })
+-                    ],
+-                    [
+-                      ...layers
+-                        .filter((layer) => !model.flat || layer.index === model.active)
+-                        .map(({ agent, index, local }) =>
+-                          h.div(
+-                            [
+-                              h.Class(
+-                                `ensemble-layer agent-index-${index} ${index === model.active ? "is-selected" : ""}`
+-                              ),
+-                              h.Style({
+-                                transform: model.flat
+-                                  ? "none"
+-                                  : `translateZ(${(layers.length - 1 - index) * spacing}px)`,
+-                                borderColor: colors[index]
+-                              })
+-                            ],
+-                            [
+-                              h.div(
+-                                [h.Class("ensemble-layer-title"), h.Style({ color: colors[index] })],
+-                                [
+-                                  h.strong([], [`ADVICEE ${String(index + 1).padStart(2, "0")}`]),
+-                                  h.span([], [`${current?.time ?? run?.now ?? 0} ms · seed ${agent.seed}`])
+-                                ]
+-                              ),
+-                              ...(local
+-                                ? [
+-                                    lazyDiagrams(index, layerDiagram, [
+-                                      h,
+-                                      layers[index],
+-                                      scene,
+-                                      index === model.active ? model.resident.resourceGroup : "",
+-                                      index === model.active ? model.resident.resourceRound : "",
+-                                      action
+-                                    ])
+-                                  ]
+-                                : [
+-                                    h.div(
+-                                      [h.Class("ensemble-empty")],
+-                                      [
+-                                        h.strong([], ["Your advicee diagram starts here"]),
+-                                        h.p(
+-                                          [],
+-                                          ["Start one resident to connect independent Monkey Business generators."]
+-                                        )
+-                                      ]
+-                                    )
+-                                  ])
+-                            ]
+-                          )
+-                        ),
+-                      ...(!model.flat
+-                        ? layers
+-                            .slice(0, -1)
+-                            .filter((layer) => layer.local)
+-                            .flatMap(({ index }) =>
+-                              INFRASTRUCTURE_CONTACTS.map((contact) =>
+-                                h.div(
+-                                  [
+-                                    h.Class(`ensemble-connector ${contact.id}`),
+-                                    h.Style({
+-                                      height: `${spacing}px`,
+-                                      // Match the SVG's xMidYMid meet geometry inside the fixed diagram plane.
+-                                      left: `${1 + 12 + (894 - (505 * 1400) / 830) / 2 + (contact.x * 505) / 830}px`,
+-                                      top: `${1 + 32 + (contact.y * 505) / 830}px`,
+-                                      transform: `translateZ(${(layers.length - 1 - index) * spacing}px) rotateX(-90deg)`
+-                                    })
+-                                  ],
+-                                  []
+-                                )
+-                              )
+-                            )
+-                        : [])
+-                    ]
+-                  ),
+-                  ...(!model.flat
+-                    ? [
+-                        h.div(
+-                          [h.Class("ensemble-gesture-hint")],
+-                          ["Drag to rotate · wheel or pinch to zoom · touch: scroll vertically"]
+-                        )
+-                      ]
+-                    : []),
+-                  ...(model.flat
+-                    ? [h.div([h.Class("ensemble-orientation")], [`ADVICEE ${model.active + 1} / INSPECTION VIEW`])]
+-                    : [])
+-                ]
+-              )
+-            ]
+-          ),
+-          h.div(
+-            [h.Class("ensemble-camera")],
+-            [
+-              range("Tilt", "tilt", 0, 65, model.tilt),
+-              range("Rotation", "turn", -180, 180, model.turn),
+-              range("Layer spacing", "spacing", 70, 190, model.spacing),
+-              range("Zoom", "zoom", 20, 200, model.zoom)
++              ensembleViewportView(h, model, {
++                active: model.active,
++                ariaLabel: "Three-dimensional advicee diagram",
++                orientation: `ADVICEE ${model.active + 1} / INSPECTION VIEW`,
++                layers: layers.map((layer) => ({
++                  index: layer.index,
++                  color: colors[layer.index],
++                  title: `ADVICEE ${String(layer.index + 1).padStart(2, "0")}`,
++                  caption: `${current?.time ?? run?.now ?? 0} ms · seed ${layer.agent.seed}`,
++                  diagram: layer.local
++                    ? lazyDiagrams(layer.index, layerDiagram, [
++                        h, layer, scene,
++                        layer.index === model.active ? model.resident.resourceGroup : "",
++                        layer.index === model.active ? model.resident.resourceRound : "",
++                        action
++                      ])
++                    : h.div([h.Class("ensemble-empty")], [
++                        h.strong([], ["Your advicee diagram starts here"]),
++                        h.p([], ["Start one resident to connect independent Monkey Business generators."])
++                      ])
++                })),
++                connectors: layers.slice(0, -1).filter((layer) => layer.local).flatMap(({ index }) =>
++                  INFRASTRUCTURE_CONTACTS.map((contact) => h.div([
++                    h.Class(`ensemble-connector ${contact.id}`),
++                    h.Style({
++                      height: `${spacing}px`,
++                      left: `${1 + 12 + (894 - (505 * 1400) / 830) / 2 + (contact.x * 505) / 830}px`,
++                      top: `${1 + 32 + (contact.y * 505) / 830}px`,
++                      transform: `translateZ(${(layers.length - 1 - index) * spacing}px) rotateX(-90deg)`
++                    })
++                  ], []))
++                )
++              })
+             ]
+           ),
++          ensembleCameraView(h, model, changed),
+           h.p(
+             [h.Class("ensemble-evidence-key")],
+             [
+diff --git c/packages/agent-flow-viz/src/fsm/adapter.d.ts w/packages/agent-flow-viz/src/fsm/adapter.d.ts
+new file mode 100644
+index 0000000..5bbf90b
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/adapter.d.ts
+@@ -0,0 +1,19 @@
++declare module "@fsm-diagram/adapter.mjs" {
++  export type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json }
++  export interface FsmOutcome {
++    readonly machine: string
++    readonly before: number
++    readonly state: number
++    readonly event: number
++    readonly eventTag: string
++    readonly accepted: boolean
++    readonly verdict: "accepted" | "refused" | "held" | "no-change"
++    readonly reason: string
++    readonly laws: readonly string[]
++    readonly value: Json
++    readonly outputs: readonly { readonly kind: string; readonly label: string }[]
++  }
++  export function transition(machine: string, state: Json, event: Json, facts?: Readonly<Record<string, Json>>): FsmOutcome
++  export function validateState(machine: string, value: Json): Json
++  export function displayState(machine: string, value: Json): number
++}
+diff --git c/packages/agent-flow-viz/src/fsm/entry.ts w/packages/agent-flow-viz/src/fsm/entry.ts
+new file mode 100644
+index 0000000..c4ebc96
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/entry.ts
+@@ -0,0 +1,30 @@
++import { Runtime, Subscription } from "foldkit"
++import { Schema, Stream } from "effect"
++import { cameraGestures } from "../ensemble-camera"
++import { Message, Model, init, update } from "./model"
++import { view } from "./view"
++import "../style.css"
++import "../dotfiles/style.css"
++import "./style.css"
++
++const subscriptions = Subscription.make<Model, Message>()((entry) => ({
++  viewport: Subscription.persistent(Subscription.fromMediaQuery({
++    query: "(max-width: 700px)", mapMatches: (mobile) => Message.Responsive({ mobile })
++  })),
++  ensembleCamera: entry({ flat: Schema.Boolean }, {
++    modelToDependencies: (model) => ({ flat: model.camera.flat }),
++    keepAliveEquivalence: (before, after) => before.flat === after.flat,
++    dependenciesToStream: ({ flat }: { readonly flat: boolean }) => flat ? Stream.never
++      : cameraGestures((movement) => movement.kind === "zoom"
++        ? Message.CameraZoomed({ factor: movement.factor })
++        : Message.CameraRotated({ dx: movement.dx, dy: movement.dy }))
++  }),
++  playback: Subscription.animationFrame<Model, Message>({
++    isActive: (model) => model.playing,
++    toMessage: (deltaMs) => Message.PlaybackTick({ deltaMs })
++  })
++}))
++
++Runtime.run(Runtime.makeApplication({
++  Model, init, update, view, subscriptions, container: document.getElementById("root")
++}))
+diff --git c/packages/agent-flow-viz/src/fsm/model.ts w/packages/agent-flow-viz/src/fsm/model.ts
+new file mode 100644
+index 0000000..ebd4e1d
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/model.ts
+@@ -0,0 +1,114 @@
++import { Schema } from "effect"
++import { type Runtime, type Update } from "foldkit"
++import { defineMessageUnion } from "foldkit/message"
++import { transition, validateState, displayState, type FsmOutcome, type Json } from "@fsm-diagram/adapter.mjs"
++import { planeIndexForMachine, producerReplay, scenarios } from "./projection"
++import { orbitEnsembleCamera, zoomEnsembleCamera } from "../ensemble-presentation"
++
++const Outcome = Schema.Struct({
++  machine: Schema.String, before: Schema.Number, state: Schema.Number, event: Schema.Number, eventTag: Schema.String,
++  accepted: Schema.Boolean, verdict: Schema.String, reason: Schema.String, laws: Schema.Array(Schema.String),
++  value: Schema.String, matchesProducer: Schema.Boolean,
++  outputs: Schema.Array(Schema.Struct({ kind: Schema.String, label: Schema.String }))
++})
++export type Outcome = typeof Outcome.Type
++const Camera = Schema.Struct({
++  tilt: Schema.String, turn: Schema.String, spacing: Schema.String, zoom: Schema.String,
++  cameraEpoch: Schema.Number, flat: Schema.Boolean
++})
++const initialCamera = { tilt: "46", turn: "-14", spacing: "120", zoom: "72", cameraEpoch: 0, flat: false }
++const mobileCamera = { ...initialCamera, zoom: "39", spacing: "100", turn: "-8" }
++export const Model = Schema.Struct({
++  mobile: Schema.Boolean, selected: Schema.String, active: Schema.Number,
++  scenario: Schema.Number, cursor: Schema.Number, history: Schema.Array(Outcome),
++  playing: Schema.Boolean, elapsed: Schema.Number, timelineEpoch: Schema.Number, refusalsOnly: Schema.Boolean,
++  camera: Camera
++})
++export type Model = typeof Model.Type
++export const Message = defineMessageUnion({
++  Selected: { id: Schema.String }, Responsive: { mobile: Schema.Boolean }, LayerSelected: { index: Schema.Number },
++  CameraChanged: { field: Schema.String, raw: Schema.String }, CameraZoomed: { factor: Schema.Number },
++  CameraRotated: { dx: Schema.Number, dy: Schema.Number }, CameraReset: {}, FlatToggled: {},
++  PlayToggled: {}, PlaybackTick: { deltaMs: Schema.Number }, ScenarioSelected: { index: Schema.Number },
++  Next: {}, Reset: {}, Seek: { position: Schema.Number, scrub: Schema.Boolean }, RefusalsToggled: {}
++})
++export type Message = typeof Message.Type
++
++const isMobile = () => window.matchMedia("(max-width: 700px)").matches
++export const init: Runtime.ApplicationInit<Model, Message> = () => ({ model: {
++  mobile: isMobile(), selected: "", active: planeIndexForMachine(scenarios[0].machine), scenario: 0, cursor: 0, history: [],
++  playing: false, elapsed: 0, timelineEpoch: 0, refusalsOnly: false, camera: isMobile() ? mobileCamera : initialCamera
++} })
++
++/** The current Bend state value of the selected tape (initial when nothing ran). */
++export const currentValue = (model: Model): Json => {
++  const last = model.history[model.cursor - 1]
++  return last ? JSON.parse(last.value) as Json : validateState(scenarios[model.scenario].machine, scenarios[model.scenario].initial)
++}
++export const currentState = (model: Model) => {
++  const machine = scenarios[model.scenario].machine
++  return displayState(machine, currentValue(model))
++}
++
++const record = (outcome: FsmOutcome, scenarioIndex: number, position: number): Outcome => {
++  const expected = producerReplay[scenarioIndex]?.steps[position]
++  return {
++    machine: outcome.machine, before: outcome.before, state: outcome.state, event: outcome.event, eventTag: outcome.eventTag,
++    accepted: outcome.accepted, verdict: outcome.verdict, reason: outcome.reason, laws: [...outcome.laws],
++    value: JSON.stringify(outcome.value), outputs: outcome.outputs.map((o) => ({ kind: o.kind, label: o.label })),
++    // Fail-closed signal: the browser's run of the compiled Bend must equal the producer's receipt-bound replay.
++    matchesProducer: expected !== undefined && expected.state === outcome.state && expected.verdict === outcome.verdict
++  }
++}
++
++/** Seeking records missing checked results once and preserves the recorded future. */
++const seekHistory = (model: Model, requested: number, scrub = false): Model => {
++  const scenario = scenarios[model.scenario]
++  const cursor = Math.max(0, Math.min(scenario.steps.length, Math.trunc(requested)))
++  if (!Number.isFinite(cursor)) return model
++  let history = model.history
++  if (cursor > history.length) {
++    const extended = [...history]
++    let value: Json = extended.length ? JSON.parse(extended[extended.length - 1].value) as Json : validateState(scenario.machine, scenario.initial)
++    for (let index = extended.length; index < cursor; index++) {
++      const step = scenario.steps[index]
++      // The compiled z0intelligence Bend is the only transition authority.
++      const outcome = transition(scenario.machine, value, step.event, step.facts)
++      extended.push(record(outcome, model.scenario, index))
++      value = outcome.value
++    }
++    history = extended
++  }
++  return { ...model, history, cursor, timelineEpoch: model.timelineEpoch + (scrub ? 0 : 1),
++    playing: model.playing && cursor < scenario.steps.length }
++}
++
++const startScenario = (model: Model, index: number): Model => ({
++  ...model, scenario: index, cursor: 0, history: [], playing: false, elapsed: 0,
++  timelineEpoch: model.timelineEpoch + 1, active: planeIndexForMachine(scenarios[index].machine), selected: ""
++})
++
++export const update = (model: Model, message: Message): Update.Return<Model, Message> =>
++  Message.match(message, {
++    Selected: ({ id }) => ({ model: { ...model, selected: model.selected === id ? "" : id } }),
++    Responsive: ({ mobile }) => ({ model: { ...model, mobile } }),
++    LayerSelected: ({ index }) => ({ model: { ...model, active: index, selected: "" } }),
++    CameraChanged: ({ field, raw }) => ({ model: ["tilt", "turn", "spacing", "zoom"].includes(field)
++      ? { ...model, camera: { ...model.camera, [field]: raw } } : model }),
++    CameraZoomed: ({ factor }) => ({ model: { ...model, camera: zoomEnsembleCamera(model.camera, factor) } }),
++    CameraRotated: ({ dx, dy }) => ({ model: { ...model, camera: orbitEnsembleCamera(model.camera, dx, dy) } }),
++    CameraReset: () => ({ model: { ...model, camera: { ...(model.mobile ? mobileCamera : initialCamera), cameraEpoch: model.camera.cameraEpoch + 1 } } }),
++    FlatToggled: () => ({ model: { ...model, camera: { ...model.camera, flat: !model.camera.flat } } }),
++    PlayToggled: () => ({ model: { ...model, playing: !model.playing && model.cursor < scenarios[model.scenario].steps.length, elapsed: 0 } }),
++    PlaybackTick: ({ deltaMs }) => {
++      if (!model.playing) return { model }
++      const elapsed = model.elapsed + deltaMs
++      if (elapsed < 1100) return { model: { ...model, elapsed } }
++      return { model: seekHistory({ ...model, elapsed: 0 }, model.cursor + 1) }
++    },
++    ScenarioSelected: ({ index }) => ({ model: scenarios[index] ? startScenario(model, index) : model }),
++    Next: () => ({ model: seekHistory({ ...model, playing: false }, model.cursor + 1) }),
++    Seek: ({ position, scrub }) => ({ model: seekHistory({ ...model, playing: false }, position, scrub) }),
++    Reset: () => ({ model: startScenario(model, model.scenario) }),
++    RefusalsToggled: () => ({ model: { ...model, refusalsOnly: !model.refusalsOnly } })
++  })
+diff --git c/packages/agent-flow-viz/src/fsm/projection.ts w/packages/agent-flow-viz/src/fsm/projection.ts
+new file mode 100644
+index 0000000..d026c4d
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/projection.ts
+@@ -0,0 +1,237 @@
++import modelText from "@fsm-diagram/model.json?raw"
++import scenarioText from "@fsm-diagram/scenarios.json?raw"
++import integrationText from "@fsm-diagram/integration-tapes.json?raw"
++import projectionText from "@fsm-diagram/projection.json?raw"
++import replayText from "@fsm-diagram/replay.json?raw"
++import receiptText from "@fsm-diagram/receipt.json?raw"
++import type { Json } from "@fsm-diagram/adapter.mjs"
++
++export type Point = { readonly x: number; readonly y: number }
++export type Placement = Point & { readonly width: number; readonly height: number }
++export type StateMeta = {
++  readonly id: number; readonly tag: string; readonly machine: string; readonly owner: string
++  readonly title: string; readonly summary: string; readonly point: Point; readonly terminal?: boolean
++}
++export type Law = {
++  readonly id: string; readonly loop: string; readonly name: string; readonly text: string; readonly prevents: string
++  readonly incidents: { readonly count: number; readonly label: string; readonly source: string }
++}
++export type Guard = { readonly machine: string; readonly from: string; readonly event: string; readonly laws: readonly string[]; readonly text: string }
++export type Plane = {
++  readonly id: string; readonly title: string; readonly owner: string; readonly color: string; readonly machines: readonly string[]
++  readonly summary: string; readonly width: number; readonly height: number
++  readonly lawCards?: readonly { readonly law: string; readonly point: Point }[]
++}
++type FsmModel = {
++  readonly title: string; readonly scope: string; readonly trustBoundary: string
++  readonly machines: Readonly<Record<string, { readonly title: string; readonly step: string; readonly plane: string }>>
++  readonly types: Readonly<Record<string, { readonly ctors?: Readonly<Record<string, unknown>> }>>
++  readonly states: Readonly<Record<string, readonly StateMeta[]>>
++  readonly laws: readonly Law[]; readonly guards: readonly Guard[]; readonly planes: readonly Plane[]
++  readonly nodeSize: { readonly width: number; readonly height: number }
++  readonly curves: Readonly<Record<string, Readonly<Record<string, number | readonly (readonly [number, number])[]>>>>
++  readonly roles: readonly { readonly id: string; readonly who: string; readonly note: string }[]
++  readonly explainer: { readonly intro: string; readonly loops: readonly string[]; readonly statechart: string; readonly roles: string }
++  readonly sources: readonly { readonly path: string; readonly upstream: string; readonly gitBlob: string }[]
++  readonly proofs: readonly { readonly project: string; readonly pr: string; readonly commit: string; readonly verdict: string; readonly bend: string; readonly verifiedAt: string; readonly scope: string }[]
++}
++export type Step = { readonly event: Json & { readonly tag: string }; readonly facts: Readonly<Record<string, Json>>; readonly note: string; readonly source: "report" | "what-if"; readonly at?: string | null }
++export type Scenario = {
++  readonly id: string; readonly machine: string; readonly title: string; readonly summary: string; readonly item: string
++  readonly initial: Json; readonly actors: Readonly<Record<string, string>>; readonly shas?: Readonly<Record<string, string>>
++  readonly steps: readonly Step[]
++}
++export type Edge = { readonly machine: string; readonly from: number; readonly to: number; readonly event: string; readonly laws: readonly string[] }
++
++export const fsm: FsmModel = JSON.parse(modelText)
++const scenarioFile: { readonly scenarios: readonly Scenario[]; readonly provenance: Readonly<Record<string, Json>> } = JSON.parse(scenarioText)
++const integrationFile: typeof scenarioFile = JSON.parse(integrationText)
++export const scenarios = [...scenarioFile.scenarios, ...integrationFile.scenarios]
++export const tapeProvenance = { ...scenarioFile.provenance, integration: integrationFile.provenance }
++export const projection: {
++  readonly edges: readonly Edge[]; readonly selfLoops: readonly Edge[]
++  readonly documentedComparison: { readonly documentedEdges: number; readonly documentedNotProducedByBend: readonly Edge[]; readonly producedByBendNotDocumented: readonly Edge[] }
++  readonly provenance: { readonly calls: number; readonly scope: string }
++} = JSON.parse(projectionText)
++export const producerReplay: readonly { readonly id: string; readonly steps: readonly { readonly state: number; readonly verdict: string }[] }[] = JSON.parse(replayText)
++export const receipt: {
++  readonly generatedAt: string; readonly compiler: { readonly version: string; readonly executableSha256: string }
++  readonly artifacts: Readonly<Record<string, string>>; readonly rawCompilerOutputSha256: string
++} = JSON.parse(receiptText)
++
++export const laws = new Map(fsm.laws.map((law) => [law.id, law]))
++export const planes = fsm.planes
++export const planeIndexForMachine = (machine: string) => planes.findIndex((plane) => plane.machines.includes(machine))
++export const stateMeta = (machine: string, id: number) => fsm.states[machine]?.find((state) => state.id === id)
++export const nodeId = (machine: string, id: number) => `node:${machine}:${id}`
++export const eventTags = (machine: string) => Object.keys(fsm.types[machine === "work-item" ? "WorkItem.Ev"
++  : machine === "integration" ? "IntegrationOwner.Ev" : machine === "worker" ? "WorkerSupervision.Ev" : machine === "lease" ? "WorkerSupervision.LEv" : "WorkerSupervision.PEv"].ctors ?? {})
++
++/** One drawn route per (machine, from, to); several Bend events can share it. */
++export type Route = { readonly id: string; readonly machine: string; readonly from: number; readonly to: number; readonly events: readonly string[]; readonly laws: readonly string[] }
++export const routes: readonly Route[] = (() => {
++  const grouped = new Map<string, { machine: string; from: number; to: number; events: string[]; laws: Set<string> }>()
++  for (const edge of projection.edges) {
++    const key = `${edge.machine}:${edge.from}>${edge.to}`
++    const entry = grouped.get(key) ?? { machine: edge.machine, from: edge.from, to: edge.to, events: [], laws: new Set<string>() }
++    if (!entry.events.includes(edge.event)) entry.events.push(edge.event)
++    edge.laws.forEach((law) => entry.laws.add(law))
++    grouped.set(key, entry)
++  }
++  return [...grouped.entries()].map(([id, e]) => ({ id: `edge:${id}`, machine: e.machine, from: e.from, to: e.to, events: e.events, laws: [...e.laws].sort() }))
++})()
++export const routeById = new Map(routes.map((route) => [route.id, route]))
++
++// Phone layout: two columns, main path on the right, side exits on the left.
++const mobileSlots: Readonly<Record<string, readonly (readonly [string, number, number])[]>> = {
++  "work-item": [["Proposed", 0, 0], ["Claimed", 1, 0], ["Abandoned", 0, 1], ["Implementing", 1, 1], ["Interrupted", 0, 2], ["Verifying", 1, 2],
++    ["Blocked", 0, 3], ["DraftPR", 1, 3], ["Merged", 0, 4], ["Integrated", 1, 4], ["Accepted", 0, 5], ["Deployed", 1, 5]],
++  worker: [["Dispatched", 0, 0], ["Running", 1, 0], ["Stalled", 0, 1], ["Completed", 1, 1], ["Interrupted", 0, 2], ["Integrated", 1, 2],
++    ["Overdue", 0, 3], ["Resumed", 1, 3], ["Abandoned", 0, 4]],
++  integration: [["Branch", 0, 0], ["DraftPR", 1, 0], ["Parked", 0, 1], ["Queued", 1, 1],
++    ["Conflicted", 0, 2], ["OnIntegrationBranch", 1, 2], ["Merged", 0, 3], ["Deployed", 1, 3], ["OwnerAccepted", 1, 4]],
++  lease: [["Free", 0, 0], ["Held", 1, 0]],
++  device: [["free-unknown", 0, 1], ["free-seen", 1, 1], ["held-unknown", 0, 2], ["held-seen", 1, 2]]
++}
++const mobileLawSlots: readonly (readonly [number, number])[] = [[0, 3], [1, 3], [0, 4], [1, 4], [0, 5], [1, 5]]
++
++export interface PlaneLayout {
++  readonly places: Map<string, Placement>
++  readonly lawPlaces: Map<string, Placement>
++  readonly routes: readonly Route[]
++  readonly width: number
++  readonly height: number
++}
++
++export function planeLayout(index: number, mobile: boolean): PlaneLayout {
++  const plane = planes[index]
++  const places = new Map<string, Placement>()
++  const lawPlaces = new Map<string, Placement>()
++  const size = mobile ? { width: 180, height: 70 } : fsm.nodeSize
++  let rows = 0
++  for (const machine of plane.machines) {
++    for (const state of fsm.states[machine]) {
++      if (mobile) {
++        const slot = mobileSlots[machine].find(([tag]) => tag === state.tag)!
++        rows = Math.max(rows, slot[2] + 1)
++        places.set(nodeId(machine, state.id), { x: 8 + slot[1] * 202, y: 14 + slot[2] * 104, ...size })
++      } else places.set(nodeId(machine, state.id), { ...state.point, ...size })
++    }
++  }
++  plane.lawCards?.forEach((card, i) => {
++    if (mobile) {
++      const [col, row] = mobileLawSlots[i]
++      rows = Math.max(rows, row + 1)
++      lawPlaces.set(card.law, { x: 8 + col * 202, y: 14 + row * 104, ...size })
++    } else lawPlaces.set(card.law, { ...card.point, ...size })
++  })
++  return {
++    places, lawPlaces, routes: routes.filter((route) => plane.machines.includes(route.machine)),
++    width: mobile ? 398 : plane.width, height: mobile ? 14 + rows * 104 : plane.height
++  }
++}
++
++const border = (box: Placement, toward: Point): Point => {
++  const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
++  const dx = toward.x - c.x, dy = toward.y - c.y
++  const t = Math.min(dx === 0 ? Infinity : (box.width / 2 + 3) / Math.abs(dx), dy === 0 ? Infinity : (box.height / 2 + 3) / Math.abs(dy))
++  return { x: c.x + dx * t, y: c.y + dy * t }
++}
++
++/** Straight route, or a quadratic bend when declared or when a reverse route exists. */
++export function routeGeometry(route: Route, layout: PlaneLayout, mobile: boolean) {
++  const a = layout.places.get(nodeId(route.machine, route.from))!
++  const b = layout.places.get(nodeId(route.machine, route.to))!
++  const ac = { x: a.x + a.width / 2, y: a.y + a.height / 2 }
++  const bc = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
++  const fromTag = stateMeta(route.machine, route.from)!.tag, toTag = stateMeta(route.machine, route.to)!.tag
++  const reverse = layout.routes.some((r) => r.machine === route.machine && r.from === route.to && r.to === route.from)
++  const declared = mobile ? undefined : fsm.curves[route.machine]?.[`${fromTag}>${toTag}`]
++  if (Array.isArray(declared)) {
++    // Explicit lane: a polyline through declared waypoints (kept clear of other boxes).
++    const via = declared.map(([x, y]) => ({ x, y }))
++    const start = border(a, via[0])
++    const end = border(b, via[via.length - 1])
++    const points = [start, ...via, end]
++    const middle = Math.floor((points.length - 1) / 2)
++    const at = { x: (points[middle].x + points[middle + 1].x) / 2, y: (points[middle].y + points[middle + 1].y) / 2 }
++    return {
++      path: points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" "), tip: end,
++      toward: { x: end.x - via[via.length - 1].x, y: end.y - via[via.length - 1].y }, badge: at, labelPoint: { x: at.x, y: at.y - 15 }
++    }
++  }
++  const offset = typeof declared === "number" ? declared : reverse ? 18 : 0
++  const mid = { x: (ac.x + bc.x) / 2, y: (ac.y + bc.y) / 2 }
++  const len = Math.hypot(bc.x - ac.x, bc.y - ac.y) || 1
++  const normal = { x: -(bc.y - ac.y) / len, y: (bc.x - ac.x) / len }
++  const control = { x: mid.x + normal.x * offset * 2, y: mid.y + normal.y * offset * 2 }
++  const start = border(a, offset ? control : bc)
++  const end = border(b, offset ? control : ac)
++  const path = offset ? `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}` : `M ${start.x} ${start.y} L ${end.x} ${end.y}`
++  const toward = offset ? { x: end.x - control.x, y: end.y - control.y } : { x: end.x - start.x, y: end.y - start.y }
++  const at = offset ? { x: 0.25 * start.x + 0.5 * control.x + 0.25 * end.x, y: 0.25 * start.y + 0.5 * control.y + 0.25 * end.y }
++    : { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
++  // Curved routes put their label on the outside of the bend so paired routes never share a label spot.
++  const side = Math.sign(offset)
++  const labelPoint = side === 0 ? { x: at.x, y: at.y - 15 }
++    : { x: at.x + normal.x * side * (Math.abs(normal.x) * 40 + 16), y: at.y + normal.y * side * 18 + (normal.y * side > 0 ? 8 : 0) }
++  return { path, tip: end, toward, badge: at, labelPoint }
++}
++
++/** Short value detail under a node title (presentation of the Bend state value). */
++export function valueDetail(machine: string, value: Json, scenario: Scenario): string {
++  if (value === null || typeof value !== "object" || Array.isArray(value)) return ""
++  const v = value as Readonly<Record<string, Json>>
++  const actor = (a: Json) => {
++    const x = a as Readonly<Record<string, Json>>
++    return `${scenario.actors[String(x.id)] ?? `#${x.id}`} (${x.role})`
++  }
++  const sha = (n: Json) => scenario.shas?.[String(n)] ?? (n === 0 ? "none" : `sha#${n}`)
++  const parts: string[] = []
++  if (machine === "work-item") {
++    if (v.au) parts.push(`author ${actor(v.au)}`)
++    if (v.hd !== undefined) parts.push(`head ${sha(v.hd)}`)
++    if (v.ig !== undefined) parts.push(`integrated ${sha(v.ig)}`)
++    if (v.dp !== undefined) parts.push(`served ${sha(v.dp)}`)
++    if (v.ap) parts.push(`accepted by ${actor(v.ap)}`)
++  } else if (machine === "worker") {
++    const w = v.w as Readonly<Record<string, Json>>
++    parts.push(`${w.load}${w.exc === "NoExc" ? "" : ` + ${w.exc} exception`}`)
++    if (v.h) parts.push(`on ${v.h}`)
++    if (v.hb !== undefined) parts.push(`last beat t+${v.hb} min`)
++    if (v.at !== undefined) parts.push(`interrupted t+${v.at} min`)
++    if (v.bg !== undefined) parts.push(`${v.bg} background`)
++    if (v.by !== undefined) parts.push(`by ${scenario.actors[String(v.by)] ?? `#${v.by}`}`)
++  } else if (machine === "integration") {
++    parts.push("snapshot / labelled guard probe")
++  } else if (machine === "lease") {
++    if (v.o !== undefined) parts.push(scenario.actors[String(v.o)] ?? `holder #${v.o}`)
++  } else {
++    const lk = v.lk as Readonly<Record<string, Json>>, fg = v.fg as Readonly<Record<string, Json>>
++    parts.push(lk.tag === "Held" ? `lock: session ${lk.o}` : "lock free", fg.tag === "Seen" ? `foreground: app ${fg.app}` : "foreground unknown")
++  }
++  return parts.join(" · ")
++}
++
++export const describeEvent = (event: Json, scenario: Scenario): string => {
++  const e = event as Readonly<Record<string, Json>>
++  const actor = (a: Json) => {
++    const x = a as Readonly<Record<string, Json>>
++    return typeof a === "number" ? scenario.actors[String(a)] ?? `#${a}` : `${scenario.actors[String(x.id)] ?? `#${x.id}`} (${x.role})`
++  }
++  const sha = (n: Json) => scenario.shas?.[String(n)] ?? `sha#${n}`
++  const bits: string[] = []
++  if (e.a !== undefined) bits.push(`by ${actor(e.a)}`)
++  if (e.sha !== undefined) bits.push(`sha ${sha(e.sha)}`)
++  if (e.ish !== undefined) bits.push(`into ${sha(e.ish)}`)
++  if (e.served !== undefined) bits.push(`serving ${sha(e.served)}`)
++  if (e.r) { const r = e.r as Readonly<Record<string, Json>>; bits.push(`receipt ${r.pass ? "pass" : "fail"} @ ${sha(r.sha)}`) }
++  if (e.h) bits.push(`on ${e.h}`)
++  if (e.t !== undefined) bits.push(`t+${e.t} min`)
++  if (e.now !== undefined) bits.push(`clock t+${e.now} min`)
++  if (e.by !== undefined) bits.push(`successor ${scenario.actors[String(e.by)] ?? `#${e.by}`}`)
++  if (e.log !== undefined) bits.push(e.log ? "read the log" : "did NOT read the log")
++  if (e.app !== undefined) bits.push(`app ${e.app}`)
++  if (e.dead !== undefined) bits.push(e.dead ? "holder proven dead" : "no evidence holder is dead")
++  return `${e.tag}${bits.length ? ` (${bits.join(", ")})` : ""}`
++}
+diff --git c/packages/agent-flow-viz/src/fsm/style.css w/packages/agent-flow-viz/src/fsm/style.css
+new file mode 100644
+index 0000000..e3ab014
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/style.css
+@@ -0,0 +1,29 @@
++/* Bend FSM layers: reuse the production dashboard theme; only small additions. */
++.fsm-explainer p { max-width: 72ch; line-height: 1.5; }
++.fsm-table-scroll { overflow-x: auto; }
++.fsm-laws { border-collapse: collapse; width: 100%; font-size: .88rem; }
++.fsm-laws th, .fsm-laws td { border-top: 1px solid #dfe6f0; padding: 8px 10px; text-align: left; vertical-align: top; }
++.fsm-laws thead th { font-size: .75rem; letter-spacing: .06em; color: #52647d; border-top: 0; }
++.fsm-laws th button { font-weight: 700; min-width: 3em; }
++.fsm-laws td span, .fsm-laws td small { color: #52647d; }
++.fsm-count strong { font-size: 1.15rem; }
++.fsm-scenario select { max-width: min(100%, 26rem); }
++.fsm-source { display: inline-block; font: 700 .7rem ui-monospace, monospace; padding: 2px 6px; border-radius: 4px; letter-spacing: .05em; }
++.fsm-source.report { background: #e3efff; color: #23508f; }
++.fsm-source.what-if { background: #f3e9ff; color: #5e3a86; }
++.fsm-verdict.refused { color: #8a3a2c; font-weight: 700; }
++.fsm-verdict.held { color: #8a5d14; font-weight: 700; }
++.fsm-verdict.accepted { color: #1f6b4b; font-weight: 700; }
++.fsm-value { font-family: ui-monospace, monospace; font-size: .85rem; overflow-wrap: anywhere; }
++:is(.fsm-topology, .fsm-layer-topology) .topology-node.selected > rect { stroke: #245bb8; stroke-width: 4px; }
++:is(.fsm-topology, .fsm-layer-topology) .topology-route { cursor: pointer; }
++:is(.fsm-topology, .fsm-layer-topology) .topology-route-label { paint-order: stroke; stroke: #fcfdff; stroke-width: 4px; stroke-linejoin: round; }
++.fsm-topology .topology-scroll { overflow: hidden; }
++.fsm-topology .topology-scroll svg { width: 100%; min-width: 0; height: auto; }
++@media (max-width: 700px) {
++  .fsm-dashboard .is-spatial .ensemble-scene { margin-left: calc((100% - 920px) / 2); margin-top: -40px; }
++  .fsm-dashboard .is-spatial .ensemble-viewport { height: 420px !important; }
++  .fsm-topology .topology-node text:nth-of-type(2) { font-size: 13px; }
++  .fsm-laws { font-size: .8rem; }
++  .fsm-laws th, .fsm-laws td { padding: 6px; }
++}
+diff --git c/packages/agent-flow-viz/src/fsm/view.ts w/packages/agent-flow-viz/src/fsm/view.ts
+new file mode 100644
+index 0000000..9db0a48
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/view.ts
+@@ -0,0 +1,286 @@
++import type { Document, Html, HtmlBuilder } from "foldkit/html"
++import { dashboardHeaderView } from "../dashboard-shell"
++import { ensembleCameraView, ensembleViewportView } from "../ensemble-presentation"
++import { retainedHistoryView } from "../history-presentation"
++import { stageInspectorView } from "../inspection-presentation"
++import { timelinePanelView } from "../timeline-presentation"
++import { topologyNodeView, topologyRouteView, topologySurfaceView } from "../topology"
++import { Message, currentState, currentValue, type Model } from "./model"
++import {
++  describeEvent, fsm, laws, nodeId, planeLayout, planes, projection, receipt, routeById, routeGeometry,
++  scenarios, stateMeta, tapeProvenance, valueDetail, type Law, type PlaneLayout
++} from "./projection"
++
++const verdictWord = (verdict: string) => verdict === "accepted" ? "ACCEPTED" : verdict === "held" ? "HELD" : verdict === "no-change" ? "NO CHANGE" : "REFUSED"
++const lawColor = (id: string) => id.startsWith("I") ? "#b48035" : id.startsWith("W") ? "#31836a" : "#386eb1"
++
++function planeDiagram(model: Model, h: HtmlBuilder<Message>, index: number, layout: PlaneLayout, layer: boolean) {
++  const plane = planes[index]
++  const scenario = scenarios[model.scenario]
++  const onThisPlane = plane.machines.includes(scenario.machine)
++  const last = model.history[model.cursor - 1]
++  const mobile = model.mobile && !layer
++  const activeNode = onThisPlane ? nodeId(scenario.machine, currentState(model)) : ""
++  const activeRoute = onThisPlane && last?.accepted && last.before !== last.state ? `edge:${scenario.machine}:${last.before}>${last.state}` : ""
++  const value = currentValue(model)
++  return topologySurfaceView(h, {
++    width: layout.width, height: layout.height, role: "group", domainClass: layer ? "fsm-layer-topology" : "fsm-topology",
++    ariaLabel: `${plane.title}: ${layout.places.size} states and ${layout.routes.length} transitions produced by the compiled Bend`
++  }, [
++    ...layout.routes.map((route) => {
++      const geometry = routeGeometry(route, layout, mobile)
++      const from = stateMeta(route.machine, route.from)!, to = stateMeta(route.machine, route.to)!
++      return topologyRouteView(h, {
++        id: route.id, title: `${from.title} → ${to.title}: ${route.events.join(" / ")}${route.laws.length ? ` · guarded by ${route.laws.join(", ")}` : ""}`,
++        path: geometry.path, tip: geometry.tip, toward: geometry.toward,
++        badge: { point: geometry.badge, label: route.laws[0] ?? "·" },
++        color: route.laws.length ? lawColor(route.laws[0]) : "#7d8da2",
++        active: activeRoute === route.id, dashed: route.laws.length === 0,
++        ...(mobile ? {} : { label: route.events.join(" / "), labelPoint: geometry.labelPoint }),
++        onInspect: () => Message.Selected({ id: route.id })
++      })
++    }),
++    ...Array.from(layout.places, ([id, point]) => {
++      const [, machine, raw] = id.split(":")
++      const state = stateMeta(machine, Number(raw))!
++      const active = activeNode === id
++      const queue = state.owner.includes("NEEDS KEVIN")
++      return topologyNodeView(h, {
++        id, point, width: point.width, height: point.height, title: state.title, owner: state.owner, detail: state.summary,
++        active, selected: model.selected === id,
++        palette: state.terminal ? { fill: "#eef1f5", stroke: "#7d8da2" } : queue ? { fill: "#fff3dc", stroke: "#bd7f2b" }
++          : ["Blocked", "Interrupted", "Stalled", "Overdue"].includes(state.tag) ? { fill: "#fdeeee", stroke: "#b5534b" }
++          : { fill: "#e9f1ff", stroke: plane.color },
++        onInspect: () => Message.Selected({ id })
++      }, active ? [h.text([h.X(String(point.x + 13)), h.Y(String(point.y + point.height - 9)), h.FontSize("9"), h.Fill("#7a3d16")],
++        [valueDetail(machine, value, scenario).slice(0, 31)])] : [])
++    }),
++    ...Array.from(layout.lawPlaces, ([id, point]) => {
++      const law = laws.get(id)!
++      return topologyNodeView(h, {
++        id: `law:${id}`, point, width: point.width, height: point.height, title: `${id} · ${law.name}`.length > 21 ? `${`${id} · ${law.name}`.slice(0, 20)}…` : `${id} · ${law.name}`,
++        owner: `LAW · ${law.incidents.count.toLocaleString()} INCIDENTS`, detail: law.text, active: false,
++        selected: model.selected === `law:${id}`, palette: { fill: "#f4fbf7", stroke: "#31836a" },
++        onInspect: () => Message.Selected({ id: `law:${id}` })
++      }, [h.text([h.X(String(point.x + 13)), h.Y(String(point.y + point.height - 9)), h.FontSize("10"), h.Fill("#435670")], [law.prevents.slice(0, 29) + (law.prevents.length > 29 ? "…" : "")])])
++    })
++  ])
++}
++
++function lawRow(h: HtmlBuilder<Message>, law: Law) {
++  return h.tr([], [
++    h.th([h.Scope("row")], [h.button([h.Type("button"), h.OnClick(Message.Selected({ id: `law:${law.id}` }))], [law.id])]),
++    h.td([], [h.strong([], [law.name]), h.br([]), h.span([], [`Prevents: ${law.prevents}`])]),
++    h.td([h.Class("fsm-count")], [h.strong([], [law.incidents.count.toLocaleString()]), h.br([]), h.small([], [law.incidents.label])])
++  ])
++}
++
++function explainer(h: HtmlBuilder<Message>) {
++  const e = fsm.explainer
++  return h.section([h.Id("explainer"), h.Class("card fsm-explainer")], [
++    h.h2([], ["What you're looking at"]),
++    h.p([], [e.intro]),
++    ...e.loops.map((text) => h.p([], [text])),
++    h.p([], [h.strong([], ["Statecharts + proofs. "]), e.statechart]),
++    h.p([], [h.strong([], ["Roles. "]), e.roles]),
++    h.h3([], ["The laws, what each prevents, and what the 21 Oct reports found"]),
++    h.div([h.Class("fsm-table-scroll")], [h.table([h.Class("fsm-laws")], [
++      h.thead([], [h.tr([], [h.th([], ["Law"]), h.th([], ["Rule"]), h.th([], ["Incidents"])])]),
++      h.tbody([], fsm.laws.map((law) => lawRow(h, law)))
++    ])]),
++    h.p([h.Class("section-guidance")], ["Loop 1 counts come from 175 PRs, services and workers in replay-20261021; loop 2 counts from 468 delegated tasks and 120,353 tool calls in worker-supervision-20261021. Counts are findings, not proofs; the proofs only cover the model."])
++  ])
++}
++
++function inspector(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const selected = model.selected || nodeId(scenario.machine, currentState(model))
++  const children: (Html | string)[] = []
++  if (selected.startsWith("law:")) {
++    const law = laws.get(selected.slice(4))!
++    const guarded = fsm.guards.filter((g) => g.laws.includes(law.id))
++    children.push(h.h3([], [`${law.id} · ${law.name}`]), h.p([], [law.text]), h.p([], [h.strong([], ["Prevents: "]), law.prevents]),
++      h.p([], [h.strong([], [`${law.incidents.count.toLocaleString()} `]), law.incidents.label, ` (${law.incidents.source}).`]),
++      h.h4([], ["Guards in the Bend model"]),
++      h.ul([], guarded.map((g) => h.li([], [`${g.from === "*" ? "any state" : g.from} + ${g.event}: ${g.text}`]))))
++  } else if (selected.startsWith("edge:")) {
++    const route = routeById.get(selected)!
++    const from = stateMeta(route.machine, route.from)!, to = stateMeta(route.machine, route.to)!
++    children.push(h.h3([], [`${from.title} → ${to.title}`]),
++      h.p([], [`Events: ${route.events.join(", ")}. This edge exists because the compiled Bend moved a sample state along it (${projection.provenance.calls.toLocaleString()} checked calls); it also appears in the upstream Mermaid drawing.`]),
++      ...route.laws.map((id) => h.p([], [h.button([h.Type("button"), h.OnClick(Message.Selected({ id: `law:${id}` }))], [`${id} · ${laws.get(id)?.name}`]), ` — ${laws.get(id)?.text}`])))
++  } else {
++    const [, machine, raw] = selected.split(":")
++    const state = stateMeta(machine, Number(raw))!
++    const outgoing = [...routeById.values()].filter((r) => r.machine === machine && r.from === state.id)
++    children.push(h.h3([], [state.title]), h.p([], [state.owner]), h.p([], [state.summary]),
++      ...(machine === scenario.machine && Number(raw) === currentState(model) && valueDetail(machine, currentValue(model), scenario) ? [h.p([h.Class("fsm-value")], [`Now: ${valueDetail(machine, currentValue(model), scenario)}`])] : []),
++      h.h4([], ["Ways out (from the compiled Bend)"]),
++      outgoing.length ? h.ul([], outgoing.map((r) => h.li([], [h.button([h.Type("button"), h.OnClick(Message.Selected({ id: r.id }))],
++        [`${r.events.join(" / ")} → ${stateMeta(r.machine, r.to)?.title}${r.laws.length ? ` (${r.laws.join(", ")})` : ""}`])])))
++        : h.p([], [state.terminal ? "Terminal: nothing moves it." : "No outgoing transition."]))
++  }
++  return stageInspectorView(h, { focused: true, preparation: false, selected, children: [
++    h.details([h.Open(!model.mobile)], [
++      h.summary([], ["Inspect any state, transition or law"]),
++      h.select([h.AriaLabel("Inspect"), h.Value(selected), h.OnChange((id) => Message.Selected({ id }))], [
++        ...Object.entries(fsm.states).flatMap(([machine, list]) => list.map((s) => h.option([h.Value(nodeId(machine, s.id))], [`${fsm.machines[machine].title}: ${s.title}`]))),
++        ...[...routeById.values()].map((r) => h.option([h.Value(r.id)], [`${r.machine}: ${stateMeta(r.machine, r.from)?.title} → ${stateMeta(r.machine, r.to)?.title}`])),
++        ...fsm.laws.map((law) => h.option([h.Value(`law:${law.id}`)], [`${law.id} · ${law.name}`]))
++      ])
++    ]),
++    ...children
++  ] })
++}
++
++function scenarioSelect(model: Model, h: HtmlBuilder<Message>, id: string) {
++  return h.label([h.Class("fsm-scenario")], ["Tape ", h.select([
++    h.Id(id), h.Value(String(model.scenario)), h.OnChange((value) => Message.ScenarioSelected({ index: Number(value) }))
++  ], scenarios.map((item, index) => h.option([h.Value(String(index))], [item.title])))])
++}
++
++function replay(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const step = scenario.steps[model.cursor - 1]
++  const next = scenario.steps[model.cursor]
++  const last = model.history[model.cursor - 1]
++  const matches = model.history.every((o) => o.matchesProducer)
++  return h.section([h.Class("card canonical-replay"), h.Id("canonical-replay")], [
++    h.h2([], ["Step through a tape"]),
++    h.p([h.Class("section-guidance")], ["Each step sends one event to the compiled Bend. Report steps happened as recorded on 21 Oct; what-if steps are illustrative continuations."]),
++    scenarioSelect(model, h, "fsm-scenario-replay"),
++    h.p([h.Class("description")], [scenario.summary]),
++    h.div([h.Class("canonical-step-controls")], [
++      h.button([h.Type("button"), h.Disabled(model.cursor === 0), h.OnClick(Message.Seek({ position: model.cursor - 1, scrub: false }))], ["← Back"]),
++      h.button([h.Type("button"), h.Id("replay-next"), h.Disabled(!next), h.OnClick(Message.Next())], [next ? "Next event →" : "Tape complete"]),
++      h.button([h.Type("button"), h.Id("replay-reset"), h.OnClick(Message.Reset())], ["Restart tape"])
++    ]),
++    h.p([h.Class(`status${last && last.verdict !== "accepted" ? " blocked" : ""}`), h.AriaLive("polite"), h.DataAttribute("verdict", last?.verdict ?? "none")], [
++      `${fsm.machines[scenario.machine].title} · now ${stateMeta(scenario.machine, currentState(model))?.title}. `,
++      last ? last.reason : "No event sent yet."
++    ]),
++    h.p([h.Class("progress")], [`${model.cursor} / ${scenario.steps.length} events · ${matches ? "every step matches the receipt-bound producer replay" : "MISMATCH with producer replay.json — do not trust this run"}`]),
++    ...(step ? [h.p([h.Class("fsm-step")], [h.span([h.Class(`fsm-source ${step.source}`)], [step.source === "report" ? "REPORT" : "WHAT-IF"]), ` ${describeEvent(step.event, scenario)}`, step.at ? ` · ${step.at}` : ""]),
++      ...(step.note ? [h.p([], [step.note])] : [])] : []),
++    ...(last ? [h.div([h.Class("canonical-commands")], [h.h3([], ["What Bend decided"]), h.ol([], last.outputs.map((o) => h.li([], [o.label])))])] : []),
++    ...(next ? [h.p([], [h.strong([], ["Next: "]), h.span([h.Class(`fsm-source ${next.source}`)], [next.source === "report" ? "REPORT" : "WHAT-IF"]), ` ${describeEvent(next.event, scenario)}`])] : []),
++    h.details([h.Class("simulation-details")], [
++      h.summary([], ["State value, facts and compilation receipt"]),
++      h.p([], [fsm.trustBoundary.replace("from this file", "from model.json")]),
++      h.pre([h.Tabindex(0)], [JSON.stringify({ state: currentValue(model), facts: step?.facts ?? next?.facts ?? {}, actors: scenario.actors }, null, 2)]),
++      h.p([], [`${receipt.compiler.version} (sha256 ${receipt.compiler.executableSha256.slice(0, 16)}…, the identity that checked the proofs) · generated ${receipt.generatedAt}`]),
++      h.p([], [`Tapes: ${String((tapeProvenance.privacy as string) ?? "")}`]),
++      h.ul([], fsm.proofs.map((p) => h.li([], [`${p.pr} ${p.project}: PROOF.bend ${p.verdict} on ${p.verifiedAt} (Bend ${p.bend}; ${p.scope})`]))),
++      h.dl([h.Class("dotfiles-receipt")], Object.entries(receipt.artifacts).flatMap(([name, hash]) => [h.dt([], [name]), h.dd([], [h.code([], [hash])])]))
++    ])
++  ])
++}
++
++function ensemble(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const active = planes[model.active]
++  const last = model.history[model.cursor - 1]
++  return h.div([h.Id("layers"), h.Class("ensemble")], [
++    h.section([h.Id("agent-ensemble"), h.Class(`ensemble-panel ${model.camera.flat ? "is-flat" : "is-spatial"}`)], [
++      h.div([h.Class("ensemble-heading")], [h.div([], [
++        h.p([h.Class("eyebrow")], ["Z0 STATECHARTS / BEND-PROVEN LAWS"]),
++        h.h2([], ["Three loops. One compiled Bend."]),
++        h.p([], ["Each plane is one statechart. States are boxes, arrows are the moves Bend allows, and badges name the law guarding each move."])
++      ])]),
++      h.div([h.Class("ensemble-toolbar")], [
++        scenarioSelect(model, h, "fsm-scenario"),
++        h.button([h.Type("button"), h.Id("fsm-play"), h.Class("ensemble-primary"), h.Disabled(model.cursor >= scenario.steps.length), h.OnClick(Message.PlayToggled())], [model.playing ? "Pause" : "Play"]),
++        h.button([h.Type("button"), h.Id("fsm-step"), h.Disabled(model.cursor >= scenario.steps.length), h.OnClick(Message.Next())], ["Step"]),
++        h.button([h.Type("button"), h.OnClick(Message.Reset())], ["Restart"]),
++        h.span([h.Class("ensemble-toolbar-divider")], []),
++        h.button([h.Type("button"), h.Id("fsm-flat"), h.Class(model.camera.flat ? "selected" : ""), h.OnClick(Message.FlatToggled())], [model.camera.flat ? "3D layers" : "Flat: selected plane"]),
++        h.button([h.Type("button"), h.OnClick(Message.CameraReset())], ["Reset view"])
++      ]),
++      h.p([h.Class(`ensemble-feedback fsm-verdict ${last?.verdict ?? "none"}`), h.Role("status")], [
++        `${model.cursor} / ${scenario.steps.length} · ${stateMeta(scenario.machine, currentState(model))?.title}`,
++        last ? ` · ${verdictWord(last.verdict)} ${last.eventTag}` : " · press Step"
++      ]),
++      h.div([h.Class("ensemble-layout")], [
++        h.aside([h.Class("ensemble-agents"), h.AriaLabel("Statechart layers")], [
++          h.p([h.Class("ensemble-sidebar-label")], ["LAYERS"]),
++          ...planes.map((plane, index) => h.button([
++            h.Type("button"), h.Class(`ensemble-agent agent-index-${index} ${index === model.active ? "selected" : ""}`),
++            h.Style({ borderLeftColor: plane.color }), h.OnClick(Message.LayerSelected({ index })),
++            h.AriaPressed(String(index === model.active)), h.DataAttribute("layer", plane.id)
++          ], [h.strong([], [plane.title]), h.span([], [plane.owner]), h.small([], [plane.summary])])),
++          h.p([h.Class("ensemble-scope")], [h.a([h.Href("./dotfiles.html")], [".files architecture layers →"])])
++        ]),
++        ensembleViewportView(h, model.camera, {
++          active: model.active, ariaLabel: "Three-dimensional statechart layers",
++          orientation: `${active.title.toUpperCase()}`,
++          layers: planes.map((plane, index) => ({
++            index, color: plane.color, title: plane.title.toUpperCase(), caption: plane.owner,
++            diagram: planeDiagram(model, h, index, planeLayout(index, false), true)
++          }))
++        })
++      ]),
++      ensembleCameraView(h, model.camera, (field, raw) => Message.CameraChanged({ field, raw })),
++      h.p([h.Class("ensemble-evidence-key")], ["Blue badges = loop-1 laws (L1–L7) · green = loop-2 laws (W1–W6) · amber = loop-3 laws (I1–I5) · dashed grey = unguarded move · amber box = needs-Kevin queue · red box = side exit. The highlight moves only on a Bend-accepted step."])
++    ]),
++    h.section([h.Class("chart-panel simulation-panel"), h.Id("inspect"), h.AriaLabel("Inspector and history")], [
++      h.h2([], ["Inspector"]),
++      inspector(model, h),
++      h.h3([], ["Events so far"]),
++      h.button([h.Type("button"), h.OnClick(Message.RefusalsToggled())], [model.refusalsOnly ? "Show all events" : "Show refusals only"]),
++      ...retainedHistoryView(h, {
++        rows: [{ position: 0, label: `Start · ${stateMeta(scenario.machine, model.history[0]?.before ?? currentState({ ...model, cursor: 0 }))?.title}` },
++          ...model.history.flatMap((entry, index) => model.refusalsOnly && entry.verdict === "accepted" ? []
++            : [{ position: index + 1, label: `${index + 1}. ${entry.eventTag} · ${verdictWord(entry.verdict)} · ${stateMeta(scenario.machine, entry.state)?.title}` }])],
++        position: model.cursor, minimum: 0, maximum: model.history.length,
++        epoch: `${model.scenario}:${model.timelineEpoch}`, select: (position, scrub) => Message.Seek({ position, scrub })
++      })
++    ])
++  ])
++}
++
++function flatDiagram(model: Model, h: HtmlBuilder<Message>) {
++  const plane = planes[model.active]
++  return h.section([h.Id("diagram"), h.Class("card import-graph-section")], [
++    h.h2([], [`Full diagram · ${plane.title}`]),
++    h.p([h.Class("section-guidance")], [`${plane.summary} Every arrow here was produced by running the compiled Bend. Across both loops they match the ${projection.documentedComparison.documentedEdges} arrows of the upstream Mermaid drawings exactly: ${projection.documentedComparison.documentedNotProducedByBend.length} missing, ${projection.documentedComparison.producedByBendNotDocumented.length} extra.`]),
++    h.div([h.Class("trace-options")], planes.map((p, index) => h.button([h.Type("button"), h.Class(`trace${index === model.active ? " selected" : ""}`),
++      h.AriaPressed(String(index === model.active)), h.OnClick(Message.LayerSelected({ index }))], [p.title]))),
++    planeDiagram(model, h, model.active, planeLayout(model.active, model.mobile), false)
++  ])
++}
++
++function timeline(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  return h.section([h.Id("timing-diagrams"), h.Class("card timeline-section")], [
++    h.h2([], ["Tape timeline"]),
++    h.p([h.Class("timeline-context")], ["Event position, not wall-clock time"]),
++    timelinePanelView(h, {
++      title: scenario.title, status: "COMPILED BEND · NOT A LIVE OBSERVATION",
++      outcome: model.history.length ? `${model.history.filter((o) => o.verdict === "refused").length} refused, ${model.history.filter((o) => o.verdict === "held").length} held, ${model.history.filter((o) => o.accepted).length} accepted.` : "Step or play the tape.",
++      entries: model.history.map((entry, index) => ({ lane: entry.verdict === "accepted" ? "result" : entry.verdict === "held" ? "held" : "refusal", at: index + 1, kind: entry.verdict, label: `${index + 1}. ${entry.eventTag}` }))
++    }, Math.max(1, scenario.steps.length), {
++      lanes: { result: "Accepted", held: "Held for Kevin", refusal: "Refused / no change" },
++      description: "Event position", ariaLabel: "event position", valueLabel: "Event", tick: (v) => Number.isInteger(v) ? String(v) : "", value: (v) => `#${v}`
++    })
++  ])
++}
++
++export function view(model: Model, h: HtmlBuilder<Message>): Document {
++  return {
++    title: "Bend statecharts · Hapsland",
++    body: h.main([h.Class("page dotfiles-dashboard fsm-dashboard")], [
++      dashboardHeaderView(h, {
++        title: "Agent work, as statecharts Bend can check",
++        intro: fsm.explainer.intro,
++        boundary: fsm.trustBoundary.replace("from this file", "from model.json"),
++        sections: [
++          { href: "#explainer", title: "Plain explainer", description: "What each loop is for, the laws and the real incident counts." },
++          { href: "#layers", title: "Layers", description: "Loop 1, loop 2 and shared resources as stacked planes. Play a tape." },
++          { href: "#canonical-replay", title: "Step through", description: "One Bend decision at a time, with notes." },
++          { href: "#diagram", title: "Full diagram", description: "The selected plane in 2D with every transition." }
++        ]
++      }),
++      explainer(h), ensemble(model, h), replay(model, h), flatDiagram(model, h), timeline(model, h)
++    ])
++  }
++}
+diff --git c/packages/agent-flow-viz/src/history-presentation.ts w/packages/agent-flow-viz/src/history-presentation.ts
+new file mode 100644
+index 0000000..1212b3c
+--- /dev/null
++++ w/packages/agent-flow-viz/src/history-presentation.ts
+@@ -0,0 +1,28 @@
++import type { HtmlBuilder } from "foldkit/html"
++
++/** Shared retained-history presentation; callers supply checked records, never inferred events. */
++export const retainedHistoryView = <Message>(h: HtmlBuilder<Message>, content: {
++  readonly rows: readonly { readonly position: number; readonly label: string }[]
++  readonly position: number
++  readonly minimum: number
++  readonly maximum: number
++  readonly epoch: string
++  readonly select: (position: number, scrub: boolean) => Message
++}) => [
++  h.div([h.Class("simulation-history")], content.rows.map((row) =>
++    h.button([
++      h.Type("button"), h.Class(row.position === content.position ? "selected" : ""),
++      h.OnClick(content.select(row.position, false))
++    ], [row.label])
++  )),
++  h.label([], [
++    "Retained event timeline",
++    h.input([
++      h.Type("range"), h.AriaLabel("Retained event timeline"),
++      h.Min(String(content.minimum)), h.Max(String(content.maximum)),
++      h.Key(`timeline:${content.epoch}`),
++      { _tag: "Prop", key: "defaultValue", value: String(content.position) },
++      h.OnInput((raw) => content.select(Number(raw), true))
++    ])
++  ])
++]
+diff --git c/packages/agent-flow-viz/src/inspection-presentation.ts w/packages/agent-flow-viz/src/inspection-presentation.ts
+new file mode 100644
+index 0000000..cb04a21
+--- /dev/null
++++ w/packages/agent-flow-viz/src/inspection-presentation.ts
+@@ -0,0 +1,13 @@
++import type { Html, HtmlBuilder } from "foldkit/html"
++
++/** Production stage-inspector frame; the domain owns selection, evidence and controls. */
++export const stageInspectorView = <Message>(h: HtmlBuilder<Message>, content: {
++  readonly focused: boolean
++  readonly preparation: boolean
++  readonly selected?: string
++  readonly children: readonly (Html | string)[]
++}) => h.div([
++  h.Id("resident-stage-inspector"), h.Tabindex(-1),
++  h.Class(`simulation-stage-inspector${content.focused ? " capacity-selected" : ""}${content.preparation ? " preparation-selected" : ""}`),
++  ...(content.selected === undefined ? [] : [h.DataAttribute("inspector", content.selected)])
++], content.children)
+diff --git c/packages/agent-flow-viz/src/production-flow/nodes.ts w/packages/agent-flow-viz/src/production-flow/nodes.ts
+index 1939526..50c9b4c 100644
+--- c/packages/agent-flow-viz/src/production-flow/nodes.ts
++++ w/packages/agent-flow-viz/src/production-flow/nodes.ts
+@@ -1,5 +1,5 @@
+ import { stageEffectView } from "./stages/effect"
+-import { Option } from "effect"
++import { topologyNodeView } from "../topology"
+ import { preparationMini } from "../preparation-mini"
+ import { type ProductionFlowContext } from "./context"
+ import { PLACES, NODE_WIDTH, NODE_HEIGHT } from "./route-geometry"
+@@ -62,72 +62,32 @@ export const flowNodesView = <Message>(
+     const palette = node.owner.includes("NATIVE")
+       ? { fill: "#edf1f6", stroke: "#7d8da2" }
+       : { fill: "#e9f1ff", stroke: "#547dc0" }
+-    return h.g(
++    return topologyNodeView(
++      h,
++      {
++        id: node.id,
++        point,
++        width: NODE_WIDTH,
++        height: node.id === "preparation" ? 270 : NODE_HEIGHT,
++        title: node.title,
++        owner: node.owner,
++        detail: `${node.detail}${
++          node.id === "admission"
++            ? [
++                storedResultTransition,
++                issuedPermit?.kind === "permitIssued" ? `Permit #${issuedPermit.token} issued` : undefined,
++                editAccepted ? `Permit #${editAccepted.token} used` : undefined
++              ]
++                .filter(Boolean)
++                .map((fact) => ` · NOW: ${fact}`)
++                .join("")
++            : ""
++        }`,
++        active: changedStages.includes(node.id),
++        palette,
++        onInspect: inspect ? () => inspect(node.id) : undefined
++      },
+       [
+-        h.Class(`topology-node ${changedStages.includes(node.id) ? "active" : ""}`),
+-        ...(inspect
+-          ? [
+-              h.Role("button"),
+-              h.Tabindex(0),
+-              h.AriaLabel(`Inspect ${node.title}`),
+-              h.OnClick(inspect(node.id)),
+-              h.OnKeyDownSelfPreventDefault((key) =>
+-                key === "Enter" || key === " " ? Option.some(inspect(node.id)) : Option.none()
+-              )
+-            ]
+-          : [])
+-      ],
+-      [
+-        h.title(
+-          [],
+-          [
+-            `${node.title}: ${node.detail}${
+-              node.id === "admission"
+-                ? [
+-                    storedResultTransition,
+-                    issuedPermit?.kind === "permitIssued" ? `Permit #${issuedPermit.token} issued` : undefined,
+-                    editAccepted ? `Permit #${editAccepted.token} used` : undefined
+-                  ]
+-                    .filter(Boolean)
+-                    .map((fact) => ` · NOW: ${fact}`)
+-                    .join("")
+-                : ""
+-            }`
+-          ]
+-        ),
+-        h.rect(
+-          [
+-            h.X(String(point.x)),
+-            h.Y(String(point.y)),
+-            h.Width(String(NODE_WIDTH)),
+-            h.Height(String(node.id === "preparation" ? 270 : NODE_HEIGHT)),
+-            h.Rx("12"),
+-            h.Fill(palette.fill),
+-            h.Stroke(palette.stroke),
+-            h.StrokeWidth(changedStages.includes(node.id) ? "4" : "2")
+-          ],
+-          []
+-        ),
+-        h.text(
+-          [
+-            h.X(String(point.x + 13)),
+-            h.Y(String(point.y + 25)),
+-            h.FontSize("10"),
+-            h.FontWeight("700"),
+-            h.Fill("#52647d")
+-          ],
+-          [node.owner]
+-        ),
+-        h.text(
+-          [
+-            h.X(String(point.x + 13)),
+-            h.Y(String(point.y + 49)),
+-            h.FontSize("14"),
+-            h.FontWeight("700"),
+-            h.Fill("#1e3048")
+-          ],
+-          [node.title]
+-        ),
+         ...stageFacetsView(context, node, point),
+         ...stageEffectView(context, node, point),
+         ...stageCollectionView(context, node, point),
+diff --git c/packages/agent-flow-viz/src/production-flow/route-geometry.ts w/packages/agent-flow-viz/src/production-flow/route-geometry.ts
+index 635c642..19bbf6f 100644
+--- c/packages/agent-flow-viz/src/production-flow/route-geometry.ts
++++ w/packages/agent-flow-viz/src/production-flow/route-geometry.ts
+@@ -4,17 +4,6 @@ import { type Route } from "./route-style"
+ export const NODE_WIDTH = 224
+ export const NODE_HEIGHT = 116
+ export const PLACES = SQUARES
+-export const arrowHead = (
+-  tip: { readonly x: number; readonly y: number },
+-  toward: { readonly x: number; readonly y: number }
+-) => {
+-  const length = Math.hypot(toward.x, toward.y)
+-  const ux = toward.x / length
+-  const uy = toward.y / length
+-  const bx = tip.x - ux * 12
+-  const by = tip.y - uy * 12
+-  return `M ${tip.x} ${tip.y} L ${bx - uy * 6} ${by + ux * 6} L ${bx + uy * 6} ${by - ux * 6} Z`
+-}
+ export const routeGeometry = (route: Route, offset: number) => {
+   const from = PLACES[route.from]
+   const to = PLACES[route.to]
+diff --git c/packages/agent-flow-viz/src/production-flow/routes-view.ts w/packages/agent-flow-viz/src/production-flow/routes-view.ts
+index 7332622..8e9194a 100644
+--- c/packages/agent-flow-viz/src/production-flow/routes-view.ts
++++ w/packages/agent-flow-viz/src/production-flow/routes-view.ts
+@@ -1,6 +1,7 @@
+ import { type ProductionFlowContext } from "./context"
+ import { arrowPaint } from "./route-style"
+-import { routeGeometry, arrowHead } from "./route-geometry"
++import { routeGeometry } from "./route-geometry"
++import { topologyRouteView } from "../topology"
+ 
+ export const flowRouteKeyView = <Message>(context: Pick<ProductionFlowContext<Message>, "routes" | "h" | "nodes">) => {
+   const { routes, h, nodes } = context
+@@ -25,53 +26,19 @@ export const flowRoutesView = <Message>(
+     const offset = (routeOffsets[index] - (same - 1) / 2) * 18
+     const { path, badge, tip, toward } = routeGeometry(route, offset)
+     const paint = arrowPaint(route.kind)
+-    const color = paint.color
+-    return h.g(
+-      [h.Class(`topology-route ${route.active ? "active" : ""} ${paint.external ? "external" : ""}`)],
+-      [
+-        h.title(
+-          [],
+-          [
+-            `${index + 1}. ${nodes.find((node) => node.id === route.from)?.title} → ${nodes.find((node) => node.id === route.to)?.title}: ${route.active ? route.evidence : `possible: ${route.label}`}`
+-          ]
+-        ),
+-        h.path(
+-          [
+-            h.D(path),
+-            h.Fill("none"),
+-            h.Stroke(color),
+-            h.StrokeWidth(route.active ? "4" : "2"),
+-            ...(paint.dashed ? [h.StrokeDasharray("7 5")] : route.linked ? [h.StrokeDasharray("2 6")] : [])
+-          ],
+-          []
+-        ),
+-        ...(paint.overlay
+-          ? [h.path([h.D(path), h.Fill("none"), h.Stroke("#794aa0"), h.StrokeWidth("2"), h.StrokeDasharray("7 5")], [])]
+-          : []),
+-        h.path([h.D(arrowHead(tip, toward)), h.Fill(color)], []),
+-        h.circle(
+-          [
+-            h.Cx(String(badge.x)),
+-            h.Cy(String(badge.y)),
+-            h.R("11"),
+-            h.Fill(route.active ? color : "#fff"),
+-            h.Stroke(color)
+-          ],
+-          []
+-        ),
+-        h.text(
+-          [
+-            h.X(String(badge.x)),
+-            h.Y(String(badge.y + 1)),
+-            h.TextAnchor("middle"),
+-            h.DominantBaseline("middle"),
+-            h.FontSize("10"),
+-            h.FontWeight("700"),
+-            h.Fill(route.active ? "#fff" : "#485b73")
+-          ],
+-          [String(index + 1)]
+-        )
+-      ]
+-    )
++    return topologyRouteView(h, {
++      id: `${route.from}:${route.to}:${index}`,
++      title: `${index + 1}. ${nodes.find((node) => node.id === route.from)?.title} → ${nodes.find((node) => node.id === route.to)?.title}: ${route.active ? route.evidence : `possible: ${route.label}`}`,
++      path,
++      badge: { point: badge, label: String(index + 1) },
++      tip,
++      toward,
++      color: paint.color,
++      active: route.active,
++      dashed: paint.dashed,
++      linked: route.linked,
++      overlay: paint.overlay,
++      external: paint.external
++    })
+   })
+ }
+diff --git c/packages/agent-flow-viz/src/production-flow/view.ts w/packages/agent-flow-viz/src/production-flow/view.ts
+index 3dd85ac..6c5a095 100644
+--- c/packages/agent-flow-viz/src/production-flow/view.ts
++++ w/packages/agent-flow-viz/src/production-flow/view.ts
+@@ -13,6 +13,7 @@ import { flowRoutesView, flowRouteKeyView } from "./routes-view"
+ import { flowNodesView } from "./nodes"
+ import { infrastructureContactsView } from "./infrastructure"
+ import { flowStepDetails } from "./step-details"
++import { topologySurfaceView } from "../topology"
+ 
+ export const productionFlowView = <Message>(
+   h: HtmlBuilder<Message>,
+@@ -47,10 +48,14 @@ export const productionFlowView = <Message>(
+     ...flowPresentation(projection, last, numbers, resident, metadata, selected, activitySteps)
+   }
+   const { requests, stepCaption, finishBranches } = context
+-  return h.div(
+-    [h.Class("production-topology")],
+-    [
+-      ...(!infrastructure
++  return topologySurfaceView(
++    h,
++    {
++      width: 1400,
++      height: 830,
++      role: inspect ? "group" : "img",
++      ariaLabel: "Connected production flow from agent edit through Jev review to advice and round decision",
++      before: !infrastructure
+         ? [
+             h.p(
+               [h.Class("flow-legend")],
+@@ -59,27 +64,8 @@ export const productionFlowView = <Message>(
+               ]
+             )
+           ]
+-        : []),
+-      h.div(
+-        [h.Class("topology-scroll")],
+-        [
+-          h.svg(
+-            [
+-              h.ViewBox("0 0 1400 830"),
+-              h.Role(inspect ? "group" : "img"),
+-              h.AriaLabel("Connected production flow from agent edit through Jev review to advice and round decision")
+-            ],
+-            [
+-              executionPoolsView(h, resident, agents, inspect),
+-              ...flowRoutesView(context),
+-              ...flowNodesView(context),
+-              ...(infrastructure ? [residentCapacityInset(h, resident, agents, inspect)] : []),
+-              ...(infrastructure ? infrastructureContactsView(context) : [])
+-            ]
+-          )
+-        ]
+-      ),
+-      ...(!infrastructure
++        : [],
++      after: !infrastructure
+         ? [
+             ...(stepCaption === undefined ? [] : [h.p([h.Class("topology-current-step")], [stepCaption])]),
+             h.details(
+@@ -129,7 +115,14 @@ export const productionFlowView = <Message>(
+             ),
+             flowStepDetails(context)
+           ]
+-        : [])
++        : []
++    },
++    [
++      executionPoolsView(h, resident, agents, inspect),
++      ...flowRoutesView(context),
++      ...flowNodesView(context),
++      ...(infrastructure ? [residentCapacityInset(h, resident, agents, inspect)] : []),
++      ...(infrastructure ? infrastructureContactsView(context) : [])
+     ]
+   )
+ }
+diff --git c/packages/agent-flow-viz/src/production-main.ts w/packages/agent-flow-viz/src/production-main.ts
+index 600e155..5be831e 100644
+--- c/packages/agent-flow-viz/src/production-main.ts
++++ w/packages/agent-flow-viz/src/production-main.ts
+@@ -1,4 +1,5 @@
+-import productIcon from "./brand/product-icon.svg?url"
++import { dashboardHeaderView } from "./dashboard-shell"
++import { orbitEnsembleCamera, zoomEnsembleCamera } from "./ensemble-presentation"
+ import { preparationDetails } from "./preparation-details"
+ import { preparationSnapshot } from "./preparation-mini"
+ import { reviewCapacityView } from "./review-capacity-view"
+@@ -187,24 +188,13 @@ export const update = (model: Model, message: Message) =>
+     SimulationCameraZoomed: ({ factor }) => ({
+       model: {
+         ...model,
+-        simulation: {
+-          ...model.simulation,
+-          cameraEpoch: model.simulation.cameraEpoch + 1,
+-          zoom: String(Math.round(Math.max(20, Math.min(200, Number(model.simulation.zoom) * factor)) * 10) / 10)
+-        }
++        simulation: zoomEnsembleCamera(model.simulation, factor)
+       }
+     }),
+     SimulationCameraRotated: ({ dx, dy }) => ({
+       model: {
+         ...model,
+-        simulation: {
+-          ...model.simulation,
+-          cameraEpoch: model.simulation.cameraEpoch + 1,
+-          turn: String(
+-            Math.round((((((Number(model.simulation.turn) + dx * 0.35 + 180) % 360) + 360) % 360) - 180) * 10) / 10
+-          ),
+-          tilt: String(Math.round(Math.max(0, Math.min(65, Number(model.simulation.tilt) - dy * 0.25)) * 10) / 10)
+-        }
++        simulation: orbitEnsembleCamera(model.simulation, dx, dy)
+       }
+     }),
+     SimulationTick: ({ deltaMs }) => {
+@@ -820,56 +810,17 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => {
+     body: h.main(
+       [h.Class("page")],
+       [
+-        h.header(
+-          [h.Class("page-header")],
+-          [
+-            h.p(
+-              [h.Class("eyebrow product-brand")],
+-              [h.img([h.Src(productIcon), h.Alt(""), h.Width("40"), h.Height("40")]), "HAPSLAND"]
+-            ),
+-            h.h1([], ["From agent edit to Jev and back"]),
+-            h.p([h.Class("intro")], ["Explore the resident’s decisions and the evidence behind each transition."]),
+-            h.p(
+-              [h.Class("dashboard-boundary")],
+-              [
+-                "Development examples · compiled Bend decisions with synthetic native and review responses. This page does not inspect your local agent sessions."
+-              ]
+-            ),
+-            h.nav(
+-              [h.Class("dashboard-navigation"), h.AriaLabel("Dashboard sections")],
+-              [
+-                h.a(
+-                  [h.Href("#monkey-business")],
+-                  [
+-                    h.strong([], ["Resident simulator"]),
+-                    h.span([], ["Play shared work, pause, then inspect an advicee and its resources."])
+-                  ]
+-                ),
+-                h.a(
+-                  [h.Href("#canonical-replay")],
+-                  [
+-                    h.strong([], ["Guided replay"]),
+-                    h.span([], ["Choose a scenario and follow one checked event at a time."])
+-                  ]
+-                ),
+-                h.a(
+-                  [h.Href("#import-graph")],
+-                  [
+-                    h.strong([], ["Import exploration"]),
+-                    h.span([], ["See which supporting files are read, skipped or limited."])
+-                  ]
+-                ),
+-                h.a(
+-                  [h.Href("#timing-diagrams")],
+-                  [
+-                    h.strong([], ["Timing diagrams"]),
+-                    h.span([], ["Compare lifecycle cases and their stated evidence boundaries."])
+-                  ]
+-                )
+-              ]
+-            )
++        dashboardHeaderView(h, {
++          title: "From agent edit to Jev and back",
++          intro: "Explore the resident’s decisions and the evidence behind each transition.",
++          boundary: "Development examples · compiled Bend decisions with synthetic native and review responses. This page does not inspect your local agent sessions.",
++          sections: [
++            { href: "#monkey-business", title: "Resident simulator", description: "Play shared work, pause, then inspect an advicee and its resources." },
++            { href: "#canonical-replay", title: "Guided replay", description: "Choose a scenario and follow one checked event at a time." },
++            { href: "#import-graph", title: "Import exploration", description: "See which supporting files are read, skipped or limited." },
++            { href: "#timing-diagrams", title: "Timing diagrams", description: "Compare lifecycle cases and their stated evidence boundaries." }
+           ]
+-        ),
++        }),
+         simulationView(model.simulation, h, simulationAction, simulationChanged),
+         lazyExamples(examplesView, [
+           model.history,
+diff --git c/packages/agent-flow-viz/src/simulation/history-view.ts w/packages/agent-flow-viz/src/simulation/history-view.ts
+index b9a703a..aeb1cee 100644
+--- c/packages/agent-flow-viz/src/simulation/history-view.ts
++++ w/packages/agent-flow-viz/src/simulation/history-view.ts
+@@ -2,6 +2,8 @@ import { projectFlowStep } from "@hapsland/agent-flow-projection"
+ import type { PLACE_ORDER } from "@hapsland/agent-flow-projection/production-flow-presentation"
+ import { type SimulationViewContext } from "./context"
+ import { followsRecord } from "./history-model"
++import { retainedHistoryView } from "../history-presentation"
++
+ 
+ export const simulationHistoryView = <Message>(
+   context: Pick<
+@@ -30,9 +32,8 @@ export const simulationHistoryView = <Message>(
+     ),
+     h.h3([h.Id("resident-event-history"), h.Tabindex(-1)], ["Recent 100 events"]),
+     button(model.filter === "all" ? "Show refusals and delivery problems" : "Show all events", "filter"),
+-    h.div(
+-      [h.Class("simulation-history")],
+-      observations
++    ...retainedHistoryView(h, {
++      rows: observations
+         .filter((item) => !model.item || followsRecord(item, model.item))
+         .filter(
+           (item) =>
+@@ -60,36 +61,15 @@ export const simulationHistoryView = <Message>(
+             /fail|timeout/i.test(JSON.stringify(item.event))
+         )
+         .slice(-100)
+-        .map((item) =>
+-          h.button(
+-            [
+-              h.Type("button"),
+-              h.Class(item.sequence === current?.sequence ? "selected" : ""),
+-              h.OnClick(action(`inspect:${item.sequence}`))
+-            ],
+-            [
+-              `${item.sequence}. ${item.time} ms · ${item.agent ?? "resident"} · ${item.event.kind === "preparationGraph" ? `preparation · ${item.event.fact.kind} · operation #${item.event.operation}` : item.event.kind}${item.rejection ? ` · refusal: ${item.rejection}` : ""}`
+-            ]
+-          )
+-        )
+-    ),
+-    h.label(
+-      [],
+-      [
+-        "Retained event timeline",
+-        h.input([
+-          h.Type("range"),
+-          h.AriaLabel("Retained event timeline"),
+-          h.Min(String(observations[0]?.sequence ?? 0)),
+-          h.Max(String(observations.at(-1)?.sequence ?? 0)),
+-          // The native thumb owns an in-flight gesture; queued playback renders
+-          // may update the default without replaying an older value over the drag.
+-          // Explicit controls replace the node to synchronize historical navigation.
+-          h.Key(`timeline:${model.draftEpoch}:${model.timelineEpoch}`),
+-          { _tag: "Prop", key: "defaultValue", value: String(current?.sequence ?? 0) },
+-          h.OnInput((raw) => action(`scrub:${raw}`))
+-        ])
+-      ]
+-    )
++        .map((item) => ({
++          position: item.sequence,
++          label: `${item.sequence}. ${item.time} ms · ${item.agent ?? "resident"} · ${item.event.kind === "preparationGraph" ? `preparation · ${item.event.fact.kind} · operation #${item.event.operation}` : item.event.kind}${item.rejection ? ` · refusal: ${item.rejection}` : ""}`
++        })),
++      position: current?.sequence ?? 0,
++      minimum: observations[0]?.sequence ?? 0,
++      maximum: observations.at(-1)?.sequence ?? 0,
++      epoch: `${model.draftEpoch}:${model.timelineEpoch}`,
++      select: (position, scrub) => action(`${scrub ? "scrub" : "inspect"}:${position}`)
++    })
+   ]
+ }
+diff --git c/packages/agent-flow-viz/src/simulation/inspection-view.ts w/packages/agent-flow-viz/src/simulation/inspection-view.ts
+index 22add97..f37b1dc 100644
+--- c/packages/agent-flow-viz/src/simulation/inspection-view.ts
++++ w/packages/agent-flow-viz/src/simulation/inspection-view.ts
+@@ -6,6 +6,7 @@ import { SQUARES, PLACE_ORDER } from "@hapsland/agent-flow-projection/production
+ import { type SimulationViewContext } from "./context"
+ 
+ import { recordIdentity } from "./history-model"
++import { stageInspectorView } from "../inspection-presentation"
+ 
+ export const simulationInspectionView = <Message>(
+   context: Pick<
+@@ -43,15 +44,10 @@ export const simulationInspectionView = <Message>(
+     run,
+     observations
+   } = context
+-  return h.div(
+-    [
+-      h.Id("resident-stage-inspector"),
+-      h.Tabindex(-1),
+-      h.Class(
+-        `simulation-stage-inspector${model.focus ? " capacity-selected" : ""}${model.focus === "preparation" ? " preparation-selected" : ""}`
+-      )
+-    ],
+-    [
++  return stageInspectorView(h, {
++    focused: Boolean(model.focus),
++    preparation: model.focus === "preparation",
++    children: [
+       h.details(
+         [h.Open(true)],
+         [
+@@ -173,5 +169,5 @@ export const simulationInspectionView = <Message>(
+           ]
+         : [])
+     ]
+-  )
++  })
+ }
+diff --git c/packages/agent-flow-viz/src/timeline-presentation.ts w/packages/agent-flow-viz/src/timeline-presentation.ts
+new file mode 100644
+index 0000000..4b86b9d
+--- /dev/null
++++ w/packages/agent-flow-viz/src/timeline-presentation.ts
+@@ -0,0 +1,135 @@
++import type { HtmlBuilder } from "foldkit/html"
++
++const LEFT = 375
++const RIGHT = 1130
++const WIDTH = 1350
++export interface TimelinePresentationPanel {
++  readonly title: string
++  readonly status: string
++  readonly outcome: string
++  readonly entries: readonly {
++    readonly label: string
++    readonly lane: string
++    readonly at: number
++    readonly until?: number
++    readonly kind: string
++  }[]
++}
++
++/** Shared production timeline geometry; the caller declares the axis and evidence boundary. */
++export const timelinePanelView = <Message>(h: HtmlBuilder<Message>, panel: TimelinePresentationPanel, maximum: number,
++  axis: {
++    readonly lanes: Readonly<Record<string, string>>
++    readonly description: string
++    readonly ariaLabel: string
++    readonly valueLabel: string
++    readonly tick: (value: number) => string
++    readonly value: (value: number) => string
++  }) => {
++  const x = (milliseconds: number) => LEFT + (milliseconds / maximum) * (RIGHT - LEFT)
++  let y = 78
++  const rows = Object.keys(axis.lanes).flatMap((lane) => {
++    const entries = panel.entries.filter((entry) => entry.lane === lane)
++    if (entries.length === 0) return []
++    const headingY = y
++    y += 25
++    const rows = entries.map((entry) => {
++      const rowY = y
++      y += 29
++      return { entry, y: rowY }
++    })
++    y += 15
++    return [{ lane, y: headingY, rows }]
++  })
++  const height = y + 12
++  return h.div(
++    [h.Class("timeline-panel")],
++    [
++      h.div(
++        [h.Class("timeline-panel-heading")],
++        [
++          h.h3([], [panel.title]),
++          h.span([h.Class(`timeline-badge ${panel.status === "OBSERVED" ? "observed" : "unproven"}`)], [panel.status])
++        ]
++      ),
++      h.div(
++        [h.Class("chart-scroll timeline-scroll")],
++        [
++          h.svg(
++            [
++              h.ViewBox(`0 0 ${WIDTH} ${height}`),
++              h.Role("img"),
++              h.AriaLabel(`${panel.title}; ${axis.ariaLabel}; ${panel.outcome}`)
++            ],
++            [
++              h.text(
++                [h.X("18"), h.Y("25"), h.FontSize("12"), h.Fill("#52647d")],
++                [axis.description]
++              ),
++              ...Array.from({ length: 6 }, (_, i) => {
++                const at = (maximum * i) / 5
++                return h.g(
++                  [],
++                  [
++                    h.path(
++                      [h.D(`M ${x(at)} 52 L ${x(at)} ${height - 8}`), h.Stroke("#e4e9f0"), h.StrokeWidth("1")],
++                      []
++                    ),
++                    h.text(
++                      [h.X(String(x(at))), h.Y("43"), h.TextAnchor("middle"), h.FontSize("11"), h.Fill("#52647d")],
++                      [axis.tick(at)]
++                    )
++                  ]
++                )
++              }),
++              h.text([h.X("1160"), h.Y("43"), h.FontSize("11"), h.Fill("#52647d")], [axis.valueLabel]),
++              ...rows.flatMap(({ lane, y: headingY, rows }) => [
++                h.text(
++                  [h.X("18"), h.Y(String(headingY)), h.FontSize("12"), h.FontWeight("700"), h.Fill("#243e60")],
++                  [axis.lanes[lane]]
++                ),
++                ...rows.map(({ entry, y: rowY }) => {
++                  const unknown = entry.kind === "unknown"
++                  const color = unknown ? "#858c97" : lane === "result" ? "#31836a" : "#386eb1"
++                  const time =
++                    entry.until === undefined
++                      ? axis.value(entry.at)
++                      : `${axis.value(entry.at)}–${axis.value(entry.until)}`
++                  return h.g(
++                    [],
++                    [
++                      h.text([h.X("29"), h.Y(String(rowY + 4)), h.FontSize("12"), h.Fill("#425570")], [entry.label]),
++                      h.path(
++                        [h.D(`M ${LEFT} ${rowY} L ${RIGHT} ${rowY}`), h.Stroke("#f0f3f7"), h.StrokeWidth("1")],
++                        []
++                      ),
++                      ...(entry.until === undefined
++                        ? [h.circle([h.Cx(String(x(entry.at))), h.Cy(String(rowY)), h.R("5"), h.Fill(color)], [])]
++                        : [
++                            h.rect(
++                              [
++                                h.X(String(x(entry.at))),
++                                h.Y(String(rowY - 6)),
++                                h.Width(String(Math.max(2, x(entry.until) - x(entry.at)))),
++                                h.Height("12"),
++                                h.Rx("3"),
++                                h.Fill(unknown ? "#e3e5e9" : "#dbe8fa"),
++                                h.Stroke(color),
++                                ...(unknown ? [h.StrokeDasharray("4 3")] : [])
++                              ],
++                              []
++                            )
++                          ]),
++                      h.text([h.X("1160"), h.Y(String(rowY + 4)), h.FontSize("11"), h.Fill("#52647d")], [time])
++                    ]
++                  )
++                })
++              ])
++            ]
++          )
++        ]
++      ),
++      h.p([h.Class("timeline-outcome")], [panel.outcome])
++    ]
++  )
++}
+diff --git c/packages/agent-flow-viz/src/timeline-view.ts w/packages/agent-flow-viz/src/timeline-view.ts
+index 5dc263b..d5f9b90 100644
+--- c/packages/agent-flow-viz/src/timeline-view.ts
++++ w/packages/agent-flow-viz/src/timeline-view.ts
+@@ -1,119 +1,7 @@
+ import type { HtmlBuilder } from "foldkit/html"
+-import { EVIDENCE_BASE, LANES, TIMELINE_CASES, type Lane, type TimelinePanel } from "./timeline"
++import { EVIDENCE_BASE, LANES, TIMELINE_CASES } from "./timeline"
++import { timelinePanelView } from "./timeline-presentation"
+ 
+-const LEFT = 375
+-const RIGHT = 1130
+-const WIDTH = 1350
+-const laneOrder = Object.keys(LANES) as Lane[]
+-
+-const panelView = <Message>(h: HtmlBuilder<Message>, panel: TimelinePanel, maximum: number) => {
+-  const x = (milliseconds: number) => LEFT + (milliseconds / maximum) * (RIGHT - LEFT)
+-  let y = 78
+-  const rows = laneOrder.flatMap((lane) => {
+-    const entries = panel.entries.filter((entry) => entry.lane === lane)
+-    if (entries.length === 0) return []
+-    const headingY = y
+-    y += 25
+-    const rows = entries.map((entry) => {
+-      const rowY = y
+-      y += 29
+-      return { entry, y: rowY }
+-    })
+-    y += 15
+-    return [{ lane, y: headingY, rows }]
+-  })
+-  const height = y + 12
+-  return h.div(
+-    [h.Class("timeline-panel")],
+-    [
+-      h.div(
+-        [h.Class("timeline-panel-heading")],
+-        [
+-          h.h3([], [panel.title]),
+-          h.span([h.Class(`timeline-badge ${panel.status === "OBSERVED" ? "observed" : "unproven"}`)], [panel.status])
+-        ]
+-      ),
+-      h.div(
+-        [h.Class("chart-scroll timeline-scroll")],
+-        [
+-          h.svg(
+-            [
+-              h.ViewBox(`0 0 ${WIDTH} ${height}`),
+-              h.Role("img"),
+-              h.AriaLabel(`${panel.title}; seconds since native process launch; ${panel.outcome}`)
+-            ],
+-            [
+-              h.text(
+-                [h.X("18"), h.Y("25"), h.FontSize("12"), h.Fill("#52647d")],
+-                ["Observed timestamps · each row shares the same time axis"]
+-              ),
+-              ...Array.from({ length: 6 }, (_, i) => {
+-                const at = (maximum * i) / 5
+-                return h.g(
+-                  [],
+-                  [
+-                    h.path(
+-                      [h.D(`M ${x(at)} 52 L ${x(at)} ${height - 8}`), h.Stroke("#e4e9f0"), h.StrokeWidth("1")],
+-                      []
+-                    ),
+-                    h.text(
+-                      [h.X(String(x(at))), h.Y("43"), h.TextAnchor("middle"), h.FontSize("11"), h.Fill("#52647d")],
+-                      [`${(at / 1000).toFixed(0)}s`]
+-                    )
+-                  ]
+-                )
+-              }),
+-              h.text([h.X("1160"), h.Y("43"), h.FontSize("11"), h.Fill("#52647d")], ["Recorded time"]),
+-              ...rows.flatMap(({ lane, y: headingY, rows }) => [
+-                h.text(
+-                  [h.X("18"), h.Y(String(headingY)), h.FontSize("12"), h.FontWeight("700"), h.Fill("#243e60")],
+-                  [LANES[lane]]
+-                ),
+-                ...rows.map(({ entry, y: rowY }) => {
+-                  const unknown = entry.kind === "unknown"
+-                  const color = unknown ? "#858c97" : lane === "result" ? "#31836a" : "#386eb1"
+-                  const time =
+-                    entry.until === undefined
+-                      ? `${(entry.at / 1000).toFixed(3)}s`
+-                      : `${(entry.at / 1000).toFixed(3)}–${(entry.until / 1000).toFixed(3)}s`
+-                  return h.g(
+-                    [],
+-                    [
+-                      h.text([h.X("29"), h.Y(String(rowY + 4)), h.FontSize("12"), h.Fill("#425570")], [entry.label]),
+-                      h.path(
+-                        [h.D(`M ${LEFT} ${rowY} L ${RIGHT} ${rowY}`), h.Stroke("#f0f3f7"), h.StrokeWidth("1")],
+-                        []
+-                      ),
+-                      ...(entry.until === undefined
+-                        ? [h.circle([h.Cx(String(x(entry.at))), h.Cy(String(rowY)), h.R("5"), h.Fill(color)], [])]
+-                        : [
+-                            h.rect(
+-                              [
+-                                h.X(String(x(entry.at))),
+-                                h.Y(String(rowY - 6)),
+-                                h.Width(String(Math.max(2, x(entry.until) - x(entry.at)))),
+-                                h.Height("12"),
+-                                h.Rx("3"),
+-                                h.Fill(unknown ? "#e3e5e9" : "#dbe8fa"),
+-                                h.Stroke(color),
+-                                ...(unknown ? [h.StrokeDasharray("4 3")] : [])
+-                              ],
+-                              []
+-                            )
+-                          ]),
+-                      h.text([h.X("1160"), h.Y(String(rowY + 4)), h.FontSize("11"), h.Fill("#52647d")], [time])
+-                    ]
+-                  )
+-                })
+-              ])
+-            ]
+-          )
+-        ]
+-      ),
+-      h.p([h.Class("timeline-outcome")], [panel.outcome])
+-    ]
+-  )
+-}
+ 
+ export const timelineView = <Message>(
+   h: HtmlBuilder<Message>,
+@@ -143,7 +31,14 @@ export const timelineView = <Message>(
+       ),
+       h.p([h.Class("description")], [scenario.summary]),
+       h.p([h.Class("timeline-legend")], ["Blue: observation · Green: result · Gray: unmeasured"]),
+-      ...scenario.panels.map((panel) => panelView(h, panel, maximum)),
++      ...scenario.panels.map((panel) => timelinePanelView(h, panel, maximum, {
++        lanes: LANES,
++        description: "Observed timestamps · each row shares the same time axis",
++        ariaLabel: "seconds since native process launch",
++        valueLabel: "Recorded time",
++        tick: (value) => `${(value / 1000).toFixed(0)}s`,
++        value: (value) => `${(value / 1000).toFixed(3)}s`
++      })),
+       h.div(
+         [h.Class("trace-options timeline-options"), h.Role("group"), h.AriaLabel("Select timing scenario")],
+         TIMELINE_CASES.map((item, index) =>
+diff --git c/packages/agent-flow-viz/src/topology.ts w/packages/agent-flow-viz/src/topology.ts
+new file mode 100644
+index 0000000..24df08e
+--- /dev/null
++++ w/packages/agent-flow-viz/src/topology.ts
+@@ -0,0 +1,224 @@
++import { Option } from "effect"
++import type { Html, HtmlBuilder } from "foldkit/html"
++
++/** SVG presentation shared by production flow and dotfiles architecture; callers own state and geometry. */
++export type TopologyPoint = { readonly x: number; readonly y: number }
++
++export type TopologyNodeSpec<Message> = {
++  readonly id: string
++  readonly point: TopologyPoint
++  readonly width: number
++  readonly height: number
++  readonly title: string
++  readonly owner: string
++  readonly detail: string
++  readonly active: boolean
++  readonly selected?: boolean
++  readonly palette?: { readonly fill: string; readonly stroke: string }
++  readonly onInspect?: () => Message
++}
++
++export const topologyNodeView = <Message>(
++  h: HtmlBuilder<Message>,
++  spec: TopologyNodeSpec<Message>,
++  children: ReadonlyArray<Html | string> = []
++) => {
++  const { point, onInspect } = spec
++  const palette = spec.palette ?? { fill: "#e9f1ff", stroke: "#547dc0" }
++  return h.g(
++    [
++      h.Class(`topology-node ${spec.active ? "active" : ""}${spec.selected ? " selected" : ""}`),
++      h.DataAttribute("topology-node", spec.id),
++      ...(onInspect
++        ? [
++            h.Role("button"),
++            h.Tabindex(0),
++            h.AriaLabel(`Inspect ${spec.title}`),
++            h.OnClick(onInspect()),
++            h.OnKeyDownSelfPreventDefault((key) =>
++              key === "Enter" || key === " " ? Option.some(onInspect()) : Option.none()
++            )
++          ]
++        : [])
++    ],
++    [
++      h.title([], [`${spec.title}: ${spec.detail}`]),
++      h.rect(
++        [
++          h.X(String(point.x)),
++          h.Y(String(point.y)),
++          h.Width(String(spec.width)),
++          h.Height(String(spec.height)),
++          h.Rx("12"),
++          h.Fill(palette.fill),
++          h.Stroke(palette.stroke),
++          h.StrokeWidth(spec.active ? "4" : "2")
++        ],
++        []
++      ),
++      h.text(
++        [
++          h.X(String(point.x + 13)),
++          h.Y(String(point.y + 25)),
++          h.FontSize("10"),
++          h.FontWeight("700"),
++          h.Fill("#52647d")
++        ],
++        [spec.owner]
++      ),
++      h.text(
++        [
++          h.X(String(point.x + 13)),
++          h.Y(String(point.y + 49)),
++          h.FontSize("14"),
++          h.FontWeight("700"),
++          h.Fill("#1e3048")
++        ],
++        [spec.title]
++      ),
++      ...children
++    ]
++  )
++}
++
++export type TopologyRouteSpec<Message> = {
++  readonly id: string
++  readonly title: string
++  readonly path: string
++  readonly badge: { readonly point: TopologyPoint; readonly label: string }
++  readonly tip: TopologyPoint
++  readonly toward: TopologyPoint
++  readonly color: string
++  readonly active: boolean
++  readonly dashed?: boolean
++  readonly linked?: boolean
++  readonly overlay?: boolean
++  readonly external?: boolean
++  readonly label?: string
++  readonly labelPoint?: TopologyPoint
++  readonly onInspect?: () => Message
++}
++
++const arrowHead = (tip: TopologyPoint, toward: TopologyPoint) => {
++  const length = Math.hypot(toward.x, toward.y)
++  const ux = toward.x / length
++  const uy = toward.y / length
++  const bx = tip.x - ux * 12
++  const by = tip.y - uy * 12
++  return `M ${tip.x} ${tip.y} L ${bx - uy * 6} ${by + ux * 6} L ${bx + uy * 6} ${by - ux * 6} Z`
++}
++
++export const topologyRouteView = <Message>(h: HtmlBuilder<Message>, spec: TopologyRouteSpec<Message>) => {
++  const { path, color, active, onInspect } = spec
++  const badge = spec.badge.point
++  return h.g(
++    [
++      h.Class(`topology-route ${active ? "active" : ""} ${spec.external ? "external" : ""}`),
++      h.DataAttribute("topology-route", spec.id),
++      ...(onInspect
++        ? [
++            h.Role("button"),
++            h.Tabindex(0),
++            h.AriaLabel(spec.title),
++            h.OnClick(onInspect()),
++            h.OnKeyDownSelfPreventDefault((key) =>
++              key === "Enter" || key === " " ? Option.some(onInspect()) : Option.none()
++            )
++          ]
++        : [])
++    ],
++    [
++      h.title([], [spec.title]),
++      h.path(
++        [
++          h.D(path),
++          h.Fill("none"),
++          h.Stroke(color),
++          h.StrokeWidth(active ? "4" : "2"),
++          ...(spec.dashed ? [h.StrokeDasharray("7 5")] : spec.linked ? [h.StrokeDasharray("2 6")] : [])
++        ],
++        []
++      ),
++      ...(spec.overlay
++        ? [h.path([h.D(path), h.Fill("none"), h.Stroke("#794aa0"), h.StrokeWidth("2"), h.StrokeDasharray("7 5")], [])]
++        : []),
++      h.path([h.D(arrowHead(spec.tip, spec.toward)), h.Fill(color)], []),
++      h.circle(
++        [
++          h.Cx(String(badge.x)),
++          h.Cy(String(badge.y)),
++          h.R("11"),
++          h.Fill(active ? color : "#fff"),
++          h.Stroke(color)
++        ],
++        []
++      ),
++      h.text(
++        [
++          h.X(String(badge.x)),
++          h.Y(String(badge.y + 1)),
++          h.TextAnchor("middle"),
++          h.DominantBaseline("middle"),
++          h.FontSize("10"),
++          h.FontWeight("700"),
++          h.Fill(active ? "#fff" : "#485b73")
++        ],
++        [spec.badge.label]
++      ),
++      ...(spec.label !== undefined && spec.labelPoint !== undefined
++        ? [
++            h.text(
++              [
++                h.Class("topology-route-label"),
++                h.X(String(spec.labelPoint.x)),
++                h.Y(String(spec.labelPoint.y)),
++                h.TextAnchor("middle"),
++                h.FontSize("10"),
++                h.FontWeight("700"),
++                h.Fill("#485b73")
++              ],
++              [spec.label]
++            )
++          ]
++        : [])
++    ]
++  )
++}
++
++export type TopologySurfaceSpec = {
++  readonly width: number
++  readonly height: number
++  readonly ariaLabel: string
++  readonly role?: "group" | "img"
++  readonly domainClass?: string
++  readonly viewBox?: string
++  readonly before?: ReadonlyArray<Html | string>
++  readonly after?: ReadonlyArray<Html | string>
++}
++
++/** Keeps the production frame and SVG ordering; before/after content stays outside the scroll surface. */
++export const topologySurfaceView = <Message>(
++  h: HtmlBuilder<Message>,
++  spec: TopologySurfaceSpec,
++  children: ReadonlyArray<Html | string>
++) =>
++  h.div(
++    [h.Class(`production-topology${spec.domainClass ? ` ${spec.domainClass}` : ""}`)],
++    [
++      ...(spec.before ?? []),
++      h.div(
++        [h.Class("topology-scroll")],
++        [
++          h.svg(
++            [
++              h.ViewBox(spec.viewBox ?? `0 0 ${spec.width} ${spec.height}`),
++              h.Role(spec.role ?? "img"),
++              h.AriaLabel(spec.ariaLabel)
++            ],
++            children
++          )
++        ]
++      ),
++      ...(spec.after ?? [])
++    ]
++  )
+diff --git c/packages/agent-flow-viz/vite.dotfiles.config.ts w/packages/agent-flow-viz/vite.dotfiles.config.ts
+new file mode 100644
+index 0000000..1e2e663
+--- /dev/null
++++ w/packages/agent-flow-viz/vite.dotfiles.config.ts
+@@ -0,0 +1,67 @@
++import { createHash } from "node:crypto"
++import { readFileSync } from "node:fs"
++import { dirname, resolve, sep } from "node:path"
++import { fileURLToPath } from "node:url"
++import { defineConfig } from "vite"
++
++const packageRoot = dirname(fileURLToPath(import.meta.url))
++const upstreamRoot = resolve(packageRoot, "../..")
++const diagramRoot = resolve(packageRoot, "../../../.files/docs/spec-diagram")
++const dotfilesRoot = resolve(diagramRoot, "../..")
++const requiredArtifacts = [
++  "Flow.bend", "model.json", "adapter.mjs", "build.mjs", "scenarios.json",
++  "Flow.generated.mjs", "projection.json", "architecture.json"
++] as const
++
++// Fail closed before Vite serves policy bytes. This is freshness, not deployment proof.
++function requireFreshReceipt() {
++  const receipt = JSON.parse(readFileSync(resolve(diagramRoot, "receipt.json"), "utf8")) as {
++    artifacts: Record<string, string>
++    sources: { path: string; sha256: string }[]
++  }
++  for (const name of requiredArtifacts) {
++    const expected = receipt.artifacts[name]
++    const actual = createHash("sha256").update(readFileSync(resolve(diagramRoot, name))).digest("hex")
++    if (typeof expected !== "string" || expected !== actual) {
++      throw new Error(`Stale .files diagram receipt for ${name}; regenerate with its existing build.mjs producer before launching Hapsland.`)
++    }
++  }
++  for (const source of receipt.sources) {
++    const path = resolve(dotfilesRoot, source.path)
++    if (!path.startsWith(`${dotfilesRoot}${sep}`)) throw new Error("Diagram receipt source escapes the .files checkout")
++    const actual = createHash("sha256").update(readFileSync(path)).digest("hex")
++    if (actual !== source.sha256) throw new Error(`Stale .files source receipt for ${source.path}; regenerate with build.mjs.`)
++  }
++}
++
++requireFreshReceipt()
++
++export default defineConfig({
++  root: packageRoot,
++  base: "./",
++  cacheDir: resolve(upstreamRoot, ".test-runs/vite-dotfiles"),
++  plugins: [{
++    name: "dotfiles-receipt-freshness",
++    configureServer(server) {
++      server.middlewares.use((request, _response, next) => {
++        try {
++          if (request.url?.includes("dotfiles") || request.url?.includes("spec-diagram")) requireFreshReceipt()
++          next()
++        } catch (error) {
++          next(error instanceof Error ? error : new Error(String(error)))
++        }
++      })
++    },
++    buildStart: requireFreshReceipt
++  }],
++  resolve: {
++    dedupe: ["effect", "foldkit"],
++    alias: [{ find: /^@dotfiles-diagram\//, replacement: `${diagramRoot}/` }]
++  },
++  server: {
++    host: "127.0.0.1", port: 4183, strictPort: true,
++    fs: { strict: true, allow: [packageRoot, resolve(upstreamRoot, "node_modules"), diagramRoot] }
++  },
++  preview: { host: "127.0.0.1", port: 4183, strictPort: true },
++  build: { outDir: resolve(upstreamRoot, ".test-runs/dotfiles-hapsland-dist"), rollupOptions: { input: resolve(packageRoot, "dotfiles.html") } }
++})
+diff --git c/packages/agent-flow-viz/vite.fsm.config.ts w/packages/agent-flow-viz/vite.fsm.config.ts
+new file mode 100644
+index 0000000..f2e99cc
+--- /dev/null
++++ w/packages/agent-flow-viz/vite.fsm.config.ts
+@@ -0,0 +1,48 @@
++import { createHash } from "node:crypto"
++import { readFileSync } from "node:fs"
++import { dirname, resolve } from "node:path"
++import { fileURLToPath } from "node:url"
++import { defineConfig } from "vite"
++
++// Bend FSM layers (work item + worker supervision) next to the .files entry.
++// Both diagrams fail closed on stale artifacts before Vite serves or bundles them.
++const packageRoot = dirname(fileURLToPath(import.meta.url))
++const upstreamRoot = resolve(packageRoot, "../..")
++const fsmRoot = resolve(packageRoot, "../../../.files/docs/spec-diagram/fsm")
++const dotfilesRoot = resolve(fsmRoot, "..")
++const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex")
++
++function requireFresh(root: string, names: readonly string[]) {
++  const receipt = JSON.parse(readFileSync(resolve(root, "receipt.json"), "utf8")) as { artifacts: Record<string, string> }
++  for (const name of names) {
++    if (receipt.artifacts[name] !== sha256(resolve(root, name))) {
++      throw new Error(`Stale diagram receipt for ${root}/${name}; rerun its build.mjs producer before launching Hapsland.`)
++    }
++  }
++}
++const fsmArtifacts = ["Runtime.bend", "WorkItem.bend", "WorkerSupervision.bend", "model.json", "scenarios.json", "adapter.mjs",
++  "build.mjs", "extract-tapes.py", "work-item.mmd", "worker-supervision.mmd", "Runtime.generated.mjs", "projection.json", "replay.json"] as const
++const dotfilesArtifacts = ["Flow.bend", "model.json", "adapter.mjs", "build.mjs", "scenarios.json", "Flow.generated.mjs",
++  "projection.json", "architecture.json"] as const
++const requireFreshAll = () => { requireFresh(fsmRoot, fsmArtifacts); requireFresh(dotfilesRoot, dotfilesArtifacts) }
++
++requireFreshAll()
++
++export default defineConfig({
++  root: packageRoot,
++  base: "./",
++  cacheDir: resolve(upstreamRoot, ".test-runs/vite-fsm"),
++  plugins: [{ name: "fsm-receipt-freshness", buildStart: requireFreshAll }],
++  resolve: {
++    dedupe: ["effect", "foldkit"],
++    alias: [
++      { find: /^@fsm-diagram\//, replacement: `${fsmRoot}/` },
++      { find: /^@dotfiles-diagram\//, replacement: `${dotfilesRoot}/` }
++    ]
++  },
++  server: { host: "127.0.0.1", port: 4184, strictPort: true, fs: { strict: true, allow: [packageRoot, resolve(upstreamRoot, "node_modules"), dotfilesRoot] } },
++  build: {
++    outDir: resolve(upstreamRoot, ".test-runs/fsm-hapsland-dist"), emptyOutDir: true,
++    rollupOptions: { input: { index: resolve(packageRoot, "fsm.html"), dotfiles: resolve(packageRoot, "dotfiles.html") } }
++  }
++})
