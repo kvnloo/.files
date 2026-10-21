@@ -7,6 +7,12 @@
 # classes:   job classes this node accepts. scripts/fleet labels writes them as node
 #            labels z0.dev/class-<name>=true|false (every class, every node) and
 #            config/k3s/kueue/queues.yaml copies them into the node's flavor.
+# capabilities: host toolchains a `fleet run` job finds on the node (not k3s pods).
+#            `fleet run --class X` matches classes or capabilities, so
+#            `--class android-build` lands on a node that can run ./gradlew assemble*.
+#            `fleet labels` mirrors them as node labels z0.dev/cap-<name>=true|false.
+# toolchains: what `fleet toolchain <node>` (and `fleet enroll`) installs there with
+#            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk.
 # health:    thresholds for `fleet health`; on_unhealthy: cordon | report
 # lane:      limits for host jobs (`fleet run`): the agentjob user slice is capped at
 #            mem_max/cpu_quota; a job only starts when MemAvailable >= mem_floor_mb
@@ -36,9 +42,16 @@ nodes:
     ssh_port: 2222
     arch: amd64
     classes: [cpu-heavy, build]
+    # The default build node (docs/fleet/README.md "Default routing"): NOOP and
+    # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
+    # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
+    capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
+    toolchains: [jdk17, jdk21, bun, android-sdk]
     lane:
-      mem_max: 4G
-      cpu_quota: 600%
+      mem_max: 7G           # 16 GiB laptop; a NOOP debug build (Gradle + Kotlin daemons) wants ~5-6 GiB
+      # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the
+      # i7-4870HQ at 96-98 C with both fans at max (crit 100 C), and health paused it.
+      cpu_quota: 400%
     kubelet:
       system_reserved: cpu=1,memory=2Gi
       kube_reserved: cpu=500m,memory=1Gi
@@ -56,6 +69,7 @@ nodes:
     ssh_port: 22
     arch: arm64
     classes: [phone]
+    capabilities: [python, git, java]   # light jobs only: lint, pure-Python tests, scans, git work
     taints: [phone]         # `fleet run` picks it only with --tolerate phone or --node
     model: SM-S938U
     android:                # groot's adb to the phone itself (fleet health; read-only)
@@ -85,6 +99,7 @@ nodes:
     ssh_port: 8022
     arch: arm64
     classes: [phone]
+    capabilities: [python, git]
     taints: [phone]
     model: SM-S906U1
     android:

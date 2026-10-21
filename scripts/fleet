@@ -6,10 +6,13 @@
       --node NAME|auto  --class C  --arch amd64|arm64  --tolerate phone
       --mem 2G  --cpus 2  --timeout 3600  --src DIR (default: cwd)  --no-src
       --fetch PATH (repeatable, relative to the job dir)  --keep
+      (--class matches a node's classes or its capabilities, e.g. android-build;
+       scripts/fleet-build wraps this with the default routing for builds)
   fleet kill NODE JOB_ID                        stop a running host-lane job
   fleet health [--node N] [--strikes K] [--set key=value]   probe, judge, cordon/uncordon
   fleet labels                                  apply class labels/taints from config/fleet/nodes.yaml
   fleet enroll NODE                             harden a registered Linux node over root ssh
+  fleet toolchain NODE [--check]                install the node's `toolchains` (JDK, Android SDK, Bun)
   fleet update NODE [--apply]                   show pending updates; --apply cordons, upgrades, uncordons
   fleet install-timer                           user systemd timer: `fleet health` every 2 minutes
 
@@ -64,6 +67,8 @@ def registry():
         n.setdefault("ssh_port", 22)
         n.setdefault("classes", [])
         n.setdefault("taints", [])
+        n.setdefault("capabilities", [])
+        n.setdefault("toolchains", [])
         n["k8s"] = n["kind"] == "linux"
         n["lane_enabled"] = n["role"] == "worker"
         nodes[name] = n
@@ -360,8 +365,8 @@ def cmd_health(args):
 def eligible(n, args, state):
     if not n["lane_enabled"]:
         return "no host lane"
-    if args.cls and args.cls not in n["classes"]:
-        return f"not class {args.cls}"
+    if args.cls and args.cls not in n["classes"] + n["capabilities"]:
+        return f"not class/capability {args.cls}"
     if args.arch and n.get("arch") != args.arch:
         return f"arch {n.get('arch')}"
     if args.node in (None, "auto") and any(t not in (args.tolerate or []) for t in n["taints"]):
@@ -445,11 +450,21 @@ def cmd_run(args):
                  f"env HOME=$HOME/{jdir[2:]} TMPDIR=$HOME/{jdir[2:]} bash -c {shlex.quote(cmd)}")
     else:
         cpu = f"{int(float(args.cpus) * 100)}%" if args.cpus else n["lane"]["cpu_quota"]
+        # /etc/fleet/toolchain.env (scripts/fleet-toolchain.sh) puts JAVA_HOME, ANDROID_HOME and
+        # GRADLE_USER_HOME in place. Stopping the scope afterwards reaps what the job left
+        # running (Gradle and Kotlin daemons), so nothing outlives the job and its memory cap.
         inner = (f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
                  f"if [ $avail -lt {floor + mem} ]; then echo \"fleet: only ${{avail}}MiB available\" >&2; exit 75; fi; "
+                 # Jobs share the lane slice's root-owned MemoryMax: two 6 GiB builds in a 7 GiB
+                 # lane OOM each other. Admit only when the slice's anonymous memory leaves room.
+                 f"sl=/sys/fs/cgroup/user.slice/user-$(id -u).slice; smax=$(cat $sl/memory.max 2>/dev/null || echo max); "
+                 f"if [ \"$smax\" != max ]; then left=$(( (smax - $(awk '/^anon /{{print $2}}' $sl/memory.stat)) / 1048576 )); "
+                 f"if [ $left -lt {mem} ]; then echo \"fleet: lane has ${{left}}MiB left for a {mem}MiB job (other jobs running)\" >&2; exit 75; fi; fi; "
+                 f"[ -r /etc/fleet/toolchain.env ] && . /etc/fleet/toolchain.env; "
                  f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
                  f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
-                 f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; exit $?")
+                 f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; rc=$?; "
+                 f"systemctl --user stop fleet-{jid}.scope 2>/dev/null; exit $rc")
     with open(log, "w") as lf:
         lf.write(f"# fleet job {jid} node={n['name']} cmd={cmd}\n")
         proc = subprocess.Popen(ssh + [inner], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -487,7 +502,7 @@ def cmd_nodes(args):
     online = tailnet_online()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip(nodes, ex.map(probe, nodes.values())))
-    print(f"{'NODE':14} {'KIND':6} {'ARCH':6} {'CLASSES':22} {'ONLINE':6} {'K8S':14} {'LOAD':9} {'MEM_AVAIL':9} POWER")
+    print(f"{'NODE':14} {'KIND':6} {'ARCH':6} {'CLASSES':22} {'ONLINE':6} {'K8S':14} {'LOAD':9} {'MEM_AVAIL':9} {'POWER':14} CAPABILITIES")
     for name, n in nodes.items():
         p = probes[name]
         kn = k8s.get(name)
@@ -498,7 +513,7 @@ def cmd_nodes(args):
         load = f"{p.get('load1', '?')}/{p.get('ncpu', '?')}"
         print(f"{name:14} {n['kind']:6} {n.get('arch', '?'):6} {','.join(n['classes']) or '-':22} "
               f"{'yes' if online.get(n['tailnet_ip']) else 'no':6} {ks:14} {load:9} "
-              f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws}")
+              f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws:14} {','.join(n['capabilities']) or '-'}")
     for name, c in reg.get("candidates", {}).items():
         print(f"{name:14} (candidate) {c['note']}")
 
@@ -506,10 +521,13 @@ def cmd_nodes(args):
 def cmd_labels(args):
     reg, nodes = registry()
     k8s = k8s_nodes()
+    caps = sorted({c for n in nodes.values() for c in n["capabilities"]})
     for name, n in nodes.items():
         if not n["k8s"] or name not in k8s:
             continue
         labels = [f"z0.dev/class-{c}={'true' if c in n['classes'] else 'false'}" for c in reg["classes"]]
+        # Host-lane toolchains, informational for pods (k3s pods do not see the host toolchain).
+        labels += [f"z0.dev/cap-{c}={'true' if c in n['capabilities'] else 'false'}" for c in caps]
         kc("label", "--overwrite", "node", name, *labels)
         for t in n["taints"]:
             kc("taint", "node", name, t, "--overwrite")
@@ -539,14 +557,37 @@ def cmd_enroll(args):
               "--lane-mem-max", lane["mem_max"], "--lane-cpu-quota", lane["cpu_quota"],
               "--lane-tasks-max", str(lane["tasks_max"]), *kargs]
     tar = subprocess.Popen(["tar", "-C", str(REPO), "-cf", "-", "scripts/fleet-harden.sh", "scripts/fleet-node-probe",
-                            "scripts/setup-k3s.sh", "config/k3s"], stdout=subprocess.PIPE)
+                            "scripts/fleet-toolchain.sh", "scripts/setup-k3s.sh", "config/k3s"], stdout=subprocess.PIPE)
     r = subprocess.run(root + ["install -d -m 0700 /opt/dotfiles-k3s && tar -xf - -C /opt/dotfiles-k3s"], stdin=tar.stdout)
     tar.wait()
     if r.returncode:
         die("copy to node failed")
     pub = Path(KEY + ".pub").read_text()
     subprocess.run(root + ["install -m 0644 /dev/stdin /opt/dotfiles-k3s/controller.pub"], input=pub.encode(), check=True)
-    return subprocess.run(root + [" ".join(shlex.quote(a) for a in remote)]).returncode
+    rc = subprocess.run(root + [" ".join(shlex.quote(a) for a in remote)]).returncode
+    if rc == 0 and n["toolchains"]:
+        rc = subprocess.run(root + ["bash /opt/dotfiles-k3s/scripts/fleet-toolchain.sh install "
+                                    + " ".join(map(shlex.quote, n["toolchains"]))]).returncode
+    return rc
+
+
+def cmd_toolchain(args):
+    """Install (or --check) the registry's `toolchains` for a Linux worker, over root ssh."""
+    _, nodes = registry()
+    n = nodes.get(args.node) or die(f"unknown node {args.node}")
+    if n["kind"] != "linux" or not n["lane_enabled"]:
+        die(f"{args.node}: toolchains are for Linux workers")
+    if not n["toolchains"]:
+        die(f"{args.node}: no `toolchains` in {REGISTRY}")
+    root = ssh_cmd(n, user="root", port=args.port or n["ssh_port"])
+    tar = subprocess.Popen(["tar", "-C", str(REPO), "-cf", "-", "scripts/fleet-toolchain.sh"], stdout=subprocess.PIPE)
+    r = subprocess.run(root + ["install -d -m 0700 /opt/dotfiles-k3s && tar -xf - -C /opt/dotfiles-k3s"], stdin=tar.stdout)
+    tar.wait()
+    if r.returncode:
+        die("copy to node failed")
+    mode = "check" if args.check else "install"
+    return subprocess.run(root + [f"bash /opt/dotfiles-k3s/scripts/fleet-toolchain.sh {mode} "
+                                  + " ".join(map(shlex.quote, n["toolchains"]))]).returncode
 
 
 def cmd_update(args):
@@ -622,6 +663,8 @@ def main():
     sub.add_parser("labels")
     e = sub.add_parser("enroll"); e.add_argument("node"); e.add_argument("--port", type=int)
     u = sub.add_parser("update"); u.add_argument("node"); u.add_argument("--apply", action="store_true")
+    t = sub.add_parser("toolchain"); t.add_argument("node"); t.add_argument("--check", action="store_true")
+    t.add_argument("--port", type=int)
     sub.add_parser("install-timer")
     argv = sys.argv[1:]
     nodes = registry()[1]
@@ -634,7 +677,8 @@ def main():
     if args.cmd_name == "run" and args.cmd and args.cmd[0] == "--":
         args.cmd = args.cmd[1:]
     fn = {"nodes": cmd_nodes, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,
-          "enroll": cmd_enroll, "update": cmd_update, "install-timer": cmd_install_timer}[args.cmd_name]
+          "enroll": cmd_enroll, "update": cmd_update, "toolchain": cmd_toolchain,
+          "install-timer": cmd_install_timer}[args.cmd_name]
     sys.exit(fn(args) or 0)
 
 

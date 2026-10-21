@@ -6,7 +6,7 @@ work in two lanes:
 | Lane | For | How | Isolation |
 | --- | --- | --- | --- |
 | **k3s** (`factory`, `lanes`, `z0` queues) | untrusted repo work, anything that fits a container | oss-factory `factory submit`, or a Job with `kueue.x-k8s.io/queue-name` | restricted Pod Security, `netpol-ready` gate, egress only to DNS + internet (docs/k3s/ONBOARDING.md) |
-| **host** (`fleet run`) | our own builds/tests that need the host toolchain (cargo, bun, make, ...) | `scripts/fleet run <node> -- <cmd>` | unprivileged `agentjob` user, capped systemd scope, no LAN/tailnet egress; phones: polite-run |
+| **host** (`fleet run`) | our own builds/tests that need the host toolchain (Gradle/Android, bun, cargo, make, ...) | `scripts/fleet-build -- <cmd>` (default routing) or `scripts/fleet run <node> -- <cmd>` | unprivileged `agentjob` user, capped systemd scope, no LAN/tailnet egress; phones: polite-run |
 
 The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
 re-running a command with the same registry changes nothing.
@@ -16,7 +16,7 @@ re-running a command with the same registry changes nothing.
 | Device | Role | State |
 | --- | --- | --- |
 | groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
-| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane | hardened and verified |
+| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane; **the default build node** | hardened and verified; JDK 17/21, Android SDK (34/35/37.2, build-tools 34/35/37), Bun, Node, Python; NOOP debug APK built there 2026-10-20 |
 | omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
 | galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only, lowest priority | installed and verified 2026-10-20; ssh on 8022; works when charging or >= 50 % |
 | cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
@@ -25,6 +25,39 @@ re-running a command with the same registry changes nothing.
 Full facts: `zer0/data/operations/fleet/inventory-20261020.json`.
 
 ## Running work
+
+### Default routing (every agent)
+
+Builds and test suites do **not** run on groot. Use `scripts/fleet-build`
+(`~/.local/bin/fleet-build` on groot); the short version for agents is
+[BUILDS.md](BUILDS.md).
+
+```sh
+cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/full/debug --out /tmp/apk -- ./gradlew assembleFullDebug
+fleet-build -- bun test                     # class build -> mbp
+fleet-build --light -- python3 -m pytest    # mbp or a phone, 512 MiB
+```
+
+- Gradle/Android -> capability `android-build` (mbp; 6 GiB, 4 CPUs, JDK 17, or
+  `--jdk 21`). Everything else that builds or tests -> class `build` (mbp).
+  Light arm64-safe work -> `--light` (phones allowed).
+- groot only for the GPU or a toolchain that exists only there, said explicitly.
+  No room (busy, hot, cordoned) -> `fleet-build` retries every 60 s for
+  `--wait` seconds (default 1800), then exits 75; never queue it on groot instead.
+- `fleet run` on Linux admits a job only when the lane slice's anonymous memory
+  leaves room for `--mem` (concurrent builds queue instead of OOM-killing each
+  other), and it stops the job's scope afterwards.
+- Capabilities (`capabilities:` in the registry) are what a host-lane job finds
+  on the node; `fleet run --class X` matches classes or capabilities, and
+  `fleet nodes` lists them. `scripts/fleet toolchain <node>` installs the node's
+  `toolchains:` (`scripts/fleet-toolchain.sh`: Temurin JDK 17/21 and Bun pinned by
+  sha256 in `/opt/fleet`, Android SDK with cmdline-tools pinned by Google's sha1 in
+  `/opt/android-sdk`, `/etc/fleet/toolchain.env` sourced by every Linux job);
+  `--check` reports only. Gradle caches stay in `/home/agentjob/.gradle` on the
+  node; the job's scope is stopped at the end, so Gradle/Kotlin daemons never
+  outlive it.
+
+### `fleet run`
 
 ```sh
 scripts/fleet nodes                                  # registry + live load/memory/power
@@ -48,7 +81,7 @@ scripts/fleet kill mbp <job-id>
 - **Limits (Linux)**: the job runs as `agentjob` in
   `systemd-run --user --scope` with `MemoryMax=--mem`, `MemorySwapMax=512M`,
   `CPUQuota=--cpus` and `timeout`. The whole `agentjob` user slice is capped
-  root-side (mbp: 4 GiB, 600 % CPU, 4096 tasks) and cannot reach 10/8,
+  root-side (mbp: 7 GiB, 400 % CPU, 4096 tasks) and cannot reach 10/8,
   172.16/12, 192.168/16, 100.64/10 (tailnet), link-local or ULA addresses.
   Internet works. A job that passes its memory cap is OOM-killed inside its
   scope (exit 137); the host and k3s are untouched.
@@ -106,7 +139,7 @@ scripts/fleet health --node mbp --strikes 1                                # OK 
 
 `scripts/fleet enroll <node>` copies the scripts to `/opt/dotfiles-k3s` on the
 node over root ssh and runs `fleet-harden.sh worker` with the registry's
-values. Each file is written only when it changes; services reload only when
+values, then `fleet-toolchain.sh install <toolchains>` when the node lists any. Each file is written only when it changes; services reload only when
 their file changed; nothing reboots. `fleet-harden.sh plan worker|server`
 renders everything into a temp dir without root.
 
@@ -164,8 +197,9 @@ For the RTX 2080 Super PC, the Oracle VM, and cursor/cos once identified:
 2. From groot, prove access: `ssh root@<tailnet-ip> true` (Tailscale SSH; approve
    the check URL once) or put groot's key in `/root/.ssh/authorized_keys`.
 3. Add the node under `nodes:` in `config/fleet/nodes.yaml` (copy mbp; set
-   `tailnet_ip`, `ssh_port: 22` for the first enroll, `arch`, `classes`, kubelet
-   reservations sized to its RAM) and a `node-<name>` flavor in
+   `tailnet_ip`, `ssh_port: 22` for the first enroll, `arch`, `classes`,
+   `capabilities`/`toolchains` if it should build, kubelet reservations sized
+   to its RAM) and a `node-<name>` flavor in
    `config/k3s/kueue/queues.yaml`.
 4. Join k3s (docs/k3s/ONBOARDING.md "Joining an agent"), then from groot:
    ```sh
