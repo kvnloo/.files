@@ -1,0 +1,400 @@
+{
+ "provenance": {
+  "source": "kvnloo/z0intelligence@24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a: tests/fixtures/ops_tapes (state.db commands, dash-20261020 reflog, z0live session c9ffaba8, fleet health history, sol-runs RESUME.txt)",
+  "privacy": "Ids, times, short SHAs, event kinds and paraphrased notes only.",
+  "scope": "One step per gate incident; node-health and gateway-run steps are recorded probes/events except where marked what-if."
+ },
+ "scenarios": [
+  {
+   "id": "ops-o1-groot-bundle",
+   "machine": "ops-gates",
+   "title": "O1 \u00b7 bundle on groot",
+   "summary": "10:31: a Dash worker ran `bunx expo export` on groot while the MBP had room.",
+   "item": "local-4343cb71 (state.db)",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GPlace",
+      "c": "CBundle",
+      "mbp": true,
+      "phone": false
+     },
+     "facts": {},
+     "note": "Gate decision: run on the MBP (fleet-build), not groot. One of 196 such commands that day.",
+     "source": "report",
+     "at": "2026-10-21T10:31:07-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o1-no-room",
+   "machine": "ops-gates",
+   "title": "O1 \u00b7 no room anywhere",
+   "summary": "What the gate does when neither the MBP nor a phone has room.",
+   "item": "fleet",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GPlace",
+      "c": "CTest",
+      "mbp": false,
+      "phone": false
+     },
+     "facts": {},
+     "note": "Waits. It never falls back to groot (o1_full_waits, o1_never_groot_fallback).",
+     "source": "report",
+     "at": "2026-10-21T10:30:00-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o2-served-commit",
+   "machine": "ops-gates",
+   "title": "O2 \u00b7 merge commit in the served worktree",
+   "summary": "11:30: 'Merge PR #93 left-handed mode into integration' committed inside dash-20261020 while Metro served it; HTTP 500 on the phone at 11:31.",
+   "item": "dash-20261020 faf6183",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GGit",
+      "served": true,
+      "op": "GCommit",
+      "txn": false
+     },
+     "facts": {},
+     "note": "Refused by the served-worktree hooks (installed on dash-20261020 21 Oct 17:50).",
+     "source": "report",
+     "at": "2026-10-21T11:30:02-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o3-fast-motion",
+   "machine": "ops-gates",
+   "title": "O3 \u00b7 fast-motion rollout",
+   "summary": "14:02: 3b3cb38 promoted after an Android bundle readback, no launch on the device; the phone crashed at launch (reported 15:51).",
+   "item": "dash-20261020 3b3cb38",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GRoll",
+      "q": {
+       "clean": true,
+       "ff": true,
+       "gated": false,
+       "receipt": false,
+       "call": false,
+       "idle": true
+      },
+      "check": false
+     },
+     "facts": {},
+     "note": "With the device launch check the crash fails the check: rolled back automatically.",
+     "source": "report",
+     "at": "2026-10-21T14:02:01-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o3-in-call",
+   "machine": "ops-gates",
+   "title": "O3 \u00b7 rollout during the owner's call",
+   "summary": "What happens to a rollout while a z0live call is live.",
+   "item": "dash",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GRoll",
+      "q": {
+       "clean": true,
+       "ff": true,
+       "gated": false,
+       "receipt": false,
+       "call": true,
+       "idle": true
+      },
+      "check": true
+     },
+     "facts": {},
+     "note": "Deferred: the launch check never runs during a call; the rollout is pending.",
+     "source": "report",
+     "at": "2026-10-21T16:20:00-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o4-taste",
+   "machine": "ops-gates",
+   "title": "O4 \u00b7 private corpus to the public fork",
+   "summary": "A commit with the private taste corpus pushed to kvnloo/taste-skill (public).",
+   "item": "kvnloo/taste-skill",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GPush",
+      "private": true,
+      "vis": "VPublic"
+     },
+     "facts": {},
+     "note": "Refused by the z0-hooks pre-push gate (opted in on taste-skill).",
+     "source": "report",
+     "at": "2026-10-21T17:53:00-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o5-phone-tap",
+   "machine": "ops-gates",
+   "title": "O5 \u00b7 the 'Phone' tap",
+   "summary": "16:25:02: 'you need to use the backend' \u2014 the voice agent's phone_do tapped 'Phone' (landed:true).",
+   "item": "z0live c9ffaba8 event 894",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GPhone",
+      "a": {
+       "tag": "PTap",
+       "intent": false,
+       "fg": false
+      },
+      "call": true
+     },
+     "facts": {},
+     "note": "Refused: no owner phone request in the utterance.",
+     "source": "report",
+     "at": "2026-10-21T16:25:02-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o7-grok",
+   "machine": "ops-gates",
+   "title": "O7 \u00b7 Grok role after cancellation",
+   "summary": "omp modelRoles.task = xai-oauth/grok-4.6 after xai was cancelled.",
+   "item": "~/.omp/agent/config.yml (before 21 Oct cleanup)",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GRoute",
+      "cancelled": true,
+      "sol": false,
+      "design": false
+     },
+     "facts": {},
+     "note": "Refused: cancelled provider. The hourly check still finds 11 such routes in live configs.",
+     "source": "report",
+     "at": "2026-10-21T12:00:00-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o7-sol-design",
+   "machine": "ops-gates",
+   "title": "O7 \u00b7 design work on Sol",
+   "summary": "lab-polish (visual design) was dispatched to gpt-6.1-sol.",
+   "item": "sol-runs/20261021-lab-polish",
+   "initial": {
+    "tag": "GIdle"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GRoute",
+      "cancelled": false,
+      "sol": true,
+      "design": true
+     },
+     "facts": {},
+     "note": "Refused: design roles never route to Sol.",
+     "source": "report",
+     "at": "2026-10-21T12:00:00-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o8-s22",
+   "machine": "node-health",
+   "title": "O8 \u00b7 S22+ goes offline",
+   "summary": "galaxy-s22plus fleet probes from 01:4x: one notification after 30 min, then silence until recovery (the fleet sent none all day).",
+   "item": "galaxy-s22plus",
+   "initial": {
+    "tag": "NHealthy"
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "ok": true,
+      "now": 0
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe ok at t+0 min",
+     "source": "report",
+     "at": "2026-10-21T01:47:15-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 148
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+2 min",
+     "source": "report",
+     "at": "2026-10-21T01:49:43-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 1752
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+29 min",
+     "source": "report",
+     "at": "2026-10-21T02:16:27-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 1904
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+31 min",
+     "source": "report",
+     "at": "2026-10-21T02:18:59-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 2055
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+34 min",
+     "source": "report",
+     "at": "2026-10-21T02:21:30-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 2203
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+36 min",
+     "source": "report",
+     "at": "2026-10-21T02:23:58-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 2349
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+39 min",
+     "source": "report",
+     "at": "2026-10-21T02:26:24-05:00"
+    },
+    {
+     "event": {
+      "ok": false,
+      "now": 2485
+     },
+     "facts": {
+      "limit": 1800
+     },
+     "note": "probe BAD at t+41 min",
+     "source": "report",
+     "at": "2026-10-21T02:28:40-05:00"
+    }
+   ]
+  },
+  {
+   "id": "ops-o9-1158",
+   "machine": "gateway-run",
+   "title": "O9 \u00b7 the 11:58 Hermes update",
+   "summary": "sol-lab-polish was running when the 11:58 update cut it off; the orchestrator noticed at 12:24.",
+   "item": "sol-runs/20261021-lab-polish",
+   "initial": {
+    "tag": "RActive",
+    "gw": 1
+   },
+   "actors": {},
+   "steps": [
+    {
+     "event": {
+      "tag": "GwRestart",
+      "gw": 1
+     },
+     "facts": {},
+     "note": "Gateway restart (Hermes update): Interrupted with a resume command, immediately.",
+     "source": "report",
+     "at": "2026-10-21T11:58:00-05:00"
+    },
+    {
+     "event": {
+      "tag": "RunError"
+     },
+     "facts": {},
+     "note": "The dead process looks like an error: it must not become Failed.",
+     "source": "what-if",
+     "at": "2026-10-21T11:58:30-05:00"
+    },
+    {
+     "event": {
+      "tag": "ResumeRun",
+      "session": true
+     },
+     "facts": {},
+     "note": "Resumed from its own run directory (RESUME.txt, 12:24).",
+     "source": "report",
+     "at": "2026-10-21T12:24:43-05:00"
+    }
+   ]
+  }
+ ]
+}

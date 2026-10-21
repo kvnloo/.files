@@ -1611,5 +1611,302 @@
     }
    }
   ]
+ },
+ {
+  "id": "ops-o1-groot-bundle",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "O1"
+    ],
+    "value": {
+     "tag": "GAdmitted"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o1-no-room",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 2,
+    "verdict": "held",
+    "laws": [
+     "O1"
+    ],
+    "value": {
+     "tag": "GWaiting"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o2-served-commit",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "O2"
+    ],
+    "value": {
+     "tag": "GRefused"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o3-fast-motion",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 4,
+    "verdict": "refused",
+    "laws": [
+     "O2",
+     "O3"
+    ],
+    "value": {
+     "tag": "GRolledBack"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o3-in-call",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 2,
+    "verdict": "held",
+    "laws": [
+     "O2",
+     "O3"
+    ],
+    "value": {
+     "tag": "GWaiting"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o4-taste",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "O4"
+    ],
+    "value": {
+     "tag": "GRefused"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o5-phone-tap",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "O5"
+    ],
+    "value": {
+     "tag": "GRefused"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o7-grok",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "O7"
+    ],
+    "value": {
+     "tag": "GRefused"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o7-sol-design",
+  "machine": "ops-gates",
+  "steps": [
+   {
+    "before": 0,
+    "state": 3,
+    "verdict": "refused",
+    "laws": [
+     "O7"
+    ],
+    "value": {
+     "tag": "GRefused"
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o8-s22",
+  "machine": "node-health",
+  "steps": [
+   {
+    "before": 0,
+    "state": 0,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NHealthy"
+    }
+   },
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NBad",
+     "since": 148
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NBad",
+     "since": 148
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NBad",
+     "since": 148
+    }
+   },
+   {
+    "before": 1,
+    "state": 2,
+    "verdict": "accepted",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NNotified",
+     "since": 148
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NNotified",
+     "since": 148
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NNotified",
+     "since": 148
+    }
+   },
+   {
+    "before": 2,
+    "state": 2,
+    "verdict": "no-change",
+    "laws": [
+     "O8"
+    ],
+    "value": {
+     "tag": "NNotified",
+     "since": 148
+    }
+   }
+  ]
+ },
+ {
+  "id": "ops-o9-1158",
+  "machine": "gateway-run",
+  "steps": [
+   {
+    "before": 0,
+    "state": 1,
+    "verdict": "accepted",
+    "laws": [
+     "O9"
+    ],
+    "value": {
+     "tag": "RInterrupted",
+     "gw": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 1,
+    "verdict": "refused",
+    "laws": [
+     "O9"
+    ],
+    "value": {
+     "tag": "RInterrupted",
+     "gw": 1
+    }
+   },
+   {
+    "before": 1,
+    "state": 4,
+    "verdict": "accepted",
+    "laws": [
+     "O9"
+    ],
+    "value": {
+     "tag": "RResumed"
+    }
+   }
+  ]
  }
 ]

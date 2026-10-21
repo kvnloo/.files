@@ -130,3 +130,22 @@ A replay is not an authorization, an admission or verified success, and it
 observes no live host. PROOF.bend passes cover Bend's emitted book
 (`source_semantics_attested=false`). Worker hosts are not in the supervise
 events, so report tapes assume groot with light load.
+
+## Ops plane · operating rules O1–O9
+
+A fifth plane for the owner's operating rules (kvnloo/z0intelligence#192, `bend/ops_fsm`,
+receipt `78fe327d…`, 32 laws, 41/41 mutants rejected). `Ops.bend` is byte-identical to the
+upstream blob at `24fc31e6`. It draws three machines, all decided by compiled Ops.bend:
+
+- **ops-gates**: `OpsLayer.bend` names the verdict of `Ops.place` (O1), `wt_allows` (O2),
+  `rollout` (O2/O3), `push_allows` (O4), `phone_allows` (O5) and `route_ok` (O7) as a state
+  (Admitted, Waits, Refused, Rolled back). It decides nothing itself; O6 takes lists and is
+  shown only by its law card.
+- **node-health** (O8): `Ops.nstep` + `Ops.neff`; the inspector shows the one owner notification.
+- **gateway-run** (O9): `Ops.rstep`: a gateway restart makes a run Interrupted, never Failed.
+
+`ops-tapes.json` holds 11 tapes from the 21 Oct incident replays (state.db commands, the served
+Dash reflog, z0live session c9ffaba8, fleet health history, the 11:58 RESUME files). Receipt:
+28 tapes, 116 steps, 96 edges; Mermaid comparison unchanged (the ops plane has no statechart drawing).
+Checked in a headless Chromium on the MBP at 1440×900 and 412×915: no console errors, the plane
+chip and all 11 tapes present.
