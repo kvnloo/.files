@@ -1,0 +1,11 @@
+#!/bin/sh
+# /usr/local/bin/pulseaudio in an Omalauncher guest (installed by
+# scripts/fleet-phone-keepalive.sh; /usr/local/bin precedes /usr/bin in the launcher's PATH).
+# Omalauncher starts `pulseaudio` in a PRoot of its own as soon as Linux is up, whether
+# the screen is on or not, and restarts it when it exits. That PRoot is the guest's most
+# persistent session, so the fleet service supervisor starts from here (detached, its
+# output away from the launcher's pipe) and then this becomes the real PulseAudio.
+if [ -x /root/.local/bin/fleet-phone-supervise ]; then
+    setsid -f /root/.local/bin/fleet-phone-supervise up --adopt </dev/null >/dev/null 2>&1
+fi
+exec /usr/bin/pulseaudio "$@"

@@ -1,9 +1,9 @@
 # /etc/profile.d/zz-fleet-autostart.sh (Omalauncher guest; installed by
-# scripts/fleet-phone-clone.sh). The guest has no systemd, so every login shell
-# (the launcher's home Terminal tile, Tern's startup probe, new panes) starts the
-# single fleet-phone-autostart watcher, which brings back tailscaled, sshd and
-# `tern remote serve`. Silent and backgrounded: login shells never wait on it.
-# Off switch: touch ~/.config/fleet/no-autostart
-if [ -x "$HOME/.local/bin/fleet-phone-autostart" ] && [ ! -e "$HOME/.config/fleet/no-autostart" ]; then
-    (setsid -f "$HOME/.local/bin/fleet-phone-autostart" --watch >/dev/null 2>&1 </dev/null)
+# scripts/fleet-phone-keepalive.sh). The fleet supervisor normally starts from
+# Omalauncher's PulseAudio session (/usr/local/bin/pulseaudio); a login shell only
+# starts it when none runs, and the next PulseAudio start moves it into that session.
+# Silent and detached: login shells never wait on it. Off switch:
+# touch ~/.config/fleet/no-autostart
+if [ -x "$HOME/.local/bin/fleet-phone-supervise" ] && [ ! -e "$HOME/.config/fleet/no-autostart" ]; then
+    (setsid -f "$HOME/.local/bin/fleet-phone-supervise" up >/dev/null 2>&1 </dev/null)
 fi

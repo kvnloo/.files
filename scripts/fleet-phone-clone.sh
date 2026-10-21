@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Copy the S25's Omalauncher guest setup (Tern remote start helpers and the
-# key-only sshd policy) onto another phone's guest, install the autostart hook
-# that brings tailscaled, sshd and `tern remote serve` back after the launcher
-# restarts, then install the polite fleet lane there. Run on groot once the new
+# key-only sshd policy) onto another phone's guest, install the runit supervisor
+# (fleet-phone-keepalive.sh) that keeps tailscaled, sshd and `tern remote serve`
+# running from Omalauncher's PulseAudio session, then install the polite fleet lane there. Run on groot once the new
 # phone's guest answers ssh:
 #
 #   scripts/fleet-phone-clone.sh root@100.104.42.85 root@<new-guest-tailnet-ip> [--port 8022] [--model SM-S906U1]
 #
 # --port is the target's ssh port (the source is reached with your ssh defaults).
 # Read-only on the source phone. On the target it writes only inside the guest:
-# ~/.local/bin/{tern-remote-start,tern-ssh-start,fleet-phone-autostart},
+# ~/.local/bin/{tern-remote-start,tern-ssh-start},
 # ~/.local/lib/proot-peercred.so, /etc/ssh/sshd_config.d/50-omalauncher.conf,
-# /etc/profile.d/zz-fleet-autostart.sh, plus what fleet-phone-keepalive.sh (Android
+# plus what fleet-phone-keepalive.sh (the supervisor, /usr/local/bin/pulseaudio,
+# /etc/profile.d/zz-fleet-autostart.sh; Android
 # battery/phantom-process hardening via the guest's adb, with an undo file) and
 # fleet-phone-setup.sh write.
 # When the target ships its own Tern (/opt/tern/tern/tern, newer Omalauncher),
@@ -56,7 +57,7 @@ ssh "${O[@]}" "$SRC" "cd / && tar -cf - ${files//$'\n'/ }" |
     install -m 0644 "$tmp"/etc/ssh/sshd_config.d/50-omalauncher.conf /etc/ssh/sshd_config.d/
     rm -rf "$tmp"; /usr/bin/sshd -t && echo "sshd policy ok"'
 
-echo "==> keep-alive: guest watcher + Android hardening (scripts/fleet-phone-keepalive.sh)"
+echo "==> keep-alive: guest supervisor + Android hardening (scripts/fleet-phone-keepalive.sh)"
 "$REPO/scripts/fleet-phone-keepalive.sh" "$DST" --port "$PORT"
 
 echo "==> installing the polite fleet lane"

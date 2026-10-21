@@ -201,11 +201,18 @@ def android_state(n):
             "wakefulness": wake.split("=")[-1] or None}
 
 
-def maybe_revive(n, st, s):
+def maybe_revive(n, st, s, pr):
     """Opt-in (`android.revive: true`): reopen Omalauncher, whose MainActivity is the only
-    thing that starts the Linux guest, when its service is gone (process killed). Only while
-    the screen is off and at most every 15 min, so it never takes over a screen in use."""
+    thing that starts the Linux guest, but only when the guest is truly down: the probe
+    could not reach it over ssh, `tern remote doctor` failed too, and Omalauncher's
+    foreground service is gone (process killed). A guest whose services merely restart
+    is the supervisor's job (it restarts them within a second, inside the guest).
+    Only while the screen is off and at most every 15 min, so it never takes over a
+    screen in use. Linux startup runs the guest's PulseAudio hook, which starts the
+    supervisor, so no window has to open."""
     if not (n.get("android") or {}).get("revive") or not st or "error" in st:
+        return None
+    if "error" not in pr or pr.get("tern_doctor") == "ok":
         return None
     if st.get("omalauncher_fgs") or st.get("wakefulness") in (None, "Awake"):
         return None
@@ -234,6 +241,8 @@ def judge(n, p, k8s, online, overrides):
     if "error" in p:
         bad.append(p["error"])
         return bad, warn
+    if n["kind"] == "phone" and p.get("supervisor_session") not in (None, "audio"):
+        warn.append(f"supervisor runs in the {p['supervisor_session']} session, not Omalauncher's audio one")
     if p["mem_available_mb"] < int(h["min_mem_available_mb"]):
         bad.append(f"memory {p['mem_available_mb']}MiB < {h['min_mem_available_mb']}MiB")
     for key in ("disk_root", "disk_k3s", "disk_lane"):
@@ -319,7 +328,7 @@ def cmd_health(args):
         mode = n["health"]["on_unhealthy"]
         kn = k8s.get(name)
         if bad and s["bad"] >= strikes and n["kind"] == "phone":
-            action = maybe_revive(n, probes[name].get("android"), s) or action
+            action = maybe_revive(n, probes[name].get("android"), s, probes[name]) or action
         if bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)

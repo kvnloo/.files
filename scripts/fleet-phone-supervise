@@ -1,0 +1,141 @@
+#!/bin/sh
+# fleet-phone-supervise: event-driven supervision of an Omalauncher guest's services
+# (tailscaled, sshd, `tern remote serve`). The guest has no systemd and PRoot kills every
+# process a session started when that session's PRoot exits, so the supervisor lives in
+# the longest-lived session Omalauncher has: its PulseAudio PRoot, which the launcher
+# starts with Linux (screen on or off, no window needed) and restarts itself when it
+# exits. /usr/local/bin/pulseaudio (config/fleet/phone/pulseaudio-hook) runs `up --adopt`
+# and then execs the real PulseAudio.
+#
+#   fleet-phone-supervise up [--adopt]  start the supervisor unless one runs (flock); with
+#                                       --adopt, called from the PulseAudio session, take
+#                                       over a supervisor that lives in a shorter session
+#   fleet-phone-supervise status        host session, supervisor pid, `sv status` per service
+#   fleet-phone-supervise down          stop the services and the supervisor
+#   fleet-phone-supervise run           the supervisor itself (internal; `up` starts it)
+#
+# Supervision is busybox runit: one `runsv` per service (~/.local/share/fleet/sv/<name>),
+# services in the foreground, so a restart follows the exit at once (wait4, no polling;
+# runsv wakes once an hour, svlogd every ~45 min). ./finish backs a crash loop off
+# 1, 2, 4 ... 60 s. This script waits on its runsv children with `wait -n` and restarts
+# one that dies. No timers anywhere.
+#
+# Off switch: touch ~/.config/fleet/no-autostart. Logs: ~/.local/state/fleet/supervise/
+# {log,events}, ~/.local/state/fleet/log/<service>/current.
+set -u
+umask 077
+HOME=${HOME:-/root}
+SV=$HOME/.local/share/fleet/sv
+ST=$HOME/.local/state/fleet/supervise
+LOCK=$ST/lock
+SERVICES="tailscaled sshd tern-remote"
+BB=/usr/bin/busybox # under `busybox sh` bare names may run applets: util-linux tools by full path
+mkdir -p "$ST"
+
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$ST/log"; }
+
+# The PRoot that traces a process is what keeps it alive; name its session.
+host_of() {
+    t=$(sed -n 's/^TracerPid:[[:space:]]*//p' "/proc/$1/status" 2>/dev/null)
+    case $t in '' | 0) echo none; return ;; esac
+    c=$(tr '\0' ' ' 2>/dev/null <"/proc/$t/cmdline")
+    case $c in
+        *" -c exec pulseaudio "*) echo audio ;;
+        *" -c exec bash --noprofile --norc"*) echo launcher-shell ;;
+        "") echo unknown ;;
+        *) c=${c##* -c exec }; echo "window:$(printf %.40s "$c")" ;;
+    esac
+}
+
+supervisor_pid() {
+    p=$(cat "$ST/pid" 2>/dev/null)
+    case $p in '' | *[!0-9]*) return 1 ;; esac
+    tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q 'fleet-phone-supervise run' || return 1
+    echo "$p"
+}
+
+tree_alive() { ! /usr/bin/flock -n "$LOCK" true; } # the supervisor and its runsvs hold the lock
+
+stop_tree() { # TERM the supervisor, or exit orphaned runsvs; wait for the lock
+    if p=$(supervisor_pid); then
+        kill -TERM "$p"
+    else
+        for s in $SERVICES; do $BB sv exit "$SV/$s" >/dev/null 2>&1; done
+    fi
+    /usr/bin/flock -w 20 "$LOCK" true
+}
+
+up() {
+    [ -e "$HOME/.config/fleet/no-autostart" ] && return 0
+    [ -x "$BB" ] || { log "busybox missing: pacman -S busybox"; return 1; }
+    exec 8>"$ST/up.lock"
+    /usr/bin/flock -w 30 8 || return 0
+    if tree_alive; then
+        [ "${1:-}" = --adopt ] || return 0
+        me=$(host_of $$)
+        [ "$me" = audio ] || return 0
+        p=$(supervisor_pid) && [ "$(host_of "$p")" = audio ] && return 0
+        log "adopt: moving the supervisor from $(if [ -n "${p:-}" ]; then host_of "$p"; else echo 'orphaned runsvs'; fi) into the audio session"
+        stop_tree || { log "adopt: the old tree did not stop in 20 s"; return 1; }
+    fi
+    # busybox ash, not bash, for the one long-lived shell: ~1/4 of the memory.
+    setsid -f "$BB" sh "$0" run </dev/null >>"$ST/log" 2>&1 8>&-
+    i=0 # until it runs (at most 5 s), so the next caller sees it; never probe the lock
+    while [ $i -lt 50 ] && ! supervisor_pid >/dev/null; do sleep 0.1; i=$((i + 1)); done
+}
+
+run() {
+    exec 9>"$LOCK"
+    /usr/bin/flock -w 5 9 || exit 0 # -w: a tree_alive probe may hold it for a moment
+    echo $$ >"$ST/pid"
+    for f in "$ST/log" "$ST/events"; do # bounded: ~128 KiB plus one old copy
+        [ -f "$f" ] && [ "$(wc -c <"$f")" -gt 131072 ] && mv -f "$f" "$f.1"
+    done
+    log "supervisor $$ up in the $(host_of $$) session"
+    stopping=""
+    trap 'stopping=1' TERM INT HUP
+    for s in $SERVICES; do
+        [ -x "$SV/$s/run" ] || continue
+        $BB runsv "$SV/$s" </dev/null &
+        eval "pid_$(echo "$s" | tr - _)=$!"
+    done
+    while :; do
+        wait -n 2>/dev/null # a runsv exited, or a signal came
+        if [ -n "$stopping" ]; then
+            for s in $SERVICES; do $BB sv exit "$SV/$s" >/dev/null 2>&1; done
+            wait # every runsv stops its service and its logger, then exits
+            break
+        fi
+        for s in $SERVICES; do
+            [ -x "$SV/$s/run" ] || continue
+            v=pid_$(echo "$s" | tr - _)
+            eval "p=\${$v:-}"
+            if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null || grep -q '^State:.*Z' "/proc/$p/status" 2>/dev/null; then
+                log "runsv $s exited; starting it again in 1 s"
+                sleep 1
+                $BB runsv "$SV/$s" </dev/null &
+                eval "$v=$!"
+            fi
+        done
+    done
+    log "supervisor $$ stopped"
+}
+
+status() {
+    if p=$(supervisor_pid); then
+        echo "supervisor pid $p, $(host_of "$p") session"
+    elif tree_alive; then
+        echo "supervisor gone, runsvs still hold the lock"
+    else
+        echo "supervisor down"
+    fi
+    for s in $SERVICES; do [ -d "$SV/$s" ] && $BB sv status "$SV/$s" 2>&1; done
+}
+
+case ${1:-} in
+    up) up "${2:-}" ;;
+    run) run ;;
+    status) status ;;
+    down) tree_alive && stop_tree; status ;;
+    *) echo "usage: fleet-phone-supervise up [--adopt] | status | down" >&2; exit 2 ;;
+esac

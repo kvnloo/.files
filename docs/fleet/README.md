@@ -259,7 +259,7 @@ The spare S22+ (SM-S906U1) runs the same polite lane as the S25. Differences:
   directly, so the S25's `~/.local/bin/tern` wrapper (which starts tailscaled,
   sshd, the daemon and remote serve on the S25) does not apply. The clone script
   copies only the S25's start helpers and the peer-credential shim, and installs
-  the autostart hook below.
+  the supervisor below.
 - Jobs get cpus 0-3, the four small cores.
 
 Rebuild or repair it from groot (idempotent):
@@ -277,37 +277,66 @@ Verified 2026-10-20:
 - In a drill, a running polite-run job drained 64 s after `touch ~/.config/fleet/pause`
   (the drill used a temporary copy with the battery floor lowered to 30 %).
 
-### Autostart on phones without systemd
+### Service supervision on phones without systemd
 
-PRoot kills every process a launcher window started when that window closes,
-and the launcher starts nothing for us. `scripts/fleet-phone-clone.sh` therefore
-installs two files in the guest:
+The guest has no systemd (so Tern's own `tern remote install --user`, a systemd
+user unit with `Restart=on-failure`, cannot work there), and PRoot kills every
+process a session started when that session's PRoot exits (`--kill-on-exit`).
+`setsid`, `nohup` and double forks do not escape it: tested on the S22+, all
+three stayed traced by the window's PRoot and died when its Recents card was
+swiped away. So supervision has to live in the longest-lived session
+Omalauncher has, and restarts have to be event-driven, not polled.
 
-- `/etc/profile.d/zz-fleet-autostart.sh`. Every login shell runs it in the
-  background and silently: the launcher's home-screen Terminal tile (it opens with
-  Omalauncher), Tern's login-environment probe at startup, new Tern panes and
-  interactive ssh logins. It starts the watcher below.
-- `~/.local/bin/fleet-phone-autostart --watch`. A single watcher (flock) checks
-  every 60 s and starts each of these that is down:
-  - userspace `tailscaled`, with the guest's existing state; it never runs `tailscale up`
-  - key-only `sshd`
-  - `tern remote serve --user --no-iroh`, through the S25's `tern-remote-start`,
-    with the peer-credential shim
+That session is Omalauncher's PulseAudio PRoot (`AudioBridge.kt`): the launcher
+starts `pulseaudio` as soon as Linux is up, with the screen on or off and no
+window open, and restarts it whenever it exits. Its PATH puts `/usr/local/bin`
+first, so `scripts/fleet-phone-keepalive.sh` installs:
 
-  Log: `~/.local/state/fleet-autostart/log`. Off switch:
-  `touch ~/.config/fleet/no-autostart`.
+- `/usr/local/bin/pulseaudio` (`config/fleet/phone/pulseaudio-hook`): runs
+  `fleet-phone-supervise up --adopt` detached, then execs `/usr/bin/pulseaudio`.
+- `~/.local/bin/fleet-phone-supervise` (`scripts/`): the supervisor, busybox
+  runit (`pacman -S busybox`; Arch has no s6/runit/dinit packages). One `runsv`
+  per service in `~/.local/share/fleet/sv/<service>` (`config/fleet/phone/sv/`),
+  services in the foreground: `tailscaled` (userspace networking), `sshd -D -e`,
+  `tern remote serve --user --no-iroh` (with the peer-credential shim). runsv
+  restarts a service the moment it exits (`wait4`; runsv wakes once an hour,
+  svlogd every ~45 min, the supervisor never). `./finish` restarts at once
+  unless a service dies three times in a row within 30 s of starting, then backs
+  off 1, 2, 4 ... 60 s. The supervisor waits on its runsvs with `wait -n` and
+  restarts one that dies. `up --adopt` from the PulseAudio session takes over a
+  supervisor that started in a shorter-lived session (a login shell).
+- Services started some other way (Tern's S25 wrapper, by hand) are adopted,
+  not killed: the run script blocks on the old pid (util-linux `waitpid`, a
+  pidfd) and starts its own the moment it exits. Installing never restarts
+  anything.
+- `tailscaled` gets two extra guards, both found on the S22+: its startup can
+  block forever in a netlink `recvfrom` (`netmon.New` -> `syscall.NetlinkRIB`;
+  Android), so the run script kills it if its socket is not there in 20 s and
+  runsv starts it again; and it can wedge on SIGTERM under PRoot, so the run
+  shell stays its parent, turns runsv's TERM into a KILL after 5 s, and
+  `setpriv --pdeathsig KILL` takes it down if that shell dies. Restart it with
+  `busybox sv restart ~/.local/share/fleet/sv/tailscaled`, never `kill <pid>`.
+- `/etc/profile.d/zz-fleet-autostart.sh`: login shells run `up` only when no
+  supervisor runs (the next PulseAudio start moves it into the audio session).
 
-Verified on the S22+:
-- With remote serve and the watcher stopped, one `bash -l` restarted remote serve
-  within 1 s.
-- With only remote serve stopped, the watcher restarted it at its next 60 s tick.
-- `tern remote doctor root@100.97.11.22` then passed (UDP 8376, pinned host key, auth accepted).
+Commands (in the guest): `fleet-phone-supervise status|up|down`,
+`busybox sv status|restart|down|up ~/.local/share/fleet/sv/<service>`. Logs:
+`~/.local/state/fleet/supervise/{log,events}` (supervisor and every exit with its
+restart delay), `~/.local/state/fleet/log/{sshd,tailscaled}/current` (svlogd,
+2 x 256 KiB), `~/.local/state/tern-remote/service.log`. Off switch:
+`touch ~/.config/fleet/no-autostart`. The old 60 s watcher
+(`fleet-phone-autostart --watch`) is gone; the installer stops and removes it.
 
-Limits:
-- A service lives in the PRoot of the window that started it. If that window
-  closes, the service comes back at the next watcher tick or login shell.
-- After a full launcher restart, the home Terminal tile (or opening Tern once)
-  is the trigger.
+Measured on the S22+ (2026-10-20, 10-minute idle windows, `/proc/<pid>/stat`):
+
+| | old 60 s watcher | runit supervisor |
+| --- | --- | --- |
+| keep-alive CPU | 2.78 s per 10 min in the watcher tree, plus about the same again in its PRoot tracer (~0.42 s CPU per check, measured over 10 checks) | 0 ms: supervisor and 3 runsv 0 ctx switches; svlogd 10 ms |
+| wakeups | 1218 ctx switches per 10 min, ~20 execs per minute | 0 (runsv: 1 per hour) |
+| restart after a kill | next tick, up to 60 s (28 s measured) | sshd 0.2-0.4 s, `tern remote serve` 0.4-0.5 s (listening); tailscaled process 0.2 s, backend Running 2-4 s |
+| launching window swiped away | services in that window died; back at the next tick if a watcher survived elsewhere | pids unchanged (supervisor in the audio session) |
+
+IDLE_WHOLE_APP_PLACEHOLDER
 
 ### Keep-alive: what kills the guest, and what stops it
 
@@ -343,23 +372,33 @@ is idempotent. `fleet-phone-clone.sh` calls it too. It installs:
   `~/.local/state/fleet/android-harden/<model>-<serial>.undo.sh` on groot
   (S25: `SM-S938U-R5CY93G2WNH`, S22+: `SM-S906U1-RFCTA1RZAQY`, also in the
   S22+ guest). Run with `ADB_SERIAL=<current ip:port> sh <file>`.
-- **Guest side**: the flock'd watcher (`fleet-phone-autostart --watch`, see
-  above). It now also caps its logs at 256 KiB plus one rotated copy, writes a
-  `heartbeat`, accepts a `remote serve` started by any Tern binary, and on the S25
-  reuses its own `tern-tailscale-start` (SOCKS5 proxy and hosts sync).
+- **Guest side**: the runit supervisor and the PulseAudio hook (see Service
+  supervision above).
 - **Health** (`fleet health`, groot timer every 2 min). On phones, the probe reports
-  `services` = tailscaled / sshd / tern-remote / fleet-autostart (pidfiles and
-  /proc, no systemd). groot adds `tern remote doctor <user>@<ip>`, and, when
+  `services` = tailscaled / sshd / tern-remote / fleet-supervise (pidfiles and
+  /proc, no systemd; `comm`, not `exe`, since another PRoot session sees every
+  exe as proot's loader) and `supervisor_session` (a warning unless `audio`). groot adds `tern remote doctor <user>@<ip>`, and, when
   groot's adb reaches the phone (`android.adb_host`), whether Omalauncher's
   service is up and whether the screen is on. Any of these down makes the node
   BAD. Log: `~/.local/state/fleet/health/phone-keepalive.jsonl` (bounded).
-  `android.revive: true` (off by default) reopens Omalauncher when its service is
-  gone, only while the screen is off, at most every 15 min.
+  `android.revive: true` (off by default) reopens Omalauncher only when the guest
+  is truly down: the ssh probe failed, `tern remote doctor` failed, and the
+  app's foreground service is gone; only while the screen is off, at most every
+  15 min. Linux startup runs the PulseAudio hook, so the services come back
+  without any window. Restarting a dead service is the guest supervisor's job.
 
 Verified 2026-10-20:
-- S22+: the watcher restarted a killed `remote serve` and sshd listener 28 s
-  later (`started sshd` / `started tern remote serve`, 18:17:17). The brief
-  "Connection refused" on 8022 at 18:17 was this test.
+- S22+ (supervisor, 19:06-19:33): see the table above. Installing adopted the
+  running sshd/tailscaled/remote serve without restarting them; the first kill
+  of each handed over in 0.2-2 s. Killing the window that ran the escape test
+  left the supervisor and all service pids unchanged.
+- S22+ caveat found while testing: tailscaled restarts sometimes hung in
+  netlink before opening its socket (tailnet down ~19:08-19:13 and ~19:23-19:27
+  while testing; Omalauncher itself was not frozen: `procState=4`, oom adj 200,
+  `isFrozen=false`, `LinuxService isForeground=true` with Settings in front). The
+  start watchdog now retries those; 6 forced restarts in a row all came back.
+- S25 (owner using it): installed only; all three running services adopted,
+  supervisor in the audio session, no service restarted. No kill tests there.
 - S22+: Doze forced with `force-idle` while the screen was off
   (18:24:10-18:25:02, then someone woke the screen). ssh, the same sshd/serve
   pids and `tern remote doctor` auth stayed ok. Service pids were unchanged
@@ -369,15 +408,25 @@ Verified 2026-10-20:
 - S25 not Doze-tested: the owner was using it.
 
 Owner steps (adb cannot do these):
-1. Recents: lock the Omalauncher card. Don't swipe away the window that started
-   Tern/sshd; if you do, the watcher restarts them within 60 s, as long as another
-   guest window or home Terminal tile is open.
+1. Recents: lock the Omalauncher card. Swiping a Linux window card no longer
+   matters for the services (they live in the PulseAudio session); swiping the
+   launcher itself kills the app process and everything with it.
 2. Settings > Battery > Background usage limits > **Never sleeping apps**: add
    Omalauncher and Tailscale (Samsung's own list).
-3. After the app is killed (update, low memory), open Omalauncher once. A real
-   fix is in the app: return `START_STICKY` from `LinuxService` and start
-   `Runtime` from the service's `onCreate`. The deviceidle whitelist already lets
-   it start a foreground service from the background.
+3. After the app is killed (update, low memory), open Omalauncher once; Linux
+   start runs the hook, no Terminal tile needed. The real fix is in the app:
+   branch `feat/keep-linux-running` on `kvnloo/omalauncher` (a sticky
+   `LinuxService` that relaunches Linux, a boot receiver, and a
+   `~/.config/omalauncher/session` script supervised like PulseAudio, all behind
+   `~/.config/omalauncher/keep-running`). Draft upstream PR text:
+   `docs/fleet/omalauncher-keep-running-pr.md`.
+
+Freezer: Android's cached-apps freezer (`use_freezer=true`,
+`freezer_cutoff_adj=850`) only freezes cached processes. Omalauncher runs at
+oom adj 200 with its foreground service, so it is never frozen while
+`LinuxService isForeground=true`; nothing was changed. If the service is ever
+lost, the app becomes cached (freezable and killable) and only reopening it
+helps; disabling the freezer phone-wide would not keep Linux alive.
 
 ### Setting up another phone like the S25
 
