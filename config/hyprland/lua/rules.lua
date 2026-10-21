@@ -14,6 +14,10 @@ local agent="^(HermesE2E-[0-9]+|Pokemon Native Contract Preflight|Agent Orchestr
 rule("agent-headless-isolation", {class=agent}, {workspace="special:hermes-tests silent",no_initial_focus=true,no_focus=true})
 rule("glass-media-off", {class="^(steam|Steam|Plex|linux-wallpaperengine)$"}, {tag="+hyprglass_disabled"})
 rule("scratch", {class="^(scratch_term)$"}, {float=true,size="80% 70%",center=true,workspace="special:scratch_term"})
+-- Remote devices (scripts/devscreen): hidden on their own special workspace until devscreen shows them.
+rule("devscreen-s25", {title="^(devscreen-s25)$"}, {workspace="special:devscreen-s25 silent",float=true,center=true})
+rule("devscreen-s22", {title="^(devscreen-s22)$"}, {workspace="special:devscreen-s22 silent",float=true,center=true})
+rule("devscreen-mbp", {class="^(gliff)$"}, {workspace="special:devscreen-mbp silent"})
 for _,class in ipairs({"^(pavucontrol)$","^(nm-connection-editor)$","^(blueman-manager)$"}) do rule("float-"..class,{class=class},{float=true}) end
 rule("agent-fleet-popup",{class="^(agent-fleet-popup|agent-deck-popup)$"},{float=true,size="1700 900",center=true,pin=true,opacity="0.90 0.84"})
 rule("chrome-pip",{title="^(Picture-in-Picture)$"},{float=true,decorate=false,pin=true})

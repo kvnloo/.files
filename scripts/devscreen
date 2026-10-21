@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# devscreen: each remote device as a Hyprland hotkey window on its own special
+# workspace (special:devscreen-<device>).
+#
+#   devscreen <s25|s22|mbp> [toggle|show|hide|start|stop|status]   (default: toggle)
+#
+#   s25  Galaxy S25 Ultra, scrcpy over wireless adb on the local adb server.
+#   s22  Galaxy S22+, scrcpy through the S22 guest's adb server over ssh
+#        (ssh -L 5038 -> its adb server, ssh -L 27199 -> the scrcpy socket).
+#   mbp  MacBook Pro, gliff (Hyprland over ssh, key-only port 2222); the
+#        server runs as ~/.local/bin/gliff-server on the MBP, spawned by ssh.
+#
+# Window rules for the titles/classes below live in
+# config/hyprland/remote-workspaces.conf (and lua/rules.lua).
+#
+# Overrides (optional), read from ~/.config/devscreen.env:
+#   DEVSCREEN_S25_SERIAL   wireless-debugging ip:port of the S25 (the port changes
+#                          when wireless debugging is re-enabled)
+#   DEVSCREEN_S22_SERIAL, DEVSCREEN_S22_SSH, DEVSCREEN_S22_ADB_PORT, DEVSCREEN_S22_SCRCPY_PORT
+#   DEVSCREEN_CODEC        h265 (default) | h264
+#   DEVSCREEN_MAX_SIZE     1600 (default)
+#   DEVSCREEN_AUDIO=1      forward phone audio too, while it keeps playing on the phone
+#   DEVSCREEN_SCREEN_OFF=1 turn the phone's own screen off while mirrored
+#   DEVSCREEN_MBP_HOST     ssh alias (default: mbp)
+#   DEVSCREEN_MBP_MODE     headless (default: a private screen sized to the window;
+#                          works with the lid shut or the panel asleep) | mirror
+#   DEVSCREEN_MBP_SERVER   remote gliff-server path (default /home/kvn/.local/bin/gliff-server)
+set -euo pipefail
+
+conf=${XDG_CONFIG_HOME:-$HOME/.config}/devscreen.env
+# shellcheck disable=SC1090
+[[ -r $conf ]] && . "$conf"
+
+ADB_BIN=${DEVSCREEN_ADB:-/usr/bin/adb}
+SCRCPY_BIN=${DEVSCREEN_SCRCPY:-$(command -v scrcpy || echo /mnt/zer0models/apps/scrcpy/current/scrcpy)}
+GLIFF_BIN=${DEVSCREEN_GLIFF:-$(command -v gliff || echo "$HOME/.local/bin/gliff")}
+S25_SERIAL=${DEVSCREEN_S25_SERIAL:-100.117.226.39:36065}
+S22_SERIAL=${DEVSCREEN_S22_SERIAL:-adb-RFCTA1RZAQY-ZyDAxx._adb-tls-connect._tcp}
+S22_SSH=${DEVSCREEN_S22_SSH:-s22}
+S22_ADB_PORT=${DEVSCREEN_S22_ADB_PORT:-5038}
+S22_SCRCPY_PORT=${DEVSCREEN_S22_SCRCPY_PORT:-27199}
+CODEC=${DEVSCREEN_CODEC:-h265}
+MAX_SIZE=${DEVSCREEN_MAX_SIZE:-1600}
+MBP_HOST=${DEVSCREEN_MBP_HOST:-mbp}
+MBP_MODE=${DEVSCREEN_MBP_MODE:-headless}
+MBP_SERVER=${DEVSCREEN_MBP_SERVER:-/home/kvn/.local/bin/gliff-server}
+
+state=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/devscreen
+mkdir -p "$state"
+
+die() { printf 'devscreen: %s\n' "$*" >&2; notify "$*"; exit 1; }
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a devscreen "devscreen" "$*" || true; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+
+dev=${1:-}; action=${2:-toggle}
+case $dev in s25|s22|mbp) ;; _run) ;; -h|--help|"") usage 0 ;; *) usage ;; esac
+ws=devscreen-$dev
+
+# --- Hyprland -------------------------------------------------------------
+
+# Address of this device's window: on its special workspace, or anywhere by its
+# title (phones) / class (gliff) if it was moved out.
+window() {
+  hyprctl -j clients | jq -r --arg ws "special:$ws" --arg title "^$ws\$" --arg dev "$dev" '
+    ([.[] | select(.workspace.name == $ws)] +
+     [.[] | select(if $dev == "mbp" then .class == "gliff" else (.title | test($title)) end)])
+    | first | .address // empty'
+}
+
+shown() {
+  hyprctl -j monitors | jq -e --arg ws "special:$ws" 'any(.[]; .focused and .specialWorkspace.name == $ws)' >/dev/null
+}
+
+show() {
+  local addr=$1 where
+  where=$(hyprctl -j clients | jq -r --arg a "$addr" '.[] | select(.address == $a) | .workspace.name')
+  if [[ $where == "special:$ws" ]]; then
+    shown || hyprctl dispatch togglespecialworkspace "$ws" >/dev/null
+  fi
+  hyprctl dispatch focuswindow "address:$addr" >/dev/null
+}
+
+hide() { shown && hyprctl dispatch togglespecialworkspace "$ws" >/dev/null || true; }
+
+wait_window() {
+  local addr i
+  for ((i = 0; i < ${1:-60}; i++)); do
+    addr=$(window) && [[ -n $addr ]] && { printf '%s\n' "$addr"; return 0; }
+    sleep 0.5
+  done
+  return 1
+}
+
+# --- phones (scrcpy) --------------------------------------------------------
+
+charging() { # adb args... -> 0 when the phone is on external power
+  "$@" shell dumpsys battery 2>/dev/null | grep -Eq '^ +(AC|USB|Wireless|Dock) powered: true'
+}
+
+scrcpy_args() { # serial
+  local args=(--serial "$1" --window-title "$ws" --video-codec="$CODEC" --max-size="$MAX_SIZE" --keyboard=uhid)
+  if [[ ${DEVSCREEN_AUDIO:-0} == 1 ]]; then args+=(--audio-source=playback --audio-dup); else args+=(--no-audio); fi
+  [[ ${DEVSCREEN_SCREEN_OFF:-0} == 1 ]] && args+=(--turn-screen-off)
+  printf '%s\n' "${args[@]}"
+}
+
+listening() { [[ -n $(ss -Htln "sport = :$1" 2>/dev/null) ]]; }
+
+run_s25() {
+  local adb=("$ADB_BIN" -s "$S25_SERIAL") args
+  if ! "$ADB_BIN" devices | grep -q "^$S25_SERIAL[[:space:]]*device"; then
+    timeout 8 "$ADB_BIN" connect "$S25_SERIAL" >/dev/null 2>&1 || true
+    "$ADB_BIN" devices | grep -q "^$S25_SERIAL[[:space:]]*device" ||
+      die "S25 not on adb at $S25_SERIAL (wireless debugging port changed? set DEVSCREEN_S25_SERIAL in $conf)"
+  fi
+  mapfile -t args < <(scrcpy_args "$S25_SERIAL")
+  charging "${adb[@]}" && args+=(--stay-awake)
+  ADB=$ADB_BIN exec "$SCRCPY_BIN" "${args[@]}"
+}
+
+run_s22() {
+  local sock=tcp:127.0.0.1:$S22_ADB_PORT fwd=() tunnel="" args
+  # Reuse an existing adb tunnel on S22_ADB_PORT; open the missing forwards ourselves.
+  listening "$S22_ADB_PORT" || fwd+=(-L "127.0.0.1:$S22_ADB_PORT:127.0.0.1:5037")
+  listening "$S22_SCRCPY_PORT" || fwd+=(-L "127.0.0.1:$S22_SCRCPY_PORT:127.0.0.1:$S22_SCRCPY_PORT")
+  if ((${#fwd[@]})); then
+    ssh -o BatchMode=yes -o ConnectTimeout=8 -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -N "${fwd[@]}" "$S22_SSH" &
+    tunnel=$!
+    trap '[[ -n $tunnel ]] && kill "$tunnel" 2>/dev/null; wait 2>/dev/null' EXIT
+    for _ in $(seq 40); do listening "$S22_ADB_PORT" && listening "$S22_SCRCPY_PORT" && break; sleep 0.25; done
+    kill -0 "$tunnel" 2>/dev/null || die "ssh tunnel to $S22_SSH failed (S22 guest frozen or off the tailnet?)"
+  fi
+  local adb=(env ADB_SERVER_SOCKET="$sock" "$ADB_BIN" -s "$S22_SERIAL")
+  env ADB_SERVER_SOCKET="$sock" timeout 10 "$ADB_BIN" devices | grep -q "^$S22_SERIAL[[:space:]]*device" ||
+    die "S22 not listed by its adb server (wireless debugging off on the S22?)"
+  mapfile -t args < <(scrcpy_args "$S22_SERIAL")
+  charging "${adb[@]}" && args+=(--stay-awake)
+  # The adb server is remote: forward (not reverse) the scrcpy socket through the tunnel.
+  args+=(--force-adb-forward --port="$S22_SCRCPY_PORT")
+  ADB=$ADB_BIN ADB_SERVER_SOCKET=$sock "$SCRCPY_BIN" "${args[@]}"
+}
+
+# --- MacBook (gliff) ---------------------------------------------------------
+
+run_mbp() {
+  local args=(--server-bin "$MBP_SERVER")
+  [[ $MBP_MODE == headless ]] && args+=(--headless)
+  exec "$GLIFF_BIN" "${args[@]}" "$MBP_HOST"
+}
+
+# --- actions -----------------------------------------------------------------
+
+if [[ $dev == _run ]]; then
+  dev=$action; ws=devscreen-$dev
+  case $dev in s25) run_s25 ;; s22) run_s22 ;; mbp) run_mbp ;; *) usage ;; esac
+  exit
+fi
+
+start() {
+  local addr log=$state/$dev.log
+  setsid -f "$0" _run "$dev" >"$log" 2>&1 </dev/null
+  addr=$(wait_window 80) || die "$dev did not open a window within 40s; see $log"
+  show "$addr"
+}
+
+addr=$(window || true)
+case $action in
+  toggle)
+    if [[ -z $addr ]]; then start
+    elif shown; then hide
+    else show "$addr"; fi ;;
+  show) if [[ -n $addr ]]; then show "$addr"; else start; fi ;;
+  start) [[ -n $addr ]] || start ;;
+  hide) hide ;;
+  stop) [[ -n $addr ]] && hyprctl dispatch closewindow "address:$addr" >/dev/null || true ;;
+  status)
+    printf '%s: window=%s shown=%s log=%s\n' "$dev" "${addr:-none}" "$(shown && echo yes || echo no)" "$state/$dev.log" ;;
+  *) usage ;;
+esac
