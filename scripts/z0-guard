@@ -1,0 +1,7 @@
+#!/bin/sh
+# z0-guard: the ops-plane gates (kvnloo/z0intelligence src/z0int/fsm/guard.py; laws in
+# bend/ops_fsm). This launcher only finds the checkout; every decision lives there.
+#   Z0INT_SRC   z0intelligence src dir (default: the ops-laws worktree on groot)
+Z0INT_SRC=${Z0INT_SRC:-/mnt/zer0models/z0-wt/bend-ops-laws/src}
+[ -d "$Z0INT_SRC/z0int/fsm" ] || { echo "z0-guard: no z0intelligence checkout at $Z0INT_SRC (set Z0INT_SRC)" >&2; exit 2; }
+PYTHONPATH="$Z0INT_SRC${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m z0int.fsm.guard "$@"
