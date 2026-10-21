@@ -97,7 +97,7 @@ index 0000000..79a4f05
 +</html>
 diff --git c/packages/agent-flow-viz/fsm.html w/packages/agent-flow-viz/fsm.html
 new file mode 100644
-index 0000000..8dc3de6
+index 0000000..06c9d8e
 --- /dev/null
 +++ w/packages/agent-flow-viz/fsm.html
 @@ -0,0 +1,14 @@
@@ -105,7 +105,7 @@ index 0000000..8dc3de6
 +<html lang="en">
 +  <head>
 +    <meta charset="UTF-8" />
-+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 +    <meta name="description" content="Bend-checked statecharts for agent work, as layers in the Hapsland dashboard." />
 +    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23b48035' d='M2 2h28v8H2zm0 10h28v8H2zm0 10h28v8H2z'/%3E%3C/svg%3E" />
 +    <title>Bend statecharts · Hapsland</title>
@@ -1160,15 +1160,63 @@ index 0000000..5bbf90b
 +  export function validateState(machine: string, value: Json): Json
 +  export function displayState(machine: string, value: Json): number
 +}
+diff --git c/packages/agent-flow-viz/src/fsm/card-swipe.ts w/packages/agent-flow-viz/src/fsm/card-swipe.ts
+new file mode 100644
+index 0000000..07ccd2a
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/card-swipe.ts
+@@ -0,0 +1,41 @@
++import { Effect, Queue, Stream } from "effect"
++
++/** Horizontal swipes on the phone event cards move one event; the click that ends a swipe is swallowed. */
++export const cardSwipes = <Message>(toMessage: (delta: number) => Message): Stream.Stream<Message> =>
++  Stream.callback<Message>((queue) =>
++    Effect.acquireRelease(
++      Effect.sync(() => {
++        let start: { x: number; y: number; id: number } | undefined
++        let swallowUntil = 0
++        const down = (event: PointerEvent) => {
++          const target = event.target instanceof Element ? event.target.closest(".fsm-cards") : null
++          start = target && event.isPrimary ? { x: event.clientX, y: event.clientY, id: event.pointerId } : undefined
++        }
++        const up = (event: PointerEvent) => {
++          if (!start || event.pointerId !== start.id) return
++          const dx = event.clientX - start.x, dy = event.clientY - start.y
++          start = undefined
++          if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy) * 1.4) return
++          swallowUntil = performance.now() + 400
++          Queue.offerUnsafe(queue, toMessage(dx < 0 ? 1 : -1))
++        }
++        const click = (event: MouseEvent) => {
++          if (performance.now() < swallowUntil && event.target instanceof Element && event.target.closest(".fsm-cards")) {
++            event.stopPropagation(); event.preventDefault()
++          }
++        }
++        const cancel = () => { start = undefined }
++        document.addEventListener("pointerdown", down, true)
++        document.addEventListener("pointerup", up, true)
++        document.addEventListener("pointercancel", cancel, true)
++        document.addEventListener("click", click, true)
++        return () => {
++          document.removeEventListener("pointerdown", down, true)
++          document.removeEventListener("pointerup", up, true)
++          document.removeEventListener("pointercancel", cancel, true)
++          document.removeEventListener("click", click, true)
++        }
++      }),
++      (cleanup) => Effect.sync(cleanup)
++    ).pipe(Effect.flatMap(() => Effect.never))
++  )
 diff --git c/packages/agent-flow-viz/src/fsm/entry.ts w/packages/agent-flow-viz/src/fsm/entry.ts
 new file mode 100644
-index 0000000..c4ebc96
+index 0000000..d5f1ed4
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/entry.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,36 @@
 +import { Runtime, Subscription } from "foldkit"
 +import { Schema, Stream } from "effect"
 +import { cameraGestures } from "../ensemble-camera"
++import { cardSwipes } from "./card-swipe"
 +import { Message, Model, init, update } from "./model"
 +import { view } from "./view"
 +import "../style.css"
@@ -1187,6 +1235,11 @@ index 0000000..c4ebc96
 +        ? Message.CameraZoomed({ factor: movement.factor })
 +        : Message.CameraRotated({ dx: movement.dx, dy: movement.dy }))
 +  }),
++  cardSwipes: entry({ mobile: Schema.Boolean }, {
++    modelToDependencies: (model) => ({ mobile: model.mobile }),
++    keepAliveEquivalence: (before, after) => before.mobile === after.mobile,
++    dependenciesToStream: ({ mobile }: { readonly mobile: boolean }) => mobile ? cardSwipes((delta) => Message.Swiped({ delta })) : Stream.never
++  }),
 +  playback: Subscription.animationFrame<Model, Message>({
 +    isActive: (model) => model.playing,
 +    toMessage: (deltaMs) => Message.PlaybackTick({ deltaMs })
@@ -1196,12 +1249,232 @@ index 0000000..c4ebc96
 +Runtime.run(Runtime.makeApplication({
 +  Model, init, update, view, subscriptions, container: document.getElementById("root")
 +}))
+diff --git c/packages/agent-flow-viz/src/fsm/mobile-view.ts w/packages/agent-flow-viz/src/fsm/mobile-view.ts
+new file mode 100644
+index 0000000..acb7714
+--- /dev/null
++++ w/packages/agent-flow-viz/src/fsm/mobile-view.ts
+@@ -0,0 +1,214 @@
++import type { Document, Html, HtmlBuilder } from "foldkit/html"
++import productIcon from "../brand/product-icon.svg?url"
++import { ensembleViewportView } from "../ensemble-presentation"
++import { retainedHistoryView } from "../history-presentation"
++import { Message, currentState, type Model } from "./model"
++import { describeEvent, fsm, laws, planeLayout, planes, projection, routeById, scenarios, stateMeta } from "./projection"
++import { inspectorChildren, lawColor, lawRow, planeDiagram, timeline, verdictWord } from "./view"
++
++// Phone shell: the 3D stack is the hero; every control sits in one bottom thumb bar.
++// Planes come from model.json, so a new plane (e.g. ops) appears as one more chip and layer.
++
++const tabs = [["stack", "Stack"], ["diagram", "2D"], ["timeline", "Timeline"], ["about", "About"]] as const
++// Phone cards show minute precision; the full timestamp stays in the inspector and timeline.
++const shortTime = (at: string) => /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(at) ? `${at.slice(5, 10)} ${at.slice(11, 16)}` : at
++const sourceTag = (h: HtmlBuilder<Message>, source: string) =>
++  h.span([h.Class(`fsm-source ${source}`)], [source === "report" ? "REPORT" : "WHAT-IF"])
++
++function topBar(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const last = model.history[model.cursor - 1]
++  return h.header([h.Class("fsm-m-top")], [
++    h.img([h.Src(productIcon), h.Alt("Hapsland"), h.Width("22"), h.Height("22")]),
++    h.div([h.Class("fsm-m-title")], [
++      h.strong([], ["Bend statecharts"]),
++      h.span([h.Role("status"), h.Class(`fsm-verdict ${last?.verdict ?? "none"}`)], [
++        `${stateMeta(scenario.machine, currentState(model))?.title ?? ""}${last ? ` · ${verdictWord(last.verdict)}` : ""}`
++      ])
++    ]),
++    h.button([h.Type("button"), h.Class("fsm-m-icon"), h.AriaLabel("What you're looking at"),
++      h.AriaPressed(String(model.tab === "about")), h.OnClick(Message.TabSelected({ tab: model.tab === "about" ? "stack" : "about" }))], ["?"])
++  ])
++}
++
++function layerChips(model: Model, h: HtmlBuilder<Message>) {
++  return h.div([h.Class("fsm-m-chips"), h.Role("group"), h.AriaLabel("Statechart layers")], planes.map((plane, index) =>
++    h.button([h.Type("button"), h.Class(`fsm-m-chip${index === model.active ? " selected" : ""}`), h.DataAttribute("layer", plane.id),
++      h.AriaPressed(String(index === model.active)), h.Style({ "--plane": plane.color }), h.OnClick(Message.LayerSelected({ index }))],
++    [h.span([h.Class("fsm-m-dot")], []), plane.title])))
++}
++
++function stack(model: Model, h: HtmlBuilder<Message>) {
++  const active = planes[model.active]
++  return h.div([h.Class("fsm-m-hero is-spatial"), h.Id("layers")], [
++    ensembleViewportView(h, { ...model.camera, flat: false }, {
++      active: model.active, ariaLabel: "Three-dimensional statechart layers", orientation: active.title.toUpperCase(),
++      layers: planes.map((plane, index) => ({
++        index, color: plane.color, title: plane.title.toUpperCase(), caption: plane.owner,
++        diagram: planeDiagram(model, h, index, planeLayout(index, false), true)
++      }))
++    }),
++    h.p([h.Class("fsm-m-hint")], ["Tap an arrow or box · drag sideways to turn · pinch to zoom"]),
++    h.button([h.Type("button"), h.Class("fsm-m-recenter"), h.AriaLabel("Reset view"), h.OnClick(Message.CameraReset())], ["Reset view"])
++  ])
++}
++
++function diagram(model: Model, h: HtmlBuilder<Message>) {
++  const plane = planes[model.active]
++  return h.section([h.Class("fsm-m-pane"), h.Id("diagram")], [
++    h.p([h.Class("fsm-m-eyebrow")], [`2D · ${plane.title}`]),
++    h.p([h.Class("fsm-m-note")], [plane.summary]),
++    planeDiagram(model, h, model.active, planeLayout(model.active, true), false),
++    h.p([h.Class("fsm-m-note")], [`Every arrow comes from running the compiled Bend; they match the ${projection.documentedComparison.documentedEdges} arrows of the upstream Mermaid drawings.`])
++  ])
++}
++
++function timelinePane(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  return h.section([h.Class("fsm-m-pane")], [
++    timeline(model, h),
++    h.section([h.Class("card")], [
++      h.h2([], ["Events so far"]),
++      h.button([h.Type("button"), h.OnClick(Message.RefusalsToggled())], [model.refusalsOnly ? "Show all events" : "Refusals only"]),
++      ...retainedHistoryView(h, {
++        rows: [{ position: 0, label: "Start" }, ...model.history.flatMap((entry, index) => model.refusalsOnly && entry.verdict === "accepted" ? []
++          : [{ position: index + 1, label: `${index + 1}. ${entry.eventTag} · ${verdictWord(entry.verdict)} · ${stateMeta(scenario.machine, entry.state)?.title}` }])],
++        position: model.cursor, minimum: 0, maximum: model.history.length,
++        epoch: `${model.scenario}:${model.timelineEpoch}`, select: (position, scrub) => Message.Seek({ position, scrub })
++      })
++    ])
++  ])
++}
++
++function about(h: HtmlBuilder<Message>) {
++  const e = fsm.explainer
++  return h.section([h.Class("fsm-m-pane"), h.Id("explainer")], [
++    h.section([h.Class("card fsm-m-about")], [
++      h.p([h.Class("fsm-m-eyebrow")], ["What you're looking at"]),
++      h.p([], [e.intro]),
++      h.ul([h.Class("fsm-m-legend")], [
++        h.li([], [h.span([h.Class("fsm-m-swatch box")], []), "Box = a state. The highlighted box is where the tape is now."]),
++        h.li([], [h.span([h.Class("fsm-m-swatch arrow")], []), "Arrow = a move Bend allows. Its badge names the law guarding it; tap it."]),
++        h.li([], [h.span([h.Class("fsm-m-swatch dashed")], []), "Dashed grey = unguarded move. Amber box = waits for Kevin. Red box = side exit."])
++      ]),
++      ...planes.map((plane) => h.p([h.Class("fsm-m-plane"), h.Style({ "--plane": plane.color })], [h.strong([], [plane.title]), ` ${plane.summary}`])),
++      h.p([h.Class("fsm-m-note")], [fsm.trustBoundary.replace("from this file", "from model.json")])
++    ]),
++    h.details([h.Class("card fsm-m-more")], [
++      h.summary([], ["How it works"]),
++      ...e.loops.map((text) => h.p([], [text])),
++      h.p([], [h.strong([], ["Statecharts + proofs. "]), e.statechart]),
++      h.p([], [h.strong([], ["Roles. "]), e.roles])
++    ]),
++    h.details([h.Class("card fsm-m-more")], [
++      h.summary([], [`All ${fsm.laws.length} laws and the 21 Oct incident counts`]),
++      h.table([h.Class("fsm-laws")], [h.tbody([], fsm.laws.map((law) => lawRow(h, law)))])
++    ]),
++    h.p([h.Class("fsm-m-note")], [h.a([h.Href("./dotfiles.html")], [".files architecture layers →"])])
++  ])
++}
++
++/** One card per tape event: tag, event, and Bend's verdict once it has been sent. Swipe or tap to move. */
++function eventCards(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const focus = Math.max(0, model.cursor - 1)
++  const card = (index: number): Html => {
++    const step = scenario.steps[index], outcome = index < model.cursor ? model.history[index] : undefined
++    return h.button([h.Type("button"), h.Class(`fsm-m-card${index === focus ? " current" : ""}${outcome ? "" : " pending"}`),
++      h.DataAttribute("step", String(index + 1)), h.OnClick(Message.Seek({ position: index + 1, scrub: false }))], [
++      h.span([h.Class("fsm-m-card-head")], [h.span([], [`${index + 1}/${scenario.steps.length}`]), sourceTag(h, step.source), ...(step.at ? [h.span([], [shortTime(step.at)])] : [])]),
++      h.span([h.Class("fsm-m-card-event")], [describeEvent(step.event, scenario)]),
++      h.span([h.Class(`fsm-m-card-verdict fsm-verdict ${outcome?.verdict ?? "none"}`)], [
++        outcome ? `${verdictWord(outcome.verdict)} → ${stateMeta(scenario.machine, outcome.state)?.title}` : "Not sent yet · tap to send"
++      ])
++    ])
++  }
++  return h.div([h.Class("fsm-cards"), h.AriaLabel("Tape events; swipe to move one event")], [
++    h.div([h.Class("fsm-cards-track"), h.Style({ transform: `translateX(calc(${-focus} * (var(--card-w) + 8px)))` })],
++      scenario.steps.map((_, index) => card(index)))
++  ])
++}
++
++function thumbBar(model: Model, h: HtmlBuilder<Message>) {
++  const scenario = scenarios[model.scenario]
++  const done = model.cursor >= scenario.steps.length
++  return h.nav([h.Class("fsm-m-bar"), h.AriaLabel("Tape controls")], [
++    // Reading tabs keep only transport and tabs, so the bar never covers what you're reading.
++    ...(model.tab === "stack" || model.tab === "diagram" ? [layerChips(model, h)] : []),
++    ...(model.tab === "stack" ? [eventCards(model, h)] : []),
++    h.div([h.Class("fsm-m-scrub")], [
++      h.input([h.Type("range"), h.AriaLabel("Tape position"), h.Min("0"), h.Max(String(scenario.steps.length)), h.Value(String(model.cursor)),
++        h.OnInput((raw) => Message.Seek({ position: Number(raw), scrub: true }))]),
++      h.span([], [`${model.cursor}/${scenario.steps.length}`])
++    ]),
++    h.div([h.Class("fsm-m-transport")], [
++      h.select([h.Id("fsm-scenario"), h.AriaLabel("Tape"), h.Value(String(model.scenario)),
++        h.OnChange((value) => Message.ScenarioSelected({ index: Number(value) }))], scenarios.map((item, index) => h.option([h.Value(String(index))], [item.title]))),
++      h.button([h.Type("button"), h.AriaLabel("Restart tape"), h.OnClick(Message.Reset())], ["↺"]),
++      h.button([h.Type("button"), h.Id("fsm-step"), h.Disabled(done), h.OnClick(Message.Next())], ["Step"]),
++      h.button([h.Type("button"), h.Id("fsm-play"), h.Class("primary"), h.Disabled(done && !model.playing), h.OnClick(Message.PlayToggled())], [model.playing ? "Pause" : "Play"])
++    ]),
++    h.div([h.Class("fsm-m-tabs"), h.Role("tablist")], tabs.map(([id, label]) => h.button([h.Type("button"), h.Role("tab"),
++      h.AriaSelected(model.tab === id), h.DataAttribute("tab", id), h.OnClick(Message.TabSelected({ tab: id }))], [label])))
++  ])
++}
++
++/** A tapped arrow shows its law badge in context; a tapped badge or box offers the full inspector sheet. */
++function peek(model: Model, h: HtmlBuilder<Message>) {
++  const id = model.selected
++  if (!id || model.sheet) return []
++  let title = "", body: (Html | string)[] = []
++  if (id.startsWith("edge:")) {
++    const route = routeById.get(id)!
++    title = `${stateMeta(route.machine, route.from)?.title} → ${stateMeta(route.machine, route.to)?.title}`
++    body = [h.span([h.Class("fsm-m-peek-events")], [route.events.join(" / ")]),
++      h.span([h.Class("fsm-m-badges")], route.laws.length ? route.laws.map((law) => h.button([h.Type("button"), h.Class("fsm-m-badge"),
++        h.DataAttribute("law-badge", law), h.Style({ "--law": lawColor(law) }), h.OnClick(Message.Focused({ id: `law:${law}` }))], [law, " ", laws.get(law)?.name ?? ""]))
++        : [h.span([h.Class("fsm-m-peek-events")], ["Unguarded: no law needed for this move."])])]
++  } else if (id.startsWith("law:")) {
++    const law = laws.get(id.slice(4))!
++    title = `${law.id} · ${law.name}`
++    body = [h.span([h.Class("fsm-m-badge static"), h.DataAttribute("law-badge", law.id), h.Style({ "--law": lawColor(law.id) })], [law.id]),
++      h.span([], [`Prevents: ${law.prevents}`]), h.span([h.Class("fsm-m-peek-events")], [`${law.incidents.count.toLocaleString()} · ${law.incidents.label.replace(/\.$/, "")}`])]
++  } else {
++    const [, machine, raw] = id.split(":")
++    const state = stateMeta(machine, Number(raw))
++    title = state?.title ?? id
++    body = [h.span([], [state?.owner ?? ""])]
++  }
++  return [h.aside([h.Class("fsm-m-peek"), h.AriaLabel("Selection")], [
++    h.div([h.Class("fsm-m-peek-main")], [h.strong([], [title]), ...body]),
++    h.div([h.Class("fsm-m-peek-actions")], [
++      h.button([h.Type("button"), h.DataAttribute("open-inspector", ""), h.OnClick(Message.SheetSet({ open: true }))], ["Details"]),
++      h.button([h.Type("button"), h.Class("fsm-m-icon"), h.AriaLabel("Clear selection"), h.OnClick(Message.SheetSet({ open: false }))], ["×"])
++    ])
++  ])]
++}
++
++function sheet(model: Model, h: HtmlBuilder<Message>) {
++  const { children } = inspectorChildren(model, h)
++  return [
++    h.div([h.Class(`fsm-m-scrim${model.sheet ? " open" : ""}`), h.OnClick(Message.SheetSet({ open: false }))], []),
++    h.section([h.Class(`fsm-m-sheet${model.sheet ? " open" : ""}`), h.Role("dialog"), h.AriaLabel("Inspector"), h.AriaHidden(!model.sheet), h.Id("inspect")], [
++      h.div([h.Class("fsm-m-sheet-head")], [
++        h.p([h.Class("fsm-m-eyebrow")], ["Inspector"]),
++        h.button([h.Type("button"), h.Class("fsm-m-icon"), h.AriaLabel("Close inspector"), h.OnClick(Message.SheetSet({ open: false }))], ["×"])
++      ]),
++      ...(model.sheet ? children : [])
++    ])
++  ]
++}
++
++export function mobileView(model: Model, h: HtmlBuilder<Message>): Document {
++  const content = model.tab === "diagram" ? diagram(model, h) : model.tab === "timeline" ? timelinePane(model, h)
++    : model.tab === "about" ? about(h) : stack(model, h)
++  return {
++    title: "Bend statecharts · Hapsland",
++    body: h.main([h.Class(`fsm-m tab-${model.tab}`)], [
++      topBar(model, h),
++      h.div([h.Class("fsm-m-content")], [content, ...peek(model, h)]),
++      thumbBar(model, h),
++      ...sheet(model, h)
++    ])
++  }
++}
 diff --git c/packages/agent-flow-viz/src/fsm/model.ts w/packages/agent-flow-viz/src/fsm/model.ts
 new file mode 100644
-index 0000000..ebd4e1d
+index 0000000..b5612fa
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/model.ts
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,123 @@
 +import { Schema } from "effect"
 +import { type Runtime, type Update } from "foldkit"
 +import { defineMessageUnion } from "foldkit/message"
@@ -1226,7 +1499,9 @@ index 0000000..ebd4e1d
 +  mobile: Schema.Boolean, selected: Schema.String, active: Schema.Number,
 +  scenario: Schema.Number, cursor: Schema.Number, history: Schema.Array(Outcome),
 +  playing: Schema.Boolean, elapsed: Schema.Number, timelineEpoch: Schema.Number, refusalsOnly: Schema.Boolean,
-+  camera: Camera
++  camera: Camera,
++  // Phone shell only: which view fills the hero and whether the inspector sheet is up.
++  tab: Schema.String, sheet: Schema.Boolean
 +})
 +export type Model = typeof Model.Type
 +export const Message = defineMessageUnion({
@@ -1234,14 +1509,16 @@ index 0000000..ebd4e1d
 +  CameraChanged: { field: Schema.String, raw: Schema.String }, CameraZoomed: { factor: Schema.Number },
 +  CameraRotated: { dx: Schema.Number, dy: Schema.Number }, CameraReset: {}, FlatToggled: {},
 +  PlayToggled: {}, PlaybackTick: { deltaMs: Schema.Number }, ScenarioSelected: { index: Schema.Number },
-+  Next: {}, Reset: {}, Seek: { position: Schema.Number, scrub: Schema.Boolean }, RefusalsToggled: {}
++  Next: {}, Reset: {}, Seek: { position: Schema.Number, scrub: Schema.Boolean }, RefusalsToggled: {},
++  TabSelected: { tab: Schema.String }, SheetSet: { open: Schema.Boolean }, Focused: { id: Schema.String }, Swiped: { delta: Schema.Number }
 +})
 +export type Message = typeof Message.Type
 +
 +const isMobile = () => window.matchMedia("(max-width: 700px)").matches
 +export const init: Runtime.ApplicationInit<Model, Message> = () => ({ model: {
 +  mobile: isMobile(), selected: "", active: planeIndexForMachine(scenarios[0].machine), scenario: 0, cursor: 0, history: [],
-+  playing: false, elapsed: 0, timelineEpoch: 0, refusalsOnly: false, camera: isMobile() ? mobileCamera : initialCamera
++  playing: false, elapsed: 0, timelineEpoch: 0, refusalsOnly: false, camera: isMobile() ? mobileCamera : initialCamera,
++  tab: "stack", sheet: false
 +} })
 +
 +/** The current Bend state value of the selected tape (initial when nothing ran). */
@@ -1288,7 +1565,7 @@ index 0000000..ebd4e1d
 +}
 +
 +const startScenario = (model: Model, index: number): Model => ({
-+  ...model, scenario: index, cursor: 0, history: [], playing: false, elapsed: 0,
++  ...model, sheet: false, scenario: index, cursor: 0, history: [], playing: false, elapsed: 0,
 +  timelineEpoch: model.timelineEpoch + 1, active: planeIndexForMachine(scenarios[index].machine), selected: ""
 +})
 +
@@ -1314,7 +1591,12 @@ index 0000000..ebd4e1d
 +    Next: () => ({ model: seekHistory({ ...model, playing: false }, model.cursor + 1) }),
 +    Seek: ({ position, scrub }) => ({ model: seekHistory({ ...model, playing: false }, position, scrub) }),
 +    Reset: () => ({ model: startScenario(model, model.scenario) }),
-+    RefusalsToggled: () => ({ model: { ...model, refusalsOnly: !model.refusalsOnly } })
++    RefusalsToggled: () => ({ model: { ...model, refusalsOnly: !model.refusalsOnly } }),
++    TabSelected: ({ tab }) => ({ model: { ...model, tab, sheet: false } }),
++    // Clearing the selection always drops the sheet; the sheet never shows an empty inspector by surprise.
++    SheetSet: ({ open }) => ({ model: { ...model, sheet: open, selected: open ? model.selected : "" } }),
++    Focused: ({ id }) => ({ model: { ...model, selected: id } }),
++    Swiped: ({ delta }) => ({ model: seekHistory({ ...model, playing: false }, Math.max(model.cursor === 0 ? 0 : 1, model.cursor + delta)) })
 +  })
 diff --git c/packages/agent-flow-viz/src/fsm/projection.ts w/packages/agent-flow-viz/src/fsm/projection.ts
 new file mode 100644
@@ -1561,10 +1843,10 @@ index 0000000..d026c4d
 +}
 diff --git c/packages/agent-flow-viz/src/fsm/style.css w/packages/agent-flow-viz/src/fsm/style.css
 new file mode 100644
-index 0000000..e3ab014
+index 0000000..034f35a
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/style.css
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,124 @@
 +/* Bend FSM layers: reuse the production dashboard theme; only small additions. */
 +.fsm-explainer p { max-width: 72ch; line-height: 1.5; }
 +.fsm-table-scroll { overflow-x: auto; }
@@ -1594,12 +1876,107 @@ index 0000000..e3ab014
 +  .fsm-laws { font-size: .8rem; }
 +  .fsm-laws th, .fsm-laws td { padding: 6px; }
 +}
++
++/* Phone shell (≤700px): the 3D stack is the hero; controls live in one bottom thumb bar.
++   Same Hapsland tokens and CSS-3D planes; motion ≤180ms ease-out, none under reduced motion. */
++.fsm-m { --card-w: min(78vw, 300px); --bar-pad: max(10px, env(safe-area-inset-bottom)); position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--canvas); overflow: hidden; font-size: 15px; }
++.fsm-m button { min-height: 40px; }
++.fsm-m-top { display: flex; align-items: center; gap: 10px; padding: max(8px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left)); background: var(--surface); border-bottom: 1px solid var(--line); }
++.fsm-m-title { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
++.fsm-m-title strong { font-size: .95rem; color: var(--ink); }
++.fsm-m-title span { font: 600 .72rem ui-monospace, monospace; letter-spacing: .04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
++.fsm-m-icon { width: 40px; padding: 0; border-radius: 20px; font-weight: 700; color: var(--muted); flex: none; }
++.fsm-m-icon[aria-pressed="true"] { background: #e5edf8; border-color: #7895bd; color: var(--accent); }
++.fsm-m-content { position: relative; min-height: 0; overflow: hidden; }
++.fsm-m-eyebrow { margin: 0 0 6px; font: 700 .7rem ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
++.fsm-m-note { font-size: .82rem; color: var(--muted); line-height: 1.5; margin: 8px 0; }
++
++/* Hero: the stack fills the space between the top bar and the thumb bar. */
++.fsm-m-hero { position: absolute; inset: 0; }
++.fsm-m-hero .ensemble-viewport { height: 100% !important; touch-action: none; }
++.fsm-m-hero .ensemble-scene { position: absolute; left: 50%; top: 50%; margin: -300px 0 0 -460px; }
++.fsm-m-hero .ensemble-gesture-hint { display: none; }
++.fsm-m-hint { position: absolute; top: 10px; left: 14px; right: 110px; margin: 0; font: .7rem ui-monospace, monospace; color: #8294ae; pointer-events: none; }
++.fsm-m-recenter { position: absolute; top: 6px; right: 10px; min-height: 32px !important; padding: 4px 10px; font-size: .75rem; background: #ffffffd9; }
++
++/* Secondary panes scroll inside the content area; never horizontally. */
++.fsm-m-pane { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px max(12px, env(safe-area-inset-right)) 20px max(12px, env(safe-area-inset-left)); }
++.fsm-m-pane > * + * { margin-top: 12px; }
++.fsm-m-pane .card { padding: 14px; }
++.fsm-m-pane .topology-surface, .fsm-m-pane .topology-scroll { max-width: 100%; }
++.fsm-m-pane svg { max-width: 100%; height: auto; }
++.fsm-m-about p { line-height: 1.5; margin: 0 0 10px; }
++.fsm-m-legend { list-style: none; padding: 0; margin: 4px 0 12px; display: grid; gap: 8px; font-size: .85rem; }
++.fsm-m-legend li { display: flex; gap: 10px; align-items: flex-start; }
++.fsm-m-swatch { flex: none; width: 22px; height: 14px; margin-top: 3px; border-radius: 3px; }
++.fsm-m-swatch.box { background: #e9f1ff; border: 1.5px solid #386eb1; }
++.fsm-m-swatch.arrow { height: 2px; margin-top: 9px; background: #386eb1; }
++.fsm-m-swatch.dashed { height: 0; margin-top: 8px; border-top: 3px dashed #7d8da2; }
++.fsm-m-plane { border-left: 3px solid var(--plane); padding-left: 10px; font-size: .85rem; }
++.fsm-m-more summary { font-weight: 600; min-height: 32px; display: flex; align-items: center; }
++.fsm-m-more p { line-height: 1.5; font-size: .88rem; }
++.fsm-m-more .fsm-laws th, .fsm-m-more .fsm-laws td { padding: 8px 4px; }
++
++/* Selection peek: sits on the canvas just above the bar, so the law badge is next to the tapped arrow's context. */
++.fsm-m-peek { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 10px; align-items: flex-start; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #334b6926; }
++.fsm-m-peek-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: .85rem; line-height: 1.4; color: var(--muted); }
++.fsm-m-peek-main strong { color: var(--ink); font-size: .92rem; }
++.fsm-m-peek-events { font: .75rem ui-monospace, monospace; }
++.fsm-m-peek-actions { display: flex; gap: 6px; flex: none; }
++.fsm-m-badges { display: flex; flex-wrap: wrap; gap: 6px; }
++.fsm-m-badge { min-height: 32px !important; padding: 4px 10px; border-radius: 16px; border: 1.5px solid var(--law); color: var(--law); font: 700 .75rem ui-monospace, monospace; background: color-mix(in oklch, var(--law) 8%, white); text-align: left; }
++.fsm-m-badge.static { align-self: flex-start; display: inline-flex; align-items: center; }
++
++/* Thumb bar. */
++.fsm-m-bar { display: grid; gap: 8px; padding: 8px max(10px, env(safe-area-inset-right)) var(--bar-pad) max(10px, env(safe-area-inset-left)); background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 18px #334b6912; z-index: 2; }
++.fsm-m-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: -2px; padding: 0 2px; }
++.fsm-m-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 34px !important; padding: 4px 12px; border-radius: 17px; font-size: .78rem; color: var(--muted); }
++.fsm-m-chip.selected { color: var(--ink); background: #edf3fc; border-color: var(--plane); font-weight: 600; }
++.fsm-m-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--plane); }
++.fsm-cards { overflow: hidden; touch-action: pan-y; margin-inline: -2px; padding-inline: 2px; }
++.fsm-cards-track { display: flex; gap: 8px; }
++@media (prefers-reduced-motion: no-preference) { .fsm-cards-track { transition: transform 180ms ease-out; } }
++.fsm-m-card { flex: none; width: var(--card-w); display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 9px 11px; text-align: left; border-color: var(--line); border-radius: 9px; color: var(--ink); }
++.fsm-m-card.current { border-color: #7895bd; background: #f5f8fd; box-shadow: inset 3px 0 0 #284b78; }
++.fsm-m-card.pending { color: var(--muted); }
++.fsm-m-card-head { display: flex; gap: 8px; align-items: center; font: 600 .7rem ui-monospace, monospace; color: var(--muted); }
++.fsm-m-card-event { font-size: .86rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
++.fsm-m-card-verdict { font: 700 .74rem ui-monospace, monospace; letter-spacing: .02em; }
++.fsm-m-card-verdict.none { color: var(--muted); font-weight: 500; }
++.fsm-m-scrub { display: flex; align-items: center; gap: 10px; font: 600 .75rem ui-monospace, monospace; color: var(--muted); }
++.fsm-m-scrub input { flex: 1; accent-color: #284b78; min-height: 28px; }
++.fsm-m-transport { display: grid; grid-template-columns: minmax(0, 1fr) 44px auto auto; gap: 6px; }
++.fsm-m-transport select { min-width: 0; min-height: 44px; font-size: 16px; padding: 0 8px; border: 1px solid #b8c7d9; border-radius: 6px; background: #fff; color: var(--ink); text-overflow: ellipsis; }
++.fsm-m-transport button { min-height: 44px; padding: 0 14px; font-weight: 600; }
++.fsm-m-transport .primary { color: #fff; background: #284b78; border-color: #284b78; min-width: 76px; }
++.fsm-m-transport button:disabled { opacity: .45; }
++.fsm-m-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; background: #eef2f8; border-radius: 9px; }
++.fsm-m-tabs button { min-height: 36px; border: 0; background: transparent; font-size: .8rem; color: var(--muted); border-radius: 7px; }
++.fsm-m-tabs button[aria-selected="true"] { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px #334b6926; }
++
++/* Inspector sheet. */
++.fsm-m-scrim { position: fixed; inset: 0; background: #1b2a3d55; opacity: 0; pointer-events: none; z-index: 3; }
++.fsm-m-scrim.open { opacity: 1; pointer-events: auto; }
++.fsm-m-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 72svh; overflow-y: auto; overscroll-behavior: contain; padding: 10px max(16px, env(safe-area-inset-right)) var(--bar-pad) max(16px, env(safe-area-inset-left)); background: var(--surface); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 30px #334b6933; transform: translateY(105%); visibility: hidden; z-index: 4; line-height: 1.5; font-size: .9rem; }
++.fsm-m-sheet.open { transform: none; visibility: visible; }
++@media (prefers-reduced-motion: no-preference) {
++  .fsm-m-sheet { transition: transform 180ms ease-out, visibility 0s linear 180ms; }
++  .fsm-m-sheet.open { transition: transform 180ms ease-out; }
++  .fsm-m-scrim { transition: opacity 180ms ease-out; }
++}
++.fsm-m-sheet-head { position: sticky; top: -10px; display: flex; align-items: center; justify-content: space-between; padding-top: 4px; background: var(--surface); }
++.fsm-m-sheet-head::before { content: ""; position: absolute; top: -4px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #cfd8e5; }
++.fsm-m-sheet h3 { margin: 4px 0 8px; font-size: 1.05rem; }
++.fsm-m-sheet h4 { margin: 14px 0 6px; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
++.fsm-m-sheet ul { padding-left: 0; list-style: none; display: grid; gap: 6px; }
++.fsm-m-sheet li button, .fsm-m-sheet p button { text-align: left; min-height: 40px; width: 100%; }
++.fsm-m-pane .chart-scroll svg { min-width: 640px; }
 diff --git c/packages/agent-flow-viz/src/fsm/view.ts w/packages/agent-flow-viz/src/fsm/view.ts
 new file mode 100644
-index 0000000..9db0a48
+index 0000000..1b58315
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/view.ts
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,294 @@
 +import type { Document, Html, HtmlBuilder } from "foldkit/html"
 +import { dashboardHeaderView } from "../dashboard-shell"
 +import { ensembleCameraView, ensembleViewportView } from "../ensemble-presentation"
@@ -1607,16 +1984,17 @@ index 0000000..9db0a48
 +import { stageInspectorView } from "../inspection-presentation"
 +import { timelinePanelView } from "../timeline-presentation"
 +import { topologyNodeView, topologyRouteView, topologySurfaceView } from "../topology"
++import { mobileView } from "./mobile-view"
 +import { Message, currentState, currentValue, type Model } from "./model"
 +import {
 +  describeEvent, fsm, laws, nodeId, planeLayout, planes, projection, receipt, routeById, routeGeometry,
 +  scenarios, stateMeta, tapeProvenance, valueDetail, type Law, type PlaneLayout
 +} from "./projection"
 +
-+const verdictWord = (verdict: string) => verdict === "accepted" ? "ACCEPTED" : verdict === "held" ? "HELD" : verdict === "no-change" ? "NO CHANGE" : "REFUSED"
-+const lawColor = (id: string) => id.startsWith("I") ? "#b48035" : id.startsWith("W") ? "#31836a" : "#386eb1"
++export const verdictWord = (verdict: string) => verdict === "accepted" ? "ACCEPTED" : verdict === "held" ? "HELD" : verdict === "no-change" ? "NO CHANGE" : "REFUSED"
++export const lawColor = (id: string) => id.startsWith("I") ? "#b48035" : id.startsWith("W") ? "#31836a" : "#386eb1"
 +
-+function planeDiagram(model: Model, h: HtmlBuilder<Message>, index: number, layout: PlaneLayout, layer: boolean) {
++export function planeDiagram(model: Model, h: HtmlBuilder<Message>, index: number, layout: PlaneLayout, layer: boolean) {
 +  const plane = planes[index]
 +  const scenario = scenarios[model.scenario]
 +  const onThisPlane = plane.machines.includes(scenario.machine)
@@ -1637,7 +2015,7 @@ index 0000000..9db0a48
 +        path: geometry.path, tip: geometry.tip, toward: geometry.toward,
 +        badge: { point: geometry.badge, label: route.laws[0] ?? "·" },
 +        color: route.laws.length ? lawColor(route.laws[0]) : "#7d8da2",
-+        active: activeRoute === route.id, dashed: route.laws.length === 0,
++        active: activeRoute === route.id || model.selected === route.id, dashed: route.laws.length === 0,
 +        ...(mobile ? {} : { label: route.events.join(" / "), labelPoint: geometry.labelPoint }),
 +        onInspect: () => Message.Selected({ id: route.id })
 +      })
@@ -1669,7 +2047,7 @@ index 0000000..9db0a48
 +  ])
 +}
 +
-+function lawRow(h: HtmlBuilder<Message>, law: Law) {
++export function lawRow(h: HtmlBuilder<Message>, law: Law) {
 +  return h.tr([], [
 +    h.th([h.Scope("row")], [h.button([h.Type("button"), h.OnClick(Message.Selected({ id: `law:${law.id}` }))], [law.id])]),
 +    h.td([], [h.strong([], [law.name]), h.br([]), h.span([], [`Prevents: ${law.prevents}`])]),
@@ -1694,7 +2072,8 @@ index 0000000..9db0a48
 +  ])
 +}
 +
-+function inspector(model: Model, h: HtmlBuilder<Message>) {
++/** Inspector body for a state, transition or law; shared by the desktop panel and the phone sheet. */
++export function inspectorChildren(model: Model, h: HtmlBuilder<Message>) {
 +  const scenario = scenarios[model.scenario]
 +  const selected = model.selected || nodeId(scenario.machine, currentState(model))
 +  const children: (Html | string)[] = []
@@ -1722,6 +2101,11 @@ index 0000000..9db0a48
 +        [`${r.events.join(" / ")} → ${stateMeta(r.machine, r.to)?.title}${r.laws.length ? ` (${r.laws.join(", ")})` : ""}`])])))
 +        : h.p([], [state.terminal ? "Terminal: nothing moves it." : "No outgoing transition."]))
 +  }
++  return { selected, children }
++}
++
++function inspector(model: Model, h: HtmlBuilder<Message>) {
++  const { selected, children } = inspectorChildren(model, h)
 +  return stageInspectorView(h, { focused: true, preparation: false, selected, children: [
 +    h.details([h.Open(!model.mobile)], [
 +      h.summary([], ["Inspect any state, transition or law"]),
@@ -1741,7 +2125,7 @@ index 0000000..9db0a48
 +  ], scenarios.map((item, index) => h.option([h.Value(String(index))], [item.title])))])
 +}
 +
-+function replay(model: Model, h: HtmlBuilder<Message>) {
++export function replay(model: Model, h: HtmlBuilder<Message>) {
 +  const scenario = scenarios[model.scenario]
 +  const step = scenario.steps[model.cursor - 1]
 +  const next = scenario.steps[model.cursor]
@@ -1851,7 +2235,7 @@ index 0000000..9db0a48
 +  ])
 +}
 +
-+function timeline(model: Model, h: HtmlBuilder<Message>) {
++export function timeline(model: Model, h: HtmlBuilder<Message>) {
 +  const scenario = scenarios[model.scenario]
 +  return h.section([h.Id("timing-diagrams"), h.Class("card timeline-section")], [
 +    h.h2([], ["Tape timeline"]),
@@ -1868,6 +2252,7 @@ index 0000000..9db0a48
 +}
 +
 +export function view(model: Model, h: HtmlBuilder<Message>): Document {
++  if (model.mobile) return mobileView(model, h)
 +  return {
 +    title: "Bend statecharts · Hapsland",
 +    body: h.main([h.Class("page dotfiles-dashboard fsm-dashboard")], [
