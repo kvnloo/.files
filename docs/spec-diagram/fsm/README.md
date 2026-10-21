@@ -91,6 +91,11 @@ The browser re-runs each step and shows whether it matches the receipt-bound
 node node_modules/vite/bin/vite.js build --config packages/agent-flow-viz/vite.fsm.config.ts
 ```
 
+On phones (≤700px) `src/fsm/mobile-view.ts` renders a separate shell: the
+3D stack as the hero, one bottom thumb bar (layer chips from `model.json`
+planes, event cards, scrub, tape, Play/Step, tabs) and the inspector as a
+sheet. It reads the same projection, so new planes appear without code changes.
+
 ## Loop 3 · integration owner
 
 Adds a fourth plane (the shared-resources plane is still part of Loop 2),
