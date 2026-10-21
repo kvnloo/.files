@@ -104,7 +104,7 @@ export function transition(machine, state, event, facts = {}) {
   const beforeJson = fromBend(m.stateType, before);
   const eventTag = ev.$.slice(ev.$.indexOf('.') + 1);
   const outputs = [];
-  let raw, held = false, effect = null;
+  let raw, held = false, effect = null, notify = false;
   if (machine === 'work-item') {
     const avail = toBend('WorkItem.Avail', facts.availability ?? m.facts.availability.default, 'facts.availability');
     raw = call('WorkItem.astep', avail, before, ev);
@@ -113,6 +113,14 @@ export function transition(machine, state, event, facts = {}) {
     raw = call('WorkerSupervision.step', before, ev, toBend('Nat', facts.limit ?? m.facts.limit.default, 'facts.limit'));
   } else if (machine === 'integration') {
     raw = call('IntegrationOwner.step', before, ev);
+  } else if (machine === 'ops-gates') {
+    raw = call('OpsLayer.gate_step', before, ev);
+  } else if (machine === 'node-health') {
+    const limit = toBend('Nat', facts.limit ?? m.facts.limit.default, 'facts.limit');
+    notify = call('Ops.neff', before, ev, limit);
+    raw = call('Ops.nstep', before, ev, limit);
+  } else if (machine === 'gateway-run') {
+    raw = call('Ops.rstep', before, ev);
   } else if (machine === 'lease') {
     raw = call('WorkerSupervision.lstep', before, ev);
   } else {
@@ -124,7 +132,12 @@ export function transition(machine, state, event, facts = {}) {
   const guard = guardFor(machine, stateTag(machine, beforeJson), eventTag);
   let verdict;
   let reason;
-  if (held) {
+  if (machine === 'ops-gates') {
+    const laws = guard?.laws?.join(' ') ?? '';
+    verdict = { GAdmitted: 'accepted', GWaiting: 'held', GRefused: 'refused', GRolledBack: 'refused' }[after.tag];
+    reason = { GAdmitted: `ADMITTED · ${laws}`, GWaiting: `WAITS · ${laws}: no room / owner call live / service busy; never groot, never during a call`,
+      GRefused: `REFUSED · ${laws}: ${guard?.text ?? ''}`, GRolledBack: `ROLLED BACK · ${laws}: the device launch check failed after restart` }[after.tag];
+  } else if (held) {
     verdict = 'held';
     reason = 'HELD · L7: Kevin is off, so this owner action waits in the needs-Kevin queue.';
     outputs.push({ kind: 'queued', label: 'needs-Kevin queue (owner off)' });
@@ -149,6 +162,7 @@ export function transition(machine, state, event, facts = {}) {
   }
   if (effect) outputs.push({ kind: 'effect', label: effect.tag === 'NoEff' ? 'no effect on the phone'
     : effect.tag === 'Installed' ? `install by worker ${effect.a}` : `input by worker ${effect.a} into app ${effect.app}` });
+  if (notify) outputs.push({ kind: 'queue', label: 'ONE owner notification (O8); none again until the node recovers' });
   if (machine === 'work-item' && call('WorkItem.needs_kevin', raw)) outputs.push({ kind: 'queue', label: 'in the needs-Kevin queue (awaiting owner acceptance)' });
   if (machine === 'worker' && call('WorkerSupervision.needs_kevin', raw)) outputs.push({ kind: 'queue', label: 'Overdue: in the needs-Kevin queue' });
   if (machine === 'lease' && 'a' in event) {
@@ -158,7 +172,8 @@ export function transition(machine, state, event, facts = {}) {
   outputs.push({ kind: 'decision', label: reason });
   return {
     machine, before: displayState(machine, beforeJson), state: displayState(machine, after),
-    event: ctorIndex(m.eventType, eventTag), eventTag, accepted: verdict === 'accepted', verdict, reason,
+    // gate verdicts are all real moves of the presentation machine, so every one is drawn
+    event: ctorIndex(m.eventType, eventTag), eventTag, accepted: machine === 'ops-gates' ? changed : verdict === 'accepted', verdict, reason,
     laws: guard?.laws ?? (held ? ['L7'] : []), value: after, outputs
   };
 }

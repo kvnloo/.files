@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-21T07:48:00.738Z",
+  "generatedAt": "2026-10-21T23:05:50.923Z",
   "compiler": {
     "version": "bend 2.0.34",
     "executableSha256": "66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317",
@@ -8,25 +8,28 @@
     "producerPlatform": "linux",
     "producerArchitecture": "x64"
   },
-  "rawCompilerOutputSha256": "cdb8fc775baffc5e5e7c79431858479be8171b207bd99ebf64ee5939b1cca8f3",
+  "rawCompilerOutputSha256": "b2c10cc85c2b8c8779d0291cfbe16cb27ad3a48d08043b40ea6f9444d84d5a76",
   "artifacts": {
-    "Runtime.bend": "154e4e154dd8be153d32be58ad05420ed4de5df9a8e8572ba82ea7fa4dfb1fde",
+    "Runtime.bend": "90497942b4ac5460fcfc3708006646e44d69bdb21758d62df04590b36a15d130",
     "WorkItem.bend": "f0465c394b77fed96e577568a7523b139e184dcabf973017bfbe681e74aaf29f",
     "WorkerSupervision.bend": "5acf2bd7deb05bc78ea0ec36836957da625a4e4bde54fb59726fed4338d4f61a",
     "IntegrationOwner.bend": "85cee91b17c81c817f7ed2d0c951fa0ad49d77f3289ceb6deae82349cf303a2a",
-    "model.json": "fe41cd1c297b9b8544d5ad0db039de5d2a83f6872d5c9112b16e8b6e967301e9",
+    "Ops.bend": "ce1b4595c03bbd17bf99e4798fe6e830ebd648f8a7e19e26743069da5b4ce68d",
+    "OpsLayer.bend": "840faa3d1aa0979111dd9eca8df409e850409de79264b3395964c047c56453cc",
+    "model.json": "86c5c837cccba218ba3501a8b4a71762a7dcdba3f1f45f2320a492f5eebbe769",
     "scenarios.json": "4c56d18d3cd8c36602a19eb98bb5ebb643fb14ac540eb272438f3a7fb1a836f3",
-    "adapter.mjs": "fe7da04145bfddae18bfefa5c6745bc4d4984c4c27647f8f4bb1393ed9d89c1b",
-    "build.mjs": "31292fecbac2cf338cf669bbfb5d9636a5e8272d031cf5dc9c69e2c05f1ec2b5",
+    "adapter.mjs": "2c6dbfaf7743fdad0e20103710a647a0343f01b12288aa50de0a361941628f2e",
+    "build.mjs": "dca6e0d860f0dc7007d917145616e0637bb91c99f1c5106a65867b98c016a9c7",
     "extract-tapes.py": "0deedd25add7c0041b64da722d1309a5e8821e4bdcf59af2e889054bc067a2dc",
     "extract-integration-tapes.py": "116c03fb82cf9e52abaa72d54b62d78f0e79035c6d20ec2d706b5d33cb44ba06",
     "work-item.mmd": "18aa666dae6736dcf20f34149103c19e4d7f0b368c2c9c7cac328ada81ab1127",
     "worker-supervision.mmd": "43b6af2dac6bddf361d1b86e82a9664e5ed5dd30be383adcc66038a98dc2cd0a",
     "integration-owner.mmd": "3a1e37a5892b7a9821c275fccdb2c58b196c5acb48db9f6a444326ccf7835ea9",
     "integration-tapes.json": "9ba955cc61981fc4f7de40ad8590ddad9ad81ddbf63ae5772107059950b700ee",
-    "Runtime.generated.mjs": "856c6d60860ddccdc09598fdbde48a031d171a89b9330ea4d809e792853b44a1",
-    "projection.json": "8ccf18e65dcd08b1bb47c9b83999d8beaf750e821ea1a4fc128ab4f7eb9a224e",
-    "replay.json": "b0a2bb1425d1aff8c0e44186091705aa40ba1cde6beb48a7f2aa5b205f4a3229"
+    "ops-tapes.json": "583c38fb68153dc9853a95b866de043934ce877e338d5c0dbc376af0d962d9f4",
+    "Runtime.generated.mjs": "fa8809ff63e0001fce22ad0b93ac8c7e77ca120ea9182ae353c58ababaa120fa",
+    "projection.json": "42245b61e390637bdcb58071884bf9eb51d52c11d8d73822f7e934b7706830a6",
+    "replay.json": "c2dabb6800580ed72e5069fe7e1bc48778ee430edabfd422bb6e499e15e51630"
   },
   "sources": [
     {
@@ -70,6 +73,13 @@
       "gitBlob": "ba3f617a2362e65bbc2fa9a6872601d9e795fd55",
       "kind": "documented-statechart",
       "sha256": "3a1e37a5892b7a9821c275fccdb2c58b196c5acb48db9f6a444326ccf7835ea9"
+    },
+    {
+      "path": "Ops.bend",
+      "upstream": "kvnloo/z0intelligence@24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a:bend/ops_fsm/ops.bend",
+      "gitBlob": "9c28f8d2b87a61a6f00aa910ad49e37d7deb3ad6",
+      "kind": "bend-model",
+      "sha256": "ce1b4595c03bbd17bf99e4798fe6e830ebd648f8a7e19e26743069da5b4ce68d"
     }
   ],
   "proofs": [
@@ -103,6 +113,17 @@
       "bend": "2.0.34",
       "verifiedAt": "2026-10-21T07:40:49.968160+00:00",
       "scope": "bend-emitted-book; source_semantics_attested=false"
+    },
+    {
+      "project": "bend/ops_fsm",
+      "pr": "kvnloo/z0intelligence#192",
+      "commit": "24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a",
+      "lawsBlob": "593933b921518c58dca32b71fbd8443a15886ecf",
+      "proofBlob": "36088d3b740c05ba4b1635e6a680643614ece33b",
+      "verdict": "pass",
+      "bend": "2.0.34",
+      "verifiedAt": "2026-10-21T22:57:31.892044+00:00",
+      "scope": "bend-emitted-book; source_semantics_attested=false; receipt 78fe327d9e3e4b19adb599368c37bca5"
     }
   ],
   "tapes": {
@@ -124,13 +145,18 @@
       "generatedAt": "2026-10-21T07:44:00.303336+00:00",
       "privacy": "Allowlisted ids, times, short SHAs, finding codes only.",
       "scope": "Observed snapshot initial states; ALL event steps are explicitly what-if guard probes. Not historical deployment/action logs."
+    },
+    "ops": {
+      "source": "kvnloo/z0intelligence@24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a: tests/fixtures/ops_tapes (state.db commands, dash-20261020 reflog, z0live session c9ffaba8, fleet health history, sol-runs RESUME.txt)",
+      "privacy": "Ids, times, short SHAs, event kinds and paraphrased notes only.",
+      "scope": "One step per gate incident; node-health and gateway-run steps are recorded probes/events except where marked what-if."
     }
   },
   "checks": {
     "compilation": "The pinned Bend compiler emitted Runtime.generated.mjs from the unchanged fsm.bend files; no handwritten transition table",
     "sources": "WorkItem.bend, WorkerSupervision.bend and the .mmd drawings are byte-identical to their upstream git blobs",
-    "replay": "17 tapes replayed through the compiled module; outcomes in replay.json",
-    "projection": "73 display edges enumerated by executing the compiled module (26700 calls)",
+    "replay": "28 tapes replayed through the compiled module; outcomes in replay.json",
+    "projection": "96 display edges enumerated by executing the compiled module (26812 calls)",
     "theoremProofs": "Upstream PROOF.bend pass receipts (bend-emitted-book scope); not re-run here",
     "nativeRuntime": "None. No host, service, adb or GitHub is contacted"
   }

@@ -16,17 +16,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const directory = dirname(fileURLToPath(import.meta.url));
 const compilerPin = 'bend 2.0.34';
 const compilerIdentity = '66e5faf92d75d6e10a11427c8e4f3df72a4c14b1263a04431fdc015a5aa21317';
-const bendInputs = ['Runtime.bend', 'WorkItem.bend', 'WorkerSupervision.bend', 'IntegrationOwner.bend'];
+const bendInputs = ['Runtime.bend', 'WorkItem.bend', 'WorkerSupervision.bend', 'IntegrationOwner.bend', 'Ops.bend', 'OpsLayer.bend'];
 const artifactNames = [...bendInputs, 'model.json', 'scenarios.json', 'adapter.mjs', 'build.mjs', 'extract-tapes.py', 'extract-integration-tapes.py',
-  'work-item.mmd', 'worker-supervision.mmd', 'integration-owner.mmd', 'integration-tapes.json', 'Runtime.generated.mjs', 'projection.json', 'replay.json'];
+  'work-item.mmd', 'worker-supervision.mmd', 'integration-owner.mmd', 'integration-tapes.json', 'ops-tapes.json', 'Runtime.generated.mjs', 'projection.json', 'replay.json'];
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const gitBlob = (b) => createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${b.length}\0`), b])).digest('hex');
 const bytes = (name) => readFileSync(join(directory, name));
 const json = (name) => JSON.parse(bytes(name).toString('utf8'));
 const loadScenarios = () => {
-  const base = json('scenarios.json'), integration = json('integration-tapes.json');
-  return { ...base, provenance: { ...base.provenance, integration: integration.provenance },
-    scenarios: [...base.scenarios, ...integration.scenarios] };
+  const base = json('scenarios.json'), integration = json('integration-tapes.json'), ops = json('ops-tapes.json');
+  return { ...base, provenance: { ...base.provenance, integration: integration.provenance, ops: ops.provenance },
+    scenarios: [...base.scenarios, ...integration.scenarios, ...ops.scenarios] };
 };
 const hash = (name) => sha256(bytes(name));
 const stable = (v) => JSON.stringify(v, null, 1) + '\n';
@@ -105,8 +105,28 @@ function samples() {
     { machine: 'integration', states: ['Branch','DraftPR','Queued','OnIntegrationBranch','Deployed','OwnerAccepted','Merged','Parked','Conflicted'].map(tag => ({tag})),
       events: [ {tag:'Draft'}, {tag:'Queue'}, {tag:'Merge'}, {tag:'Conflict'}, {tag:'Resume'},
         ...[true,false].flatMap(ok => [{tag:'Integrate',lease:ok,stack:ok,independent:ok},{tag:'Deploy',equal:ok},{tag:'Accept',owner:ok},
-          {tag:'Park',reason:ok,future:ok},{tag:'Observe',equal:ok},{tag:'Expire',expired:ok}])], facts:[{}] }
+          {tag:'Park',reason:ok,future:ok},{tag:'Observe',equal:ok},{tag:'Expire',expired:ok}])], facts:[{}] },
+    // Ops plane: the gate machine is drawn from its idle state (its verdict ignores the previous one)
+    { machine: 'ops-gates', states: [{ tag: 'GIdle' }], events: opsGateEvents(), facts: [{}] },
+    { machine: 'node-health', states: [{ tag: 'NHealthy' }, { tag: 'NBad', since: 0 }, { tag: 'NNotified', since: 0 }],
+      events: [true, false].flatMap((ok) => [10, 4000].map((now) => ({ ok, now }))), facts: [{ limit: 1800 }] },
+    { machine: 'gateway-run', states: [{ tag: 'RActive', gw: 1 }, { tag: 'RInterrupted', gw: 1 }, { tag: 'RFailed' }, { tag: 'RDone' }, { tag: 'RResumed' }, { tag: 'RReported' }],
+      events: [{ tag: 'GwRestart', gw: 1 }, { tag: 'GwRestart', gw: 2 }, { tag: 'RunError' }, { tag: 'RunDone' }, { tag: 'ReportRun' },
+        { tag: 'ResumeRun', session: true }, { tag: 'ResumeRun', session: false }], facts: [{}] }
   ];
+}
+
+function opsGateEvents() {
+  const B = [true, false];
+  const ev = [];
+  for (const c of ['CTest', 'CBundle', 'CGpu', 'CTiny']) for (const mbp of B) for (const phone of B) ev.push({ tag: 'GPlace', c, mbp, phone });
+  for (const served of B) for (const op of ['GCommit', 'GMergeFF', 'GRollback']) for (const txn of B) ev.push({ tag: 'GGit', served, op, txn });
+  for (const clean of B) for (const call of B) for (const check of B) ev.push({ tag: 'GRoll', q: { clean, ff: true, gated: false, receipt: false, call, idle: true }, check });
+  for (const priv of B) for (const vis of ['VPublic', 'VPrivate', 'VUnknown']) ev.push({ tag: 'GPush', private: priv, vis });
+  for (const intent of B) for (const fg of B) ev.push({ tag: 'GPhone', a: { tag: 'PTap', intent, fg }, call: true });
+  for (const chain of B) for (const call of B) ev.push({ tag: 'GPhone', a: { tag: 'PInstall', chain }, call });
+  for (const cancelled of B) for (const sol of B) for (const design of B) ev.push({ tag: 'GRoute', cancelled, sol, design });
+  return ev;
 }
 
 function enumerate(adapter, model) {
@@ -202,7 +222,7 @@ if (process.argv.includes('--check')) {
     execFileSync(compiler, [join(temporary, 'Runtime.bend'), '-o', output], { encoding: 'utf8', timeout: 300000, stdio: 'pipe' });
     const compiled = readFileSync(output, 'utf8');
     rawHash = sha256(compiled);
-    if (!compiled.includes('export default {') || !compiled.includes('"WorkItem.astep"') || !compiled.includes('"WorkerSupervision.step"')) {
+    if (!compiled.includes('export default {') || !compiled.includes('"WorkItem.astep"') || !compiled.includes('"WorkerSupervision.step"') || !compiled.includes('"OpsLayer.gate_step"')) {
       throw new Error('Pinned compiler ES-module layout not recognized; inspect the emitted output before changing the binding');
     }
     const binding = `\nexport const bendMetadata = ${JSON.stringify(model)};\nexport const bendSourceSha256 = ${JSON.stringify(Object.fromEntries(bendInputs.map((n) => [n, hash(n)])))};\n`;

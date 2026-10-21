@@ -55,6 +55,36 @@
    "step": "IntegrationOwner.step(state, event)",
    "plane": "integration",
    "facts": {}
+  },
+  "ops-gates": {
+   "title": "Ops \u00b7 gates O1\u2013O5, O7",
+   "stateType": "OpsLayer.GSt",
+   "eventType": "OpsLayer.GEv",
+   "step": "OpsLayer.gate_step(state, event) over Ops.place / wt_allows / rollout / push_allows / phone_allows / route_ok",
+   "plane": "ops",
+   "facts": {}
+  },
+  "node-health": {
+   "title": "Ops \u00b7 O8 node health",
+   "stateType": "Ops.NSt",
+   "eventType": "Ops.NEv",
+   "step": "Ops.nstep(state, event, limit) + Ops.neff(state, event, limit)",
+   "plane": "ops",
+   "facts": {
+    "limit": {
+     "type": "Nat",
+     "default": 1800,
+     "description": "Seconds unhealthy before the one owner notification (30 min)."
+    }
+   }
+  },
+  "gateway-run": {
+   "title": "Ops \u00b7 O9 headless run",
+   "stateType": "Ops.RSt",
+   "eventType": "Ops.REv",
+   "step": "Ops.rstep(state, event)",
+   "plane": "ops",
+   "facts": {}
   }
  },
  "types": {
@@ -408,6 +438,153 @@
     "Expire": {
      "expired": "Bool"
     }
+   }
+  },
+  "Ops.Cls": {
+   "enum": [
+    "CTest",
+    "CMutation",
+    "CTypecheck",
+    "CGradle",
+    "CBundle",
+    "CEval",
+    "CShot",
+    "CGpu",
+    "CBend",
+    "CLean",
+    "CService",
+    "CAgent",
+    "CTiny"
+   ]
+  },
+  "Ops.GitOp": {
+   "enum": [
+    "GEdit",
+    "GCommit",
+    "GCheckout",
+    "GStash",
+    "GMerge",
+    "GMergeFF",
+    "GRollback"
+   ]
+  },
+  "Ops.Vis": {
+   "enum": [
+    "VPublic",
+    "VPrivate",
+    "VUnknown"
+   ]
+  },
+  "Ops.Req": {
+   "ctors": {
+    "Req": {
+     "clean": "Bool",
+     "ff": "Bool",
+     "gated": "Bool",
+     "receipt": "Bool",
+     "call": "Bool",
+     "idle": "Bool"
+    }
+   }
+  },
+  "Ops.PAct": {
+   "ctors": {
+    "PTap": {
+     "intent": "Bool",
+     "fg": "Bool"
+    },
+    "PInstall": {
+     "chain": "Bool"
+    },
+    "PRestart": {
+     "chain": "Bool"
+    }
+   }
+  },
+  "OpsLayer.GSt": {
+   "ctors": {
+    "GIdle": {},
+    "GAdmitted": {},
+    "GWaiting": {},
+    "GRefused": {},
+    "GRolledBack": {}
+   }
+  },
+  "OpsLayer.GEv": {
+   "ctors": {
+    "GPlace": {
+     "c": "Ops.Cls",
+     "mbp": "Bool",
+     "phone": "Bool"
+    },
+    "GGit": {
+     "served": "Bool",
+     "op": "Ops.GitOp",
+     "txn": "Bool"
+    },
+    "GRoll": {
+     "q": "Ops.Req",
+     "check": "Bool"
+    },
+    "GPush": {
+     "private": "Bool",
+     "vis": "Ops.Vis"
+    },
+    "GPhone": {
+     "a": "Ops.PAct",
+     "call": "Bool"
+    },
+    "GRoute": {
+     "cancelled": "Bool",
+     "sol": "Bool",
+     "design": "Bool"
+    }
+   }
+  },
+  "Ops.NSt": {
+   "ctors": {
+    "NHealthy": {},
+    "NBad": {
+     "since": "Nat"
+    },
+    "NNotified": {
+     "since": "Nat"
+    }
+   }
+  },
+  "Ops.NEv": {
+   "ctors": {
+    "NProbe": {
+     "ok": "Bool",
+     "now": "Nat"
+    }
+   }
+  },
+  "Ops.RSt": {
+   "ctors": {
+    "RActive": {
+     "gw": "Nat"
+    },
+    "RInterrupted": {
+     "gw": "Nat"
+    },
+    "RFailed": {},
+    "RDone": {},
+    "RResumed": {},
+    "RReported": {}
+   }
+  },
+  "Ops.REv": {
+   "ctors": {
+    "GwRestart": {
+     "gw": "Nat"
+    },
+    "RunError": {},
+    "RunDone": {},
+    "ResumeRun": {
+     "session": "Bool"
+    },
+    "ReportRun": {}
    }
   }
  },
@@ -859,6 +1036,184 @@
      "y": 422
     }
    }
+  ],
+  "ops-gates": [
+   {
+    "id": 0,
+    "tag": "GIdle",
+    "machine": "ops-gates",
+    "owner": "GATE",
+    "title": "Action proposed",
+    "summary": "An agent is about to run a job, touch a served worktree, roll out, push, touch the owner's phone or route a role.",
+    "point": {
+     "x": 24,
+     "y": 34
+    }
+   },
+   {
+    "id": 1,
+    "tag": "GAdmitted",
+    "machine": "ops-gates",
+    "owner": "GATE",
+    "title": "Admitted",
+    "summary": "Every precondition held; the action may run (a pass is not an authorization).",
+    "point": {
+     "x": 244,
+     "y": 34
+    }
+   },
+   {
+    "id": 2,
+    "tag": "GWaiting",
+    "machine": "ops-gates",
+    "owner": "GATE",
+    "title": "Waits / deferred",
+    "summary": "O1: no worker lane has room, so the job waits (never groot). O3: owner call live or service busy, so the rollout is pending.",
+    "point": {
+     "x": 464,
+     "y": 34
+    }
+   },
+   {
+    "id": 3,
+    "tag": "GRefused",
+    "machine": "ops-gates",
+    "owner": "GATE",
+    "title": "Refused",
+    "summary": "A known-bad action: heavy job on groot, edit in a served worktree, private push to a public remote, phone tap without intent, Grok/Sol-design route.",
+    "point": {
+     "x": 244,
+     "y": 150
+    }
+   },
+   {
+    "id": 4,
+    "tag": "GRolledBack",
+    "machine": "ops-gates",
+    "owner": "GATE",
+    "title": "Rolled back",
+    "summary": "The rollout ran but the device launch check failed: the served worktree went back to the revision it replaced and the service restarted.",
+    "point": {
+     "x": 464,
+     "y": 150
+    }
+   }
+  ],
+  "node-health": [
+   {
+    "id": 0,
+    "tag": "NHealthy",
+    "machine": "node-health",
+    "owner": "O8",
+    "title": "Healthy",
+    "summary": "The worker node passes its health probe.",
+    "point": {
+     "x": 24,
+     "y": 290
+    }
+   },
+   {
+    "id": 1,
+    "tag": "NBad",
+    "machine": "node-health",
+    "owner": "O8",
+    "title": "Unhealthy",
+    "summary": "Failing probes; the clock started at the first one. No notification yet.",
+    "point": {
+     "x": 244,
+     "y": 290
+    }
+   },
+   {
+    "id": 2,
+    "tag": "NNotified",
+    "machine": "node-health",
+    "owner": "O8",
+    "title": "Owner notified",
+    "summary": "Past 30 min the next bad probe sent exactly one notification; nothing more until the node recovers.",
+    "point": {
+     "x": 464,
+     "y": 290
+    }
+   }
+  ],
+  "gateway-run": [
+   {
+    "id": 0,
+    "tag": "RActive",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Active",
+    "summary": "A headless sol run hosted by the gateway.",
+    "point": {
+     "x": 24,
+     "y": 430
+    }
+   },
+   {
+    "id": 1,
+    "tag": "RInterrupted",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Interrupted",
+    "summary": "The gateway restarted under it: recorded with a resume command, never silently Failed.",
+    "point": {
+     "x": 244,
+     "y": 430
+    }
+   },
+   {
+    "id": 2,
+    "tag": "RFailed",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Failed",
+    "summary": "The run itself failed (its own error), not a gateway restart.",
+    "point": {
+     "x": 24,
+     "y": 556
+    },
+    "terminal": true
+   },
+   {
+    "id": 3,
+    "tag": "RDone",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Done",
+    "summary": "The run finished and wrote its report.",
+    "point": {
+     "x": 244,
+     "y": 556
+    },
+    "terminal": true
+   },
+   {
+    "id": 4,
+    "tag": "RResumed",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Resumed",
+    "summary": "Continued from its own session/run directory.",
+    "point": {
+     "x": 464,
+     "y": 430
+    },
+    "terminal": true
+   },
+   {
+    "id": 5,
+    "tag": "RReported",
+    "machine": "gateway-run",
+    "owner": "O9",
+    "title": "Reported",
+    "summary": "Not resumed; reported to the owner instead.",
+    "point": {
+     "x": 684,
+     "y": 430
+    },
+    "terminal": true
+   }
   ]
  },
  "laws": [
@@ -1076,6 +1431,114 @@
     "count": 0,
     "label": "findings / evidence gaps (not all proven violations)",
     "source": "integration-20261021.json"
+   }
+  },
+  {
+   "id": "O1",
+   "loop": "ops",
+   "name": "Compute placement",
+   "text": "Heavy job classes are admitted only on a non-groot lane; with no room they wait, never groot.",
+   "prevents": "groot running every bundle and test from 10:30 while the MBP sat idle",
+   "incidents": {
+    "count": 196,
+    "label": "local heavy commands on groot 10:30-16:00 (state.db replay)",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O2",
+   "loop": "ops",
+   "name": "Served worktree",
+   "text": "No edit/commit/checkout/stash/merge in a worktree serving a live service, except merge --ff-only + idle restart in one transaction.",
+   "prevents": "in-place edits under the served Dash (HTTP 500 on the phone, 11:31)",
+   "incidents": {
+    "count": 35,
+    "label": "served-worktree reflog entries 09:59-15:56, none in a transaction",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O3",
+   "loop": "ops",
+   "name": "Device rollout gate",
+   "text": "Candidate from a non-served worktree, launch check on the real runtime after restart with rollback, review receipt when gated.",
+   "prevents": "fast-motion promoted on a bundle readback, crashed the phone at launch (15:51)",
+   "incidents": {
+    "count": 1,
+    "label": "rollout without a device launch check",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O4",
+   "loop": "ops",
+   "name": "Privacy boundary",
+   "text": "Private-marked artifacts never go to a public remote.",
+   "prevents": "taste-data (private) leaking into the public taste-skill fork",
+   "incidents": {
+    "count": 0,
+    "label": "no leak found; boundary was unenforced",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O5",
+   "loop": "ops",
+   "name": "Owner phone touch",
+   "text": "UI input needs an owner phone request and the expected foreground app; no call-chain install during a live call.",
+   "prevents": "the voice agent tapping 'Phone' while only checking a relay (16:25)",
+   "incidents": {
+    "count": 3,
+    "label": "phone_do calls without a phone request (1 landed)",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O6",
+   "loop": "ops",
+   "name": "Accessibility preservation",
+   "text": "Enabled accessibility services after an install \u2287 before, unless the owner removed one.",
+   "prevents": "every reinstall turning off z0live in-app control",
+   "incidents": {
+    "count": 1,
+    "label": "recurring on every reinstall",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O7",
+   "loop": "ops",
+   "name": "Provider routing",
+   "text": "No role routes to a cancelled provider; design roles never route to Sol.",
+   "prevents": "Grok roles after the xai cancellation; Sol design rework",
+   "incidents": {
+    "count": 11,
+    "label": "current config findings (hourly check)",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O8",
+   "loop": "ops",
+   "name": "Node health notifies once",
+   "text": "A worker node unhealthy >30 min emits exactly one owner notification.",
+   "prevents": "S22+ offline since 01:47 with hundreds of silent strikes",
+   "incidents": {
+    "count": 1,
+    "label": "node silent all day (0 notifications)",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
+   }
+  },
+  {
+   "id": "O9",
+   "loop": "ops",
+   "name": "Gateway restart interrupts",
+   "text": "Dependent runs become Interrupted with resume commands, never silently Failed.",
+   "prevents": "six sol runs cut off at 11:58, noticed 26 min later",
+   "incidents": {
+    "count": 6,
+    "label": "runs cut off by the 11:58 Hermes update",
+    "source": "kvnloo/z0intelligence tests/fixtures/ops_tapes"
    }
   }
  ],
@@ -1434,6 +1897,127 @@
    ],
    "text": "Drift revokes deployment and owner acceptance.",
    "kind": "observation"
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GPlace",
+   "laws": [
+    "O1"
+   ],
+   "text": "Test, mutation, typecheck, gradle, bundle, eval and screenshot jobs run on mbp or a phone; with no room they wait. groot runs gpu, bend, lean, services, agents and tiny jobs only."
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GGit",
+   "laws": [
+    "O2"
+   ],
+   "text": "A served worktree takes no edit, commit, checkout, stash or merge, except merge --ff-only (and its rollback) inside z0-guard rollout."
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GRoll",
+   "laws": [
+    "O2",
+    "O3"
+   ],
+   "text": "Candidate from a clean non-served worktree, fast-forward into an idle service, review receipt if gated, device launch check after restart (never during an owner call), automatic rollback."
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GPush",
+   "laws": [
+    "O4"
+   ],
+   "text": "Private-marked content goes only to a remote known to be private; unknown visibility fails closed."
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GPhone",
+   "laws": [
+    "O5"
+   ],
+   "text": "A tap needs an explicit owner phone request and the expected app in front; no call-chain install/restart during a live z0live call."
+  },
+  {
+   "machine": "ops-gates",
+   "from": "*",
+   "event": "GRoute",
+   "laws": [
+    "O7"
+   ],
+   "text": "No role routes to a cancelled provider (xai/grok); design roles never route to Sol."
+  },
+  {
+   "machine": "node-health",
+   "from": "NBad",
+   "event": "NProbe",
+   "laws": [
+    "O8"
+   ],
+   "kind": "clock",
+   "text": "Still within 30 min: no notification yet."
+  },
+  {
+   "machine": "node-health",
+   "from": "NNotified",
+   "event": "NProbe",
+   "laws": [
+    "O8"
+   ],
+   "kind": "clock",
+   "text": "Already notified for this episode: stays quiet until the node is healthy again."
+  },
+  {
+   "machine": "gateway-run",
+   "from": "RActive",
+   "event": "GwRestart",
+   "laws": [
+    "O9"
+   ],
+   "text": "Only a restart of this run's own gateway interrupts it, and it becomes Interrupted, never Failed."
+  },
+  {
+   "machine": "gateway-run",
+   "from": "RInterrupted",
+   "event": "ResumeRun",
+   "laws": [
+    "O9"
+   ],
+   "text": "Resume counts only from the run's own session."
+  },
+  {
+   "machine": "gateway-run",
+   "from": "RInterrupted",
+   "event": "RunError",
+   "laws": [
+    "O9"
+   ],
+   "text": "An interrupted run is never turned into Failed."
+  },
+  {
+   "machine": "gateway-run",
+   "from": "RInterrupted",
+   "event": "RunDone",
+   "laws": [
+    "O9"
+   ],
+   "text": "An interrupted run is never silently counted as done."
+  },
+  {
+   "machine": "node-health",
+   "from": "NHealthy",
+   "event": "NProbe",
+   "laws": [
+    "O8"
+   ],
+   "kind": "observation",
+   "text": "Healthy probe: nothing to report."
   }
  ],
  "planes": [
@@ -1529,6 +2113,20 @@
    "summary": "Keep draft work on an integration branch; deploy its exact head; batch owner acceptance. Unknown runtime SHA is not green.",
    "width": 894,
    "height": 530
+  },
+  {
+   "id": "ops",
+   "title": "Ops \u00b7 operating rules O1\u2013O9",
+   "owner": "z0-guard gates \u00b7 Bend-proven",
+   "color": "#8a5cc2",
+   "machines": [
+    "ops-gates",
+    "node-health",
+    "gateway-run"
+   ],
+   "summary": "Rules that lived in markdown, now Bend laws with deterministic gates: placement, served worktrees, rollouts, privacy, the owner's phone, accessibility, routing, node health, gateway restarts. Draft PR kvnloo/z0intelligence#192.",
+   "width": 894,
+   "height": 660
   }
  ],
  "nodeSize": {
@@ -1578,7 +2176,10 @@
   },
   "lease": {},
   "device": {},
-  "integration": {}
+  "integration": {},
+  "ops-gates": {},
+  "node-health": {},
+  "gateway-run": {}
  },
  "roles": [
   {
@@ -1627,7 +2228,8 @@
   "loops": [
    "Loop 1 follows one piece of work: Proposed \u2192 Claimed (Opus or Sol only) \u2192 Implementing \u2192 Verifying (CI, not the author, checks a receipt for that exact commit) \u2192 Draft PR \u2192 Integrated \u2192 Deployed (the service must run exactly that commit) \u2192 OwnerAccepted (only Kevin) \u2192 Merged. Blocked, Interrupted and Abandoned are the side exits.",
    "Loop 2 follows one delegated agent: Dispatched \u2192 Running (heartbeats) \u2192 Completed \u2192 Integrated. If it goes quiet it Stalls, then counts as Interrupted; a successor must resume from its log, or someone abandons it once its background processes are reaped. Past 2 h with no decision it turns Overdue and lands in Kevin's queue instead of vanishing. Beside it: one owner per worktree (the lease) and the S25 rules (install lock, look before you tap).",
-   "Loop 3 follows integration ownership: Branch \u2192 DraftPR \u2192 Queued \u2192 OnIntegrationBranch \u2192 Deployed \u2192 OwnerAccepted \u2192 Merged. Parked needs a reason and expiry. Conflicted needs repair. Snapshot tapes are evidence-backed what-if probes, not historical action logs."
+   "Loop 3 follows integration ownership: Branch \u2192 DraftPR \u2192 Queued \u2192 OnIntegrationBranch \u2192 Deployed \u2192 OwnerAccepted \u2192 Merged. Parked needs a reason and expiry. Conflicted needs repair. Snapshot tapes are evidence-backed what-if probes, not historical action logs.",
+   "The ops plane holds the owner's operating rules O1\u2013O9 from 21 Oct. Each gate (job placement, served worktree, rollout, push, phone, routing) is a Bend decision function; the state is just its last verdict. Next to it, node health notifies exactly once per outage (O8) and a gateway restart turns runs Interrupted, never Failed (O9)."
   ],
   "statechart": "This is poteto's statechart idea with Bend standing in for TLA+: draw the flow, write the laws, let the prover check the model, then replay real history through it to find where reality broke the rules. Here the laws are proven theorems about the same code that runs in this page, and the reports supply the incident counts.",
   "roles": "The guards are ROLES-v0 in code: only Opus/Sol write code, CI and Opus land work but never their own, Kevin alone accepts and is treated as a batched queue, free models/Jev/SLMs pick and rank but never implement."
@@ -1668,6 +2270,12 @@
    "upstream": "kvnloo/z0intelligence@1ef432f91223e74dcfb756c590aae82a950999ed:docs/fsm/integration-owner.mmd",
    "gitBlob": "ba3f617a2362e65bbc2fa9a6872601d9e795fd55",
    "kind": "documented-statechart"
+  },
+  {
+   "path": "Ops.bend",
+   "upstream": "kvnloo/z0intelligence@24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a:bend/ops_fsm/ops.bend",
+   "gitBlob": "9c28f8d2b87a61a6f00aa910ad49e37d7deb3ad6",
+   "kind": "bend-model"
   }
  ],
  "proofs": [
@@ -1701,6 +2309,17 @@
    "bend": "2.0.34",
    "verifiedAt": "2026-10-21T07:40:49.968160+00:00",
    "scope": "bend-emitted-book; source_semantics_attested=false"
+  },
+  {
+   "project": "bend/ops_fsm",
+   "pr": "kvnloo/z0intelligence#192",
+   "commit": "24fc31e6f54b466e3daaba6d99d9fee6dc08fe3a",
+   "lawsBlob": "593933b921518c58dca32b71fbd8443a15886ecf",
+   "proofBlob": "36088d3b740c05ba4b1635e6a680643614ece33b",
+   "verdict": "pass",
+   "bend": "2.0.34",
+   "verifiedAt": "2026-10-21T22:57:31.892044+00:00",
+   "scope": "bend-emitted-book; source_semantics_attested=false; receipt 78fe327d9e3e4b19adb599368c37bca5"
   }
  ],
  "provenance": {

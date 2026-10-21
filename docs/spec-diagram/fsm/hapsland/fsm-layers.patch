@@ -1600,13 +1600,14 @@ index 0000000..b5612fa
 +  })
 diff --git c/packages/agent-flow-viz/src/fsm/projection.ts w/packages/agent-flow-viz/src/fsm/projection.ts
 new file mode 100644
-index 0000000..d026c4d
+index 0000000..1564475
 --- /dev/null
 +++ w/packages/agent-flow-viz/src/fsm/projection.ts
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,260 @@
 +import modelText from "@fsm-diagram/model.json?raw"
 +import scenarioText from "@fsm-diagram/scenarios.json?raw"
 +import integrationText from "@fsm-diagram/integration-tapes.json?raw"
++import opsText from "@fsm-diagram/ops-tapes.json?raw"
 +import projectionText from "@fsm-diagram/projection.json?raw"
 +import replayText from "@fsm-diagram/replay.json?raw"
 +import receiptText from "@fsm-diagram/receipt.json?raw"
@@ -1652,8 +1653,9 @@ index 0000000..d026c4d
 +export const fsm: FsmModel = JSON.parse(modelText)
 +const scenarioFile: { readonly scenarios: readonly Scenario[]; readonly provenance: Readonly<Record<string, Json>> } = JSON.parse(scenarioText)
 +const integrationFile: typeof scenarioFile = JSON.parse(integrationText)
-+export const scenarios = [...scenarioFile.scenarios, ...integrationFile.scenarios]
-+export const tapeProvenance = { ...scenarioFile.provenance, integration: integrationFile.provenance }
++const opsFile: typeof scenarioFile = JSON.parse(opsText)
++export const scenarios = [...scenarioFile.scenarios, ...integrationFile.scenarios, ...opsFile.scenarios]
++export const tapeProvenance = { ...scenarioFile.provenance, integration: integrationFile.provenance, ops: opsFile.provenance }
 +export const projection: {
 +  readonly edges: readonly Edge[]; readonly selfLoops: readonly Edge[]
 +  readonly documentedComparison: { readonly documentedEdges: number; readonly documentedNotProducedByBend: readonly Edge[]; readonly producedByBendNotDocumented: readonly Edge[] }
@@ -1670,8 +1672,11 @@ index 0000000..d026c4d
 +export const planeIndexForMachine = (machine: string) => planes.findIndex((plane) => plane.machines.includes(machine))
 +export const stateMeta = (machine: string, id: number) => fsm.states[machine]?.find((state) => state.id === id)
 +export const nodeId = (machine: string, id: number) => `node:${machine}:${id}`
-+export const eventTags = (machine: string) => Object.keys(fsm.types[machine === "work-item" ? "WorkItem.Ev"
-+  : machine === "integration" ? "IntegrationOwner.Ev" : machine === "worker" ? "WorkerSupervision.Ev" : machine === "lease" ? "WorkerSupervision.LEv" : "WorkerSupervision.PEv"].ctors ?? {})
++const eventTypes: Readonly<Record<string, string>> = {
++  "work-item": "WorkItem.Ev", integration: "IntegrationOwner.Ev", worker: "WorkerSupervision.Ev", lease: "WorkerSupervision.LEv",
++  device: "WorkerSupervision.PEv", "ops-gates": "OpsLayer.GEv", "node-health": "Ops.NEv", "gateway-run": "Ops.REv"
++}
++export const eventTags = (machine: string) => Object.keys(fsm.types[eventTypes[machine] ?? "WorkerSupervision.PEv"].ctors ?? {})
 +
 +/** One drawn route per (machine, from, to); several Bend events can share it. */
 +export type Route = { readonly id: string; readonly machine: string; readonly from: number; readonly to: number; readonly events: readonly string[]; readonly laws: readonly string[] }
@@ -1697,7 +1702,10 @@ index 0000000..d026c4d
 +  integration: [["Branch", 0, 0], ["DraftPR", 1, 0], ["Parked", 0, 1], ["Queued", 1, 1],
 +    ["Conflicted", 0, 2], ["OnIntegrationBranch", 1, 2], ["Merged", 0, 3], ["Deployed", 1, 3], ["OwnerAccepted", 1, 4]],
 +  lease: [["Free", 0, 0], ["Held", 1, 0]],
-+  device: [["free-unknown", 0, 1], ["free-seen", 1, 1], ["held-unknown", 0, 2], ["held-seen", 1, 2]]
++  device: [["free-unknown", 0, 1], ["free-seen", 1, 1], ["held-unknown", 0, 2], ["held-seen", 1, 2]],
++  "ops-gates": [["GIdle", 0, 0], ["GAdmitted", 1, 0], ["GRefused", 0, 1], ["GWaiting", 1, 1], ["GRolledBack", 1, 2]],
++  "node-health": [["NHealthy", 0, 3], ["NBad", 1, 3], ["NNotified", 1, 4]],
++  "gateway-run": [["RActive", 0, 5], ["RInterrupted", 1, 5], ["RFailed", 0, 6], ["RResumed", 1, 6], ["RDone", 0, 7], ["RReported", 1, 7]]
 +}
 +const mobileLawSlots: readonly (readonly [number, number])[] = [[0, 3], [1, 3], [0, 4], [1, 4], [0, 5], [1, 5]]
 +
@@ -1810,6 +1818,12 @@ index 0000000..d026c4d
 +    if (v.by !== undefined) parts.push(`by ${scenario.actors[String(v.by)] ?? `#${v.by}`}`)
 +  } else if (machine === "integration") {
 +    parts.push("snapshot / labelled guard probe")
++  } else if (machine === "ops-gates") {
++    parts.push("verdict on the last gated action")
++  } else if (machine === "node-health") {
++    if (v.since !== undefined) parts.push(`unhealthy since t+${Math.round(Number(v.since) / 60)} min`)
++  } else if (machine === "gateway-run") {
++    if (v.gw !== undefined) parts.push(`gateway #${v.gw}`)
 +  } else if (machine === "lease") {
 +    if (v.o !== undefined) parts.push(scenario.actors[String(v.o)] ?? `holder #${v.o}`)
 +  } else {
@@ -1827,7 +1841,7 @@ index 0000000..d026c4d
 +  }
 +  const sha = (n: Json) => scenario.shas?.[String(n)] ?? `sha#${n}`
 +  const bits: string[] = []
-+  if (e.a !== undefined) bits.push(`by ${actor(e.a)}`)
++  if (e.a !== undefined && !(typeof e.a === "object" && e.a !== null && "tag" in (e.a as object))) bits.push(`by ${actor(e.a)}`)
 +  if (e.sha !== undefined) bits.push(`sha ${sha(e.sha)}`)
 +  if (e.ish !== undefined) bits.push(`into ${sha(e.ish)}`)
 +  if (e.served !== undefined) bits.push(`serving ${sha(e.served)}`)
@@ -1839,6 +1853,15 @@ index 0000000..d026c4d
 +  if (e.log !== undefined) bits.push(e.log ? "read the log" : "did NOT read the log")
 +  if (e.app !== undefined) bits.push(`app ${e.app}`)
 +  if (e.dead !== undefined) bits.push(e.dead ? "holder proven dead" : "no evidence holder is dead")
++  if (e.c !== undefined) bits.push(`class ${String(e.c).replace(/^C/, "").toLowerCase()}${e.mbp ? ", mbp has room" : ""}${e.phone ? ", phone has room" : ""}`)
++  if (e.op !== undefined) bits.push(`${String(e.op).replace(/^G/, "")} ${e.served ? "in the SERVED worktree" : "elsewhere"}${e.txn ? " inside rollout" : ""}`)
++  if (e.q !== undefined) { const q = e.q as Readonly<Record<string, Json>>; bits.push(`${q.clean ? "clean candidate" : "built in served wt"}${q.call ? ", owner call live" : ""}, launch check ${e.check ? "passes" : "fails"}`) }
++  if (e.vis !== undefined) bits.push(`${e.private ? "private" : "public"} content to a ${String(e.vis).replace(/^V/, "").toLowerCase()} remote`)
++  if (e.a !== undefined && typeof e.a === "object" && e.a !== null && "tag" in (e.a as object)) bits.push(`phone ${String((e.a as Readonly<Record<string, Json>>).tag).replace(/^P/, "").toLowerCase()}${e.call ? ", call live" : ""}`)
++  if (e.cancelled !== undefined) bits.push(`${e.cancelled ? "cancelled provider" : "live provider"}${e.sol ? ", Sol" : ""}${e.design ? ", design role" : ""}`)
++  if (e.ok !== undefined) bits.push(e.ok ? "probe ok" : "probe BAD")
++  if (e.gw !== undefined) bits.push(`gateway #${e.gw}`)
++  if (e.session !== undefined) bits.push(e.session ? "from its own session" : "without its session")
 +  return `${e.tag}${bits.length ? ` (${bits.join(", ")})` : ""}`
 +}
 diff --git c/packages/agent-flow-viz/src/fsm/style.css w/packages/agent-flow-viz/src/fsm/style.css
@@ -3417,10 +3440,10 @@ index 0000000..1e2e663
 +})
 diff --git c/packages/agent-flow-viz/vite.fsm.config.ts w/packages/agent-flow-viz/vite.fsm.config.ts
 new file mode 100644
-index 0000000..f2e99cc
+index 0000000..d001854
 --- /dev/null
 +++ w/packages/agent-flow-viz/vite.fsm.config.ts
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,49 @@
 +import { createHash } from "node:crypto"
 +import { readFileSync } from "node:fs"
 +import { dirname, resolve } from "node:path"
@@ -3444,7 +3467,8 @@ index 0000000..f2e99cc
 +  }
 +}
 +const fsmArtifacts = ["Runtime.bend", "WorkItem.bend", "WorkerSupervision.bend", "model.json", "scenarios.json", "adapter.mjs",
-+  "build.mjs", "extract-tapes.py", "work-item.mmd", "worker-supervision.mmd", "Runtime.generated.mjs", "projection.json", "replay.json"] as const
++  "build.mjs", "extract-tapes.py", "work-item.mmd", "worker-supervision.mmd", "Runtime.generated.mjs", "projection.json", "replay.json",
++  "Ops.bend", "OpsLayer.bend", "ops-tapes.json"] as const
 +const dotfilesArtifacts = ["Flow.bend", "model.json", "adapter.mjs", "build.mjs", "scenarios.json", "Flow.generated.mjs",
 +  "projection.json", "architecture.json"] as const
 +const requireFreshAll = () => { requireFresh(fsmRoot, fsmArtifacts); requireFresh(dotfilesRoot, dotfilesArtifacts) }
