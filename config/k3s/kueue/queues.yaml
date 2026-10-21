@@ -1,0 +1,128 @@
+# Kueue queues. A Job joins a queue by carrying the label
+# kueue.x-k8s.io/queue-name=<namespace>; Jobs without it are not managed, so
+# nothing that exists today changes behaviour.
+#
+# Quotas sit inside the namespace ResourceQuotas and the nodes' allocatable
+# (groot: 18 CPU, ~18Gi, 1 GPU; mbp: 7 CPU, ~14Gi after system-reserved).
+# The GPU flavor pins GPU work to labelled nodes.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: cpu
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-rtx3080ti
+spec:
+  nodeLabels:
+    z0.dev/gpu: rtx3080ti
+---
+# Per-node flavors for the factory queue. Kueue fills node-mbp first and spills to
+# node-groot only when mbp's share is used: groot also runs the GPU, the server and
+# the owner's interactive agents, so it gets a small slice. Kueue writes the flavor's
+# nodeLabels into the admitted pod as a nodeSelector, so placement follows quota.
+# Sizes come from measured factory jobs (oss-factory tools/factory/measurements.json):
+# a discover job peaks under ~100 MiB and is network-bound, so `pods` is the binding
+# limit, not CPU. Raise these when a node joins (one flavor per node).
+# Each node flavor also carries the node's job-class labels (config/fleet/nodes.yaml,
+# applied by `scripts/fleet labels`). Kueue only matches a Job's nodeSelector against
+# keys a flavor names, so a Job with nodeSelector z0.dev/class-render: "true" skips
+# node-mbp and lands on node-groot; Jobs without a class selector are unaffected.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: node-mbp
+spec:
+  nodeLabels:
+    kubernetes.io/hostname: mbp
+    z0.dev/class-cpu-heavy: "true"
+    z0.dev/class-build: "true"
+    z0.dev/class-render: "false"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: node-groot
+spec:
+  nodeLabels:
+    kubernetes.io/hostname: groot
+    z0.dev/class-cpu-heavy: "false"
+    z0.dev/class-build: "false"
+    z0.dev/class-render: "true"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: factory
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: factory}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory, pods]
+      flavors:
+        - name: node-mbp
+          resources:
+            - {name: cpu, nominalQuota: "5"}
+            - {name: memory, nominalQuota: 8Gi}
+            - {name: pods, nominalQuota: "16"}
+        - name: node-groot
+          resources:
+            - {name: cpu, nominalQuota: "2"}
+            - {name: memory, nominalQuota: 3Gi}
+            - {name: pods, nominalQuota: "4"}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: lanes
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: lanes}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: cpu
+          resources:
+            - {name: cpu, nominalQuota: "4"}
+            - {name: memory, nominalQuota: 4Gi}
+---
+# z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
+# instead of failing to schedule.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: z0
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: z0}
+  queueingStrategy: StrictFIFO
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: cpu
+          resources:
+            - {name: cpu, nominalQuota: "8"}
+            - {name: memory, nominalQuota: 12Gi}
+    - coveredResources: [nvidia.com/gpu]
+      flavors:
+        - name: gpu-rtx3080ti
+          resources:
+            - {name: nvidia.com/gpu, nominalQuota: "1"}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: factory, namespace: factory}
+spec: {clusterQueue: factory}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: lanes, namespace: lanes}
+spec: {clusterQueue: lanes}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: z0, namespace: z0}
+spec: {clusterQueue: z0}

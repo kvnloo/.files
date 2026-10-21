@@ -1,0 +1,62 @@
+#!/usr/bin/busybox sh
+# tailscaled in the foreground, userspace networking (no TUN, no routes under PRoot).
+. ../lib.sh
+# Builtins only (no exec per process under PRoot). From another PRoot session a
+# process's exe is proot's loader, so match comm and the argv instead.
+for d in /proc/[0-9]*; do
+    c=""; read -r c 2>/dev/null <"$d/comm"
+    [ "$c" = tailscaled ] || continue
+    a=$(tr '\0' ' ' 2>/dev/null <"$d/cmdline")
+    case $a in *--tun=userspace-networking*) adopt "${d#/proc/}" tailscaled ;; esac
+done
+st=""
+for f in "$HOME/.local/state/tailscale/tailscaled.state" /var/lib/tailscale/tailscaled.state; do
+    [ -s "$f" ] && { st=$f; break; }
+done
+if [ -z "$st" ]; then
+    echo "no tailscaled state: never logged in here, and \`tailscale up\` is the owner's call; staying down"
+    exec /usr/bin/busybox sv down .
+fi
+mkdir -p /run/tailscale
+extra=""
+# The S25's Tern setup also wants the SOCKS5 proxy and its managed /etc/hosts names
+# (what ~/.local/bin/tern-tailscale-start did); the names sync once tailscaled answers,
+# in a detached one-shot so tailscaled never has to reap it.
+if [ -x "$HOME/.local/bin/tern-tailscale-start" ]; then
+    extra="--socks5-server=127.0.0.1:1055"
+    if [ -x "$HOME/.local/bin/tern-tailscale-hosts" ]; then
+        ( (i=0; while [ $i -lt 40 ]; do "$HOME/.local/bin/tern-tailscale-hosts" && exit 0; sleep 0.5; i=$((i + 1)); done) </dev/null >/dev/null 2>&1 &)
+    fi
+fi
+# Under PRoot tailscaled can wedge on SIGTERM (it stops serving but never exits), so
+# this shell stays as its parent: runsv's TERM (sv down/restart, a handover) is passed
+# on and becomes a KILL after 5 s. Blocked in wait otherwise, no wakeups. Never send
+# TERM to tailscaled's own pid; use `busybox sv restart ~/.local/share/fleet/sv/tailscaled`.
+sock=/run/tailscale/tailscaled.sock
+rm -f "$sock" # a stale socket from a killed instance would fool the start watchdog
+running() { kill -0 "$1" 2>/dev/null && ! grep -q '^State:.*Z' "/proc/$1/status" 2>/dev/null; }
+# pdeathsig: if this shell dies anyhow (even SIGKILL), the kernel kills tailscaled too,
+# so no orphan keeps the state file and port. util-linux setpriv, not busybox's applet.
+/usr/bin/setpriv --pdeathsig KILL tailscaled --tun=userspace-networking --state="$st" \
+    --socket="$sock" $extra &
+child=$!
+trap 'kill -TERM $child 2>/dev/null
+    i=0; while running $child && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    kill -KILL $child 2>/dev/null' TERM INT HUP
+# Start watchdog (only while starting, never afterwards): under Android, tailscaled's
+# netmon.New can block forever in a netlink recvfrom (syscall.NetlinkRIB) before it
+# opens its socket, intermittently. If the socket isn't there in 20 s, kill and retry
+# (./finish backs off from the third quick failure).
+i=0
+while [ ! -S "$sock" ] && running $child; do
+    if [ $i -ge 40 ]; then
+        echo "$(date '+%F %T') tailscaled: no socket after 20 s (stuck in netlink?); killing it to retry"
+        kill -KILL $child
+        break
+    fi
+    sleep 0.5; i=$((i + 1))
+done
+wait $child
+rc=$?
+wait $child 2>/dev/null # after a trap: reap it
+exit $rc

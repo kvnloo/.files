@@ -1,0 +1,25 @@
+# Queue path: two GPU Jobs submitted at once through Kueue. With one GPU, the
+# second waits in the z0 queue (Pending, not unschedulable) and runs after the
+# first finishes. Create it twice: `kubectl create -f` this file two times.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-gpu-queue-
+  namespace: z0
+  labels:
+    kueue.x-k8s.io/queue-name: z0
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  suspend: true
+  template:
+    spec:
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      containers:
+        - name: gpu
+          image: nvidia/cuda:12.8.1-base-ubuntu24.04
+          command: ["sh", "-c", "nvidia-smi --query-gpu=name --format=csv,noheader && sleep 20 && echo GPU_QUEUE_OK"]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {nvidia.com/gpu: 1, memory: 256Mi}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Zer0 large model store
+Before=ollama.service
+
+[Mount]
+What=/dev/disk/by-uuid/3c8b6c35-4d36-4a69-b5f3-df88f07cbd82
+Where=/mnt/zer0models
+Type=btrfs
+Options=noatime,compress=zstd:3
+
+[Install]
+WantedBy=multi-user.target

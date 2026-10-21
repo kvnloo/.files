@@ -1,0 +1,151 @@
+# factory-gateway: the ONE door from untrusted pods to the host.
+#
+# Untrusted factory/lanes pods may reach only DNS and the public internet
+# (30-network-policies.yaml). Some jobs need two host services that hold the
+# owner's credentials: the caching GitHub read proxy and the model relay
+# (kvnloo/oss-factory tools/factory/ghcache.py, its "pod listener"). The
+# credentials stay on the host; pods get a per-job capability token instead.
+#
+# Path: factory pod (label z0.dev/gateway-client=true)
+#         -> Service factory-gateway.z0:8080 (this TCP forwarder, pinned to groot)
+#         -> 10.42.0.1:18091 (groot's cni0 address; ghcache --pod-listen)
+# Why a forwarder pod: pods on another node (mbp) cannot reach the server's
+# cni0 address directly (the host drops it), but pod-to-pod traffic over flannel
+# works, and a pod on groot reaches 10.42.0.1 locally.
+#
+# The pod listener itself refuses requests without a live job token, serves only
+# GET reads of PUBLIC repos, and meters relay calls per job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-gateway
+  namespace: z0
+data:
+  forward.py: |
+    import asyncio, os
+    UP_HOST = os.environ["UPSTREAM_HOST"]; UP_PORT = int(os.environ["UPSTREAM_PORT"])
+    async def pipe(r, w):
+        try:
+            while data := await r.read(65536):
+                w.write(data); await w.drain()
+        except Exception:
+            pass
+        finally:
+            w.close()
+    async def handle(cr, cw):
+        try:
+            ur, uw = await asyncio.wait_for(asyncio.open_connection(UP_HOST, UP_PORT), 5)
+        except Exception:
+            cw.close(); return
+        await asyncio.gather(pipe(cr, uw), pipe(ur, cw))
+    async def main():
+        srv = await asyncio.start_server(handle, "0.0.0.0", 8080, limit=1 << 16)
+        print(f"forwarding :8080 -> {UP_HOST}:{UP_PORT}", flush=True)
+        async with srv:
+            await srv.serve_forever()
+    asyncio.run(main())
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: factory-gateway
+  namespace: z0
+  labels: {app: factory-gateway}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: factory-gateway}
+  template:
+    metadata:
+      labels: {app: factory-gateway}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: groot}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: forward
+          image: python:3.13.13-alpine3.23
+          command: [python3, -u, /app/forward.py]
+          env:
+            - {name: UPSTREAM_HOST, value: 10.42.0.1}
+            - {name: UPSTREAM_PORT, value: "18091"}
+          ports: [{containerPort: 8080, name: gw}]
+          readinessProbe:
+            tcpSocket: {port: 8080}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 10m, memory: 24Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: app, mountPath: /app, readOnly: true}]
+      volumes:
+        - name: app
+          configMap: {name: factory-gateway}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: factory-gateway
+  namespace: z0
+spec:
+  selector: {app: factory-gateway}
+  ports: [{name: gw, port: 8080, targetPort: 8080}]
+---
+# Only factory/lanes pods that ask for the gateway may reach it, and only it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: factory-gateway-ingress
+  namespace: z0
+spec:
+  podSelector:
+    matchLabels: {app: factory-gateway}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: kubernetes.io/metadata.name, operator: In, values: [factory, lanes]}
+          podSelector:
+            matchLabels: {z0.dev/gateway-client: "true"}
+      ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-client-egress
+  namespace: factory
+spec:
+  podSelector:
+    matchLabels: {z0.dev/gateway-client: "true"}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: z0}
+          podSelector:
+            matchLabels: {app: factory-gateway}
+      ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-client-egress
+  namespace: lanes
+spec:
+  podSelector:
+    matchLabels: {z0.dev/gateway-client: "true"}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: z0}
+          podSelector:
+            matchLabels: {app: factory-gateway}
+      ports: [{protocol: TCP, port: 8080}]

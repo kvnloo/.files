@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""Print one JSON line of node health facts. Unprivileged, read-only, stdlib only.
+
+Installed on every fleet node as /usr/local/bin/fleet-node-probe by
+scripts/fleet-harden.sh; scripts/fleet runs it over ssh (as agentjob) and judges
+the result on groot. It never decides anything itself.
+"""
+import glob
+import json
+import os
+import shutil
+import socket
+import subprocess
+import time
+
+
+def read(path, default=None):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def meminfo():
+    out = {}
+    for line in (read("/proc/meminfo", "") or "").splitlines():
+        k, v = line.split(":", 1)
+        out[k] = int(v.split()[0]) // 1024  # MiB
+    return out
+
+
+def active(unit):
+    r = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True)
+    return r.stdout.strip() or "unknown"
+
+
+def power():
+    ac, bats = None, []
+    for d in glob.glob("/sys/class/power_supply/*"):
+        t = read(f"{d}/type")
+        if t == "Mains":
+            ac = read(f"{d}/online") == "1"
+        elif t == "Battery":
+            cap = read(f"{d}/capacity")
+            bats.append({"pct": int(cap) if cap and cap.isdigit() else None,
+                         "status": read(f"{d}/status")})
+    return {"on_ac": ac, "batteries": bats}
+
+
+def adb_serial():
+    """The Android device this Linux guest runs on, when it reaches itself over
+    wireless adb (Omalauncher phones). None elsewhere."""
+    if not shutil.which("adb"):
+        return None
+    pinned = read(os.path.expanduser("~/.config/fleet/adb-serial"))
+    if pinned:
+        return pinned  # written by fleet-phone-setup.sh after checking the model
+    try:
+        r = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in r.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "device":
+            return parts[0]
+    return None
+
+
+def android_power(serial):
+    """Read-only: `dumpsys battery` and the thermal status. Changes nothing on Android."""
+    def sh(*cmd):
+        try:
+            return subprocess.run(["adb", "-s", serial, "shell", *cmd], capture_output=True,
+                                  text=True, timeout=15).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+    kv = {}
+    for line in sh("dumpsys", "battery").splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            kv[k.strip()] = v.strip()
+    if "level" not in kv:
+        return None
+    thermal = None
+    for line in sh("dumpsys", "thermalservice").splitlines():
+        if line.strip().startswith("Thermal Status:"):
+            thermal = int(line.split(":")[1].strip())
+            break
+    plugged = any(kv.get(k) == "true" for k in ("AC powered", "USB powered", "Wireless powered", "Dock powered"))
+    status = {"2": "Charging", "3": "Discharging", "4": "Not charging", "5": "Full"}.get(kv.get("status"), kv.get("status"))
+    return {"on_ac": plugged, "source": "adb dumpsys battery",
+            "batteries": [{"pct": int(kv["level"]), "status": status}],
+            "battery_temp_c": int(kv.get("temperature", "0")) / 10,
+            "android_thermal_status": thermal}
+
+
+def max_temp_c():
+    temps = []
+    for f in glob.glob("/sys/class/thermal/thermal_zone*/temp") + glob.glob("/sys/class/hwmon/hwmon*/temp*_input"):
+        v = read(f)
+        if v and v.lstrip("-").isdigit():
+            c = int(v) / 1000
+            if 0 < c < 150:
+                temps.append(c)
+    return max(temps) if temps else None
+
+
+def disk(path):
+    try:
+        u = shutil.disk_usage(path)
+        return {"path": path, "free_gb": round(u.free / 2**30, 1), "total_gb": round(u.total / 2**30, 1)}
+    except OSError:
+        return None
+
+
+def lane_jobs():
+    # Host-lane jobs run as agentjob; count its processes (sshd sessions included).
+    try:
+        uid = int(subprocess.run(["id", "-u", "agentjob"], capture_output=True, text=True).stdout.strip() or -1)
+    except ValueError:
+        uid = -1
+    procs = 0
+    if uid >= 0:
+        for p in glob.glob("/proc/[0-9]*/status"):
+            s = read(p, "")
+            for line in s.splitlines():
+                if line.startswith("Uid:"):
+                    procs += int(line.split()[1]) == uid
+                    break
+    return {"agentjob_procs": procs}
+
+
+def guest_services():
+    """Omalauncher guest (no systemd): are the keep-alive watcher's services up?
+
+    Same shape as systemd's `services` ("active" or why not), so groot judges
+    both alike. Reads only pidfiles and /proc of the guest's own processes.
+    """
+    home = os.path.expanduser("~")
+
+    def cmdline(pidfile):
+        pid = read(pidfile, "")
+        if not pid or not pid.isdigit():
+            return None
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                return f.read().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:
+            return None
+
+    out = {}
+    try:
+        st = json.loads(subprocess.run(
+            ["tailscale", "--socket=/run/tailscale/tailscaled.sock", "status", "--json"],
+            capture_output=True, text=True, timeout=15).stdout or "{}")
+        out["tailscaled"] = "active" if st.get("BackendState") == "Running" else f"state {st.get('BackendState', 'down')}"
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        out["tailscaled"] = "down"
+    # comm, not exe: seen from another PRoot session, exe is proot's loader.
+    sshd = read(f"/proc/{read('/run/sshd.pid', 'x')}/comm", "") == "sshd"
+    out["sshd"] = "active" if sshd else "down"
+    serve = cmdline(f"{home}/.local/state/tern-remote/pid") or ""
+    out["tern-remote"] = "active" if " remote serve --user " in serve else "down"
+    # The event-driven supervisor (fleet-phone-supervise): alive = its pid runs. No
+    # heartbeat: it never wakes on a timer. Its session should be Omalauncher's audio PRoot.
+    sup = f"{home}/.local/state/fleet/supervise"
+    if not os.path.exists(f"{home}/.local/bin/fleet-phone-supervise"):
+        out["fleet-supervise"] = "not installed"
+    elif "fleet-phone-supervise run" in (cmdline(f"{sup}/pid") or ""):
+        out["fleet-supervise"] = "active"
+    else:
+        out["fleet-supervise"] = "down"
+    return out
+
+
+def supervisor_session():
+    """Which PRoot session hosts the guest supervisor: 'audio' is the persistent one."""
+    pid = read(os.path.expanduser("~/.local/state/fleet/supervise/pid"), "")
+    try:
+        tracer = next(l.split()[1] for l in read(f"/proc/{pid}/status", "").splitlines()
+                      if l.startswith("TracerPid:"))
+        with open(f"/proc/{tracer}/cmdline", "rb") as f:
+            c = f.read().replace(b"\0", b" ").decode(errors="replace")
+    except (StopIteration, OSError):
+        return None
+    if " -c exec pulseaudio " in c:
+        return "audio"
+    if " -c exec bash --noprofile --norc" in c:
+        return "launcher-shell"
+    return "window: " + c.rsplit(" -c exec ", 1)[-1][:40]
+
+
+def main():
+    m = meminfo()
+    load = (read("/proc/loadavg", "0 0 0") or "0 0 0").split()
+    data_dir = "/var/lib/rancher/k3s"
+    for cand in ("/workspace/k3s-data", "/var/lib/rancher/k3s"):
+        if os.path.isdir(cand):
+            data_dir = cand
+            break
+    updates = None
+    try:
+        with open("/var/lib/fleet/updates.json") as f:
+            updates = json.load(f)
+    except (OSError, ValueError):
+        pass
+    kern = os.uname().release
+    systemd = os.path.isdir("/run/systemd/system")
+    k3s_unit = "k3s" if systemd and active("k3s") == "active" else "k3s-agent"
+    pw = power()
+    android = "android" in os.uname().release
+    if android and pw["on_ac"] is None and not pw["batteries"]:
+        # Only an Android guest asks adb, so a desktop never reads a USB-attached phone.
+        serial = adb_serial()
+        pw = (android_power(serial) if serial else None) or {**pw, "source": "unreadable"}
+    elif pw["on_ac"] is None and not pw["batteries"]:
+        pw = {**pw, "source": "no battery (mains)"}
+    print(json.dumps({
+        "host": socket.gethostname(),
+        "ts": int(time.time()),
+        "kernel": kern,
+        "reboot_required": not os.path.isdir(f"/usr/lib/modules/{kern}") and os.path.isdir("/usr/lib/modules"),
+        "ncpu": os.cpu_count(),
+        "load1": float(load[0]), "load5": float(load[1]),
+        "mem_total_mb": m.get("MemTotal"), "mem_available_mb": m.get("MemAvailable"),
+        "swap_free_mb": m.get("SwapFree"),
+        "disk_root": disk("/"), "disk_k3s": disk(data_dir),
+        "disk_lane": disk("/home/agentjob") if os.path.isdir("/home/agentjob") else None,
+        "systemd": systemd,
+        "services": ({u: active(u) for u in (k3s_unit, "tailscaled", "sshd")} if systemd
+                     else guest_services() if android else None),
+        "supervisor_session": supervisor_session() if android and not systemd else None,
+        "power": pw,
+        "max_temp_c": max_temp_c(),
+        "updates": updates,
+        "maintenance": os.path.exists("/var/lib/fleet/maintenance"),
+        "lane": lane_jobs(),
+    }, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()

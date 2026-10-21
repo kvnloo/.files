@@ -1,0 +1,11 @@
+#!/usr/bin/busybox sh
+# OpenSSH in the foreground (-D), logging to stderr (-e) -> svlogd.
+. ../lib.sh
+p=$(cat /run/sshd.pid 2>/dev/null)
+# From another PRoot session a process's exe is proot's loader: match comm and argv.
+if pid_alive "$p" && [ "$(cat "/proc/$p/comm" 2>/dev/null)" = sshd ]; then
+    case $(tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline") in *listener* | /usr/bin/sshd*) adopt "$p" sshd ;; esac
+fi
+# No `sshd -t` first: a bad config makes sshd -D exit at once, and ./finish backs off.
+[ -e /etc/ssh/ssh_host_ed25519_key ] || ssh-keygen -A >/dev/null
+exec /usr/bin/sshd -D -e
