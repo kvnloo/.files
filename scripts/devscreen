@@ -11,7 +11,7 @@
 #        server runs as ~/.local/bin/gliff-server on the MBP, spawned by ssh.
 #
 # Window rules for the titles/classes below live in
-# config/hyprland/remote-workspaces.conf (and lua/rules.lua).
+# config/hyprland/hyprland.legacy.conf (and lua/rules.lua).
 #
 # Overrides (optional), read from ~/.config/devscreen.env:
 #   DEVSCREEN_S25_SERIAL   wireless-debugging ip:port of the S25 (the port changes
