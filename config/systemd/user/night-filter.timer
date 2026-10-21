@@ -1,9 +1,9 @@
 [Unit]
-Description=Re-evaluate the night filter every 10 minutes (on 21:00-07:00)
+Description=Plan today's night filter switch times (sunset on, sunrise off)
 
 [Timer]
-OnBootSec=1min
-OnCalendar=*:0/10
+OnStartupSec=30s
+OnCalendar=*-*-* 00:05
 Persistent=true
 
 [Install]

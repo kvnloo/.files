@@ -1,6 +1,6 @@
 [Unit]
-Description=Night filter: apply the Hyprland dim + red shader for the current time
+Description=Night filter: switch the Hyprland dim + red shader at today's sunset and sunrise
 
 [Service]
 Type=oneshot
-ExecStart=%h/workspace/.files/scripts/night-filter auto
+ExecStart=%h/workspace/.files/scripts/night-filter schedule

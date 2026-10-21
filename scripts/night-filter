@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # night-filter: software dimming + red light on Hyprland via the built-in screen shader.
-#   night-filter on|off|toggle|status|auto
-# auto: on between NIGHT_START and NIGHT_END (local time; defaults 21:00-07:00).
+#   night-filter on|off|toggle|status|schedule
+# schedule: computes today's sunrise/sunset for NIGHT_LAT/NIGHT_LON (config file
+# ~/.config/night-filter.conf, cached from IP geolocation on first run), applies the right
+# state now, and arms two one-shot user timers that flip it exactly at sunset and sunrise.
+# A daily timer (00:05 and at login) re-runs schedule; nothing polls in between.
 set -euo pipefail
 SHADER="${NIGHT_FILTER_SHADER:-$HOME/workspace/.files/config/hyprland/shaders/night.frag}"
 [ -f "$SHADER" ] || SHADER=/workspace/.files/config/hyprland/shaders/night.frag
-START="${NIGHT_START:-21:00}"
-END="${NIGHT_END:-07:00}"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/night-filter.conf"
+SELF="$(readlink -f "$0")"
 
 current() { hyprctl getoption decoration:screen_shader 2>/dev/null | awk -F': ' '/^str/{print $2}'; }
 is_on() { [ "$(current)" = "$SHADER" ]; }
@@ -14,20 +17,62 @@ on() { hyprctl keyword decoration:screen_shader "$SHADER" >/dev/null; }
 # Hyprland treats the literal [[EMPTY]] as "no shader".
 off() { hyprctl keyword decoration:screen_shader "[[EMPTY]]" >/dev/null; }
 
-in_night() {
-  local now s e
-  now=$((10#$(date +%H) * 60 + 10#$(date +%M)))
-  s=$((10#${START%:*} * 60 + 10#${START#*:}))
-  e=$((10#${END%:*} * 60 + 10#${END#*:}))
-  if [ "$s" -le "$e" ]; then [ "$now" -ge "$s" ] && [ "$now" -lt "$e" ]
-  else [ "$now" -ge "$s" ] || [ "$now" -lt "$e" ]; fi
+location() {
+  # shellcheck disable=SC1090
+  [ -f "$CONF" ] && . "$CONF"
+  if [ -z "${NIGHT_LAT:-}" ] || [ -z "${NIGHT_LON:-}" ]; then
+    local loc; loc="$(curl -fsS --max-time 8 https://ipinfo.io/loc || true)"
+    [ -n "$loc" ] || { echo "night-filter: set NIGHT_LAT/NIGHT_LON in $CONF" >&2; exit 1; }
+    NIGHT_LAT="${loc%,*}"; NIGHT_LON="${loc#*,}"
+    printf 'NIGHT_LAT=%s\nNIGHT_LON=%s\n' "$NIGHT_LAT" "$NIGHT_LON" > "$CONF"
+  fi
+}
+
+# Prints "SUNRISE SUNSET" as local HH:MM for today (NOAA sunrise equation, zenith 90.833 deg).
+sun_times() {
+  python3 - "$NIGHT_LAT" "$NIGHT_LON" <<'PY'
+import math, sys, datetime as dt
+lat, lon = float(sys.argv[1]), float(sys.argv[2])
+today = dt.date.today()
+n = today.timetuple().tm_yday
+g = 2 * math.pi / 365 * (n - 1)
+eqt = 229.18 * (0.000075 + 0.001868*math.cos(g) - 0.032077*math.sin(g)
+                - 0.014615*math.cos(2*g) - 0.040849*math.sin(2*g))
+decl = (0.006918 - 0.399912*math.cos(g) + 0.070257*math.sin(g) - 0.006758*math.cos(2*g)
+        + 0.000907*math.sin(2*g) - 0.002697*math.cos(3*g) + 0.00148*math.sin(3*g))
+la = math.radians(lat)
+ha = math.degrees(math.acos(math.cos(math.radians(90.833)) / (math.cos(la)*math.cos(decl))
+                            - math.tan(la)*math.tan(decl)))
+utc_mid = dt.datetime.combine(today, dt.time(), tzinfo=dt.timezone.utc)
+def local(minutes):
+    return (utc_mid + dt.timedelta(minutes=minutes)).astimezone().strftime("%H:%M")
+print(local(720 - 4*(lon + ha) - eqt), local(720 - 4*(lon - ha) - eqt))
+PY
+}
+
+schedule() {
+  location
+  read -r rise set < <(sun_times)
+  local now; now="$(date +%H:%M)"
+  if [[ "$now" < "$rise" || ! "$now" < "$set" ]]; then on; else off; fi
+  for u in night-filter-sunset night-filter-sunrise; do
+    systemctl --user stop "$u.timer" 2>/dev/null || true
+    systemctl --user reset-failed "$u.service" 2>/dev/null || true
+  done
+  if [[ "$now" < "$set" ]]; then
+    systemd-run --user --quiet --unit night-filter-sunset --on-calendar="$(date +%F) $set" "$SELF" on
+  fi
+  if [[ "$now" < "$rise" ]]; then
+    systemd-run --user --quiet --unit night-filter-sunrise --on-calendar="$(date +%F) $rise" "$SELF" off
+  fi
+  echo "sunrise $rise, sunset $set; filter $(is_on && echo on || echo off)"
 }
 
 case "${1:-status}" in
   on) on ;;
   off) off ;;
   toggle) if is_on; then off; else on; fi ;;
-  auto) if in_night; then on; else off; fi ;;
+  schedule) schedule ;;
   status) if is_on; then echo on; else echo off; fi ;;
-  *) echo "usage: night-filter on|off|toggle|status|auto" >&2; exit 2 ;;
+  *) echo "usage: night-filter on|off|toggle|status|schedule" >&2; exit 2 ;;
 esac
