@@ -292,6 +292,20 @@ def judge(n, p, k8s, online, overrides):
     return bad, warn
 
 
+def o8_gate():
+    """O8 (owner law, kvnloo/z0intelligence bend/ops_fsm): a worker node unhealthy for more
+    than 30 min emits exactly one owner notification per episode. The decision and delivery
+    live in z0int.fsm.guard (report-only until `Z0_GUARD_O8=enforce`); None if not installed."""
+    src = os.environ.get("Z0INT_SRC", "/mnt/zer0models/z0-wt/bend-ops-laws/src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    try:
+        from z0int.fsm import guard
+        return guard
+    except Exception:  # noqa: BLE001 (a missing gate must not break health)
+        return None
+
+
 def cmd_health(args):
     reg, nodes = registry()
     sel = [nodes[args.node]] if args.node else list(nodes.values())
@@ -314,6 +328,9 @@ def cmd_health(args):
     hdir.mkdir(parents=True, exist_ok=True)
     state_f = hdir / "state.json"
     state = json.loads(state_f.read_text()) if state_f.exists() else {}
+    o8 = o8_gate()
+    o8_f = hdir / "o8.json"
+    o8_state = json.loads(o8_f.read_text()) if o8_f.exists() else {}
     rc = 0
     for n in sel:
         name = n["name"]
@@ -348,6 +365,14 @@ def cmd_health(args):
             s["paused"] = False
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
                "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
+        if n.get("role") == "worker":
+            if o8 is None:
+                rec["o8"] = "z0-guard unavailable"
+            else:
+                o8_state, ev = o8.health_step(o8_state, name, not bad, rec["ts"])
+                rec["o8"] = {"state": o8_state[name], **({"notified": ev} if ev else {})}
+                if ev:
+                    print(f"O8  {name:14} {ev['mode']}: {ev['text']} (delivery: {ev['delivery']})")
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
             f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
@@ -362,6 +387,7 @@ def cmd_health(args):
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
         rc |= bool(bad)
     state_f.write_text(json.dumps(state, indent=1) + "\n")
+    o8_f.write_text(json.dumps(o8_state, indent=1) + "\n")
     for hist in (hdir / "history.jsonl", hdir / "phone-keepalive.jsonl"):
         lines = hist.read_text().splitlines() if hist.exists() else []
         if len(lines) > 20000:

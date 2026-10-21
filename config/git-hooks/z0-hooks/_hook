@@ -1,0 +1,19 @@
+#!/bin/sh
+# z0-hooks: opt-in core.hooksPath template for agent worktrees (kvnloo/.files).
+# pre-push runs the O4 privacy gate (`z0-guard hook pre-push`: private-marked paths or
+# repos never go to a public remote; laws in kvnloo/z0intelligence bend/ops_fsm). Every
+# hook, pre-push included, then chains to the repository's own hook in
+# <git-common-dir>/hooks, so repo hooks (and z0-guard's served-worktree O2 shims) still run.
+# Switch: Z0_GUARD_O4=off skips the privacy gate for one command.
+name=$(basename "$0")
+own="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/hooks/$name"
+if [ "$name" = pre-push ] && [ "${Z0_GUARD_O4:-}" != off ]; then
+  command -v z0-guard >/dev/null 2>&1 || {
+    echo "z0-hooks: z0-guard is not installed; refusing to push unchecked (Z0_GUARD_O4=off to override)" >&2; exit 1; }
+  input=$(cat)
+  printf '%s\n' "$input" | z0-guard hook pre-push "$@" || exit $?
+  if [ -x "$own" ]; then printf '%s\n' "$input" | "$own" "$@"; exit $?; fi
+  exit 0
+fi
+[ -x "$own" ] && exec "$own" "$@"
+exit 0

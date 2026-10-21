@@ -1,0 +1,28 @@
+#!/bin/sh
+# z0-hooks-install: opt a repository (or everything) into the z0-hooks template.
+#   z0-hooks-install REPO...      set core.hooksPath in each repo (all its worktrees)
+#   z0-hooks-install --global     set it in ~/.gitconfig (every repo without its own core.hooksPath)
+#   z0-hooks-install --undo REPO... | --undo --global
+# The template chains every hook to the repo's own .git/hooks, so nothing existing stops running.
+set -eu
+src="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/config/git-hooks/z0-hooks"
+dst="${XDG_CONFIG_HOME:-$HOME/.config}/git/z0-hooks"
+mkdir -p "$(dirname "$dst")"
+[ -e "$dst" ] || ln -s "$src" "$dst"
+undo=0; [ "${1:-}" = --undo ] && { undo=1; shift; }
+[ $# -gt 0 ] || { sed -n '2,7p' "$0"; exit 2; }
+for r in "$@"; do
+  if [ "$r" = --global ]; then
+    if [ $undo = 1 ]; then git config --global --unset core.hooksPath || true; else git config --global core.hooksPath "$dst"; fi
+    echo "global core.hooksPath: $(git config --global --get core.hooksPath || echo unset)"
+  else
+    cur=$(git -C "$r" config --local --get core.hooksPath || true)
+    if [ $undo = 1 ]; then
+      [ "$cur" = "$dst" ] && git -C "$r" config --local --unset core.hooksPath
+    else
+      [ -z "$cur" ] || [ "$cur" = "$dst" ] || { echo "$r: core.hooksPath already $cur; not overriding" >&2; continue; }
+      git -C "$r" config --local core.hooksPath "$dst"
+    fi
+    echo "$r: core.hooksPath $(git -C "$r" config --local --get core.hooksPath || echo unset)"
+  fi
+done

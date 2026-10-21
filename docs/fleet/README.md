@@ -459,3 +459,22 @@ expires every 12 h. The ACL change that fixes this properly is in
   `systemctl daemon-reload`, restart the matching service.
 - Health timer: `systemctl --user disable --now fleet-health.timer`.
 - Phone lane: `rm -r ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs` in the guest.
+
+## Ops-plane gates (O1, O8, O4)
+
+The owner's operating rules live as Bend laws in kvnloo/z0intelligence `bend/ops_fsm`
+(`docs/fsm/ops.md` there). `scripts/z0-guard` runs those gates from the z0intelligence checkout
+(`Z0INT_SRC`, default the ops-laws worktree on groot); `~/.local/bin/z0-guard` links to it.
+
+- **O1 placement**: `fleet-build` records each job's class (`--class`, else `z0-guard classify`)
+  in `~/.local/state/fleet/runs/o1-placements.jsonl` and refuses `--node groot`. Agents on groot
+  run `z0-guard run CLASS -- CMD`: heavy classes go through fleet-build, which waits for room and
+  never falls back to groot. Switch: `Z0_GUARD_O1=report|off`.
+- **O8 node health**: `fleet health` feeds each worker node's verdict to `guard.health_step`; past
+  30 min unhealthy it emits exactly one owner notification per episode (KDE Connect ping to the
+  S25 in enforce mode; report-only by default, ledger `~/.local/state/z0-guard/o8-notifications.jsonl`).
+  State: `~/.local/state/fleet/health/o8.json`. Enforce: `Z0_GUARD_O8=enforce` in the
+  fleet-health unit environment.
+- **O4 privacy**: `scripts/z0-hooks-install REPO...` (or `--global`) points `core.hooksPath` at
+  `config/git-hooks/z0-hooks`; its pre-push refuses private-marked paths/repos to a public remote
+  and every hook chains to the repo's own `.git/hooks`. `--undo` reverts.

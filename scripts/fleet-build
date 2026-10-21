@@ -25,6 +25,12 @@
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
+#   --class CLS      O1 job class (test mutation typecheck gradle bundle eval screenshot-run);
+#                    default: `z0-guard classify` of CMD. Recorded in runs/o1-placements.jsonl.
+#
+# O1 (owner law, kvnloo/z0intelligence bend/ops_fsm): these job classes run only on a
+# worker lane (mbp, phones) and wait for room; never on groot. `--node groot` is refused.
+# Switch: Z0_GUARD_O1=report (warn only) or off.
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -41,7 +47,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); wait_s=1800
+mode=build; jdk=""; node=""; cls=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); wait_s=1800
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -58,6 +64,7 @@ while [ $# -gt 0 ]; do
     --src) src=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
     --fetch) fetch+=("$2"); shift 2 ;;
+    --class) cls=$2; shift 2 ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     --) shift; break ;;
     -*) echo "fleet-build: unknown option $1" >&2; exit 2 ;;
@@ -65,6 +72,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
+
+# O1: never groot. fleet run has no groot lane; refuse an explicit pin before shipping anything.
+o1=${Z0_GUARD_O1:-enforce}
+if [ -z "$cls" ]; then
+  cls=$(command -v z0-guard >/dev/null 2>&1 && z0-guard classify -- "$@" 2>/dev/null || echo unknown)
+fi
+state=${FLEET_STATE:-$HOME/.local/state/fleet}
+mkdir -p "$state/runs"
+python3 -c 'import json,sys,time; print(json.dumps({"ts": int(time.time()), "law": "O1", "class": sys.argv[1], "node": sys.argv[2] or "auto", "mode": sys.argv[3], "cmd": " ".join(sys.argv[4:])[:300]}))' \
+  "$cls" "$node" "$o1" "$@" >> "$state/runs/o1-placements.jsonl" 2>/dev/null || true
+if [ "$node" = groot ] && [ "$o1" != off ]; then
+  echo "fleet-build: O1 refuses --node groot for a $cls job: it runs on a worker lane (mbp, phones) and waits for room. Z0_GUARD_O1=off disables this check." >&2
+  [ "$o1" = enforce ] && exit 2
+fi
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
 
