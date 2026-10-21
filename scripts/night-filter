@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# night-filter: software dimming + red light on Hyprland via the built-in screen shader.
+#   night-filter on|off|toggle|status|auto
+# auto: on between NIGHT_START and NIGHT_END (local time; defaults 21:00-07:00).
+set -euo pipefail
+SHADER="${NIGHT_FILTER_SHADER:-$HOME/workspace/.files/config/hyprland/shaders/night.frag}"
+[ -f "$SHADER" ] || SHADER=/workspace/.files/config/hyprland/shaders/night.frag
+START="${NIGHT_START:-21:00}"
+END="${NIGHT_END:-07:00}"
+
+current() { hyprctl getoption decoration:screen_shader 2>/dev/null | awk -F': ' '/^str/{print $2}'; }
+is_on() { [ "$(current)" = "$SHADER" ]; }
+on() { hyprctl keyword decoration:screen_shader "$SHADER" >/dev/null; }
+# Hyprland treats the literal [[EMPTY]] as "no shader".
+off() { hyprctl keyword decoration:screen_shader "[[EMPTY]]" >/dev/null; }
+
+in_night() {
+  local now s e
+  now=$((10#$(date +%H) * 60 + 10#$(date +%M)))
+  s=$((10#${START%:*} * 60 + 10#${START#*:}))
+  e=$((10#${END%:*} * 60 + 10#${END#*:}))
+  if [ "$s" -le "$e" ]; then [ "$now" -ge "$s" ] && [ "$now" -lt "$e" ]
+  else [ "$now" -ge "$s" ] || [ "$now" -lt "$e" ]; fi
+}
+
+case "${1:-status}" in
+  on) on ;;
+  off) off ;;
+  toggle) if is_on; then off; else on; fi ;;
+  auto) if in_night; then on; else off; fi ;;
+  status) if is_on; then echo on; else echo off; fi ;;
+  *) echo "usage: night-filter on|off|toggle|status|auto" >&2; exit 2 ;;
+esac

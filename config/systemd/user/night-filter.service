@@ -1,0 +1,6 @@
+[Unit]
+Description=Night filter: apply the Hyprland dim + red shader for the current time
+
+[Service]
+Type=oneshot
+ExecStart=%h/workspace/.files/scripts/night-filter auto

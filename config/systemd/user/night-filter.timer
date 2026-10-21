@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-evaluate the night filter every 10 minutes (on 21:00-07:00)
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/10
+Persistent=true
+
+[Install]
+WantedBy=timers.target
