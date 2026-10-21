@@ -1,0 +1,6 @@
+[Unit]
+Description=Night filter: switch the Hyprland dim + red shader at today's sunset and sunrise
+
+[Service]
+Type=oneshot
+ExecStart=%h/workspace/.files/scripts/night-filter schedule
