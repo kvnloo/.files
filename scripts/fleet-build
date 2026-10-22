@@ -41,7 +41,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); wait_s=1800
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -58,6 +58,8 @@ while [ $# -gt 0 ]; do
     --src) src=$2; shift 2 ;;
     --out) out=$2; shift 2 ;;
     --fetch) fetch+=("$2"); shift 2 ;;
+    --input) inputs+=("$2"); shift 2 ;;
+    --keep) keep=1; shift ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     --) shift; break ;;
     -*) echo "fleet-build: unknown option $1" >&2; exit 2 ;;
@@ -86,6 +88,8 @@ case $mode in
 esac
 [ -n "$node" ] && args+=(--node "$node")
 [ -n "$timeout" ] && args+=(--timeout "$timeout")
+[ "$keep" = 0 ] || args+=(--keep)
+for input in "${inputs[@]}"; do args+=(--input "$input"); done
 pre=src/; [ "$rel" = . ] || pre=src/$rel/
 for f in "${fetch[@]}"; do args+=(--fetch "$pre$f"); done
 
@@ -117,9 +121,9 @@ while :; do
   rc=$?
   set -e
   wait 2>/dev/null || true
-  # 75 before the job started = no room; retry. A job that ran and drained also says 75,
-  # and retrying it from scratch is the right thing then too.
-  [ $rc -eq 75 ] && [ "$(date +%s)" -lt "$deadline" ] || break
+  # Admission holds are retryable. Once a job ID was allocated, a 75 might
+  # come from a partially executed workflow; never replay side effects blindly.
+  [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
   echo "fleet-build: no room yet; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
   sleep 60
 done

@@ -24,6 +24,7 @@ the k3s `factory` queue instead (oss-factory `factory submit`).
 import argparse
 import concurrent.futures as cf
 import json
+import math
 import os
 import random
 import re
@@ -145,7 +146,8 @@ def tailnet_online():
                                        text=True, timeout=20).stdout)
     except (ValueError, subprocess.TimeoutExpired):
         return {}
-    out = {st["Self"]["TailscaleIPs"][0]: True}
+    self_ips = st.get("Self", {}).get("TailscaleIPs") or []
+    out = {self_ips[0]: True} if self_ips else {}
     for p in st.get("Peer", {}).values():
         if p.get("TailscaleIPs"):
             out[p["TailscaleIPs"][0]] = bool(p.get("Online"))
@@ -327,6 +329,12 @@ def cmd_health(args):
         action = "none"
         mode = n["health"]["on_unhealthy"]
         kn = k8s.get(name)
+        # Placement gate closes on the FIRST bad sample, independently of strike
+        # hysteresis used for cordon/uncordon. Kueue CPU flavors require this label.
+        if n["role"] == "worker" and n["k8s"] and kn:
+            thermal = probes[name].get("max_temp_c")
+            safe = not bad and isinstance(thermal, (int, float)) and not isinstance(thermal, bool) and math.isfinite(thermal) and thermal > 0
+            kc("label", "--overwrite", "node", name, f"z0.dev/cpu-admit={str(safe).lower()}")
         if bad and s["bad"] >= strikes and n["kind"] == "phone":
             action = maybe_revive(n, probes[name].get("android"), s, probes[name]) or action
         if bad and s["bad"] >= strikes:
@@ -395,9 +403,9 @@ def cmd_run(args):
         if args.node not in nodes:
             die(f"unknown node {args.node}")
         cands = [nodes[args.node]]
-        why = eligible(cands[0], args, {})
+        why = eligible(cands[0], args, state)
         if why and not why.startswith("taint"):
-            die(f"{args.node}: {why}")
+            die(f"{args.node}: {why}", 75)
     else:
         cands, skipped = [], []
         for n in nodes.values():
@@ -414,6 +422,14 @@ def cmd_run(args):
         need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
         if "error" in p:
             notes.append(f"{n['name']}: {p['error']}"); continue
+        # The health timer's strike window is NOT launch admission. A fresh unsafe
+        # probe must hold immediately, even for an explicitly pinned worker.
+        thermal = p.get("max_temp_c")
+        if n["kind"] == "linux" and (not isinstance(thermal, (int, float)) or isinstance(thermal, bool) or not math.isfinite(thermal) or thermal <= 0):
+            notes.append(f"{n['name']}: thermal telemetry unavailable (fail closed)"); continue
+        bad, _ = judge(n, p, k8s, {n["tailnet_ip"]: True}, {})
+        if bad:
+            notes.append(f"{n['name']}: {'; '.join(bad)}"); continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
         if p["mem_available_mb"] < need:
@@ -450,6 +466,18 @@ def cmd_run(args):
             tar.stdout.close(); send.wait(); tar.wait()
         if send.returncode:
             die("source transfer failed")
+    # Exact artifact inputs are staged only AFTER health admission, never by
+    # recursively scanning a render store. Relative destinations cannot escape src.
+    for item in getattr(args, 'input', []) or []:
+        source, sep, relative = item.rpartition(':')
+        rel = Path(relative)
+        if not sep or rel.is_absolute() or '..' in rel.parts or not rel.parts or not Path(source).is_file():
+            die(f"invalid artifact input {item!r}")
+
+        parent = str(Path(relative).parent)
+        with open(source, 'rb') as stream:
+            subprocess.run(ssh + [f"mkdir -p {jdir}/src/{shlex.quote(parent)} && cat > {jdir}/src/{shlex.quote(relative)}"],
+                           stdin=stream, check=True)
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
     mem = mb(args.mem or n["lane"]["default_mem"])
     floor = int(n["lane"]["mem_floor_mb"])
@@ -462,7 +490,15 @@ def cmd_run(args):
         # /etc/fleet/toolchain.env (scripts/fleet-toolchain.sh) puts JAVA_HOME, ANDROID_HOME and
         # GRADLE_USER_HOME in place. Stopping the scope afterwards reaps what the job left
         # running (Gradle and Kotlin daemons), so nothing outlives the job and its memory cap.
-        inner = (f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
+        # Re-check on the worker after transfer too: a large source archive can
+        # outlive the controller's probe. Missing thermal data holds, never runs.
+        gate = ("import json,subprocess,sys,math; "
+                "p=json.loads(subprocess.check_output(['python3','/usr/local/bin/fleet-node-probe'])); "
+                "t=p.get('max_temp_c'); "
+                f"sys.exit(0 if isinstance(t,(int,float)) and not isinstance(t,bool) and math.isfinite(t) and 0<t<={float(n['health']['max_temp_c'])} "
+                f"and not p.get('maintenance') and p.get('mem_available_mb',0)>={floor+mem} else 75)")
+        inner = (f"python3 -c {shlex.quote(gate)} || exit 75; "
+                 f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
                  f"if [ $avail -lt {floor + mem} ]; then echo \"fleet: only ${{avail}}MiB available\" >&2; exit 75; fi; "
                  # Jobs share the lane slice's root-owned MemoryMax: two 6 GiB builds in a 7 GiB
                  # lane OOM each other. Admit only when the slice's anonymous memory leaves room.
@@ -665,6 +701,8 @@ def main():
     r.add_argument("--tolerate", action="append"); r.add_argument("--mem"); r.add_argument("--cpus")
     r.add_argument("--timeout", type=int, default=3600); r.add_argument("--src"); r.add_argument("--no-src", action="store_true")
     r.add_argument("--fetch", action="append"); r.add_argument("--keep", action="store_true")
+    r.add_argument("--input", action="append", default=[], metavar="FILE:RELATIVE_PATH",
+                   help="stage an exact artifact under job src after health admission (no directory scans)")
     r.add_argument("cmd", nargs=argparse.REMAINDER)
     k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
     h = sub.add_parser("health"); h.add_argument("--node"); h.add_argument("--strikes", type=int)

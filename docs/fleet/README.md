@@ -100,7 +100,7 @@ scripts/fleet kill mbp <job-id>
 on every node from the registry, and taints groot
 `z0.dev/host=interactive:PreferNoSchedule`. The per-node Kueue flavors carry the
 same labels, so a queued Job with `nodeSelector: {z0.dev/class-render: "true"}`
-goes to groot and `class-build` goes to mbp
+goes to mbp, as does `class-build`; only genuine NVIDIA GPU resource allocation permits heavyweight groot placement
 (`config/k3s/smoke/class-job.yaml` proves both). A dedicated node (for example a
 future render box) gets a `NoSchedule` taint in the registry, and only Jobs that
 tolerate it land there.

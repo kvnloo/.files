@@ -9,11 +9,12 @@ suites go to the workers by default:
 | Gradle / Android (NOOP, Lawnchair) | mbp | `fleet-build -- ./gradlew assembleFullDebug` |
 | Bun, Node, Python suites, `make` | mbp | `fleet-build -- bun test` |
 | lint, pure-Python tests, scans, git work (arm64-safe) | mbp or a phone | `fleet-build --light -- python3 -m pytest tests/unit` |
-| GPU work, or a toolchain that exists only on groot | groot | say so explicitly in your report |
+| Genuine GPU work | groot, inside the bounded agent envelope | allocate/prove the GPU; a name or render label is not enough |
+| CPU-only film delivery | mbp | `fleet-fframes-delivery --out NEW_DIRECTORY --wait 0` |
 | code from an unknown repo | k3s `factory` queue | oss-factory `factory submit` |
 
-`fleet-build` is `/workspace/.files-k3s/scripts/fleet-build` (symlinked as
-`~/.local/bin/fleet-build` on groot). Run it from anywhere inside a repo: it
+`~/.local/bin/fleet-build` points to the installed admission owner's isolated
+dotfiles tree (inspect `readlink -f` rather than assuming a branch). Run it from anywhere inside a repo: it
 ships the repo's tracked and untracked-but-not-ignored files, runs the command
 in the same subdirectory on the worker, streams the output, and exits with the
 job's code. It never picks groot (groot has no host lane).
@@ -37,6 +38,15 @@ fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
   is hot, or cordoned): `fleet-build` waits and retries every 60 s for up to
   `--wait` seconds (default 1800), then exits 75. That wait is the queue. Do not
   fall back to a groot build to save time.
+- Explicit `--node mbp` does not bypass pause, thermal or health admission.
+  Unknown/unhealthy thermal telemetry holds before source transfer. A missing CPU
+  toolchain is not permission to run on groot; install it through fleet IaC or hold.
+- `--input FILE:RELATIVE_PATH` stages an exact artifact without scanning an output
+  tree. `--keep` preserves the remote job directory. Once a job ID exists, a 75 is
+  not automatically retried: inspect partial side effects first.
+
+See [DESKTOP-ADMISSION.md](DESKTOP-ADMISSION.md) for effective cgroup ceilings,
+Kueue worker-only placement, the bounded supervisor, and guarded delivery continuation.
 - Jobs share mbp's lane (7 GiB, 4 CPUs for all agentjob work). A job is admitted
   only when the lane has room for its `--mem`, so two 6 GiB builds run one after
   the other instead of OOM-killing each other.
