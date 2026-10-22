@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 import yaml
-from fleet_phone import host_health
+from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
 
 REPO = Path(__file__).resolve().parent.parent
@@ -256,8 +256,8 @@ def judge(n, p, k8s, online, overrides):
             bad.extend(f"host-lane {phase}: {reason}" for reason in why)
     if n["kind"] == "phone" and p.get("supervisor_session") not in (None, "audio"):
         warn.append(f"supervisor runs in the {p['supervisor_session']} session, not Omalauncher's audio one")
-    if p["mem_available_mb"] < int(h["min_mem_available_mb"]):
-        bad.append(f"memory {p['mem_available_mb']}MiB < {h['min_mem_available_mb']}MiB")
+    if not isinstance(p.get("mem_available_mb"), (int, float)) or p["mem_available_mb"] < int(h["min_mem_available_mb"]):
+        bad.append(f"memory {p.get('mem_available_mb')}MiB < {h['min_mem_available_mb']}MiB")
     for key in ("disk_root", "disk_k3s", "disk_lane"):
         d = p.get(key)
         if d and d["free_gb"] < float(h["min_disk_free_gb"]):
@@ -339,7 +339,7 @@ def cmd_health(args):
         strikes = int(args.strikes or n["health"]["strikes"])
         action = "none"
         mode = n["health"]["on_unhealthy"]
-        kn = k8s.get(name)
+        kn = kubernetes_view(n, k8s)
         # Placement gate closes on the FIRST bad sample, independently of strike
         # hysteresis used for cordon/uncordon. Kueue CPU flavors require this label.
         if n["role"] == "worker" and n["k8s"] and kn:
@@ -615,7 +615,7 @@ def cmd_nodes(args):
     print(f"{'NODE':14} {'KIND':6} {'ARCH':6} {'CLASSES':22} {'ONLINE':6} {'K8S':14} {'LOAD':9} {'MEM_AVAIL':9} {'POWER':14} CAPABILITIES")
     for name, n in nodes.items():
         p = probes[name]
-        kn = k8s.get(name)
+        kn = kubernetes_view(n, k8s)
         ks = "-" if not kn else ("cordoned" if kn["unschedulable"] else "Ready" if kn["conditions"].get("Ready") == "True" else "NotReady")
         pw = p.get("power") or {}
         b = (pw.get("batteries") or [{}])[0]
