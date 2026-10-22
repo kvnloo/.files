@@ -1,5 +1,10 @@
 # Fleet: permanent workers over Tailscale
 
+Phone lifecycle/job API: [Explicit PRoot host lane](PHONE_HOST_LANE.md).
+That contract adds durable Stop, event-driven launcher-owned supervision and
+leased job recovery; it does not claim Kubernetes membership or always-on Android.
+Historical phone verification below is not evidence of current reachability.
+
 groot (the desktop) is the controller and the k3s server. Other devices take
 work in two lanes:
 

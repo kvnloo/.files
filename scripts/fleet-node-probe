@@ -162,6 +162,18 @@ def guest_services():
     out["sshd"] = "active" if sshd else "down"
     serve = cmdline(f"{home}/.local/state/tern-remote/pid") or ""
     out["tern-remote"] = "active" if " remote serve --user " in serve else "down"
+    # Launcher-owned supervisor shares exclusion with legacy runit.
+    try:
+        from fleet_phone import alive, read as read_json
+        status = read_json(os.path.expanduser("~/.local/state/fleet-phone-supervisor/status.json"), {})
+        if alive(status.get("identity")):
+            out["fleet-supervise"] = "active" if status.get("observed") == "running" else "stopped"
+            for name, info in status.get("services", {}).items():
+                if info.get("state") != "running":
+                    out[name] = info.get("state", "unknown")
+            return out
+    except (ImportError, ValueError, OSError):
+        pass
     # The event-driven supervisor (fleet-phone-supervise): alive = its pid runs. No
     # heartbeat: it never wakes on a timer. Its session should be Omalauncher's audio PRoot.
     sup = f"{home}/.local/state/fleet/supervise"
@@ -235,6 +247,8 @@ def main():
         "max_temp_c": max_temp_c(),
         "updates": updates,
         "maintenance": os.path.exists("/var/lib/fleet/maintenance"),
+        "paused": os.path.exists(os.path.expanduser("~/.config/fleet/pause")) or os.path.exists(os.path.expanduser("~/.config/fleet/no-autostart")),
+        "host_lane_supported": android and not systemd,
         "lane": lane_jobs(),
     }, separators=(",", ":")))
 

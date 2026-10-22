@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""Durable per-phone host-lane executor. Placement remains scripts/fleet's job."""
+import argparse
+import asyncio
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import signal
+import socket
+import subprocess
+import sys
+import time
+
+from fleet_phone import (Blocked, CAPABILITIES, alive, atomic, drain, identifier, identity,
+                         lock, notify, platform_supported, read)
+
+TERMINAL = {"succeeded", "failed", "cancelled", "needs-confirmation"}
+
+
+def checked_spec(spec):
+    argv = spec.get("argv")
+    if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and "\0" not in a for a in argv):
+        raise Blocked("argv must be a nonempty string array")
+    cwd = Path(spec.get("cwd", "")).expanduser()
+    root = (Path.home() / "fleet-jobs").resolve()
+    if not cwd.is_absolute() or not cwd.resolve().is_relative_to(root) or not cwd.is_dir():
+        raise Blocked("cwd must exist under ~/fleet-jobs")
+    for key, default, low, high in (("mem_mb", 512, 64, 1024), ("floor_mb", 1200, 1200, 65536),
+                                   ("timeout", 3600, 1, 86400), ("max_attempts", 1, 1, 5)):
+        value = spec.get(key, default)
+        if type(value) is not int or not low <= value <= high:
+            raise Blocked(f"invalid {key}")
+        spec[key] = value
+    spec["cwd"] = str(cwd.resolve())
+    spec["idempotent"] = spec.get("idempotent", False) is True
+    if spec["max_attempts"] > 1 and not spec["idempotent"]:
+        raise Blocked("retry requires explicit idempotent=true")
+    return spec
+
+
+class Store:
+    def __init__(self, state):
+        self.state = state
+        state.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    def path(self, jid):
+        jid = identifier(jid)
+        if jid == "executor":
+            raise Blocked("reserved job identifier")
+        return self.state / f"{jid}.json"
+
+    def get(self, jid):
+        value = read(self.path(jid))
+        if value is None:
+            raise Blocked("unknown job")
+        return value
+
+    def save(self, job):
+        atomic(self.path(job["id"]), job)
+
+    def submit(self, jid, spec, ttl=120):
+        spec = checked_spec(dict(spec))
+        digest = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
+        with lock(self.state / "store.lock"):
+            prior = read(self.path(jid))
+            if prior:
+                if prior["digest"] != digest:
+                    raise Blocked("idempotency key already bound to different spec")
+                return prior
+            job = {"id": identifier(jid), "digest": digest, "spec": spec, "state": "queued",
+                   "attempt": 0, "lease": secrets.token_hex(24), "expires": time.time() + ttl,
+                   "cancel": False, "created": time.time()}
+            self.save(job)
+        notify(self.state, "reconcile")
+        return job
+
+    def heartbeat(self, jid, token, ttl):
+        with lock(self.state / "store.lock"):
+            job = self.get(jid)
+            if not secrets.compare_digest(job["lease"], token):
+                raise Blocked("lease token mismatch")
+            if job["state"] in TERMINAL or job["expires"] <= time.time():
+                raise Blocked("lease expired/terminal; reconcile before obtaining a new lease")
+            job["expires"] = time.time() + ttl
+            self.save(job)
+        notify(self.state, "reconcile")
+        return job
+
+    def cancel(self, jid):
+        with lock(self.state / "store.lock"):
+            job = self.get(jid)
+            job["cancel"] = True
+            if job["state"] not in ("running", "starting") and job["state"] not in TERMINAL:
+                job["state"] = "cancelled"
+            self.save(job)
+        notify(self.state, "reconcile")
+        return job
+
+    def all(self):
+        return [read(p) for p in sorted(self.state.glob("*.json")) if p.name != "executor.json"]
+
+    def recover(self, job):
+        """Never fence by lease alone: stopped guest could still own live execution."""
+        if job["state"] in ("running", "starting", "interrupted", "drained", "lease-expired"):
+            try:
+                with lock(self.state / f"{job['id']}.exec.lock", blocking=False):
+                    pass
+            except Blocked:
+                return job  # inherited execution fence covers spawn/record crash gaps
+        if job["state"] in ("running", "starting"):
+            if alive(job.get("runner")) or alive(job.get("child")):
+                return job
+            # Same boot: descendants may outlive their leader. Refuse overlap.
+            child = job.get("child") or {}
+            if child.get("boot") == (identity() or {}).get("boot"):
+                for proc in Path("/proc").glob("[0-9]*/stat"):
+                    try:
+                        fields = proc.read_text().rsplit(")", 1)[1].split()
+                        if fields[0] != "Z" and int(fields[2]) == child.get("pid"):
+                            return job
+                    except (OSError, ValueError, IndexError):
+                        continue
+            job["state"] = "interrupted"
+        if job["state"] in ("interrupted", "drained", "lease-expired"):
+            if job["cancel"]:
+                job["state"] = "cancelled"
+            elif job["spec"]["idempotent"] and job["attempt"] < job["spec"]["max_attempts"]:
+                job["state"] = "queued"
+                job["expires"] = 0  # new controller-confirmed lease generation required
+            else:
+                job["state"] = "needs-confirmation"
+            self.save(job)
+        return job
+
+    def lease(self, jid, ttl):
+        with lock(self.state / "store.lock"):
+            job = self.recover(self.get(jid))
+            if job["state"] != "queued":
+                raise Blocked("job not safely queued; live/ambiguous/terminal execution cannot be re-leased")
+            # Same queued job retains token until expiration, so delayed heartbeat cannot
+            # renew a later generation after a confirmed interrupted attempt.
+            if job["expires"] <= time.time():
+                job["lease"] = secrets.token_hex(24)
+            job["expires"] = time.time() + ttl
+            self.save(job)
+        notify(self.state, "reconcile")
+        return job
+
+
+def public(job):
+    return {k: v for k, v in job.items() if k not in ("lease", "spec")}
+
+
+def gate(spec, polite):
+    try:
+        result = subprocess.run([str(polite), "--mem-mb", str(spec["mem_mb"]),
+            "--floor-mb", str(spec["floor_mb"] + spec["mem_mb"]), "--gate-only"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+class Executor:
+    def __init__(self, store, polite):
+        self.store, self.polite = store, polite
+        self.wake = asyncio.Event()
+        self.stop = asyncio.Event()
+        self.current = None
+
+    async def execute(self, job):
+        spec = job["spec"]
+        if not await asyncio.to_thread(gate, spec, self.polite):
+            return  # pending, not a successful admission; measured health timer retries
+        with lock(self.store.state / "store.lock"):
+            job = self.store.get(job["id"])
+            if job["cancel"] or job["expires"] <= time.time() or job["state"] != "queued":
+                return
+            job.update(state="starting", runner=identity(), attempt=job["attempt"] + 1)
+            self.store.save(job)
+        jobdir = Path(spec["cwd"]).parent
+        jobhome = jobdir / "home"
+        jobhome.mkdir(mode=0o700, exist_ok=True)
+        env = {**os.environ, "HOME": str(jobhome), "TMPDIR": str(jobdir),
+               "FLEET_JOB_ID": job["id"], "FLEET_JOB_ATTEMPT": str(job["attempt"])}
+        # polite-run retains real HOME for its owner pause/ADB gates. Payload HOME is
+        # changed only by env after polite-run admission, matching existing fleet run.
+        argv = [str(self.polite), "--mem-mb", str(spec["mem_mb"]), "--floor-mb", str(spec["floor_mb"]),
+                "--timeout", str(spec["timeout"]), "--", "env",
+                f"HOME={env['HOME']}", f"TMPDIR={env['TMPDIR']}",
+                f"FLEET_JOB_ID={job['id']}", f"FLEET_JOB_ATTEMPT={job['attempt']}", *spec["argv"]]
+        proc = None
+        try:
+            with (self.store.state / f"{job['id']}.log").open("ab") as logfile:
+                # This one job fence intentionally follows its payload descendants.
+                # It closes the spawn/status crash gap; all supervisor/store locks
+                # still close on exec. A leaked job child blocks retry, never duplicates.
+                proc = await asyncio.create_subprocess_exec("/usr/bin/setpriv", "--pdeathsig", "TERM", "--",
+                    "/usr/bin/flock", "--nonblock", "--conflict-exit-code", "76", "--no-fork",
+                    str(self.store.state / f"{job['id']}.exec.lock"), *argv, cwd=spec["cwd"],
+                    stdin=asyncio.subprocess.DEVNULL, stdout=logfile, stderr=logfile,
+                    start_new_session=True, close_fds=True)
+                with lock(self.store.state / "store.lock"):
+                    job = self.store.get(job["id"])
+                    job.update(state="running", child=identity(proc.pid))
+                    self.store.save(job)
+                wait = asyncio.create_task(proc.wait())
+                reason = None
+                while not wait.done():
+                    with lock(self.store.state / "store.lock"):
+                        latest = self.store.get(job["id"])
+                    reason = ("cancelled" if latest["cancel"] else "interrupted" if self.stop.is_set()
+                              else "lease-expired" if latest["expires"] <= time.time() else None)
+                    if reason:
+                        await drain(proc)
+                        break
+                    # Lease/health sampling is explicit and bounded, not lifecycle survival.
+                    self.wake.clear()
+                    event = asyncio.create_task(self.wake.wait())
+                    done, _ = await asyncio.wait([wait, event], timeout=min(5, max(0.01, latest["expires"] - time.time())),
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if event not in done:
+                        event.cancel()
+                        await asyncio.gather(event, return_exceptions=True)
+                await wait
+                # polite-run handles gate failure and drains its own payload group.
+                rc = proc.returncode
+                state = reason if reason else "succeeded" if rc == 0 else "drained" if rc == 75 else "failed"
+        except (OSError, asyncio.CancelledError):
+            if proc:
+                await drain(proc)
+            rc, state = 127, "interrupted"
+        with lock(self.store.state / "store.lock"):
+            job = self.store.get(job["id"])
+            job.update(state=state, exit=rc, finished=time.time())
+            self.store.save(job)
+            self.store.recover(job)
+
+    async def events(self, sock):
+        loop = asyncio.get_running_loop()
+        while not self.stop.is_set():
+            await loop.sock_recv(sock, 128)
+            self.wake.set()
+
+    async def run(self):
+        if not platform_supported():
+            raise Blocked("unsupported platform: requires Android PRoot guest; no cgroups/kubelet")
+        path = self.store.state / "events.sock"
+        path.unlink(missing_ok=True)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.bind(str(path)); sock.setblocking(False); os.chmod(path, 0o600)
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                loop.add_signal_handler(sig, lambda: (self.stop.set(), self.wake.set()))
+            atomic(self.store.state / "executor.json", {"identity": identity(), "capabilities": CAPABILITIES})
+            event_task = asyncio.create_task(self.events(sock))
+            try:
+                while not self.stop.is_set():
+                    self.wake.clear()
+                    with lock(self.store.state / "store.lock"):
+                        jobs = [self.store.recover(j) for j in self.store.all()]
+                    for job in jobs:
+                        if self.stop.is_set():
+                            break
+                        if job["state"] == "queued" and job["expires"] > time.time():
+                            await self.execute(job)
+                    try:
+                        await asyncio.wait_for(self.wake.wait(), 30)  # measured admission health only
+                    except asyncio.TimeoutError:
+                        pass
+            finally:
+                event_task.cancel()
+                await asyncio.gather(event_task, return_exceptions=True)
+                path.unlink(missing_ok=True)
+
+
+def main():
+    os.umask(0o077)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("command", choices=["submit", "status", "logs", "cancel", "heartbeat", "lease", "recover", "serve", "capabilities"])
+    ap.add_argument("job", nargs="?")
+    ap.add_argument("--state-dir", type=Path, default=Path.home() / ".local/state/fleet-phone-worker")
+    ap.add_argument("--polite-run", type=Path, default=Path.home() / ".local/lib/fleet/polite-run")
+    ap.add_argument("--ttl", type=int, default=120)
+    args = ap.parse_args()
+    try:
+        if not 10 <= args.ttl <= 600:
+            raise Blocked("lease TTL must be 10..600 seconds")
+        store = Store(args.state_dir)
+        if args.command == "capabilities":
+            result = {**CAPABILITIES, "supported": platform_supported()}
+        elif args.command == "serve":
+            with lock(args.state_dir / "executor.lock", blocking=False):
+                asyncio.run(Executor(store, args.polite_run).run())
+            return 0
+        elif args.command == "submit":
+            if not platform_supported():
+                raise Blocked("unsupported platform: requires Android PRoot guest")
+            job = store.submit(args.job, json.load(sys.stdin), args.ttl)
+            result = {**public(job), "lease": job["lease"]}
+        elif args.command == "logs":
+            store.get(args.job)
+            path = args.state_dir / f"{identifier(args.job)}.log"
+            if path.exists():
+                sys.stdout.write(path.read_text(errors="replace"))
+            return 0
+        elif args.command == "cancel":
+            result = public(store.cancel(args.job))
+        elif args.command == "heartbeat":
+            result = public(store.heartbeat(args.job, json.load(sys.stdin)["lease"], args.ttl))
+        elif args.command == "lease":
+            job = store.lease(args.job, args.ttl)
+            result = {**public(job), "lease": job["lease"]}
+        elif args.command == "recover":
+            with lock(args.state_dir / "store.lock"):
+                result = public(store.recover(store.get(args.job)))
+            notify(args.state_dir, "reconcile")
+        else:
+            result = public(store.get(args.job)) if args.job else {
+                "capabilities": CAPABILITIES, "executor_live": alive(read(args.state_dir / "executor.json", {}).get("identity")),
+                "jobs": [public(j) for j in store.all()]}
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    except (Blocked, OSError, ValueError, TypeError, KeyError) as exc:
+        print(json.dumps({"state": "blocked", "reason": str(exc) if isinstance(exc, Blocked) else type(exc).__name__}))
+        return 75
+
+
+if __name__ == "__main__":
+    sys.exit(main())
