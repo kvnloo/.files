@@ -1,6 +1,5 @@
 [Unit]
 Description=Dash foreground-gated report-only Luna log watcher
-After=default.target
 ConditionPathExists=%h/.config/dash-log-watch/config.json
 
 [Service]
