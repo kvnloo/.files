@@ -97,6 +97,11 @@ CAPABILITIES = {"adapter": "proot-host-lane", "kubernetes_member": False,
                 "execution": "trusted-owner-code-only"}
 
 
+def kubernetes_view(node, cluster):
+    # A coincidentally named cluster object cannot upgrade a host-lane phone.
+    return cluster.get(node["name"]) if node.get("kind", "linux") == "linux" else None
+
+
 def host_health(probe, now=None, max_age=180, floor=1200, reserve=512):
     now = time.time() if now is None else now
     if probe.get("error"):
@@ -108,7 +113,8 @@ def host_health(probe, now=None, max_age=180, floor=1200, reserve=512):
     if probe.get("host_lane_supported") is False:
         return "unsupported", ["not an Android PRoot host lane"]
     bad = []
-    if probe.get("mem_available_mb", 0) < floor + reserve:
+    memory = probe.get("mem_available_mb")
+    if not isinstance(memory, (int, float)) or memory < floor + reserve:
         bad.append("memory below admission floor + reservation")
     pw = probe.get("power") or {}
     bats = pw.get("batteries") or []

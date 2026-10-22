@@ -88,6 +88,11 @@ class HealthTests(unittest.TestCase):
         self.assertFalse(common.CAPABILITIES["security_isolation"])
         self.assertFalse(common.CAPABILITIES["hard_memory_limit"])
 
+    def test_phone_cannot_report_cluster_ready_even_with_name_collision(self):
+        cluster = {"s22": {"conditions": {"Ready": "True"}}}
+        self.assertIsNone(common.kubernetes_view({"name": "s22", "kind": "phone"}, cluster))
+        self.assertEqual(common.kubernetes_view({"name": "s22", "kind": "linux"}, cluster), cluster["s22"])
+
     def test_offline_differs_from_stale_and_pause(self):
         self.assertEqual(self.phase({"error": "timeout"}), "unavailable")
         self.assertEqual(self.phase({**healthy(), "ts": 1}), "stale")
@@ -112,6 +117,50 @@ class HealthTests(unittest.TestCase):
 
     def test_clock_skew_is_stale(self):
         self.assertEqual(self.phase({**healthy(), "ts": 1001}), "stale")
+
+    def test_missing_memory_is_closed_not_an_exception(self):
+        self.assertEqual(self.phase({**healthy(), "mem_available_mb": None}), "paused")
+
+
+class PoliteGateIntegration(TempHome):
+    def setUp(self):
+        super().setUp()
+        self.bin = self.home / "bin"; self.bin.mkdir()
+        uname = self.bin / "uname"
+        uname.write_text("#!/bin/sh\nprintf 'fixture-android\\n'\n"); uname.chmod(0o700)
+        adb = self.bin / "adb"
+        adb.write_text("#!/usr/bin/env python3\nimport os,sys\n"
+            "if sys.argv[1:]==['devices']: print('List of devices attached\\nfixture\\tdevice')\n"
+            "elif sys.argv[-1]=='battery':\n"
+            " print('  level: '+os.environ.get('TEST_BATTERY','80'))\n"
+            " print('  status: 3\\n  USB powered: false')\n"
+            " print('  temperature: '+os.environ.get('TEST_TEMP','300'))\n"
+            "elif sys.argv[-1]=='thermalservice': print('Thermal Status: '+os.environ.get('TEST_THERMAL','0'))\n")
+        adb.chmod(0o700)
+
+    def gate(self, **env):
+        return subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--floor-mb", "0", "--gate-only"],
+            capture_output=True, text=True, env={**os.environ, "PATH": f"{self.bin}:/usr/bin:/bin", **env})
+
+    def test_existing_wrapper_battery_temperature_and_thermal_fail_closed(self):
+        self.assertEqual(self.gate().returncode, 0)
+        for changes in ({"TEST_BATTERY": "49"}, {"TEST_TEMP": "410"}, {"TEST_THERMAL": "2"}):
+            self.assertEqual(self.gate(**changes).returncode, 1)
+
+    def test_existing_wrapper_owner_pause_is_respected(self):
+        pause = self.home / ".config/fleet/pause"; pause.parent.mkdir(parents=True); pause.touch()
+        result = self.gate()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("paused", result.stderr)
+
+    def test_existing_wrapper_memory_gate_and_desktop_rejection(self):
+        result = subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--floor-mb", "999999999", "--gate-only"],
+            capture_output=True, text=True, env={**os.environ, "PATH": f"{self.bin}:/usr/bin:/bin"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("memory", result.stderr)
+        if not common.platform_supported():
+            unsupported = subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--gate-only"], capture_output=True, text=True)
+            self.assertEqual(unsupported.returncode, 78)
 
 
 class StoreTests(TempHome):

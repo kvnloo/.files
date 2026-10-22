@@ -69,8 +69,11 @@ def existing_service(name):
             comm = (entry.parent / "comm").read_text().strip()
         except OSError:
             continue
-        if name in ("sshd", "tailscaled") and comm == name:
+        if name == "tailscaled" and comm == name:
             return True
+        if name == "sshd" and comm == "sshd" and (b"listener" in b" ".join(argv) or
+                (argv and argv[0].rsplit(b"/", 1)[-1] == b"sshd") or b"-D" in argv):
+            return True  # established sessions alone must not block listener recovery
         if name == "tern-remote" and b"remote" in argv and b"serve" in argv:
             return True
     return False
