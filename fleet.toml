@@ -16,6 +16,15 @@ user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
+# Staged only: do not add to user_services until owner authorization and doctor.
+[hosts.desktop.memory_tunnel]
+unit = "memory-tunnel.service"
+enabled = false
+repository = "https://github.com/openai/tunnel-client"
+version = "v0.0.17"
+binary = "~/.local/bin/tunnel-client"
+setup = "scripts/memory-tunnel-setup.sh"
+
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]
 repository = "https://github.com/lgse/strata"

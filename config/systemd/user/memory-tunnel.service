@@ -1,0 +1,43 @@
+[Unit]
+Description=Private read-only unified memory MCP via OpenAI outbound tunnel
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=%h/.config/memory-tunnel.env
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/memory-tunnel.env
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=%h/.files/scripts/memory-tunnel-setup.sh run
+StateDirectory=memory-tunnel
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/memory-tunnel
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Fail closed where cgroup BPF filtering is supported. Add reviewed destination
+# addresses (including required resolver/backend addresses) in a local drop-in.
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M
+CPUQuota=50%
+TasksMax=64
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+# Never retain tunnel-client request/error bodies in the journal.
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=default.target
