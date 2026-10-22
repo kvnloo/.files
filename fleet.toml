@@ -22,6 +22,8 @@ unit = "memory-tunnel.service"
 enabled = false
 repository = "https://github.com/openai/tunnel-client"
 version = "v0.0.17"
+sha256 = "bd6a57c6c0511644267cafadd13ffdb53ece0d753e0b88857f957e78a8fbc793"
+verify_attestation = true
 binary = "~/.local/bin/tunnel-client"
 setup = "scripts/memory-tunnel-setup.sh"
 

@@ -1,32 +1,30 @@
-# Private memory MCP tunnel (staged, not activated)
+# Private memory tunnel — staged, disabled
 
-The client is outbound-only to `https://api.openai.com:443/v1/tunnel/*`.
-There is no public memory listener. The only local listener is the tunnel
-health/admin UI on `127.0.0.1:8789`; never use `--allow-remote-ui`.
-The stdio child is `python -m z0int.memory_mcp`, with the absolute Python
-interpreter selected by `MEMORY_PYTHON` and `PYTHONPATH=$Z0INT_WORKTREE`.
-The tunnel key is transport authority, not permission to expand memory scope.
+No tunnel was initialized with real credentials, started, or enabled. No account
+settings changed. Fleet records a staged service, not an enabled user service.
 
-## Installed release and CLI evidence
+## Verified client and flags
 
-On groot: latest GitHub release on staging was `v0.0.17`; installed version
+Installed latest release `v0.0.17` at `~/.local/opt/tunnel-client/v0.0.17/`, with
+`~/.local/bin/tunnel-client` symlink. `--version` returned
 `0.0.17+a248b7f725fc989c1eb26680cf4351ee33421f61`.
-Install directory: `~/.local/opt/tunnel-client/v0.0.17/`; launcher:
-`~/.local/bin/tunnel-client` symlink to its `tunnel-client` executable.
-Downloaded with `gh release download --repo openai/tunnel-client` (no tag,
-therefore latest), with patterns `*linux*amd64*` and `SHA256SUMS.txt`.
-`sha256sum --check --ignore-missing SHA256SUMS.txt` reported:
+Downloaded using `gh release download --repo openai/tunnel-client` with no tag
+(latest at staging), patterns `*linux*amd64*` and `SHA256SUMS.txt`.
+For reproducible reinstalls use `gh release download v0.0.17 --repo
+openai/tunnel-client --pattern tunnel-client-v0.0.17-linux-amd64.zip
+--pattern SHA256SUMS.txt`.
 
-```text
-tunnel-client-v0.0.17-linux-amd64.zip: OK
-```
+`sha256sum --check --ignore-missing SHA256SUMS.txt` reported
+`tunnel-client-v0.0.17-linux-amd64.zip: OK` (all other downloaded assets also OK).
+Archive SHA256:
+`bd6a57c6c0511644267cafadd13ffdb53ece0d753e0b88857f957e78a8fbc793`.
+`gh attestation verify <zip> --repo openai/tunnel-client` exited 0;
+JSON verification also exited 0 and contained the release workflow certificate
+`.github/workflows/release.yml@refs/tags/v0.0.17`. Fleet pins tag and hash.
+The bundled `cloudflared` executable was removed from the installed release;
+it is unused. No Cloudflare supervision flags or public forwarding are enabled.
 
-Archive SHA256: `bd6a57c6c0511644267cafadd13ffdb53ece0d753e0b88857f957e78a8fbc793`.
-Checksums provide integrity against the release manifest, not independent
-publisher authentication. Recheck latest and its manifest when upgrading.
-
-Executed `tunnel-client help quickstart`, `tunnel-client --help`,
-`tunnel-client init --help`, and `tunnel-client run --help` without credentials.
+Executed `help quickstart`, `--help`, `init --help`, and `run --help`.
 Root flags: `-h/--help`, `-v/--version`. Exact init flags:
 
 ```text
@@ -45,64 +43,88 @@ Root flags: `-h/--help`, `-v/--version`. Exact init flags:
 --tunnel-id string
 ```
 
-Quickstart's stdio invocation is `init --sample sample_mcp_stdio_local
---profile local-stdio --tunnel-id tunnel_... --mcp-command "python /path/to/server.py"`.
-Our profile uses `--profile memory`, explicit `--profile-dir`,
-`--control-plane-api-key-ref env:CONTROL_PLANE_API_KEY`, and
-`--health-listen-addr 127.0.0.1:8789`.
-Run flags differ: `--health.listen-addr`, `--log.level`,
-`--admin-ui.log-buffer-events`; doctor is `doctor --profile memory --explain`.
-No `--open-web-ui`, payload capture, raw HTTP logging, tracing, or public
-Cloudflare forwarding is enabled.
+Quickstart uses `init --sample sample_mcp_stdio_local --profile local-stdio
+--tunnel-id tunnel_... --mcp-command "python /path/to/server.py"`.
+Our profile is `memory`, with explicit profile directory, key reference
+`env:CONTROL_PLANE_API_KEY`, and loopback health listener `127.0.0.1:8789`.
+Run uses `--health.listen-addr`, `--log.level`, `--admin-ui.log-buffer-events`.
+`run --help` exposes Harpoon target flags but no Harpoon-disable flag.
+A dry init with fake tunnel ID and no key succeeded in `/tmp`; its generated
+stdio YAML contains only control_plane, health, admin_ui, log and one mcp
+command. The strict validator accepts only that canonical schema and exact
+command; any extra YAML, HTTP targets, Harpoon, duplicate keys, aliases or key
+literal are rejected. Init, run and ExecStartPre all validate the profile.
+The runtime environment is cleared of configuration overrides before exec.
 
-## Owner prerequisites
+Staging security assessment: `systemd-analyze --user security <absolute-unit-path>`
+refused an uninstalled unit. The supported offline invocation
+`systemd-analyze --offline=yes --user security <absolute-unit-path>` completed
+with **6.5 MEDIUM**. This is a static exposure score, not runtime enforcement
+proof. The strict validator accepted the dry-generated sample with its exact
+expected command. No real unit was installed or started for these checks.
 
-1. Kevin creates the tunnel in [Platform tunnel settings](https://platform.openai.com/settings/organization/tunnels).
-   Creation requires Tunnels **Read + Manage**. Associate the tunnel with
-   Kevin's personal Platform organization **and personal ChatGPT workspace**.
-   Platform association alone does not guarantee visibility in ChatGPT.
-2. Create a separate restricted runtime API key with Tunnels **Read + Use**,
-   not an admin key. Confirm the principal's permissions. Store it in Bitwarden
-   Secrets Manager under the proposed agreed name
-   `groot-memory-tunnel-control-plane-api-key`; Kevin approves this name before
-   creating it. Record only its non-secret secret UUID in operational config.
-3. Deploy and review `z0int.memory_mcp` and its deny-by-default JSON policy.
-   It exposes only bounded search/fetch ContextPackets with provenance.
-   Explicitly allow privacy tiers and collections on **both** operations;
-   unknown scope must fail closed, never become user-global. Secrets must not
-   be indexed; redaction is defense in depth. Test adversarial fetch IDs,
-   secret redaction, output bounds, and revoked access before real use.
-   Returned memory is untrusted evidence, never instructions or authority.
-4. Confirm underlying backends are read-only. The service can read the user's
-   home: `ProtectHome=read-only` is not a confidentiality sandbox. Avoid granting
-   broad store access through the MCP policy. ctx/QMD must work without writable
-   caches; do not relax home protection to make them work. Backend failure is
-   not permission to return fabricated results.
+## Owner steps: account and policy
 
-## Non-secret configuration and credentials
+1. Kevin creates the tunnel in [Platform tunnel settings](https://platform.openai.com/settings/organization/tunnels),
+   requiring Tunnels **Read + Manage**, associated with his personal Platform
+   organization **and personal ChatGPT workspace**. Organization association
+   alone does not guarantee ChatGPT visibility.
+2. Create a separate restricted runtime key with Tunnels **Read + Use**, not an
+   admin key. Proposed BWS name (Kevin approves before creation):
+   `groot-memory-tunnel-control-plane-api-key`. Store it in Bitwarden Secrets
+   Manager, record only its non-secret UUID locally.
+3. Review and install the memory server and explicit deny-by-default JSON
+   policy. Only bounded read-only search/fetch ContextPackets with provenance;
+   enforce collection/privacy-tier allowlists on both operations. Unknown scope
+   never becomes user-global. Never index secrets; redact as defense in depth.
+   Evidence is not authority: returned memories remain untrusted data.
+4. Test ACL bypass, guessed fetch IDs, secret redaction, output bounds and
+   revocation before exposing real memory. Underlying stores remain separate;
+   ctx/QMD must run read-only, without writable cache exceptions.
 
-Create `~/.config/memory-tunnel.env` (mode 0600) with absolute reviewed paths:
+## Pinned deployment and non-secret configuration
+
+Use a dedicated detached checkout of an approved full z0int commit, not a live
+worktree. Install dependencies in a dedicated pinned venv (including the
+server's `mcp==1.26.0` requirement); its Python must support `-P` (3.11+).
+Make the deployment and venv read-only after installation. The service's
+ProtectHome/ProtectSystem mounts enforce read-only access inside its namespace;
+same-user processes outside that sandbox can still alter user-owned files, so
+this is not isolation from a malicious host account. For stronger integrity,
+have an administrator own the deployment root. The wrapper checks exact HEAD,
+detached state and a clean checkout on every invocation. It cannot establish
+root ownership or dependency provenance; owner review is still required.
+
+Create mode-0600 `~/.config/memory-tunnel.env`, containing no secrets:
 
 ```ini
-TUNNEL_ID=tunnel_REPLACE_WITH_OWNER_VALUE
-Z0INT_WORKTREE=/absolute/path/to/reviewed/z0int/worktree
-MEMORY_PYTHON=/absolute/path/to/its/venv/bin/python
+TUNNEL_ID=tunnel_OWNER_VALUE
+Z0INT_WORKTREE=/absolute/path/to/pinned/detached/z0int
+Z0INT_COMMIT=FULL_REVIEWED_COMMIT_SHA
+MEMORY_PYTHON=/absolute/path/to/pinned/venv/bin/python
 Z0INT_MEMORY_MCP_POLICY=/absolute/path/to/reviewed/policy.json
 ```
 
-Use a whitespace-free interpreter path (the command is parsed by tunnel-client).
-Do not put API keys, BWS machine tokens, or other secrets in this file, unit,
-profile YAML, command arguments, Git, shell history, or screenshots.
+Paths must contain only letters, digits, `_`, `.`, `/`, `-`. The stdio command
+uses `/usr/bin/env -i` with an explicit allowlist, then the pinned Python with
+`-P -m z0int.memory_mcp`. No control-plane key, BWS variables, provider keys,
+SSH agent or shell environment reaches the child. PYTHONPATH points only at the
+pinned deployment; working directory is an empty service state subdirectory.
+Audit path is `~/.local/state/memory-tunnel/audit`. Audit contains only
+hashes/counts/status, never raw queries/results or secrets; arrange short
+retention and monitor growth before prolonged use.
 
-Recommended service path: use `LoadCredentialEncrypted`, the encrypted variant
-of systemd `LoadCredential`. On a host with user credential encryption support,
-create `~/.config/credstore.encrypted` (0700), then pipe the BWS value directly
-into encryption, never a plaintext intermediate file:
+## Credentials: encrypted systemd only
+
+Do not put secrets in Git, command arguments, profiles, environment files,
+shell history, logs or screenshots. BWS is used only during provisioning;
+there is no BWS runtime branch. Runtime requires LoadCredentialEncrypted.
+Create `~/.config/credstore.encrypted` mode 0700, supply BWS_ACCESS_TOKEN through
+a secure process environment, then pipe directly to encryption:
 
 ```bash
 set +x
 set -o pipefail
-# BWS_ACCESS_TOKEN must already be provided securely to this process.
 bws secret get "$BWS_SECRET_ID" --output json 2>/dev/null |
   jq -er '.value | select(type == "string" and length > 0)' |
   systemd-creds encrypt --user --name=control-plane-api-key - \
@@ -110,59 +132,61 @@ bws secret get "$BWS_SECRET_ID" --output json 2>/dev/null |
 unset BWS_ACCESS_TOKEN
 ```
 
-If user credential encryption is unsupported, stop and arrange supported
-systemd credentials; never substitute a plaintext key file. systemd decrypts
-credentials into its managed runtime credential directory, not a persistent
-plaintext configuration. The wrapper reads the credential into process memory
-and exports it only to tunnel-client and its child. It never writes the key.
-The alternative wrapper BWS mode requires `BWS_SECRET_ID` and a runtime-only
-`BWS_ACCESS_TOKEN`; do not put that token in EnvironmentFile or manager's
-persistent configuration. Credential mode avoids BWS egress during service start.
+If user encryption is unsupported, stop and arrange supported credentials;
+never create a persistent plaintext key. systemd decrypts into its managed
+runtime credential directory. The wrapper exports the key only to the tunnel
+process; its `env -i` stdio command excludes it from MCP and backend children.
 
-## Install, restrict egress, then activate (owner only)
+## Install, enforce network boundaries, activate
 
-Nothing in this change enables, starts, initializes, or contacts a tunnel.
-The fleet subtable explicitly records `enabled = false`; the service is not
-in `hosts.desktop.user_services`.
-
-After merging into the checkout addressed by `~/.files`, install the unit:
+After merging into the checkout addressed by `~/.files`:
 
 ```bash
 install -Dm644 ~/.files/config/systemd/user/memory-tunnel.service \
   ~/.config/systemd/user/memory-tunnel.service
 mkdir -p ~/.config/systemd/user/memory-tunnel.service.d
+mkdir -p ~/.local/state/memory-tunnel/empty
+chmod 700 ~/.local/state/memory-tunnel ~/.local/state/memory-tunnel/empty
 ```
 
-Create a drop-in `credentials.conf`:
+Create `credentials.conf` drop-in:
 
 ```ini
 [Service]
 LoadCredentialEncrypted=control-plane-api-key:%h/.config/credstore.encrypted/memory-tunnel-key
 ```
 
-The base unit uses `IPAddressDeny=any` and `IPAddressAllow=localhost`:
-**external egress is denied by default, including OpenAI**. Before activation,
-add a reviewed `egress.conf` drop-in with numeric `IPAddressAllow=` entries
-for the currently resolved `api.openai.com` A/AAAA addresses and any necessary
-DNS resolver. systemd accepts IPs/CIDRs, **not hostnames**. No static OpenAI
-range is asserted here: the API can use changing CDN addresses, and OpenAI's
-published outbound connector IPs are not API destination IPs. Re-resolve and
-review when addresses rotate; fail closed rather than allow all internet.
-Loopback backends (agentsview default 8080, Tencent default 8420) are covered;
-remote backends require explicitly reviewed destinations too. This filter
-covers all ports at allowed IPs, not only HTTPS. Use a host firewall/controlled
-proxy if port/domain enforcement is required.
+Base network policy is deny-any with loopback allowed at the systemd IP layer.
+Add numeric reviewed `IPAddressAllow=` entries in an egress drop-in for current
+`api.openai.com` A/AAAA destinations and necessary DNS resolver. systemd accepts
+IPs/CIDRs, not hostnames; API CDN addresses rotate. OpenAI published outbound
+connector ranges are not API destination ranges. No broad internet allowance.
 
-**User-unit limits:** systemd IP filtering needs cgroup BPF privileges and
-kernel support; user managers can ignore unsupported IP restrictions with a
-warning. Its presence in the unit is not enforcement evidence. Owner must
-verify filtering on groot (including a disallowed destination) before enabling;
-if unavailable, an administrator must enforce equivalent host firewall/proxy
-policy. The same applies to namespace-based filesystem hardening: review
-systemd diagnostics for unsupported user namespaces. Do not claim hardened
-operation until effective controls are demonstrated.
+**Port-level enforcement is mandatory:** systemd IPAddressAllow cannot narrow
+ports. Before activation, an administrator must install cgroup/UID-scoped
+firewall or controlled proxy rules allowing only API HTTPS, necessary resolver,
+loopback agentsview TCP 8080 and Tencent TCP 8420, and health TCP 8789 as needed.
+Other backend ports need explicit review. All other loopback ports and IPv4/IPv6
+external destinations must be rejected with EPERM/EACCES semantics. The service
+preflight probes prohibited Cloudflare DNS IPs on 443 and loopback port 1 on
+both IPv4 and IPv6, and refuses startup unless every connect fails with an
+explicit permission error. Timeouts, ENETUNREACH and ECONNREFUSED are NOT proof.
+The tests are negative controls, not exhaustive firewall verification; review
+the actual rule set as well. DROP-only firewalls will intentionally fail this
+gate. Do not permit the probe addresses in the destination list.
 
-Initialize the credential-reference-only profile via a transient owner action:
+User managers may lack cgroup BPF support; an ignored IPAddressDeny directive
+must never be interpreted as protection. The active preflight catches missing
+negative controls and fails closed. Namespace hardening also requires supported
+user namespaces. Verify effective restrictions on groot, not merely unit text.
+AF_UNIX is denied; runtime bus, systemd, Tern, ssh-agent, Docker and GnuPG paths
+are additionally inaccessible. Native journald stderr is an inherited fd, so
+wrapper errors still work without opening a new AF_UNIX socket. Raw tunnel
+stderr/stdout are discarded; safe wrapper/validator failures reach the journal.
+This avoids a systemd-cat AF_UNIX dependency. Host services reachable on allowed
+backend ports remain a trust boundary, not arbitrary MCP callout targets.
+
+Initialize the key-reference-only profile via an owner-run transient action:
 
 ```bash
 systemd-run --user --wait --pipe --collect \
@@ -171,13 +195,11 @@ systemd-run --user --wait --pipe --collect \
   "$HOME/.files/scripts/memory-tunnel-setup.sh" init
 ```
 
-It will not replace an existing profile (`--force` is deliberately absent).
-Review `~/.local/state/memory-tunnel/profiles/memory.yaml`; it must contain
-`env:CONTROL_PLANE_API_KEY`, never a literal key. Then run the same transient
-command with `doctor` in place of `init`, which executes exactly
-`tunnel-client doctor --profile memory --explain`. Do not paste diagnostics
-containing private data into chat. Once policy, credentials, doctor and
-network restrictions pass, Kevin may activate:
+Existing profiles are not overwritten. Inspect the YAML: key must be exactly
+`env:CONTROL_PLANE_API_KEY`, sole upstream the reviewed stdio command. Repeat the
+transient command with `doctor` instead of `init`; it executes exactly
+`tunnel-client doctor --profile memory --explain`. Do not paste private
+observations. Once credentials/policy/network restrictions and doctor pass:
 
 ```bash
 systemctl --user daemon-reload
@@ -185,38 +207,34 @@ systemctl --user enable --now memory-tunnel.service
 curl --fail --silent --show-error http://127.0.0.1:8789/readyz
 ```
 
-Review `http://127.0.0.1:8789/ui` locally for readiness/active polling; do not
-expose or screenshot private logs. A running process alone is not readiness.
-The unit suppresses stdout/stderr because tunnel diagnostics may include
-request content; the bounded in-memory admin log is still private. The MCP
-server's audit path is `~/.local/state/memory-tunnel/audit`; audit records must
-contain hashes/counts/status only, never raw queries, result text or keys.
-Apply a short retention policy before prolonged use and monitor disk growth.
+Inspect `http://127.0.0.1:8789/ui` locally for readiness and active polling.
+Never allow remote UI or expose it publicly. In **ChatGPT Plugins > Add custom
+MCP server > Connection: Tunnel**, select the same tunnel and personally accept
+the warning. Restrict plugin sharing/associations to Kevin; tunnel permissions
+are not MCP OAuth, so reassess authentication for any multi-user scope.
+Make an approved harmless search/fetch and inspect provenance, bounds and
+sanitized audit counts. Only that real ChatGPT call establishes completion.
 
-In **ChatGPT Plugins > Add custom MCP server > Connection: Tunnel**, select
-this tunnel, confirm workspace association and risk warning personally, and
-create the private plugin. Tunnel authorization is separate from MCP OAuth;
-for this personal stdio deployment, restrict tunnel associations and plugin
-sharing to the intended owner. Reassess authentication before any multi-user
-use. Run a harmless approved search/fetch, verify provenance and output bounds,
-and inspect sanitized audit counts. Setup is complete only after that real
-ChatGPT call succeeds. No account-side actions were performed during staging.
+## Kill switch and revocation
 
-## Revocation / kill switch
+1. `systemctl --user disable --now memory-tunnel.service`; use
+   `systemctl --user kill --kill-whom=all --signal=KILL memory-tunnel.service`
+   if cgroup processes remain. Stop transient diagnostics separately.
+2. Mask the unit to block accidental restart. Since an installed regular user
+   unit can prevent `mask`, first remove only the installed unit file (retain
+   the repo source), then run `systemctl --user mask memory-tunnel.service`.
+   Verify inactive state and unavailable `/readyz`. Inspect remaining processes
+   and kill only positively identified tunnel/MCP children, never unrelated
+   Python/client processes. Do not use broad pkill.
+3. Revoke the runtime key in Platform and remove workspace associations/delete
+   the tunnel if retiring it; disable/remove the ChatGPT plugin. Deleting the
+   BWS secret alone does not revoke the API key.
+4. Remove `~/.local/state/memory-tunnel/profiles/memory.yaml`, encrypted local
+   credential, and BWS secret after revocation. Rotate any exposed key.
+5. Remove collection grants in the server policy and verify search AND fetch
+   deny them. Retain only approved hash/count audit evidence. Already-returned
+   client memory cannot be recalled.
 
-1. `systemctl --user disable --now memory-tunnel.service` immediately stops
-   polling and its stdio child; confirm the service is inactive and `/readyz`
-   is unavailable. Stop any separately launched transient diagnostic too.
-2. Revoke the restricted runtime key in Platform; remove/disable the tunnel's
-   workspace associations or delete the tunnel if retiring it. Disable/remove
-   the ChatGPT plugin. Revoking a BWS secret alone does not revoke the key.
-3. Remove the encrypted local credential and BWS secret only after revocation,
-   and rotate any exposed key. Never publish diagnostics or secret values.
-4. Tighten/remove the server policy to revoke a collection immediately; verify
-   both search and fetch deny it. Preserve only hash/count audit evidence under
-   the approved retention policy. Existing results already seen by a client
-   cannot be recalled.
-
-References: [OpenAI tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels),
-[upstream latest release](https://github.com/openai/tunnel-client/releases/latest),
-[plugin authentication](https://developers.openai.com/plugins/build/auth).
+References: [tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels),
+[latest release](https://github.com/openai/tunnel-client/releases/latest),
+[plugin auth](https://developers.openai.com/plugins/build/auth).
