@@ -14,6 +14,7 @@
   fleet enroll NODE                             harden a registered Linux node over root ssh
   fleet toolchain NODE [--check]                install the node's `toolchains` (JDK, Android SDK, Bun)
   fleet update NODE [--apply]                   show pending updates; --apply cordons, upgrades, uncordons
+  fleet ssh COMMAND [opts]                     owner SSH parity/trust helper (never the agentjob lane)
   fleet install-timer                           user systemd timer: `fleet health` every 2 minutes
 
 Host-lane jobs (`fleet run`) are for our own builds and tests that need a host
@@ -657,6 +658,9 @@ WantedBy=timers.target
 
 
 def main():
+    # Owner-user trust is a separate, explicit contract, not worker enrollment.
+    if sys.argv[1:2] == ["ssh"]:
+        return sys.exit(subprocess.run([sys.executable, str(REPO / "scripts/fleet-ssh"), *sys.argv[2:]]).returncode)
     ap = argparse.ArgumentParser(prog="fleet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd_name", required=True)
     sub.add_parser("nodes")

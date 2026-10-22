@@ -1,0 +1,19 @@
+{
+  "schema": "fleet.ssh.v1",
+  "nodes": [
+    {
+      "name": "replace-node",
+      "owned": true,
+      "tailscale_id": "REPLACE_STABLE_NODE_ID",
+      "owner_login": "REPLACE_VERIFIED_OWNER_LOGIN",
+      "kind": "linux",
+      "user": "kvn",
+      "address": "100.64.0.1",
+      "port": 22,
+      "identity_public_key": "REPLACE_BARE_ED25519_PUBLIC_KEY_GENERATED_ON_THIS_SOURCE_NODE",
+      "host_public_key": "REPLACE_BARE_ED25519_HOST_PUBLIC_KEY_VERIFIED_OUT_OF_BAND",
+      "host_fingerprint": "REPLACE_SHA256_FINGERPRINT_FROM_TRUSTED_CHANNEL",
+      "host_key_provenance": "REPLACE_AUTHENTICATED_CHANNEL_AND_VERIFICATION_RECEIPT"
+    }
+  ]
+}

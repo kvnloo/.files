@@ -1,0 +1,43 @@
+{
+  "schema": "fleet.ssh.compatibility.v1",
+  "basis": "config/fleet/nodes.yaml at 967da8131b43351e4799d8722899b1b174e99cb5; repository audit, not live reachability",
+  "owner_mesh": {
+    "admission_file": "config/fleet/ssh-owned-hosts.json",
+    "admitted_nodes": [],
+    "linux_user": "kvn",
+    "aliases": "fleet-NODE",
+    "default_policy": "deny until explicit owned admission, pinned host key, unique source key and ownership evidence",
+    "provisioner": "z0bridge owns authenticated discovery, BWS identity lifecycle, transport and orchestration",
+    "api": "scripts/fleet-ssh; also scripts/fleet ssh COMMAND OPTIONS",
+    "separate_from_worker_enrollment": true,
+    "live_mesh_verified_by_this_change": false
+  },
+  "worker_lane_do_not_expand": [
+    {"node": "mbp", "address": "100.78.215.21", "user": "agentjob", "port": 2222, "inbound": "controller-only tailscale0", "egress": "private and tailnet denied by cgroup"},
+    {"node": "omarchy-phone", "address": "100.104.42.85", "user": "root", "port": 22, "kind": "phone", "transport_caveat": "Tailscale SSH policies are separate from guest OpenSSH authorized_keys"},
+    {"node": "galaxy-s22plus", "address": "100.97.11.22", "user": "root", "port": 8022, "kind": "phone", "transport": "guest OpenSSH, PRoot fake root"},
+    {"node": "groot", "address": "100.113.138.100", "role": "server", "host_lane": false}
+  ],
+  "requirements": {
+    "local_runtime": ["Python >=3.9 stdlib", "OpenSSH with Ed25519, Include and restrict", "POSIX flock"],
+    "ownership_snapshot": "Authenticated tailscale status --json, independently collected by orchestrator; never trust remote self-report as sole admission authority",
+    "ownership_model": "Stable ID + exact IP + User.LoginName; tagged nodes fail closed pending explicit verifier",
+    "identity": "One node-local Ed25519 private identity per source, ~/.ssh/fleet/id_ed25519-NODE mode0600",
+    "host_trust": "Independently verified host public key, SHA256 fingerprint, nonempty provenance; reject cloned host keys",
+    "phone_guest": "kind=phone, proot=true for root; no systemd/cgroup requirements, no Android UI",
+    "path": "Existing ~/.local/bin, ~/.npm-global/bin, ~/.bun/bin, ~/.cargo/bin only; no package installation",
+    "path_hooks": "Before .bashrc guard; existing bash login file without shadowing; .profile; fish conf.d",
+    "home_paths": "Current uid ownership; refuse symlinks and group/world writable managed directories",
+    "secrets": "No BWS access token, private identity or secret value in manifest or logs"
+  },
+  "integration_acceptance": [
+    "Explicitly select owned hosts only, never every tailnet peer",
+    "Use owner kvn endpoint on Linux, never agentjob or Linux root",
+    "Keep existing authorized keys and SSH entries intact",
+    "Run path-install then install with authenticated ownership snapshot on each admitted source",
+    "Verify every source with --probe and aggregate exact directed edge matrix externally",
+    "Separate shell/tool probes from SSH true connectivity; installer does not install missing tools",
+    "Do not claim all-to-all from one source, offline verification, Online=false or Tailscale status alone",
+    "No root, firewall, ACL, password, sshd or service changes from this API"
+  ]
+}

@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Offline fleet SSH admission, shell parity and managed trust (stdlib only).
+
+No discovery enrollment: manifests are explicit owner-approved desired state.
+Never edits sshd, firewall, ACLs, users, credentials or services.
+"""
+import argparse
+import base64
+import fcntl
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import stat
+import struct
+import subprocess
+import sys
+import tempfile
+
+VERSION = "fleet.ssh.v1"
+ID = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
+USER = re.compile(r"[a-z_][a-z0-9_-]{0,31}\Z")
+BEGIN = "# BEGIN fleet-ssh managed"
+END = "# END fleet-ssh managed"
+BINS = [".local/bin", ".npm-global/bin", ".bun/bin", ".cargo/bin"]
+POSIX = '''# fleet-ssh: shell-only; safe before bash's interactive guard.
+_fleet_path_prepend() {
+    [ -d "$1" ] || return 0
+    case ":${PATH-}:" in *":$1:"*) ;; *) PATH="$1${PATH:+:$PATH}" ;; esac
+}
+for _fleet_bin in "$HOME/.cargo/bin" "$HOME/.bun/bin" "$HOME/.npm-global/bin" "$HOME/.local/bin"; do
+    _fleet_path_prepend "$_fleet_bin"
+done
+export PATH
+unset _fleet_bin
+unset -f _fleet_path_prepend
+'''
+FISH = '''# fleet-ssh: applies to interactive and noninteractive fish, no OMF dependency.
+for fleet_bin in "$HOME/.cargo/bin" "$HOME/.bun/bin" "$HOME/.npm-global/bin" "$HOME/.local/bin"
+    if test -d "$fleet_bin"; and not contains -- "$fleet_bin" $PATH
+        set -gx PATH "$fleet_bin" $PATH
+    end
+end
+set -e fleet_bin
+'''
+
+
+def fail(message):
+    raise ValueError(message)
+
+
+def key(value):
+    """Accept only canonical bare Ed25519 public keys, never options/comments."""
+    if not isinstance(value, str):
+        fail("public key must be a string")
+    parts = value.split(" ")
+    if len(parts) != 2 or parts[0] != "ssh-ed25519":
+        fail("expected bare ssh-ed25519 public key")
+    try:
+        raw = base64.b64decode(parts[1], validate=True)
+    except ValueError:
+        fail("invalid public key base64")
+    expected = struct.pack(">I", 11) + b"ssh-ed25519" + struct.pack(">I", 32)
+    if len(raw) != len(expected) + 32 or not raw.startswith(expected):
+        fail("invalid Ed25519 SSH wire key")
+    return "SHA256:" + base64.b64encode(hashlib.sha256(raw).digest()).decode().rstrip("=")
+
+
+def load_manifest(path, status_path=None):
+    m = json.loads(Path(path).read_text())
+    if m.get("schema") != VERSION or not isinstance(m.get("nodes"), list):
+        fail("unsupported manifest schema")
+    names, addresses, identities, hostkeys = set(), set(), set(), set()
+    if not m["nodes"]:
+        fail("no admitted nodes")
+    for n in m["nodes"]:
+        if not ID.fullmatch(n.get("name", "")) or n["name"] in names:
+            fail("invalid or duplicate node name")
+        names.add(n["name"])
+        if n.get("owned") is not True or not n.get("tailscale_id") or not n.get("owner_login"):
+            fail("explicit owned host admission and Tailscale identity required")
+        if n.get("kind") not in ("linux", "phone"):
+            fail("kind must be linux or phone")
+        u = n.get("user", "")
+        if not USER.fullmatch(u) or u == "agentjob" or (u == "root" and not (n["kind"] == "phone" and n.get("proot") is True)):
+            fail("owner mesh forbids agentjob/Linux root; phone root requires explicit proot=true")
+        ip = ipaddress.ip_address(n["address"])
+        if not (ip in ipaddress.ip_network("100.64.0.0/10") if ip.version == 4 else ip in ipaddress.ip_network("fd7a:115c:a1e0::/48")):
+            fail("address must be a Tailscale IP")
+        if n["address"] != str(ip) or n["address"] in addresses:
+            fail("noncanonical or duplicate address")
+        addresses.add(n["address"])
+        if type(n.get("port")) is not int or not 1 <= n["port"] <= 65535:
+            fail("explicit valid SSH port required")
+        fp = key(n["identity_public_key"])
+        if fp in identities:
+            fail("per-node identities must be unique")
+        identities.add(fp)
+        hp = key(n["host_public_key"])
+        if hp in hostkeys:
+            fail("cloned host keys must be rotated before admission")
+        hostkeys.add(hp)
+        if hp != n.get("host_fingerprint") or not n.get("host_key_provenance", "").strip():
+            fail("verified host fingerprint and out-of-band provenance required")
+    if len({n["tailscale_id"] for n in m["nodes"]}) != len(names):
+        fail("duplicate Tailscale stable identity")
+    if status_path:
+        s = json.loads(Path(status_path).read_text())
+        peers = [s.get("Self", {})] + list(s.get("Peer", {}).values())
+        for n in m["nodes"]:
+            matches = [p for p in peers if p.get("ID") == n["tailscale_id"]]
+            if len(matches) != 1:
+                fail("admitted Tailscale ID absent or ambiguous")
+            p = matches[0]
+            owner = s.get("User", {}).get(str(p.get("UserID")), {}).get("LoginName")
+            if n["address"] not in p.get("TailscaleIPs", []) or owner != n["owner_login"]:
+                fail("Tailscale address/owner mismatch")
+            if p.get("Tags"):
+                fail("tag-owned nodes require a separate explicit ownership verifier")
+    return m
+
+
+def node(m, name):
+    return next((n for n in m["nodes"] if n["name"] == name), None) or fail("node not admitted")
+
+
+def safe_path(home, relative):
+    p = home / relative
+    for part in [p, *p.parents]:
+        if part == home.parent:
+            break
+        if part.is_symlink():
+            fail("refusing symlink in managed path: " + str(part))
+        if part.exists() and part.stat().st_uid != os.getuid():
+            fail("managed path not owned by current uid")
+        if part.exists() and part.is_dir() and part.stat().st_mode & 0o022:
+            fail("managed directory is group/world writable")
+    return p
+
+
+def put(home, relative, content, mode=0o600):
+    p = safe_path(home, relative)
+    p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if p.exists() and not p.is_file():
+        fail("managed target is not a regular file")
+    if p.exists() and p.read_text() == content and stat.S_IMODE(p.stat().st_mode) == mode:
+        return False
+    fd, tmp = tempfile.mkstemp(prefix=".fleet-", dir=p.parent)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+            os.fchmod(f.fileno(), mode)
+        os.replace(tmp, p)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return True
+
+
+def block(old, body, prepend=False):
+    if old.count(BEGIN) != old.count(END) or old.count(BEGIN) > 1:
+        fail("malformed managed block")
+    if BEGIN in old:
+        start, end = old.index(BEGIN), old.index(END) + len(END)
+        if end < start:
+            fail("malformed managed block order")
+        if old[end:end+1] == "\n":
+            end += 1
+        old = old[:start] + old[end:]
+    b = BEGIN + "\n" + body.rstrip() + "\n" + END + "\n"
+    return b + old if prepend else old + ("\n" if old and not old.endswith("\n") else "") + b
+
+
+def manage(home, relative, body, prepend=False):
+    p = safe_path(home, relative)
+    old = p.read_text() if p.exists() else ""
+    # Preserve existing startup file permissions, but never group/world writes.
+    mode = stat.S_IMODE(p.stat().st_mode) & ~0o022 if p.exists() else 0o600
+    return put(home, relative, block(old, body, prepend), mode)
+
+
+def path_install(home):
+    changed = []
+    for path, content in ((".config/fleet/path.sh", POSIX), (".config/fleet/path.fish", FISH)):
+        if put(home, path, content):
+            changed.append(path)
+    hook = '[ ! -r "$HOME/.config/fleet/path.sh" ] || . "$HOME/.config/fleet/path.sh"'
+    # Bash reads the first existing login file only. Do not create a higher-priority
+    # .bash_profile and accidentally suppress an existing .profile/.bash_login.
+    files = [".bashrc", ".profile"]
+    files += [p for p in (".bash_profile", ".bash_login") if (home / p).exists()]
+    for p in files:
+        if manage(home, p, hook, True):
+            changed.append(p)
+    if put(home, ".config/fish/conf.d/00-fleet-path.fish", FISH):
+        changed.append(".config/fish/conf.d/00-fleet-path.fish")
+    return changed
+
+
+def render(m, local):
+    config, known, auth = [], [], []
+    for n in sorted(m["nodes"], key=lambda n: n["name"]):
+        if n["name"] == local:
+            continue
+        alias = "fleet-" + n["name"]
+        config += [f"Host {alias}", f"    HostName {n['address']}", f"    Port {n['port']}",
+                   f"    User {n['user']}", f"    IdentityFile ~/.ssh/fleet/id_ed25519-{local}",
+                   "    IdentitiesOnly yes", "    BatchMode yes", "    StrictHostKeyChecking yes",
+                   "    UserKnownHostsFile ~/.ssh/fleet/known_hosts", "    GlobalKnownHostsFile /dev/null",
+                   f"    HostKeyAlias {alias}", "    UpdateHostKeys no", "    PasswordAuthentication no",
+                   "    HostKeyAlgorithms ssh-ed25519", "    KnownHostsCommand none", "    VerifyHostKeyDNS no",
+                   "    CanonicalizeHostname no", "    PreferredAuthentications publickey", "    IdentityAgent none",
+                   "    KbdInteractiveAuthentication no", "    ForwardAgent no", "    ClearAllForwardings yes",
+                   "    ControlMaster no", "    ControlPath none", "    ProxyCommand none", "    ProxyJump none", ""]
+        known.append(f"{alias} {n['host_public_key']}")
+        auth.append(f'from="{n["address"]}",restrict {n["identity_public_key"]} fleet:{n["name"]}')
+    # Reset context so subsequent unmanaged configuration is not part of last Host.
+    config.append("Host *")
+    return {"config": "\n".join(config) + "\n", "known_hosts": "\n".join(known) + "\n",
+            "authorized_keys": "\n".join(auth) + "\n"}
+
+
+def install(m, local, home):
+    node(m, local)
+    # Validate ownership/path targets before changing any of these files.
+    files = render(m, local)
+    for p in (".ssh", ".ssh/config", ".ssh/authorized_keys", ".ssh/fleet/config", ".ssh/fleet/known_hosts"):
+        safe_path(home, p)
+    updates = {".ssh/fleet/" + p: content for p, content in files.items()}
+    for p, body, prepend in ((".ssh/authorized_keys", files["authorized_keys"], False),
+                             (".ssh/config", 'Include ~/.ssh/fleet/config\nHost *', True)):
+        target = safe_path(home, p)
+        updates[p] = block(target.read_text() if target.exists() else "", body, prepend)
+    changed = []
+    for p, content in updates.items():
+        if put(home, p, content):
+            changed.append(p)
+    return changed
+
+
+def verify(m, local, home, probe=False):
+    node(m, local)
+    files = render(m, local)
+    for p, content in files.items():
+        target = safe_path(home, ".ssh/fleet/" + p)
+        if not target.exists() or target.read_text() != content or stat.S_IMODE(target.stat().st_mode) != 0o600:
+            fail("managed SSH fragment drift: " + p)
+    for p, body, prepend in ((".ssh/authorized_keys", files["authorized_keys"], False),
+                             (".ssh/config", 'Include ~/.ssh/fleet/config\nHost *', True)):
+        target = safe_path(home, p)
+        old = target.read_text()
+        if old != block(old, body, prepend) or stat.S_IMODE(target.stat().st_mode) & 0o077:
+            fail("managed SSH hook drift or unsafe permissions")
+    private = safe_path(home, ".ssh/fleet/id_ed25519-" + local)
+    if not private.is_file() or stat.S_IMODE(private.stat().st_mode) != 0o600:
+        fail("node-local private identity missing or not mode 0600")
+    r = subprocess.run(["ssh-keygen", "-y", "-P", "", "-f", str(private)], capture_output=True, text=True, timeout=10)
+    derived = " ".join(r.stdout.strip().split()[:2])
+    if r.returncode or key(derived) != key(node(m, local)["identity_public_key"]):
+        fail("private identity does not match admitted public key")
+    checked = []
+    if probe:
+        if home != Path.home():
+            fail("network probe requires current user's real home")
+        for n in sorted(m["nodes"], key=lambda n: n["name"]):
+            if n["name"] == local:
+                continue
+            alias = "fleet-" + n["name"]
+            r = subprocess.run(["ssh", "-F", str(home / ".ssh/fleet/config"),
+                                "-o", "ConnectTimeout=10", alias, "true"],
+                               stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+            if r.returncode:
+                fail("strict key-only SSH probe failed: " + alias)
+            checked.append(n["name"])
+    return {"verified": True, "node": local, "probe_targets": checked,
+            "scope": "outgoing-from-this-node" if probe else "offline-managed-files-and-identity",
+            "all_to_all_verified": False}
+
+
+def requirements():
+    return {"schema": VERSION, "manifest": "config/fleet/ssh-owned-hosts.example.json",
+            "runtime": ["python3>=3.9", "OpenSSH with Include, restrict, Ed25519", "flock(2)"],
+            "supported": ["Linux user account", "Android PRoot guest (explicit proot=true)"],
+            "shells": ["bash SSH noninteractive .bashrc", "bash login", "POSIX login .profile", "fish noninteractive conf.d"],
+            "path_order": BINS, "path_scope": "existing directories only; does not install tool packages",
+            "admission": "explicit owned manifest AND authenticated Tailscale ID/address/User.LoginName match",
+            "trust": "out-of-band Ed25519 host fingerprint, never ssh-keyscan TOFU",
+            "identity": "one private key per source node, generated locally by orchestrator; no shared BWS token",
+            "network_policy": "unchanged: Linux 2222 controller-only; Tailscale22 and phone ports unchanged",
+            "excluded_worker_lane": ["agentjob cgroup denies tailnet egress", "Linux 2222 firewall permits controller only"],
+            "all_to_all_blockers": ["Tailscale SSH22 ownership/ACL check is separate from OpenSSH authorized_keys",
+                                    "owner-user endpoint must already be reachable and accept the admitted node identity",
+                                    "any new endpoint/account/network policy requires separate explicit owner approval"],
+            "install_effects": ["current-user home files only"],
+            "prohibited": ["Linux root login enrollment", "passwords", "ACL or firewall changes", "service restart",
+                           "shared identity", "tag-owned auto-admission", "all tailnet peers auto-admission"]}
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("command", choices=["requirements", "path-install", "validate", "render", "install", "verify"])
+    ap.add_argument("--manifest")
+    ap.add_argument("--tailscale-status", help="authenticated status --json snapshot; mandatory for install")
+    ap.add_argument("--node")
+    ap.add_argument("--home", default=str(Path.home()))
+    ap.add_argument("--probe", action="store_true", help="verify only: read-only strict SSH true to other admitted nodes")
+    a = ap.parse_args()
+    if a.command == "requirements":
+        result = requirements()
+    elif a.command == "validate":
+        m = load_manifest(a.manifest, a.tailscale_status)
+        result = {"valid": True, "nodes": sorted(n["name"] for n in m["nodes"]),
+                  "ownership_checked": bool(a.tailscale_status)}
+    elif a.command == "render":
+        m = load_manifest(a.manifest, a.tailscale_status)
+        node(m, a.node)
+        result = render(m, a.node)
+    else:
+        home = Path(a.home).absolute()
+        if not home.is_dir():
+            fail("home must exist")
+        safe_path(home, ".config/fleet")
+        lock = safe_path(home, ".config/fleet/ssh-parity.lock")
+        lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            if a.command == "path-install":
+                result = {"changed": path_install(home)}
+            else:
+                if a.command == "install" and not a.tailscale_status:
+                    fail("install requires authenticated --tailscale-status ownership evidence")
+                m = load_manifest(a.manifest, a.tailscale_status)
+                if a.command == "install":
+                    result = {"changed": install(m, a.node, home)}
+                else:
+                    result = verify(m, a.node, home, a.probe)
+    print(json.dumps(result, sort_keys=True))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError) as e:
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
