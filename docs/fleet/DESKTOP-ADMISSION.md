@@ -56,4 +56,3 @@ build hold (75). It is NOT a live-gateway turn test. The parent must integrate t
 Hermes source patch, checkpoint active sessions, perform its owned gateway restart,
 and re-run the actual foreground terminal cgroup probe before declaring all future
 launches protected. Do not throttle the gateway/core to hide that activation gap.
-
