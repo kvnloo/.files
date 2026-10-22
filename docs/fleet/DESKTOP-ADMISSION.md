@@ -35,3 +35,25 @@ Do not resume an old in-memory delivery parent locally: its imported functions p
 This is owned-workflow admission, not a same-user security sandbox: a user/admin can deliberately bypass wrappers or create workloads in other namespaces. Kube-system/control-plane services are not throttled by this policy. Health labels are observations, not continuous thermal guarantees for already-running jobs. Prefix limits protect native Hermes scopes only while its systemd backend is available; classifier recovery is best-effort for other launch paths. No sustained no-lag claim follows from a short probe.
 
 The ctx single-preparation-worker drop-in is staged separately because its ExecStart uses `env -i` and the shared service restart belongs to the parent/operator. Validate the post-restart environment and active preparation worker count; do not assume an Environment= directive survived env -i.
+
+## Foreground activation gate (do not call this complete early)
+
+Native background terminal tools were exercised inside `agent.slice` with CPU max
+`100000 100000`. Native foreground calls were independently found still launching
+inside `hermes-core.scope` without a CPU ceiling: the prefix drop-in alone is NOT
+proof of complete protection. The isolated Hermes branch
+`repair/foreground-resource-admission-20261022` carries the small
+`LocalEnvironment._run_bash` entry hook. It calls installed `agent-tool-run` before
+payload execution. The wrapper reuses the existing supervisor parser and native
+systemd scope manager; it holds known CPU builds/tests/encodes, exempts explicit
+single interactive application/CLI launches from workload throttling, and never
+falls back to direct execution if scope creation fails.
+
+`python3 scripts/verify-hermes-foreground-entry` exercised the exact patched method
+body in isolation using real subprocesses and kernel cgroups; only environment
+resolvers were injected. It observed an immediate 1-CPU agent scope and a cargo
+build hold (75). It is NOT a live-gateway turn test. The parent must integrate the
+Hermes source patch, checkpoint active sessions, perform its owned gateway restart,
+and re-run the actual foreground terminal cgroup probe before declaring all future
+launches protected. Do not throttle the gateway/core to hide that activation gap.
+

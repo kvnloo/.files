@@ -16,6 +16,7 @@ targets = {
     Path.home()/'.local/bin/fleet-build': repo/'scripts/fleet-build',
     Path.home()/'.local/bin/fleet-fframes-delivery': repo/'scripts/fleet-fframes-delivery',
     Path.home()/'.local/bin/agent-resource-classify': repo/'scripts/agent-resource-classify',
+    Path.home()/'.local/bin/agent-tool-run': repo/'scripts/agent-tool-run',
     Path.home()/'.config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf': repo/'config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf',
     Path.home()/'.config/systemd/user/agent.slice.d/50-interactive-budget.conf': repo/'config/systemd/user/agent.slice.d/50-interactive-budget.conf',
     Path.home()/'.config/systemd/user/fleet-health.service.d/50-admission-owner.conf': repo/'config/systemd/user/fleet-health.service.d/50-admission-owner.conf',
