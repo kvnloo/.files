@@ -18,9 +18,7 @@ spec:
   nodeLabels:
     z0.dev/gpu: rtx3080ti
 ---
-# Per-node flavors for the factory queue. Kueue fills node-mbp first and spills to
-# node-groot only when mbp's share is used: groot also runs the GPU, the server and
-# the owner's interactive agents, so it gets a small slice. Kueue writes the flavor's
+# CPU work never spills to the interactive desktop. Kueue writes the flavor's
 # nodeLabels into the admitted pod as a nodeSelector, so placement follows quota.
 # Sizes come from measured factory jobs (oss-factory tools/factory/measurements.json):
 # a discover job peaks under ~100 MiB and is network-bound, so `pods` is the binding
@@ -36,9 +34,10 @@ metadata:
 spec:
   nodeLabels:
     kubernetes.io/hostname: mbp
+    z0.dev/cpu-admit: "true"
     z0.dev/class-cpu-heavy: "true"
     z0.dev/class-build: "true"
-    z0.dev/class-render: "false"
+    z0.dev/class-render: "true"
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
@@ -67,11 +66,7 @@ spec:
             - {name: cpu, nominalQuota: "5"}
             - {name: memory, nominalQuota: 8Gi}
             - {name: pods, nominalQuota: "16"}
-        - name: node-groot
-          resources:
-            - {name: cpu, nominalQuota: "2"}
-            - {name: memory, nominalQuota: 3Gi}
-            - {name: pods, nominalQuota: "4"}
+
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
@@ -84,7 +79,7 @@ spec:
   resourceGroups:
     - coveredResources: [cpu, memory]
       flavors:
-        - name: cpu
+        - name: node-mbp
           resources:
             - {name: cpu, nominalQuota: "4"}
             - {name: memory, nominalQuota: 4Gi}

@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Install only this branch's admission seams; never restart shared services."""
+import argparse
+import datetime
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+repo = Path(__file__).resolve().parents[1]
+ap = argparse.ArgumentParser(description=__doc__)
+ap.add_argument('--apply', action='store_true')
+ap.add_argument('--receipts', type=Path, required=True)
+a = ap.parse_args()
+targets = {
+    Path.home()/'.local/bin/fleet-build': repo/'scripts/fleet-build',
+    Path.home()/'.local/bin/fleet-fframes-delivery': repo/'scripts/fleet-fframes-delivery',
+    Path.home()/'.local/bin/agent-resource-classify': repo/'scripts/agent-resource-classify',
+    Path.home()/'.config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf': repo/'config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf',
+    Path.home()/'.config/systemd/user/agent.slice.d/50-interactive-budget.conf': repo/'config/systemd/user/agent.slice.d/50-interactive-budget.conf',
+    Path.home()/'.config/systemd/user/fleet-health.service.d/50-admission-owner.conf': repo/'config/systemd/user/fleet-health.service.d/50-admission-owner.conf',
+    Path.home()/'.config/systemd/user/z0-worker-supervision.service.d/50-bounded-operational.conf': repo/'config/systemd/user/z0-worker-supervision.service.d/50-bounded-operational.conf',
+}
+for dst, src in targets.items():
+    print(f'{dst} -> {src}')
+    if not src.is_file():
+        raise SystemExit(f'missing source: {src}')
+if a.apply:
+    backup = a.receipts/('install-backup-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    backup.mkdir(parents=True, exist_ok=False)
+    for i, (dst, src) in enumerate(targets.items()):
+        if dst.is_symlink() and dst.resolve() == src:
+            continue
+        if dst.exists() or dst.is_symlink():
+            shutil.copy2(dst, backup/f'{i}-{dst.name}', follow_symlinks=False)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_name(dst.name+'.desktop-admission-new')
+        if tmp.exists() or tmp.is_symlink():
+            raise SystemExit(f'owned staging target occupied: {tmp}')
+        tmp.symlink_to(src)
+        os.replace(tmp, dst)
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    for dst, src in targets.items():
+        assert dst.resolve() == src, dst
+    print(f'INSTALLED (no service restarts); originals: {backup}')

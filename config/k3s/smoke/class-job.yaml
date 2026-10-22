@@ -1,7 +1,7 @@
 # Job classes: a queued factory Job that asks for a class lands on a node of that
 # class. Kueue matches the nodeSelector against the per-node flavors' class labels.
 #   kubectl create -f config/k3s/smoke/class-job.yaml                       # build -> mbp
-#   sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # render -> groot
+#   sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # CPU render -> mbp; GPU allocation is separate
 # Prints CLASS_OK node=<node>.
 apiVersion: batch/v1
 kind: Job

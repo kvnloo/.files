@@ -62,12 +62,18 @@ kubectl create -f config/k3s/smoke/gateway-job.yaml    # expect GATEWAY_OK: only
 
 ```sh
 kubectl create -f config/k3s/smoke/class-job.yaml      # expect CLASS_OK node=mbp (class-build)
-sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # CLASS_OK node=groot
+sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # CPU-only CLASS_OK node=mbp
+python3 scripts/verify-desktop-admission              # seven real admission API cases, no container execution
 scripts/fleet health                                   # every node OK; see docs/fleet/README.md
 scripts/fleet run mbp -- uname -a                      # host lane as agentjob
 ```
 
 Finished smoke Jobs delete themselves after 10 minutes.
+
+CPU worker admission also requires a healthy `z0.dev/cpu-admit=true` label. Never
+uncordon or fake telemetry to force a smoke through. See
+[desktop admission](../fleet/DESKTOP-ADMISSION.md); genuine GPU allocation is the
+only heavyweight groot exception, and GPU pods retain explicit CPU/memory limits.
 
 ## Worker hardening, health and the host lane
 
@@ -116,10 +122,10 @@ join token goes `sudo cat <data-dir>/server/node-token | ssh root@<node> 'instal
 `config/k3s/kueue/queues.yaml`: one queue per namespace (`factory`, `lanes`, `z0`),
 with the single GPU behind the `z0` queue. A Job opts in with the label
 `kueue.x-k8s.io/queue-name: <namespace>` and `suspend: true`; Jobs without the label
-are untouched. The `factory` queue has one ResourceFlavor per node (`node-mbp`,
-then `node-groot`): Kueue fills mbp's share first and spills to a small groot share,
-and writes the flavor's node label into the admitted pod, so quota decides
-placement. `pods` is a covered resource (16 on mbp, 4 on groot) because measured
+are still subject to workload namespace placement admission. The `factory` and
+`lanes` CPU queues use only `node-mbp`; there is no groot spillover. Kueue writes
+the worker and health-selector labels into the admitted pod. `pods` is a covered
+resource (16 on mbp) because measured
 factory jobs are network-bound and small; the namespace ResourceQuota (24 pods)
 stays as the outer ceiling. When a node joins, add a flavor for it. Proof that GPU
 work queues instead of failing:

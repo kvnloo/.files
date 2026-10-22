@@ -41,7 +41,7 @@ nodes:
     tailnet_ip: 100.78.215.21
     ssh_port: 2222
     arch: amd64
-    classes: [cpu-heavy, build]
+    classes: [cpu-heavy, build, render]
     # The default build node (docs/fleet/README.md "Default routing"): NOOP and
     # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
     # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
