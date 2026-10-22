@@ -69,7 +69,7 @@ nodes:
     ssh_port: 22
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, java]   # light jobs only: lint, pure-Python tests, scans, git work
+    capabilities: [python, git, java, proot-host-lane]   # trusted light host jobs, never Kubernetes
     taints: [phone]         # `fleet run` picks it only with --tolerate phone or --node
     model: SM-S938U
     android:                # groot's adb to the phone itself (fleet health; read-only)
@@ -81,7 +81,7 @@ nodes:
       on_unhealthy: pause   # `fleet run` skips it; polite-run drains running jobs itself
     lane:
       mem_floor_mb: 1200
-      default_mem: 1G
+      default_mem: 512M
       mem_max: 2G
       cpus: 0-3
   galaxy-s22plus:
@@ -99,7 +99,7 @@ nodes:
     ssh_port: 8022
     arch: arm64
     classes: [phone]
-    capabilities: [python, git]
+    capabilities: [python, git, proot-host-lane]
     taints: [phone]
     model: SM-S906U1
     android:
@@ -111,7 +111,7 @@ nodes:
       on_unhealthy: pause
     lane:
       mem_floor_mb: 1200
-      default_mem: 1G
+      default_mem: 512M
       mem_max: 2G
       cpus: 0-3
   groot:

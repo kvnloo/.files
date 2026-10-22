@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Foreground, event-driven guest daemon supervisor; launcher LinuxService owns it."""
+import argparse
+import asyncio
+from collections import deque
+import json
+import os
+from pathlib import Path
+import signal
+import socket
+import sys
+import time
+
+from fleet_phone import Blocked, alive, atomic, identifier, identity, lock, notify, read
+
+
+class Policy:
+    def __init__(self, base=1, cap=60, burst=5, window=300, stable=120):
+        if not (0 < base <= cap <= 300 and 1 <= burst <= 100 and window > 0 and stable > 0):
+            raise Blocked("invalid restart bounds")
+        self.base, self.cap, self.burst, self.window, self.stable = base, cap, burst, window, stable
+        self.exits = deque()
+        self.failures = 0
+
+    def exited(self, now, runtime):
+        if runtime >= self.stable:
+            self.failures = 0
+            self.exits.clear()
+        while self.exits and self.exits[0] < now - self.window:
+            self.exits.popleft()
+        self.exits.append(now)
+        self.failures += 1
+        if len(self.exits) >= self.burst:
+            return None  # circuit open until a real reconcile/network event
+        return min(self.cap, self.base * 2 ** min(self.failures - 1, 20))
+
+    def reset(self):
+        self.exits.clear()
+        self.failures = 0
+
+
+def desired(state):
+    return read(state / "desired.json", {"desired": "enabled"})["desired"]
+
+
+def set_desired(state, value):
+    with lock(state / "control.lock"):
+        atomic(state / "desired.json", {"desired": value})
+        marker = Path.home() / ".config/fleet/no-autostart"
+        if value == "stopped":
+            atomic(marker, {"desired": "stopped"})
+        else:
+            marker.unlink(missing_ok=True)
+    notify(state, "reconcile")
+
+
+def status(state):
+    info = read(state / "status.json", {})
+    live = alive(info.get("identity"))
+    return {**info, "desired": desired(state), "live": live,
+            "observed": info.get("observed", "unavailable") if live else "unavailable"}
+
+
+def existing_service(name):
+    """Fail closed on unmanaged legacy instances; never kill/adopt arbitrary PIDs."""
+    for entry in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            argv = entry.read_bytes().split(b"\0")
+            comm = (entry.parent / "comm").read_text().strip()
+        except OSError:
+            continue
+        if name in ("sshd", "tailscaled") and comm == name:
+            return True
+        if name == "tern-remote" and b"remote" in argv and b"serve" in argv:
+            return True
+    return False
+
+
+class Supervisor:
+    def __init__(self, state, config):
+        self.state, self.config = state, config
+        self.stop = asyncio.Event()
+        self.changed = {}
+        self.services = {}
+        self.tasks = []
+        self.network = "unknown"
+
+    def save(self, observed=None):
+        if observed is None:
+            observed = "starting" if not self.services else "running" if all(
+                item.get("state") == "running" for item in self.services.values()) else "degraded"
+        atomic(self.state / "status.json", {"identity": identity(), "observed": observed,
+               "ts": time.time(), "network": self.network, "services": self.services})
+
+    async def service(self, name, spec):
+        if isinstance(spec, list):
+            spec = {"argv": spec}
+        argv = spec.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
+            raise Blocked("service requires foreground argv")
+        policy = Policy(**self.config.get("restart", {}))
+        changed = self.changed.setdefault(name, asyncio.Event())
+        while not self.stop.is_set():
+            if existing_service(name):
+                self.services[name] = {"state": "blocked", "reason": "existing unmanaged instance"}
+                self.save()
+                changed.clear()
+                await changed.wait()
+                continue
+            started = time.monotonic()
+            try:
+                proc = await asyncio.create_subprocess_exec("/usr/bin/setpriv", "--pdeathsig", "TERM", "--", *argv, cwd=spec.get("cwd"),
+                    stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL, start_new_session=True, close_fds=True)
+            except OSError:
+                proc = None
+            self.services[name] = {"state": "running" if proc else "start-failed",
+                                   "child": identity(proc.pid) if proc else None}
+            self.save()
+            if proc:
+                try:
+                    rc = await proc.wait()  # exit event, never a liveness poll
+                except asyncio.CancelledError:
+                    from fleet_phone import drain
+                    await drain(proc)
+                    raise
+            else:
+                rc = 127
+            delay = policy.exited(time.monotonic(), time.monotonic() - started)
+            self.services[name] = {"state": "circuit-open" if delay is None else "backoff",
+                                   "exit": rc, "restart_after": delay}
+            self.save()
+            if delay is None:
+                changed.clear()
+                await changed.wait()
+                policy.reset()
+            else:
+                await asyncio.sleep(delay)  # bounded crash backoff, not keepalive polling
+
+    async def events(self, sock):
+        loop = asyncio.get_running_loop()
+        while not self.stop.is_set():
+            event = (await loop.sock_recv(sock, 128)).decode(errors="replace")
+            if desired(self.state) == "stopped":
+                self.stop.set()
+            elif event in ("network-available", "network-lost", "reconcile"):
+                if event != "reconcile":
+                    self.network = event
+                if event != "network-lost":
+                    for changed in self.changed.values():
+                        changed.set()
+                self.save()
+
+    async def run(self):
+        if desired(self.state) == "stopped":
+            return 0
+        services = self.config.get("services")
+        if not isinstance(services, dict) or not services:
+            raise Blocked("no foreground services configured")
+        Policy(**self.config.get("restart", {}))
+        for name, spec in services.items():
+            identifier(name)
+            if not isinstance(spec, (dict, list)):
+                raise Blocked("service must be argv or object")
+            argv = spec if isinstance(spec, list) else spec.get("argv")
+            if not isinstance(argv, list) or not argv or not all(isinstance(a, str) and a for a in argv):
+                raise Blocked("invalid foreground service argv")
+        path = self.state / "events.sock"
+        path.unlink(missing_ok=True)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.bind(str(path)); sock.setblocking(False)
+            os.chmod(path, 0o600)
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                loop.add_signal_handler(sig, self.stop.set)
+            self.save()
+            self.tasks = [asyncio.create_task(self.service(name, spec)) for name, spec in services.items()]
+            event_task = asyncio.create_task(self.events(sock))
+            # Task failure must shut down the entire tree, not silently lose supervision.
+            for task in self.tasks:
+                task.add_done_callback(lambda t: self.stop.set() if not t.cancelled() and t.exception() else None)
+            if desired(self.state) == "stopped":
+                self.stop.set()  # close stop/start race after socket bind
+            await self.stop.wait()
+            for task in self.tasks + [event_task]:
+                task.cancel()
+            await asyncio.gather(*self.tasks, event_task, return_exceptions=True)
+            self.save("stopped")
+        path.unlink(missing_ok=True)
+        return 0
+
+
+def main():
+    os.umask(0o077)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("command", choices=["start", "stop", "resume", "status", "event"])
+    ap.add_argument("--state-dir", type=Path, default=Path.home() / ".local/state/fleet-phone-supervisor")
+    ap.add_argument("--config", type=Path, default=Path.home() / ".config/fleet/phone-services.json")
+    ap.add_argument("--event", choices=["network-available", "network-lost", "reconcile"])
+    args = ap.parse_args()
+    state = args.state_dir
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        if args.command in ("stop", "resume"):
+            set_desired(state, "stopped" if args.command == "stop" else "enabled")
+        elif args.command == "event":
+            if not args.event:
+                raise Blocked("--event required")
+            print(json.dumps({"delivered": notify(state, args.event)}))
+            return 0
+        elif args.command == "start":
+            with lock(state / "instance.lock", blocking=False):
+                # Share existing exclusion lock with legacy runit/profile bootstrap.
+                with lock(Path.home() / ".local/state/fleet/supervise/lock", blocking=False):
+                    if (Path.home() / ".config/fleet/no-autostart").exists():
+                        set_desired(state, "stopped")
+                    if desired(state) != "stopped":
+                        config = read(args.config)
+                        if not isinstance(config, dict):
+                            raise Blocked("missing service config")
+                        return asyncio.run(Supervisor(state, config).run())
+        print(json.dumps(status(state)))
+        return 0
+    except (Blocked, OSError, ValueError, TypeError) as exc:
+        print(json.dumps({"observed": "blocked", "reason": str(exc) if isinstance(exc, Blocked) else type(exc).__name__}))
+        return 75
+
+
+if __name__ == "__main__":
+    sys.exit(main())

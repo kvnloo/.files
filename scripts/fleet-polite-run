@@ -13,8 +13,9 @@
 # PRoot traces every process, so SIGSTOP does not pause a job: a failing gate
 # drains it instead (TERM, then KILL) and exits 75 so the caller can retry later.
 # The job runs under nice 19, ionice idle and taskset (half the cores), and is
-# killed when its process group's RSS passes --mem-mb or the phone drops under
+# drained when sampled process-group RSS passes --mem-mb or the phone drops under
 # 800 MiB available. Android apps and settings are never touched.
+# Best-effort observation/admission, NOT a cgroup hard cap or security isolation.
 set -u
 MEM_MB=1024; CPUS=0-3; TIMEOUT=3600; FLOOR_MB=1200; HARD_FLOOR_MB=800
 MIN_BATT=50; MAX_BATT_C=40; MAX_THERMAL=1; GATE_EVERY=30; STRIKES=2
@@ -30,6 +31,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 log() { echo "[polite-run $(date +%H:%M:%S)] $*" >&2; }
+case $(uname -r) in *android*) ;; *) log "unsupported: phone adapter requires Android PRoot"; exit 78 ;; esac
 memavail() { awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo; }
 
 serial() {
@@ -75,6 +77,7 @@ drain() {
   why=$1; log "draining job: $why"
   kill -TERM -"$pid" 2>/dev/null; sleep 10; kill -KILL -"$pid" 2>/dev/null
 }
+trap 'drain "executor stop/cancel/lease expiry"; wait "$pid" 2>/dev/null; exit 75' TERM INT HUP
 while kill -0 "$pid" 2>/dev/null; do
   sleep 5
   now=$(date +%s)

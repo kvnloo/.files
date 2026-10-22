@@ -15,13 +15,13 @@ PORT=22; MODEL=""
 while [ $# -gt 0 ]; do
   case $1 in --port) PORT=$2; shift 2 ;; --model) MODEL=$2; shift 2 ;; *) echo "unknown $1" >&2; exit 2 ;; esac
 done
-SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 -p "$PORT" "$TARGET")
+SSH=(ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=10 -p "$PORT" "$TARGET")
 
 echo "==> checking $TARGET is an Android Linux guest"
 "${SSH[@]}" 'case "$(uname -r)" in *android*) ;; *) echo "not an Android kernel" >&2; exit 1;; esac
   command -v adb >/dev/null || { echo "adb missing in the guest: pacman -S android-tools" >&2; exit 1; }
   command -v python3 >/dev/null || { echo "python3 missing: pacman -S python" >&2; exit 1; }
-  for t in nice ionice taskset setsid timeout tar; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
+  for t in nice ionice taskset setsid timeout tar flock setpriv; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
 
 # Pick the adb device that is this phone (the guest reaches its own Android over
 # wireless debugging). With --model, refuse anything else.
@@ -32,13 +32,20 @@ serial=$("${SSH[@]}" "set -e
   done; exit 1") || { echo "no matching adb device: enable Wireless debugging and pair the guest's adb with this phone (docs/fleet/README.md)" >&2; exit 1; }
 echo "==> adb device: $serial"
 
-tar -C "$REPO/scripts" -cf - fleet-polite-run fleet-node-probe | "${SSH[@]}" "set -e
+tar -C "$REPO/scripts" -cf - fleet-polite-run fleet-node-probe fleet_phone.py fleet-phone-worker fleet-phone-supervisor | "${SSH[@]}" "set -e
   umask 022
   install -d ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs
   tmp=\$(mktemp -d); tar -xf - -C \$tmp
   install -m 0755 \$tmp/fleet-polite-run ~/.local/lib/fleet/polite-run
   install -m 0755 \$tmp/fleet-node-probe ~/.local/lib/fleet/fleet-node-probe
+  install -m 0644 \$tmp/fleet_phone.py ~/.local/lib/fleet/fleet_phone.py
+  install -m 0755 \$tmp/fleet-phone-worker ~/.local/lib/fleet/fleet-phone-worker
+  install -m 0755 \$tmp/fleet-phone-supervisor ~/.local/lib/fleet/fleet-phone-supervisor
+  install -d /opt/dotfiles-k3s/scripts
+  install -m 0644 \$tmp/fleet_phone.py /opt/dotfiles-k3s/scripts/fleet_phone.py
+  install -m 0755 \$tmp/fleet-phone-supervisor /opt/dotfiles-k3s/scripts/fleet-phone-supervisor
   rm -rf \$tmp
   echo '${serial%% *}' > ~/.config/fleet/adb-serial"
+echo "==> API installed (not started); launcher owns supervisor lifecycle and opt-in"
 echo "==> installed; gate now:"
 "${SSH[@]}" '~/.local/lib/fleet/polite-run --gate-only' || echo "(gate closed right now; jobs will wait)"
