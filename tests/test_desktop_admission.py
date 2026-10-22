@@ -2,12 +2,15 @@
 import importlib.machinery
 import pathlib
 import os
+import sys
+import time
 import tempfile
 import types
 import unittest
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 fleet = importlib.machinery.SourceFileLoader('fleet_admission', str(ROOT/'scripts/fleet')).load_module()
 classifier = importlib.machinery.SourceFileLoader('agent_classifier', str(ROOT/'scripts/agent-resource-classify')).load_module()
 
@@ -76,6 +79,40 @@ class Admission(unittest.TestCase):
     def test_offline_tailnet_self_does_not_crash_health(self):
         with patch.object(fleet.subprocess,'run',return_value=types.SimpleNamespace(stdout='{"Self":{"TailscaleIPs":[]},"Peer":{}}')):
             self.assertEqual(fleet.tailnet_online(),{})
+
+class PhonePlacement(unittest.TestCase):
+    def test_s25_gates_before_transfer_and_never_falls_back_to_groot(self):
+        nodes = fleet.registry()[1]
+        nodes = {name: nodes[name] for name in ("omarchy-phone", "groot")}
+        args = types.SimpleNamespace(node=None, cls="phone", arch="arm64", tolerate=["phone"],
+                                     cmd=["true"], mem="512M")
+        p = {"ts": time.time(), "host_lane_supported": True, "mem_available_mb": 3000,
+             "load1": 0, "ncpu": 8, "services": {"fleet-worker": "active"},
+             "power": {"on_ac": False, "source": "adb", "battery_temp_c": 30,
+                       "android_thermal_status": 0,
+                       "batteries": [{"pct": 49, "status": "Discharging"}]}}
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(fleet, "registry", return_value=({}, nodes)), \
+             patch.object(fleet, "k8s_nodes", return_value={}), \
+             patch.object(fleet, "probe", return_value=p), \
+             patch.object(fleet, "STATE", pathlib.Path(td)), \
+             patch.object(fleet.subprocess, "run", side_effect=RuntimeError("TRANSFER")) as transfer:
+            with self.assertRaises(SystemExit) as refused:
+                fleet.cmd_run(args)
+            self.assertEqual(refused.exception.code, 75)
+            transfer.assert_not_called()
+            p["power"]["on_ac"] = True
+            with self.assertRaisesRegex(RuntimeError, "TRANSFER"):
+                fleet.cmd_run(args)
+            self.assertIn("root@100.104.42.85", transfer.call_args.args[0])
+            self.assertNotIn("100.113.138.100", " ".join(transfer.call_args.args[0]))
+            p["power"]["battery_temp_c"] = 41
+            transfer.reset_mock()
+            with self.assertRaises(SystemExit) as hot:
+                fleet.cmd_run(args)
+            self.assertEqual(hot.exception.code, 75)
+            transfer.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
