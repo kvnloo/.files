@@ -20,6 +20,37 @@ Child exits wake `wait()`, with bounded exponential 1..60 s backoff. Five quick 
 
 `config/fleet/phone/services.example.json` reuses the existing foreground run scripts, tailnet state, SSH host keys and Tern configuration, plus the worker executor. It is an **example for the current /root guest**, not a deployment or automatically approved listener configuration. Review installed scripts/paths and listener restrictions before copying it to the active config. Do not invent a new tailscale identity, run tailscale up, regenerate SSH keys or broaden listener/firewall/account privileges on rejoin. No autostart hook is installed or service started by this change. `fleet-phone-setup.sh` copies the APIs when explicitly enrolled, without starting them; legacy run scripts are existing phone setup prerequisites.
 
+### Existing installed launcher: retain runsv
+
+The 2026-10-22 rollout retains `fleet-phone-supervise` and its existing daemon
+tree. The newer launcher-owned foreground supervisor is **not activated**: it
+needs the persistence APK/lifecycle integration, and replacing the live tree
+would interrupt SSH, tailscale and Tern remote. Do not run both supervisors.
+
+`fleet-phone-setup.sh TARGET --port PORT --model MODEL --defer-adb` installs the
+adapter plus `~/.local/share/fleet/sv/fleet-worker/{run,finish,log/run}` and updates
+the legacy supervisor's service list. It does not restart the running parent.
+The new worker joins that same runsv tree on its next approved start; do not
+detach a worker from an SSH session and call it persistent. The existing tree
+has no service-list reload API. Until that restart, probes report the executor
+down and placement refuses jobs.
+
+`--defer-adb` permits installation while self-ADB is unavailable, not execution
+without battery/thermal evidence. It never rewrites an unverified serial or
+changes Android settings. Owner action: restore each phone's Wireless debugging
+connection to its guest (re-pair only if necessary), then rerun setup without
+`--defer-adb` to validate the model and current endpoint. No Android power policy,
+APK, account or app-data changes are required by this deployment.
+
+Both phone entries use a 512 MiB sampled default budget and 1200 MiB owner RAM
+floor; S25 remains polite-only, on small cores with nice/ionice. Jobs require
+charging or at least 50% battery, battery at most 40 C and thermal status at most
+1. Missing evidence fails closed. Neither phone advertises builds or kubelet
+capabilities. The repository has Kueue queues but no KEDA, HPA or cluster
+autoscaler; host placement/admission is `fleet run`/`fleet-build`, not Kubernetes
+autoscaling. Groot has no host lane and is never a no-room fallback.
+
+
 ## Shared job API
 
 Existing `fleet run --node s22 --mem 512M -- CMD...` now submits the selected phone job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB` cancels that exact durable ID instead of matching process command lines. Source transfer and artifact fetching still use the existing fleet transport. The phone spool/source are retained to support recovery and log inspection. Linux/MBP execution is unchanged.

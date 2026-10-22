@@ -495,5 +495,42 @@ class ControllerTests(TempHome):
                 transport.assert_not_called()
 
 
+class RolloutTests(TempHome):
+    def test_setup_requires_explicit_deferred_telemetry_and_never_starts_tree(self):
+        tools = self.home / "bin"
+        tools.mkdir()
+        calls = self.home / "calls"
+        ssh = tools / "ssh"
+        ssh.write_text("#!/bin/sh\n"
+                       'printf "%s\\n" "$*" >> "$CALLS"\n'
+                       'case "$*" in\n'
+                       '  *"for s in "*) exit 1 ;;\n'
+                       '  *"tar -xf"*) cat >/dev/null ;;\n'
+                       'esac\n')
+        ssh.chmod(0o755)
+        env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}", "CALLS": str(calls)}
+        command = ["bash", str(SCRIPTS / "fleet-phone-setup.sh"), "root@phone.invalid"]
+        refused = subprocess.run(command, env=env, capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 1)
+        self.assertNotIn("tar -xf", calls.read_text())
+        installed = subprocess.run([*command, "--defer-adb"], env=env, capture_output=True, text=True)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        self.assertIn("admission stays closed", installed.stderr)
+        text = calls.read_text()
+        self.assertIn("StrictHostKeyChecking=yes", text)
+        self.assertIn("sv/fleet-worker", text)
+        self.assertNotIn("fleet-phone-supervise up", text)
+        self.assertNotIn("fleet-phone-supervise down", text)
+
+    def test_charging_gate_and_executor_readiness(self):
+        p = healthy()
+        p["power"]["batteries"][0]["pct"] = 10
+        self.assertEqual(common.host_health(p, now=1000)[0], "paused")
+        p["power"]["on_ac"] = True
+        self.assertEqual(common.host_health(p, now=1000)[0], "ready")
+        p["services"]["fleet-worker"] = "down"
+        self.assertEqual(common.host_health(p, now=1000)[0], "paused")
+
+
 if __name__ == "__main__":
     unittest.main()

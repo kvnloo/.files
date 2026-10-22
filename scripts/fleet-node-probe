@@ -166,6 +166,8 @@ def guest_services():
     try:
         from fleet_phone import alive, read as read_json
         status = read_json(os.path.expanduser("~/.local/state/fleet-phone-supervisor/status.json"), {})
+        executor = read_json(os.path.expanduser("~/.local/state/fleet-phone-worker/executor.json"), {})
+        out["fleet-worker"] = "active" if alive(executor.get("identity")) else "down"
         if alive(status.get("identity")):
             out["fleet-supervise"] = "active" if status.get("observed") == "running" else "stopped"
             for name, info in status.get("services", {}).items():

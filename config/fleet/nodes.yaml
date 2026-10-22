@@ -66,7 +66,7 @@ nodes:
     kind: phone
     tailnet_ip: 100.104.42.85
     ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
-    ssh_port: 22
+    ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
     classes: [phone]
     capabilities: [python, git, java, proot-host-lane]   # trusted light host jobs, never Kubernetes
@@ -78,11 +78,12 @@ nodes:
     health:
       min_mem_available_mb: 1200
       min_disk_free_gb: 5
+      min_battery_pct_on_battery: 50
       on_unhealthy: pause   # `fleet run` skips it; polite-run drains running jobs itself
     lane:
       mem_floor_mb: 1200
       default_mem: 512M
-      mem_max: 2G
+      mem_max: 512M        # sampled polite budget, not a cgroup/hard RSS guarantee
       cpus: 0-3
   galaxy-s22plus:
     # Spare Galaxy S22+ (SM-S906U1, Snapdragon 8 Gen 1: cores 0-3 are the small
@@ -93,7 +94,7 @@ nodes:
     # lowest priority: nice 19, ionice idle, half the cores, phone taint.
     role: worker
     kind: phone
-    aliases: [s22]
+    aliases: [s22, localhost-0]
     tailnet_ip: 100.97.11.22
     ssh_user: root
     ssh_port: 8022
@@ -108,11 +109,12 @@ nodes:
     health:
       min_mem_available_mb: 1200
       min_disk_free_gb: 5
+      min_battery_pct_on_battery: 50
       on_unhealthy: pause
     lane:
       mem_floor_mb: 1200
       default_mem: 512M
-      mem_max: 2G
+      mem_max: 512M        # conservative default lane; PRoot cannot enforce hard caps
       cpus: 0-3
   groot:
     role: server
