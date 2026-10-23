@@ -536,6 +536,30 @@ SmartPanel {
                 description: "Real advertised modes; layout changes apply only after confirmation"
               }
 
+              NText {
+                Layout.fillWidth: true
+                text: "Drag monitors to rearrange them. Changes are staged until Apply."
+                color: Color.mOnSurfaceVariant
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+
+              Loader {
+                id: monitorArrangement
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.round(230 * Style.uiScaleRatio)
+                Layout.minimumHeight: Math.round(230 * Style.uiScaleRatio)
+                active: root.monitorLayoutApi !== null
+                source: active ? "file://" + root.monitorLayoutApi.pluginDir + "/MonitorArrangement.qml" : ""
+              }
+
+              Binding {
+                target: monitorArrangement.item
+                property: "mainInstance"
+                value: root.monitorLayout
+                when: monitorArrangement.status === Loader.Ready
+              }
+
               RowLayout {
                 Layout.fillWidth: true
                 spacing: Style.marginS
