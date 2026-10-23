@@ -359,6 +359,7 @@ class Steward(unittest.TestCase):
              patch('time.time', return_value=1000), patch('pathlib.Path', FakePath), \
              patch('shutil.rmtree') as remove, patch('os.getuid', return_value=2000), \
              patch.object(pwd, 'getpwnam', return_value=types.SimpleNamespace(pw_uid=2000)), \
+             patch('shutil.disk_usage', return_value=types.SimpleNamespace(free=1024)), \
              patch.object(sys, 'argv', ['prune', '15']), contextlib.redirect_stdout(io.StringIO()):
             try:
                 exec(steward.PRUNE_PROGRAM, {})
