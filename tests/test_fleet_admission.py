@@ -90,6 +90,19 @@ class PureLawTests(unittest.TestCase):
                     self.assertTrue(qualified and available and room)
                     self.assertIn(transfer, (Transfer.COMPLETE, Transfer.NOT_REQUIRED))
 
+    def test_malformed_observations_never_admit(self):
+        cases = [
+            Request("groot", True, True, True, Transfer.COMPLETE),
+            Request(Target.REMOTE, 1, True, True, Transfer.COMPLETE),
+            Request(Target.REMOTE, True, None, True, Transfer.COMPLETE),
+            Request(Target.REMOTE, True, True, True, "complete"),
+        ]
+        for request in cases:
+            with self.subTest(request=request):
+                result = decide(request)
+                self.assertIsInstance(result, Refuse)
+                self.assertTrue(reason_text(result))
+
     def test_fail_closed_without_fallback(self):
         for transfer in Transfer:
             for available in (False, True):

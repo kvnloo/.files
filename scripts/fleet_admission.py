@@ -72,6 +72,14 @@ _MESSAGES = {
 
 def decide(request: Request) -> Verdict:
     """Closed finite domain; no fallback action or implicit execution path."""
+    # External registry/CLI data must be mapped into the closed model explicitly.
+    # Do not interpret a malformed node/transfer/boolean as a positive remote.
+    if not isinstance(request.target, Target):
+        return Refuse(Reason.NO_REMOTE)
+    if any(type(v) is not bool for v in (request.qualified, request.available, request.room)):
+        return Refuse(Reason.UNQUALIFIED)
+    if not isinstance(request.transfer, Transfer):
+        return Refuse(Reason.SOURCE_TRANSFER_FAILED)
     if request.target is Target.MISSING:
         return Refuse(Reason.NO_REMOTE)
     if request.target is Target.GROOT:

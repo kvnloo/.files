@@ -475,7 +475,11 @@ def cmd_run(args):
                          "; ".join(notes) or "no worker capacity reported")
     _, n, p = best
     # Prepare is NOT an execution grant: source must be transferred first.
-    pre = decide(Request(Target.REMOTE, True, True, True, Transfer.PENDING))
+    selected_target = (Target.GROOT if n["name"] == "groot" or n["role"] != "worker"
+                       else Target.REMOTE)
+    pre = decide(Request(selected_target, True, True, True, Transfer.PENDING))
+    if isinstance(pre, Refuse):
+        die(reason_text(pre, f"selected node {n['name']}"), 75)
     if not isinstance(pre, Prepare):
         raise AssertionError("unexpected fleet admission before source transfer")
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
