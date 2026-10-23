@@ -402,7 +402,7 @@ def cmd_health(args):
 # ---------------------------------------------------------------- run
 
 def eligible(n, args, state):
-    if not n["lane_enabled"]:
+    if n["name"] == "groot" or n["role"] != "worker" or not n["lane_enabled"]:
         return "no host lane"
     if args.cls and args.cls not in n["classes"] + n["capabilities"]:
         return f"not class/capability {args.cls}"
@@ -531,7 +531,7 @@ def cmd_run(args):
             admission_refuse(Request(Target.REMOTE, True, True, True, Transfer.FAILED),
                              f"node {n['name']}: tar exit={tar_rc}, extract exit={send_rc}", code=1)
         transfer = Transfer.COMPLETE
-    final = decide(Request(Target.REMOTE, True, True, True, transfer))
+    final = decide(Request(selected_target, True, True, True, transfer))
     if not isinstance(final, Admit):
         raise AssertionError("fleet execution without remote source admission")
     cmd = " ".join(shlex.quote(c) for c in args.cmd)

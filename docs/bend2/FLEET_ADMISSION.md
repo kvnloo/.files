@@ -11,13 +11,13 @@ Scope: **kvnloo/.files only**. This is the law slice for [z0intelligence #199](h
 
 ## Four owner laws, exact status and verification path
 
-### F1 — no groot fallback (implemented, pure proof)
+### F1 — no groot fallback (implemented, proof execution pending)
 
 **Bend proposition**: for every qualification boolean q, availability a, capacity r and transfer state t,
 
     MODEL.decide(FGroot, q, a, r, t) = FRefuse(RGrootForbidden).
 
-A missing pin refuses independently. Remote qualification/availability/capacity failures produce typed refusals, never an alternate target. The proof obligation is 'LAWS.never_groot_fallback', plus 'missing_remote_refuses', 'unqualified_refuses', 'unavailable_refuses', and 'no_room_refuses'; 'PROOF.bend' imports those exact signatures. Positive remote cases are proven separately.
+A missing pin refuses independently. Remote qualification/availability/capacity failures produce typed refusals, never an alternate target. The proof obligation is 'LAWS.never_groot_fallback', plus 'missing_remote_refuses', 'unqualified_refuses', 'unavailable_refuses', and 'no_room_refuses'. 'PROOF.bend' imports those exact signatures. Positive remote cases have separate proof obligations.
 
 **CI**: actual pinned 'bend PROOF.bend --verdict'; all 96 finite-domain Bend↔Python cases; mocked 'fleet cmd_run' refuses a groot pin before constructing SSH; POSIX shell checks explicit groot refusal under O1 enforce/report/off. Check both producer/extractor failure cases do not attempt fallback.
 
@@ -33,7 +33,7 @@ A missing pin refuses independently. Remote qualification/availability/capacity 
 
 **Concolic boundary plan**: collect a symbolic path condition for each of 'unknown pin', 'wrong class', 'paused worker', 'bad probe', and 'insufficient MiB'. Flip one predicate at a time with an SMT solver while holding the earlier branch predicates; replay the corresponding concrete case through the stubbed CLI. Observe 'exit_status' and 'stderr' together; assert stable enum labels and nonempty explanation, never infer success from text alone.
 
-### F3 — failed source transfer refuses execution (implemented, pure proof)
+### F3 — failed source transfer refuses execution (implemented, proof execution pending)
 
 **Bend proposition**:
 
@@ -43,7 +43,7 @@ and a pending transfer returns 'FPrepare', not 'FAdmit'. A completed transfer or
 
 **Proof obligation**: 'source_transfer_fails_closed', 'source_pending_cannot_execute', 'delivered_remote_admits' and 'no_source_remote_admits'. Archive producer and remote extractor exit statuses must both be zero before the adapter supplies 'TComplete'. Actual source fidelity is not attested by exit status alone.
 
-**CI**: mocked tar producer exit 1 / extractor exit 0, inverse, both failing, and remote runtime exit 23; no real SSH, tar, device or build effects. Bend/Python parity and the deliberate MODEL 'no room ⇒ Admit' mutation must not pass the unchanged owner LAWS/PROOF. The CI reference must pass before a mutation failure counts.
+**CI obligations**: producer failure, extractor failure, both failing, producer/extractor exit 75, git file-list transfer, spawn errors and broken pipes must refuse execution. Transfer failures retain exit 1. Mocked successful runtime exits 0/23/75 must remain unchanged. A healthy MBP from the real registry must admit, with and without source. All process/SSH effects are mocked. Bend/Python parity covers all 96 states. Groot fallback, room bypass and failed-transfer bypass mutants must receive an actual failed-proof verdict after the reference passes.
 
 **Concolic boundary plan**: instrument the transfer boundary's symbolic flags 'has_git', 'tar_spawn_ok', 'extract_spawn_ok', 'tar_exit', 'extract_exit'; use an SMT solver to negate the observed 'tar_exit==0 ∧ extract_exit==0' branch while retaining the prefix that selected a qualified remote. Replay solver-generated concrete nonzero producer, extractor and broken-pipe paths into mock Popen objects; assert that no runtime Popen occurs. Also flip to both-zero as a required positive case.
 
@@ -61,23 +61,41 @@ Registry 'config/fleet/nodes.yaml' currently has kubelet soft/hard 'memory.avail
 
 ## Verifier, boundaries and OMP commands
 
-Toolchain manifest: 'bend/fleet_admission/toolchain.json', pinned to upstream Bend 2.0.34 **linux-x64** release SHA-256 '78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf'. This digest and URL were read from the upstream GitHub release; CI checks exact bytes, unpacks, refuses missing executables, invokes the actual kernel via 'bend PROOF.bend --verdict' and requires 'ALL PROOFS CHECK'. CI does not skip verification when download or execution fails. Do not pass through an ambient 'BENDTT' override. The tool's '--verdict' is a kernel recheck, *not* a source→runtime compiler equivalence claim. No external Lean binary or unchecked kernel URL is invented.
+The manifest pins official Bend 2.0.34 **linux-x64** and Lean **4.34.0** archives. `bootstrap.sh` checks both archive hashes before extraction into an owned destination. It uses the exact package layout `bend/bin/bend`, not a recursive executable search.
 
-For OMP on the **Intel MBP**, an independently published Bend 2.0.34 'darwin-x64' archive has SHA-256 '066d4a07a1871a2946be8f42f926582bfda5f13ff728c234ffe79635bd240650'. Use the exact upstream release URL with that platform suffix and check the digest before unpacking. Run in a **scratch checkout**, never on an active served worktree:
+The parity and mutation runners validate the official executable, `bend2/base.bend` and `bend2/bendtt.lean` hashes. They remove `BENDTT` and use a fresh `HOME`. This forces native checker compilation from the pinned Lean source, not reuse of an ambient kernel. Host clang precedes all other compiler paths. Lean's bin directory comes last because its package also includes clang. Missing tools, wrong hashes, an unexpected Lean selection or a failed kernel verdict stop the run.
+
+The reference requires stdout exactly `ALL PROOFS CHECK` and exit zero. Each mutant must produce the exact line `SOME PROOFS FAIL` on stdout or stderr, return nonzero, and omit the success verdict. The official checker emits its failed-proof marker on stderr. A compiler error, missing tool or arbitrary nonzero exit does not prove mutant rejection. Parity prints all 96 actual model decisions through `IO.print` and `Nat.show`, then compares exact output with the real Python reducer.
+
+Run these commands in an isolated checkout on the **Linux x86_64 MBP**, not in a served checkout. Prerequisites are Python 3.11+, venv/pip, host clang, curl, GNU tar, zstd and coreutils. This qualification does not cover native macOS. The earlier Darwin-only instructions omitted the required Lean/native checker setup.
 
 ~~~sh
-python3 -m venv .venv-admission
-. .venv-admission/bin/activate
+# Use the qualification head from Draft #48, never the live fleet branch.
+git clone --no-tags --depth 1 --filter=blob:none --sparse \
+  --single-branch --branch feat/bend2-fleet-admission-law \
+  https://github.com/kvnloo/.files.git /tmp/bend-fleet-mbp
+cd /tmp/bend-fleet-mbp
+git sparse-checkout set bend/fleet_admission scripts tests config/fleet docs/bend2
+
+B2_ROOT=$(mktemp -d)
+# Optional BEND_ARCHIVE / LEAN_ARCHIVE can reference existing pinned downloads.
+bash bend/fleet_admission/bootstrap.sh "$B2_ROOT"
+export BEND="$B2_ROOT/bend/bin/bend"
+export LEAN_BIN="$B2_ROOT/lean-4.34.0-linux/bin"
+export PATH="$(dirname "$(command -v clang)"):$PATH:$LEAN_BIN"
+unset BENDTT
+python3 -m venv "$B2_ROOT/venv"
+. "$B2_ROOT/venv/bin/activate"
 python -m pip install 'PyYAML==6.0.2'
 python -m unittest discover -s tests -p 'test_fleet_admission.py' -v
-
-# Set BEND to the SHA-256-verified 2.0.34 executable (not a PATH fallback).
-(cd bend/fleet_admission && env -u BENDTT "$BEND" PROOF.bend --verdict)
 python tests/fleet_admission_parity.py
+# Runs the reference PROOF.bend --verdict, then three unchanged-law mutants.
 python tests/fleet_admission_mutation.py
 ~~~
 
-No commands above were run by this ChatGPT worker. OMP must collect actual outputs, kernel version and CI job URL; an unrun proof is not green.
+The 2026-10-23 qualification worker performed source review only. It did not run bootstrap, tests, builds, linters or proofs. CI and MBP results remain pending. `source_semantics_attested=false`, `proof_is_permission=false`. The real classifier, probe, SSH identity, source-byte fidelity and runtime remain outside the pure proof. The live `repair/desktop-cpu-admission-20261022` branch is unchanged.
+
+Source review corrected the missing external Lean setup, ambient HOME/kernel reuse and fragile parity display assumptions. The nine laws and their proof definitions remain unchanged. All nullary proof definitions already use `def Laws.name():`. Context ancestry already includes `f8cfcd5` through `16e576e`, so this qualification needs no merge. CI uses only pull-request events, with cancellation of superseded runs.
 
 ## Ordered follow-up file ownership (not implemented)
 

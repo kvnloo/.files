@@ -19,9 +19,9 @@
 #   --phone          like --light but only on a phone (arm64)
 #   --node NAME      pin a node (mbp, s22, omarchy-phone)
 #   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
-#   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
-#                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
-#                    queue: it waits for mbp, never falls back to groot.
+#   --wait SECS      retry only a typed NO_ROOM admission refusal every 60 s for
+#                    up to SECS (default 1800; 0 = fail at once). Other refusals
+#                    and a command's own exit 75 are not retried. Never use groot.
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
@@ -30,7 +30,7 @@
 #
 # O1 (owner law, kvnloo/z0intelligence bend/ops_fsm): these job classes run only on a
 # worker lane (mbp, phones) and wait for room; never on groot. `--node groot` is refused.
-# Switch: Z0_GUARD_O1=report (warn only) or off.
+# Z0_GUARD_O1=report|off controls reporting only, never the unconditional groot refusal.
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -38,9 +38,8 @@
 #   fleet-build -- bun test
 #   fleet-build --light -- python3 -m pytest tests/unit
 #
-# Exit codes are the job's; 75 = no worker has room right now. Then wait and retry,
-# lower --mem, or try --light. Do not fall back to a groot build unless the toolchain
-# exists only there (GPU), and say so.
+# Exit codes are the job's. Admission exit 75 has a typed Refuse reason.
+# Only NO_ROOM is retryable. No host-lane failure permits a fallback to groot.
 set -euo pipefail
 FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # One brace group: bash parses the whole script before running it, so editing this file
@@ -141,7 +140,7 @@ while :; do
   wait 2>/dev/null || true
   # Retry only typed capacity refusals. A permanent qualification error, a
   # missing requested remote and a job's own exit 75 must not be retried.
-  [ $rc -eq 75 ] && grep -q 'Refuse\[NO_ROOM\]' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
+  [ $rc -eq 75 ] && grep -q '^fleet: Refuse\[NO_ROOM\]: .' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
   echo "fleet-build: remote has no room; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
   sleep 60
 done
