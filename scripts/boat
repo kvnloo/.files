@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""Bounded Boat leases and encrypted, RAM-only job secrets. See docs/fleet/BOAT.md."""
+import argparse
+import base64
+from datetime import datetime, timezone
+import contextlib
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+BASE = "https://boat.dev/api/v1"
+TTL = 600
+DAILY_SECONDS = 3 * 3600
+STATE = Path.home() / ".local/state/boat"
+
+
+class BoatError(Exception):
+    pass
+
+
+class AdmissionError(BoatError):
+    pass
+
+
+def api(path, method="GET", body=None, headers=None):
+    request_headers = {"Authorization": "Bearer " + key(),
+                       "Content-Type": "application/json", "X-Boat-Org": "personal"}
+    request_headers.update(headers or {})
+    req = urllib.request.Request(BASE + path, method=method, headers=request_headers,
+                                 data=json.dumps(body).encode() if body is not None else None)
+    try:
+        with urllib.request.urlopen(req, timeout=650 if path.endswith("/commands") else 90) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        try:
+            code = json.load(exc).get("code", "unknown")
+        except (ValueError, AttributeError):
+            code = "unknown"
+        # Never echo response bodies: access endpoints can carry credentials.
+        raise BoatError(f"Boat HTTP {exc.code}: {code}") from None
+
+
+def key():
+    value = os.environ.get("BOAT_API_KEY")
+    if value:
+        return value
+    for path in (Path.home() / ".omp/agent/.env", Path.home() / ".hermes/.env"):
+        if path.exists():
+            for line in path.read_text().splitlines():
+                if line.startswith("BOAT_API_KEY="):
+                    value = line.partition("=")[2].strip().strip("\"'")
+                    if value:
+                        return value
+    raise BoatError("BOAT_API_KEY missing; run scripts/bws-apply-local-secrets.sh")
+
+
+@contextlib.contextmanager
+def creation_lock():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (STATE / "create.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def limits():
+    data = api("/limits")
+    return {k: data.get(k) for k in (
+        "accessTier", "billingStatus", "canStart", "activeSandboxes", "maxActiveSandboxes",
+        "trialComputeCapSeconds", "trialLine", "creditUsedSeconds", "liveUsageSeconds",
+        "last24hUsageSeconds", "subscriptionTrialEndsAt", "machineTypes", "starts")}
+
+
+def check_capacity():
+    data = limits()
+    if data["accessTier"] != "trial" or data["billingStatus"] != "trialing":
+        raise BoatError("Trial-only wrapper: paid/expired account requires an explicit policy change")
+    if not data["canStart"]:
+        raise AdmissionError("Boat cannot start; inspect limits (never change billing)")
+    if data["activeSandboxes"] >= data["maxActiveSandboxes"]:
+        raise AdmissionError("Concurrency cap reached (provider limit)")
+    reserved = (data["activeSandboxes"] + 1) * TTL
+    live = data["liveUsageSeconds"] or 0
+    if (data["last24hUsageSeconds"] or 0) + live + reserved > DAILY_SECONDS:
+        raise AdmissionError("Three-hour rolling-24h budget/reservation exhausted")
+    if (data["creditUsedSeconds"] or 0) + live + reserved > (data["trialComputeCapSeconds"] or 0):
+        raise AdmissionError("Total trial compute budget/reservation exhausted")
+
+
+def wait_ready(sid, deadline):
+    while time.monotonic() < deadline:
+        state = api("/sandboxes/" + sid)["sandbox"]["state"]
+        if state in ("ready", "idle", "running"):
+            return
+        if state in ("error", "archived", "deleting"):
+            raise BoatError("Sandbox failed to start: " + state)
+        time.sleep(1)
+    raise BoatError("Sandbox readiness deadline exceeded")
+
+
+def delete(sid):
+    if not re.fullmatch(r"bx_[23456789abcdefghjkmnpqrstuvwxyz]{8}", sid):
+        raise BoatError("Invalid sandbox ID")
+    info = api("/sandboxes/" + sid)["sandbox"]
+    if not info.get("name", "").startswith("omp-"):
+        raise BoatError("Refusing to delete a sandbox without the omp- name prefix")
+    result = api("/sandboxes/" + sid, "DELETE", headers={"X-Ascii-Confirm-Delete": sid})
+    op = result["operation"]
+    deadline = time.monotonic() + 180
+    while op["status"] != "completed":
+        if time.monotonic() >= deadline:
+            raise BoatError(f"Deletion pending: {sid}, operation {op['id']}; inspect before new work")
+        time.sleep(2)
+        op = api("/deletion-operations/" + op["id"])["operation"]
+    print(json.dumps({"event": "deleted", "id": sid, "operation": op["id"]}), file=sys.stderr)
+
+
+def inventory():
+    cursor = ""
+    while True:
+        page = api("/sandboxes?limit=200" + ("&cursor=" + urllib.parse.quote(cursor) if cursor else ""))
+        yield from page["sandboxes"]
+        if not page.get("pageInfo", {}).get("hasMore"):
+            break
+        cursor = page["pageInfo"]["nextCursor"]
+
+
+def reap():
+    now = datetime.now(timezone.utc)
+    for sandbox in list(inventory()):
+        created = datetime.fromisoformat(sandbox["createdAt"].replace("Z", "+00:00"))
+        if sandbox.get("name", "").startswith("omp-") and (now - created).total_seconds() >= TTL:
+            delete(sandbox["id"])
+
+
+def remote(sid, command, timeout=120):
+    result = api("/sandboxes/" + sid + "/commands", "POST",
+                 {"command": command, "timeoutSeconds": timeout})
+    if result.get("exitCode") != 0:
+        raise BoatError("Remote setup/check failed; output withheld (may contain secrets)")
+    return result.get("stdout", "")
+
+
+def selected_secrets(names, dummy=False):
+    if dummy:
+        if names:
+            raise BoatError("Dummy qualification cannot be combined with real secrets")
+        return {"BOAT_SMOKE_DUMMY": "omp-dummy-" + uuid.uuid4().hex}
+    if not names:
+        return {}
+    allow = json.loads((Path(__file__).resolve().parent.parent /
+                       "config/boat/secret-allowlist.json").read_text())
+    if any(name not in allow or name in ("BWS_ACCESS_TOKEN", "BOAT_API_KEY") for name in names):
+        raise BoatError("Secret not allowlisted; use dedicated scoped, low-limit BWS job keys")
+    bootstrap = Path.home() / ".hermes/bin/hermes-keyring-bootstrap.sh"
+    result = subprocess.run([str(bootstrap)], capture_output=True, check=True, text=True)
+    token = next((line.partition("=")[2] for line in result.stdout.splitlines()
+                  if line.startswith("export BWS_ACCESS_TOKEN=")), "")
+    if not token:
+        raise BoatError("BWS token unavailable in host keyring")
+    env = dict(os.environ, BWS_ACCESS_TOKEN=token)
+    out = {}
+    for name in names:
+        sid = allow[name]
+        if not re.fullmatch(r"[a-f0-9-]{36}", sid):
+            raise BoatError("Allowlist entries must map names to BWS secret UUIDs")
+        result = subprocess.run([str(Path.home() / ".hermes/bin/bws"), "secret", "get", sid,
+                                 "--server-url", "https://vault.bitwarden.com", "--output", "json"],
+                                env=env, capture_output=True, check=True, text=True)
+        secret = json.loads(result.stdout)
+        if secret.get("key") != name or secret.get("projectId") != "ef35bed4-fc4f-42ab-a21f-b4bf013919b7":
+            raise BoatError("BWS secret name/project mismatch")
+        out[name] = secret["value"]
+    return out
+
+
+SECRET_ROOT = "/home/user/omp-secrets"
+
+
+def secret_job(sid, command, secrets, dummy=False):
+    # All commands here contain paths/public material only, never plaintext.
+    root = SECRET_ROOT
+    remote(sid, """set -eu
+command -v age >/dev/null || { sudo apt-get update -qq >/dev/null && sudo apt-get install -y -qq age >/dev/null; }
+sudo swapoff -a
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin ompjob
+sudo chmod o+x /home/user
+sudo mkdir -p /home/user/omp-secrets
+sudo mount -t tmpfs -o noswap,nodev,nosuid,noexec,size=16m,mode=0700 tmpfs /home/user/omp-secrets
+sudo age-keygen -o /home/user/omp-secrets/key.age 2>/dev/null
+sudo chmod 600 /home/user/omp-secrets/key.age
+sudo age-keygen -y /home/user/omp-secrets/key.age
+""", 180)
+    public = remote(sid, "sudo age-keygen -y " + root + "/key.age").strip()
+    if not re.fullmatch(r"age1[0-9a-z]{58}", public):
+        raise BoatError("Invalid sandbox age public key")
+    encrypted = subprocess.run(["age", "-r", public], input=json.dumps(secrets).encode(),
+                               capture_output=True, check=True).stdout
+    api("/sandboxes/" + sid + "/files", "PUT", {
+        "path": "/home/user/omp-bundle.age", "encoding": "base64",
+        "content": base64.b64encode(encrypted).decode()})
+    try:
+        remote(sid, f"""set -eu
+sudo age -d -i {root}/key.age -o {root}/bundle.json /home/user/omp-bundle.age
+sudo chown ompjob:ompjob {root}/bundle.json
+sudo chmod 600 {root}/bundle.json
+sudo mkdir {root}/work
+sudo chown ompjob:ompjob {root}/work
+sudo chmod 700 {root}/work
+sudo chown ompjob:ompjob {root}
+sudo rm /home/user/omp-bundle.age
+""")
+        if dummy:
+            # The probe learns the canary from the same RAM-only file as the job.
+            # It reports counts, not the canary or matching file contents.
+            probe = r'''
+import json, os, pathlib, subprocess
+p = pathlib.Path("/home/user/omp-secrets/bundle.json")
+needle = json.loads(p.read_text())["BOAT_SMOKE_DUMMY"].encode()
+assert p.stat().st_mode & 0o777 == 0o600
+assert p.stat().st_uid == __import__("pwd").getpwnam("ompjob").pw_uid
+assert not pathlib.Path("/proc/swaps").read_text().splitlines()[1:]
+assert "noswap" in subprocess.check_output(["findmnt","-no","OPTIONS","/home/user/omp-secrets"],text=True)
+env_hits = 0
+for entry in pathlib.Path("/proc").glob("[0-9]*/environ"):
+    try: env_hits += needle in entry.read_bytes()
+    except (OSError, ProcessLookupError): pass
+assert env_hits == 0, "secret found in process environment"
+scan = subprocess.run(["find","/","-xdev","-type","f","-readable","-print0"],capture_output=True,check=True)
+disk_hits = 0
+for raw in scan.stdout.split(b"\0"):
+    if not raw: continue
+    try:
+        with open(raw, "rb") as f:
+            carry = b""
+            while chunk := f.read(1024 * 1024):
+                if needle in carry + chunk:
+                    disk_hits += 1
+                    break
+                carry = chunk[-len(needle):]
+    except (OSError, ValueError): pass
+assert disk_hits == 0, "secret found on root filesystem"
+print(json.dumps({"env_hits":env_hits,"rootfs_hits":disk_hits,"tmpfs_noswap":True,"mode":"0600"}))
+'''
+            remote(sid, "sudo python3 -c " + shlex.quote(probe), 180)
+        # The only writable locations are RAM; job cannot modify rootfs or sudo.
+        # File paths, not values, may appear in argv. Output never enters logs.
+        rendered = [part.replace("{secret_file}", root + "/bundle.json") for part in command]
+        unit = ["sudo", "systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+                "--unit=omp-secret-job", "--uid=ompjob", "--property=ProtectSystem=strict",
+                "--property=ProtectHome=read-only", "--property=NoNewPrivileges=yes",
+                "--property=PrivateDevices=yes", "--property=LimitCORE=0",
+                "--property=TemporaryFileSystem=/tmp:rw,noswap /var/tmp:rw,noswap",
+                "--property=ReadWritePaths=" + root + "/work", "--property=StandardOutput=null",
+                "--property=StandardError=null", "--property=RuntimeMaxSec=300",
+                "--working-directory=" + root + "/work", "--"] + rendered
+        result = api("/sandboxes/" + sid + "/commands", "POST",
+                     {"command": shlex.join(unit) + " >/dev/null 2>&1", "timeoutSeconds": 330})
+        if dummy:
+            remote(sid, "sudo python3 -c " + shlex.quote(probe), 180)
+            snapshots = api("/sandboxes/" + sid + "/snapshots")
+            if snapshots.get("snapshots"):
+                raise BoatError("Secret sandbox unexpectedly has snapshots")
+            try:
+                api("/sandboxes/" + sid + "/command-history")
+            except BoatError as exc:
+                if "monitoring_off" not in str(exc):
+                    raise
+            else:
+                raise BoatError("Secret sandbox command history was not disabled")
+            print(json.dumps({"event": "secret-canary", "env_hits": 0, "rootfs_hits": 0,
+                              "job_exit_code": result.get("exitCode")}), file=sys.stderr)
+        return result.get("exitCode") if isinstance(result.get("exitCode"), int) else 1
+    finally:
+        remote(sid, f"set -eu; sudo shred -uz {root}/bundle.json {root}/key.age; "
+                    f"sudo rm -rf {root}/work; sudo umount {root}; "
+                    f"sudo rmdir {root}; rm -f /home/user/omp-bundle.age; "
+                    f"! mountpoint -q {root}")
+
+
+def lease(args):
+    name = args.name if args.name.startswith("omp-") else "omp-" + args.name
+    if not re.fullmatch(r"omp-[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}", name):
+        raise BoatError("Use a short alphanumeric sandbox name")
+    secrets = selected_secrets(args.secret, args.dummy_secret_test)
+    if secrets and args.action != "run":
+        raise BoatError("Secret delivery is available only for remote run jobs")
+    started = time.monotonic()
+    sid = None
+    # Signals unwind through finally; TTL is the fallback for SIGKILL/host loss.
+    def interrupted(signum, _frame):
+        raise BoatError(f"Interrupted by signal {signum}")
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(sig, interrupted)
+    try:
+        reap()
+        with creation_lock():
+            check_capacity()
+            result = api("/sandboxes", "POST", {
+                "name": name, "type": args.type, "ttlSeconds": TTL, "noEnv": True,
+                "snapshots": False, "monitoring": False,
+            }, {"Idempotency-Key": str(uuid.uuid4())})
+            sid = result["sandbox"]["id"]
+        print(json.dumps({"event": "created", "id": sid, "name": name,
+                          "create_seconds": round(time.monotonic() - started, 3)}), file=sys.stderr)
+        wait_ready(sid, started + 120)
+        print(json.dumps({"event": "ready", "id": sid,
+                          "boot_seconds": round(time.monotonic() - started, 3)}), file=sys.stderr)
+        command = args.command
+        if command and command[0] == "--":
+            command = command[1:]
+        remaining = max(1, int(TTL - (time.monotonic() - started) - 15))
+        if args.action == "run":
+            if not command:
+                raise BoatError("run requires -- COMMAND [ARG ...]")
+            if secrets:
+                return secret_job(sid, command, secrets, args.dummy_secret_test)
+            tick = time.monotonic()
+            result = api("/sandboxes/" + sid + "/commands", "POST", {
+                "command": shlex.join(command), "timeoutSeconds": min(remaining, 500)})
+            sys.stdout.write(result.get("stdout", ""))
+            sys.stderr.write(result.get("stderr", ""))
+            print(json.dumps({"event": "exec", "seconds": round(time.monotonic() - tick, 3),
+                              "exit_code": result.get("exitCode")}), file=sys.stderr)
+            return result.get("exitCode") if isinstance(result.get("exitCode"), int) else 1
+        env = dict(os.environ, BOAT_SANDBOX_ID=sid)
+        # A local callback may use the SDK; the secret is never an argument or file.
+        env["BOAT_API_KEY"] = key()
+        child = subprocess.Popen(command or [os.environ.get("SHELL", "/bin/sh")], env=env,
+                                 start_new_session=True)
+        try:
+            return child.wait(timeout=remaining)
+        finally:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGTERM)
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+    finally:
+        if sid:
+            # Cleanup must not be interrupted a second time.
+            for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+                signal.signal(sig, signal.SIG_IGN)
+            try:
+                data = api("/sandboxes/" + sid + "/usage")
+                print(json.dumps({"event": "usage", **{k: data.get(k) for k in
+                    ("seconds", "dollars", "sandboxType")}}), file=sys.stderr)
+            finally:
+                delete(sid)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+    for action in ("create", "run"):
+        p = sub.add_parser(action, help="Create an auto-deleted lease; local callback" if action == "create"
+                           else "Create, execute a remote command, delete")
+        p.add_argument("--type", choices=("small", "default"), default="small")
+        p.add_argument("--secret", action="append", default=[], help="Allowlisted BWS secret name")
+        p.add_argument("--dummy-secret-test", action="store_true", help="Qualify encrypted delivery without real keys")
+        p.add_argument("name")
+        p.add_argument("command", nargs=argparse.REMAINDER)
+    p = sub.add_parser("delete", help="Delete an omp-prefixed sandbox and its automatic snapshots")
+    p.add_argument("id")
+    sub.add_parser("limits", help="Read-only trial usage and capacity")
+    sub.add_parser("reap", help="Delete all omp-* sandboxes older than the 600-second lease")
+    args = parser.parse_args()
+    try:
+        if args.action == "limits":
+            print(json.dumps(limits(), indent=2))
+            return 0
+        if args.action == "delete":
+            delete(args.id)
+            return 0
+        if args.action == "reap":
+            reap()
+            return 0
+        return lease(args)
+    except AdmissionError as exc:
+        print("boat: " + str(exc), file=sys.stderr)
+        return 75
+    except (BoatError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        print("boat: " + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

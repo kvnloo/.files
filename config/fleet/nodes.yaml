@@ -36,6 +36,19 @@ defaults:
 classes: [cpu-heavy, build, render]
 
 nodes:
+  boat:
+    role: worker
+    kind: boat
+    arch: amd64
+    classes: [build, cpu-heavy]
+    capabilities: [python, git, x86]
+    taints: [cloud]         # Explicit --node boat or fleet-build --public overflow only.
+    health:
+      on_unhealthy: report
+    lane:
+      default_mem: 512M
+      mem_max: 7G
+      mem_floor_mb: 0
   mbp:
     role: worker
     tailnet_ip: 100.78.215.21

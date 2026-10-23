@@ -107,6 +107,13 @@ def probe_path(n):
 
 def probe(n):
     """Run the node's probe; groot probes itself locally."""
+    if n["kind"] == "boat":
+        result = subprocess.run([sys.executable, str(REPO / "scripts/boat"), "limits"],
+                                capture_output=True, text=True, timeout=90)
+        try:
+            return {"boat_limits": json.loads(result.stdout)}
+        except ValueError:
+            return {"error": "Boat limits unavailable"}
     try:
         if n["role"] == "server":
             out = subprocess.run([sys.executable, str(REPO / "scripts/fleet-node-probe")],
@@ -231,6 +238,9 @@ def maybe_revive(n, st, s, pr):
 def judge(n, p, k8s, online, overrides):
     """Return a list of failure reasons (empty = healthy) and a list of warnings."""
     h = merge(n["health"], overrides)
+    if n["kind"] == "boat":
+        limits = p.get("boat_limits", {})
+        return ([] if limits.get("canStart") else [p.get("error", "Boat cannot start")]), []
     bad, warn = [], []
     # The probe crossing the tailnet is the stronger signal; a peer's Online flag can lag.
     if "error" in p and not online.get(n["tailnet_ip"], False):
@@ -401,6 +411,22 @@ def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
         die("usage: fleet run [opts] -- CMD...")
+    if args.node == "boat":
+        if (args.arch and args.arch != "amd64") or (args.cls and args.cls not in nodes["boat"]["classes"] + nodes["boat"]["capabilities"]):
+            die("boat: incompatible architecture or job capability", 75)
+        argv = [sys.executable, str(REPO / "scripts/fleet-boat"),
+                "--mem-mb", str(mb(args.mem or "512M")),
+                "--timeout", str(min(args.timeout, 450))]
+        for option, value in (("--src", args.src), ("--cpus", args.cpus)):
+            if value:
+                argv += [option, value]
+        for option in ("no_src", "keep"):
+            if getattr(args, option):
+                argv += ["--" + option.replace("_", "-")]
+        for option in ("fetch", "input"):
+            for value in getattr(args, option) or []:
+                argv += ["--" + option, value]
+        return subprocess.run(argv + ["--", *args.cmd]).returncode
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
@@ -566,7 +592,7 @@ def cmd_nodes(args):
         pws = "mains" if not pw.get("batteries") else f"{b.get('pct')}% {b.get('status')}"
         load = f"{p.get('load1', '?')}/{p.get('ncpu', '?')}"
         print(f"{name:14} {n['kind']:6} {n.get('arch', '?'):6} {','.join(n['classes']) or '-':22} "
-              f"{'yes' if online.get(n['tailnet_ip']) else 'no':6} {ks:14} {load:9} "
+              f"{'yes' if (p.get('boat_limits', {}).get('canStart') if n['kind'] == 'boat' else online.get(n['tailnet_ip'])) else 'no':6} {ks:14} {load:9} "
               f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws:14} {','.join(n['capabilities']) or '-'}")
     for name, c in reg.get("candidates", {}).items():
         print(f"{name:14} (candidate) {c['note']}")
