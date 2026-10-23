@@ -323,8 +323,8 @@ def attach_health(row, health, events):
                                    'reason': 'only recorded prior events within 300 seconds; absence is not evidence of no events'}
 
 
-def ledger(state, errors):
-    health, events = load_health(state, errors)
+def ledger(state, errors, observations=None):
+    health, events = observations if observations is not None else load_health(state, errors)
     jobs = {}
     for path in sorted((state / 'runs').glob('*.log')):
         row = parse_log(path, errors)
@@ -419,14 +419,18 @@ def learned_parameters(rows):
             'authority': 'observational candidate; no automatic scheduler or configuration changes'}
 
 
-def analyze(rows, registry):
+def analyze(rows, registry, health=None):
     findings = []
 
-    def add(kind, severity, claim, samples, status='inference', details=None):
+    def add(kind, severity, claim, samples, status='inference', details=None, evidence=None):
         ids = sorted({row['job_id'] for row in samples})
-        findings.append({'key': kind + '-' + hashlib.sha256(json.dumps(ids).encode()).hexdigest()[:10],
+        evidence = evidence or []
+        identity = ids + [e['source'] + ':' + e.get('section', '') for e in evidence]
+        findings.append({'key': kind + '-' + hashlib.sha256(json.dumps(identity).encode()).hexdigest()[:10],
                          'kind': kind, 'severity': severity, 'status': status, 'claim': claim,
-                         'sample_ids': ids, 'sample_count': len(ids), 'details': details or {}})
+                         'sample_ids': ids, 'sample_count': len(ids) + len(evidence),
+                         'job_sample_count': len(ids), 'health_sample_count': len(evidence),
+                         'evidence': evidence, 'details': details or {}})
 
     buckets = collections.defaultdict(list)
     missing_by_tool = collections.defaultdict(list)
@@ -437,6 +441,10 @@ def analyze(rows, registry):
     for (node, tool), missing in missing_by_tool.items():
         if len(missing) >= 2:
             add('toolchain', 90, f'{node}/{tool}: repeated exit 127; missing command/toolchain candidate, not proof of installation state.', missing)
+        elif missing[0]['missing_tool']:
+            add('missing_tool_observation', 75,
+                f'{node}/{tool}: shell reported command not found in one exit-127 attempt; this is a single observed job failure, not a repeated pattern or proof of global installation state.',
+                missing, 'observation')
     for (node, cls), samples in buckets.items():
         memory = [r for r in samples if r['exit'] == 137]
         if memory:
@@ -517,6 +525,30 @@ def analyze(rows, registry):
     if source_failures:
         add('source_integrity', 95, 'Archive transfer reports tar Cannot stat/Cannot open or tar failure; a result from a partial source tree cannot certify the intended checkout.', source_failures, 'observation',
             details={'errors': [entry for row in source_failures for entry in row['source_integrity_errors']]})
+    for node, samples in sorted((health or {}).items()):
+        observed, evidence = [], []
+        for ts, (record, source) in samples:
+            reasons = record.get('reasons', [])
+            reasons = reasons if isinstance(reasons, list) else []
+            k8s = record.get('k8s') or {}
+            conditions = k8s.get('conditions', {}) if isinstance(k8s, dict) else {}
+            conditions = conditions if isinstance(conditions, dict) else {}
+            flags = [key for key in ('MemoryPressure', 'DiskPressure', 'PIDPressure')
+                     if conditions.get(key) in ('True', True) or 'k8s ' + key in reasons]
+            if not flags:
+                continue
+            probe = record.get('probe') or {}
+            probe = probe if isinstance(probe, dict) else {}
+            disks = {key: probe[key] for key in ('disk_root', 'disk_k3s', 'disk_lane') if isinstance(probe.get(key), dict)}
+            observed.append({'node': node, 'ts': ts, 'source': source, 'conditions': flags,
+                             'action': record.get('action'), 'mem_available_mb': number(probe.get('mem_available_mb')),
+                             'disk': disks or None, 'headroom_status': 'observed_probe' if probe else 'unknown'})
+            evidence.append({'source': source, 'section': f'health node={node} ts={ts}',
+                             'observation': f'{node} at {ts}: recorded Kubernetes {\", \".join(flags)}; action={record.get(\"action\")}; host headroom {\"has recorded probe fields\" if probe else \"unknown (probe not recorded)\"}. No job association inferred.'})
+        if evidence:
+            add('pressure_health', 85,
+                f'{node}: standalone health records report Kubernetes pressure, including intervals without jobs; host headroom is unknown where probe fields were not recorded. No job IDs or temporal job associations inferred.',
+                [], 'observation', details={'samples': observed}, evidence=evidence)
     findings.sort(key=lambda f: (-f['severity'], -f['sample_count'], f['key']))
     grouped = collections.defaultdict(list)
     for row in rows:
@@ -545,11 +577,14 @@ def lesson_envelope(findings, rows):
                 repos.add('*')
             for source in row['sources']:
                 evidence.append({**source, 'job_id': job, 'section': finding['kind'], 'observation': finding['claim']})
+        if finding.get('evidence'):
+            repos.add('*')
+            evidence.extend(finding['evidence'])
         lessons.append({'key': finding['key'], 'theme': finding['claim'], 'repos': sorted(repos),
                         'tags': finding['kind'].split('_'), 'confidence': 'medium' if finding['status'] == 'observation' else 'low',
                         'authority': AUTHORITY, 'review_status': 'candidate', 'reviewed_by': None, 'evidence': evidence})
     return {'schema_version': 1, 'kind': 'curated_observational_hypotheses',
-            'evidence': {'status': 'observational_candidates', 'scope': 'fleet logs and nearest prior health within 300 seconds',
+            'evidence': {'status': 'observational_candidates', 'scope': 'fleet logs, standalone health records, and job joins to nearest prior health within 300 seconds',
                          'instruction': 'Review before prompt-memory promotion; current goal_lock overrides; unknowns are not facts.'},
             'cross_cutting': lessons, 'project_signals': []}
 
@@ -563,7 +598,11 @@ def report(rows, findings, parameters, errors, action):
     lines += ['', metrics['retry_definition'], '', metrics['wait_definition'], '', metrics['time_to_green_definition'], '',
               'Metric sample IDs and group coverage are in parameters.json; ledger.jsonl carries per-field provenance.', '', '## Ranked findings', '']
     for finding in findings:
-        lines.extend([f'- [{finding["status"]}] {finding["claim"]}', f'  Sample IDs: {", ".join(finding["sample_ids"])}'])
+        lines.append(f'- [{finding["status"]}] {finding["claim"]}')
+        if finding['sample_ids']:
+            lines.append(f'  Sample IDs: {", ".join(finding["sample_ids"])}')
+        for evidence in finding.get('evidence', []):
+            lines.append(f'  Health evidence: {evidence["source"]} ({evidence.get("section", "")}) — {evidence["observation"]}')
     if not findings:
         lines.append('No supported findings at configured sample floors; this does not establish fleet health.')
     lines += ['', '## Cache action', '', json.dumps(action, sort_keys=True), '', '## Input diagnostics', '']
@@ -661,8 +700,9 @@ def main(argv=None):
             return 75
         errors = []
         registry = read_registry(args.registry or args.state / 'registry.json', errors)
-        rows = ledger(args.state, errors)
-        findings, parameters = analyze(rows, registry)
+        observations = load_health(args.state, errors)
+        rows = ledger(args.state, errors, observations)
+        findings, parameters = analyze(rows, registry, observations[0])
         lessons = lesson_envelope(findings, rows)
         action = cache_action(registry, args.apply)
         payloads = {'ledger.jsonl': ''.join(json.dumps(row, sort_keys=True) + '\n' for row in rows),

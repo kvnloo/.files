@@ -79,7 +79,15 @@ need_archive() {
 arch_ok() { [ "$(uname -m)" = x86_64 ] || die "pins are x86_64 only; add $(uname -m) pins first"; }
 tc_jdk17() { arch_ok; need_archive jdk17 "$OPT/jdk-17" "$JDK17_PIN" bin/java; }
 tc_jdk21() { arch_ok; need_archive jdk21 "$OPT/jdk-21" "$JDK21_PIN" bin/java; }
-tc_bun()   { arch_ok; need_archive bun "$OPT/bun" "$BUN_PIN" bun; }
+tc_bun() {
+  arch_ok; need_archive bun "$OPT/bun" "$BUN_PIN" bun
+  if [ ! -x "$OPT/bun/bunx" ]; then
+    if [ "$MODE" = check ]; then MISSING+=(bunx); return 0; fi
+    # Bun selects its native bunx entry point through argv[0].
+    ln -sfn bun "$OPT/bun/bunx"
+    CHANGED+=(bunx); say "installed Bun's native bunx entry point"
+  fi
+}
 
 distro_install() {
   # No sync-database refresh, full upgrade, curl-to-shell or privileged AUR helper.
