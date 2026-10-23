@@ -1,0 +1,8 @@
+[Unit]
+Description=Delete expired omp Boat sandboxes (read-only account policy)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/omp-boat reap
+NoNewPrivileges=yes
+UMask=0077
