@@ -4,7 +4,8 @@ Tracking: [.files #40](https://github.com/kvnloo/.files/issues/40),
 [.files #12](https://github.com/kvnloo/.files/issues/12),
 [z0 #33](https://github.com/kvnloo/z0/issues/33), and
 [z0 Draft #34](https://github.com/kvnloo/z0/pull/34).
-This integration stacks on [.files Draft #41](https://github.com/kvnloo/.files/pull/41).
+This integration stacks on [.files Draft #46](https://github.com/kvnloo/.files/pull/46),
+which preserves [.files Draft #41](https://github.com/kvnloo/.files/pull/41).
 It carries the profile work from Draft #42 onto the actual fleet source, rather
 than importing dev's unrelated IaC implementation or creating a second fleet CLI.
 
