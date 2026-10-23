@@ -1,0 +1,11 @@
+[Unit]
+Description=Reap expired omp Boat sandboxes every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

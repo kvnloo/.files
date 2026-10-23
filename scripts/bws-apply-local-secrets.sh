@@ -61,6 +61,7 @@ aliases = {
     "NVIDIA_API_KEY": ("NVIDIA_API_KEY",),
     "GITHUB_TOKEN": ("GITHUB_TOKEN",),
     "ANTHROPIC_TOKEN": ("ANTHROPIC_TOKEN",),
+    "BOAT_API_KEY": ("BOAT_API_KEY",),
 }
 
 codexbar_keys = {
@@ -77,8 +78,9 @@ hermes_keys = set(codexbar_keys) | {
     "HERMES_CUSTOM_API_GROQ_COM_API_KEY",
     "GITHUB_TOKEN",
     "ANTHROPIC_TOKEN",
+    "BOAT_API_KEY",
 }
-omp_keys = set(codexbar_keys) | {"HERMES_CUSTOM_API_GROQ_COM_API_KEY"}
+omp_keys = set(codexbar_keys) | {"HERMES_CUSTOM_API_GROQ_COM_API_KEY", "BOAT_API_KEY"}
 
 wanted = {}
 for src, dests in aliases.items():
