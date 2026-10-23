@@ -250,3 +250,19 @@ def test_informational_unselected_mismatch_does_not_invent_drift(monkeypatch, fl
 def test_exact_logical_host_beats_alias_collision():
     fleet = {"hosts": {"mbp": {}, "other": {"match_hostnames": ["mbp"]}}}
     assert plan.resolve_host(fleet, "mbp") == ("mbp", {})
+
+
+def test_unmanaged_native_server_ids_are_not_registry_ids(monkeypatch, fleet, manifest):
+    monkeypatch.setattr(plan.shutil, "which", lambda _: "/usr/bin/z0")
+    report = {"host": "groot", "status": "DRIFT", "configs": [
+        {"harness": "codex", "profile": "global", "status": "MATCH", "desired": [],
+         "bound": ["node_repl", "vendor.archive", "memory.provider:custom"], "findings": []},
+        {"harness": "hermes", "profile": "clean", "status": "DRIFT",
+         "desired": ["z0intelligence"], "bound": ["ctx"], "findings": []}],
+        "findings": []}
+    result = plan.z0_binding_health(
+        fleet, manifest, "groot", local_hostname="groot",
+        runner=lambda argv, **kw: subprocess.CompletedProcess(argv, 1, json.dumps(report), "")
+    )
+    assert result["status"] == "DRIFT" and result["available"]
+    assert result["configs"][0]["configured"] == report["configs"][0]["bound"]

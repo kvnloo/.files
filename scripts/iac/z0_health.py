@@ -110,11 +110,12 @@ def _z0_token(value: Any) -> str | None:
     return value if isinstance(value, str) and _Z0_TOKEN.fullmatch(value) else None
 
 
-def _z0_ids(value: Any) -> list[str] | None:
+def _z0_ids(value: Any, *, configured: bool = False) -> list[str] | None:
     if value is None:
         return None
+    pattern = _Z0_TOKEN if configured else _Z0_COMPONENT
     if (not isinstance(value, list) or len(value) > _Z0_MAX_RECORDS
-            or any(not isinstance(cid, str) or not _Z0_COMPONENT.fullmatch(cid)
+            or any(not isinstance(cid, str) or not pattern.fullmatch(cid)
                    for cid in value)):
         raise ValueError("invalid doctor component IDs")
     return list(value)
@@ -148,7 +149,7 @@ def _z0_configs(raw: Any) -> list[dict[str, Any]]:
             status = "UNKNOWN"
         # A missing or null desired selection stays unknown, even if installed.
         desired = _z0_ids(item.get("desired"))
-        bound = _z0_ids(item.get("bound", item.get("configured")))
+        bound = _z0_ids(item.get("bound", item.get("configured")), configured=True)
         out.append({
             "harness": item["harness"],
             "profile": _z0_token(item.get("profile")) or "unidentified",
