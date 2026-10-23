@@ -1,0 +1,683 @@
+#!/usr/bin/env python3
+"""Observational fleet ledger and hypotheses; never a scheduler.
+
+Reads fleet logs and health snapshots without executing their contents. Registry
+facts are optional JSON exported from fleet's existing registry. --apply alone
+permits only fixed agentjob cache pruning on mbp after a fresh remote disk probe.
+"""
+import argparse
+import bisect
+import collections
+import datetime as dt
+import fcntl
+import hashlib
+import ipaddress
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shlex
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE = Path(os.environ.get('FLEET_STATE', Path.home() / '.local/state/fleet'))
+AUTHORITY = 'historical observation; current goal_lock overrides'
+CACHE_PATHS = ('/home/agentjob/.cache/uv', '/home/agentjob/.npm/_cacache',
+               '/home/agentjob/.bun/install/cache', '/home/agentjob/.cache/go-build')
+HEADER = re.compile(r'^# fleet job (\S+) node=(\S+) cmd=(.*)$')
+ID_TIME = re.compile(r'^(\d{8}-\d{6})(?:-|$)')
+
+
+def number(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+
+def timestamp(value):
+    if number(value) is not None:
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value) if re.fullmatch(r'\d+(?:\.\d+)?', value) else dt.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
+        except (ValueError, OverflowError):
+            pass
+    return None
+
+
+def median(values):
+    vals = [v for v in values if number(v) is not None]
+    return statistics.median(vals) if vals else None
+
+
+def json_records(path, errors):
+    """Stream JSONL; malformed rows are visible diagnostics, not fatal omissions."""
+    try:
+        with path.open() as stream:
+            if path.suffix == '.jsonl':
+                for line_no, line in enumerate(stream, 1):
+                    if not line.strip():
+                        continue
+                    try:
+                        value = json.loads(line)
+                        if isinstance(value, dict):
+                            yield value, f'{path}:{line_no}'
+                        else:
+                            errors.append(f'{path}:{line_no}: expected object')
+                    except ValueError:
+                        errors.append(f'{path}:{line_no}: invalid JSON')
+            else:
+                value = json.load(stream)
+                if isinstance(value, dict):
+                    yield value, str(path)
+                else:
+                    errors.append(f'{path}: expected object')
+    except (OSError, ValueError) as exc:
+        errors.append(f'{path}: {type(exc).__name__}')
+
+
+def read_registry(path, errors):
+    if not path.exists():
+        errors.append(f'{path}: registry facts unavailable; registry-dependent thresholds unknown')
+        return {}
+    records = list(json_records(path, errors))
+    if not records:
+        return {}
+    registry = records[0][0]
+    if not isinstance(registry.get('nodes'), dict):
+        errors.append(f'{path}: expected fleet registry object with nodes mapping')
+        return {}
+    return registry
+
+
+def node_settings(registry, node, section):
+    defaults = registry.get('defaults', {}).get(section, {})
+    local = registry.get('nodes', {}).get(node, {}).get(section, {})
+    return {**defaults, **local}
+
+
+def command_class(command):
+    for name, pattern in (('gradle', r'(?:^|[\s/])(?:gradlew?|gradle)(?:\s|$)'),
+                          ('pnpm', r'(?:^|[\s/])pnpm(?:\s|$)'),
+                          ('bun', r'(?:^|[\s/])bun(?:\s|$)'),
+                          ('pytest', r'(?:^|[\s/])pytest(?:\s|$)')):
+        if re.search(pattern, command):
+            return name
+    return 'other'
+
+
+def command_repo(command):
+    github = re.search(r'(?:github\.com[:/])([\w.-]+/[\w.-]+)', command)
+    if github:
+        return github.group(1).removesuffix('.git')
+    match = re.search(r'(?:^|\s)(?:cd\s+|(?:--src|--dir|-C)\s+)[\'\"]?(/[^\s\'\";&]+)', command)
+    return match.group(1).rstrip('/') if match else None
+
+
+def incomplete_quote(command):
+    """Only an unfinished shell quote authorizes consuming header continuation."""
+    try:
+        shlex.split(command)
+    except ValueError as exc:
+        return str(exc) == 'No closing quotation'
+    return False
+
+
+def parse_log(path, errors):
+    row = {key: None for key in ('job_id', 'node', 'repo', 'queued_ts', 'started_ts', 'finished_ts',
+                                'queue_wait_s', 'runtime_s', 'exit', 'gate_reason', 'probe', 'k8s',
+                                'peak_memory_bytes', 'memory_limit_mb', 'attempt_id', 'runtime_scope', 'queue_wait_scope')}
+    row.update(command='', cmd_class='other', provenance={}, sources=[], admission_only=False,
+               missing_tool=None, workload_kind='unknown', source_integrity_errors=[],
+               health=None, events=[], probe_temp_c=None, probe_mem_available_mb=None, probe_disk=None)
+    metadata = {}
+    peak = None
+    digest = hashlib.sha256()
+    pending = None
+    pending_bytes = 0
+    header_start = 0
+    header_limit = 1024 * 1024
+    try:
+        with path.open('rb') as stream:
+            for line_no, raw in enumerate(stream, 1):
+                digest.update(raw)
+                line = raw.decode('utf-8', errors='replace').rstrip('\r\n')
+                source = f'{path}:{line_no}'
+                if pending is not None:
+                    pending_bytes += len(raw)
+                    if pending_bytes > header_limit:
+                        errors.append(f'{path}:{header_start}: command header exceeds 1MiB; continuation discarded')
+                        row['provenance']['command']['status'] = 'incomplete_header'
+                        pending = None
+                        continue
+                    pending.append(line)
+                    command = '\n'.join(pending)
+                    if not incomplete_quote(command):
+                        row['command'] = command
+                        row['provenance']['command'] = {'source': f'{path}:{header_start}-{line_no}', 'status': 'observed'}
+                        pending = None
+                    continue
+                match = HEADER.match(line)
+                if match:
+                    row.update(job_id=match[1], node=match[2], command=match[3])
+                    row['provenance'].update({k: {'source': source, 'status': 'observed'} for k in ('job_id', 'node', 'command')})
+                    if len(raw) > header_limit:
+                        row['command'] = match[3].encode('utf-8')[:header_limit].decode('utf-8', errors='replace')
+                        errors.append(f'{source}: command header exceeds 1MiB; truncated')
+                        row['provenance']['command']['status'] = 'incomplete_header'
+                    elif incomplete_quote(match[3]):
+                        pending = [match[3]]
+                        pending_bytes = len(raw)
+                        header_start = line_no
+                elif line.startswith('# steward '):
+                    try:
+                        item = json.loads(line[len('# steward '):])
+                        if not isinstance(item, dict):
+                            raise ValueError('not an object')
+                        for key, value in item.items():
+                            if value is not None:
+                                metadata[key] = value
+                                row['provenance'][key] = {'source': source, 'status': 'observed'}
+                    except ValueError:
+                        errors.append(f'{source}: invalid steward metadata')
+                elif re.fullmatch(r'# exit -?\d+', line):
+                    row['exit'] = int(line.split()[-1])
+                    row['provenance']['exit'] = {'source': source, 'status': 'observed'}
+                elif re.fullmatch(r'# fleet_peak_memory_bytes \d+', line):
+                    peak = (int(line.split()[-1]), source)
+                    row['provenance']['peak_memory_bytes'] = {'source': source, 'status': 'observed'}
+                elif line.startswith(('fleet: worker gate held:', 'fleet: lane has ', 'fleet: only ', 'fleet: no node has room now:', 'fleet: no eligible node:')):
+                    row['gate_reason'] = line.removeprefix('fleet: ').strip()
+                    row['provenance']['gate_reason'] = {'source': source, 'status': 'observed'}
+                else:
+                    missing = re.search(r'(?:^|: )([A-Za-z0-9_./+-]+): (?:command not found|not found)$', line)
+                    if missing:
+                        row['missing_tool'] = Path(missing[1]).name
+                        row['provenance']['missing_tool'] = {'source': source, 'status': 'observed'}
+                    if re.search(r'(?:^|[ /])tar:.*(?:Cannot stat|Cannot open|Error is not recoverable|Exiting with failure)', line, re.I):
+                        row['source_integrity_errors'].append({'source': source, 'observation': line[:500]})
+    except OSError as exc:
+        errors.append(f'{path}: {type(exc).__name__}')
+    if pending is not None:
+        row['command'] = '\n'.join(pending)
+        row['provenance']['command']['status'] = 'incomplete_header'
+        errors.append(f'{path}:{header_start}: unfinished command header quote')
+    for key in row:
+        if key not in ('provenance', 'sources', 'missing_tool', 'workload_kind', 'source_integrity_errors',
+                       'health', 'events', 'probe_temp_c', 'probe_mem_available_mb', 'probe_disk', 'cmd_class') and key in metadata:
+            row[key] = metadata[key]
+    # A measured marker survives header/trailer nulls and is authoritative over estimates.
+    if peak is not None:
+        row['peak_memory_bytes'] = peak[0]
+        row['provenance']['peak_memory_bytes'] = {'source': peak[1], 'status': 'observed'}
+    row['sources'] = [{'source': str(path), 'sha256': digest.hexdigest()}]
+    if not isinstance(row['job_id'], str) or not row['job_id']:
+        row['job_id'] = path.stem
+        row['provenance']['job_id'] = {'source': str(path), 'status': 'derived_filename'}
+    for key in ('queued_ts', 'started_ts', 'finished_ts'):
+        row[key] = timestamp(row[key])
+    for key in ('runtime_s', 'queue_wait_s', 'peak_memory_bytes', 'memory_limit_mb'):
+        row[key] = number(row[key])
+        if row[key] is not None and row[key] < 0:
+            row[key] = None
+    if row['exit'] is not None and (not isinstance(row['exit'], int) or isinstance(row['exit'], bool)):
+        row['exit'] = None
+    if not isinstance(row['probe'], dict):
+        row['probe'] = None
+    if not isinstance(row['k8s'], dict):
+        row['k8s'] = None
+    for key in ('node', 'gate_reason', 'attempt_id', 'missing_tool', 'runtime_scope', 'queue_wait_scope'):
+        if not isinstance(row[key], str) or not row[key]:
+            row[key] = None
+    row['command'] = row['command'] if isinstance(row['command'], str) else ''
+    row['cmd_class'] = command_class(row['command'])
+    row['provenance']['cmd_class'] = {'status': 'derived_command', 'source': str(path)}
+    if re.search(r'\bbytearray\s*\(', row['command']):
+        row['workload_kind'] = 'synthetic_memory_probe'
+        row['provenance']['workload_kind'] = {'source': str(path), 'status': 'inference_command'}
+    if not isinstance(row['repo'], str) or not row['repo']:
+        row['repo'] = command_repo(row['command'])
+        if row['repo']:
+            row['provenance']['repo'] = {'source': str(path), 'status': 'derived_command_path'}
+    # The ID is local wall time. It is an anchor only, never a runtime estimate.
+    match = ID_TIME.match(row['job_id'])
+    row['id_ts'] = None
+    if match:
+        try:
+            row['id_ts'] = time.mktime(time.strptime(match[1], '%Y%m%d-%H%M%S'))
+            row['provenance']['id_ts'] = {'source': str(path), 'status': 'derived_id_local_timezone'}
+        except (ValueError, OverflowError):
+            pass
+    for target, begin, end in (('runtime_s', 'started_ts', 'finished_ts'), ('queue_wait_s', 'queued_ts', 'started_ts')):
+        if row[target] is None and row[begin] is not None and row[end] is not None and row[end] >= row[begin]:
+            row[target] = row[end] - row[begin]
+            row['provenance'][target] = {'source': str(path), 'status': 'derived_explicit_timestamps'}
+    for key, value in row.items():
+        if value is None:
+            row['provenance'][key] = {'status': 'unknown', 'reason': 'not recorded or invalid'}
+    return row
+
+
+def load_health(state, errors):
+    by_node = collections.defaultdict(dict)
+    events = []
+    directory = state / 'health'
+    for path in sorted(directory.glob('*.json*')):
+        if path.name in ('state.json', 'phone-keepalive.jsonl'):
+            continue
+        for record, source in json_records(path, errors):
+            if path.name == 'k8s-events.json':
+                observed = timestamp(record.get('observed_ts'))
+                for event in record.get('events', []):
+                    if isinstance(event, dict):
+                        events.append({**event, '_observed_ts': observed, '_source': source})
+                if record.get('observation_error'):
+                    errors.append(f'{source}: Kubernetes event observation unavailable')
+                continue
+            node, ts = record.get('node'), timestamp(record.get('ts'))
+            if not isinstance(node, str) or ts is None:
+                continue
+            prior = by_node[node].get(ts)
+            # Full snapshot wins over an old summary at the same instant.
+            if prior is None or len(record) > len(prior[0]):
+                by_node[node][ts] = (record, source)
+    return {node: sorted(samples.items()) for node, samples in by_node.items()}, events
+
+
+def attach_health(row, health, events):
+    anchor = next((row[key] for key in ('started_ts', 'queued_ts', 'id_ts') if row[key] is not None), None)
+    row['health'] = None
+    row['events'] = []
+    row['probe_temp_c'] = None
+    row['probe_mem_available_mb'] = None
+    row['probe_disk'] = None
+    samples = health.get(row['node'], [])
+    if anchor is not None and samples:
+        index = bisect.bisect_right(samples, anchor, key=lambda item: item[0]) - 1
+        if index >= 0 and 0 <= anchor - samples[index][0] <= 300:
+            ts, (record, source) = samples[index]
+            row['health'] = record
+            row['provenance']['health'] = {'source': source, 'status': 'observed_prior', 'age_s': anchor - ts}
+    for key in ('probe', 'k8s'):
+        if row[key] is None and row['health'] and isinstance(row['health'].get(key), dict):
+            row[key] = row['health'][key]
+            row['provenance'][key] = dict(row['provenance']['health'])
+    probe = row['probe'] or {}
+    row['probe_temp_c'] = number(probe.get('max_temp_c'))
+    row['probe_mem_available_mb'] = number(probe.get('mem_available_mb'))
+    disks = {key: probe[key] for key in ('disk_root', 'disk_k3s', 'disk_lane') if isinstance(probe.get(key), dict)}
+    row['probe_disk'] = disks or None
+    for key, origin in (('probe_temp_c', 'probe'), ('probe_mem_available_mb', 'probe'), ('probe_disk', 'probe')):
+        row['provenance'][key] = dict(row['provenance'][origin]) if row[key] is not None else {'status': 'unknown', 'reason': 'not recorded'}
+    row['provenance'].setdefault('health', {'status': 'unknown', 'reason': 'no prior health within 300 seconds'})
+    for event in events:
+        observed = event['_observed_ts']
+        event_ts = next((timestamp(event.get(k)) for k in ('lastTimestamp', 'eventTime', 'firstTimestamp') if timestamp(event.get(k)) is not None), None)
+        if (event.get('node') == row['node'] and anchor is not None and observed is not None
+                and 0 <= anchor - observed <= 300 and event_ts is not None and 0 <= anchor - event_ts <= 300):
+            row['events'].append(event)
+    row['provenance']['events'] = {'status': 'observed_prior' if row['events'] else 'unknown',
+                                   'reason': 'only recorded prior events within 300 seconds; absence is not evidence of no events'}
+
+
+def ledger(state, errors):
+    health, events = load_health(state, errors)
+    jobs = {}
+    for path in sorted((state / 'runs').glob('*.log')):
+        row = parse_log(path, errors)
+        # A repeated file for one ID is still one job. Preserve all evidence paths.
+        if row['job_id'] in jobs:
+            prior = jobs[row['job_id']]
+            sources = prior['sources'] + row['sources']
+            for key, value in row.items():
+                if value is not None and key not in ('sources', 'provenance') and value != '' and value != []:
+                    prior[key] = value
+                    if key in row['provenance']:
+                        prior['provenance'][key] = row['provenance'][key]
+            prior['sources'] = sources
+            errors.append(f'{path}: duplicate job_id merged: {row["job_id"]}')
+        else:
+            jobs[row['job_id']] = row
+    rows = sorted(jobs.values(), key=lambda row: (next((row[k] for k in ('queued_ts', 'started_ts', 'id_ts') if row[k] is not None), float('inf')), row['job_id']))
+    for row in rows:
+        for target, begin, end in (('runtime_s', 'started_ts', 'finished_ts'), ('queue_wait_s', 'queued_ts', 'started_ts')):
+            if row[target] is None and row[begin] is not None and row[end] is not None and row[end] >= row[begin]:
+                row[target] = row[end] - row[begin]
+                row['provenance'][target] = {'status': 'derived_explicit_timestamps', 'sources': row['sources']}
+        attach_health(row, health, events)
+    return rows
+
+
+def baseline(rows):
+    groups = collections.defaultdict(list)
+    for row in rows:
+        if isinstance(row['attempt_id'], str) and row['attempt_id']:
+            groups[(row['repo'], row['node'], row['cmd_class'], row['attempt_id'])].append(row)
+    # Attempts can migrate nodes: an explicit attempt_id and repo/class are sufficient.
+    migrated = collections.defaultdict(list)
+    for (repo, _node, cls, attempt), attempts in groups.items():
+        migrated[(repo, cls, attempt)].extend(attempts)
+    durations, green_samples = [], []
+    for attempts in migrated.values():
+        queued = [r['queued_ts'] for r in attempts if r['queued_ts'] is not None]
+        greens = [r for r in attempts if r['exit'] == 0 and r['finished_ts'] is not None]
+        if len(queued) == len(attempts) and greens:
+            end = min(r['finished_ts'] for r in greens)
+            if end >= min(queued):
+                durations.append(end - min(queued))
+                green_samples.extend(r['job_id'] for r in attempts)
+    known = sum(len(group) for group in migrated.values())
+    retries = sum(max(0, len(group) - 1) for group in migrated.values())
+    waits = [r for r in rows if r['queue_wait_s'] is not None]
+    runtimes = [r for r in rows if r['runtime_s'] is not None]
+    exits = collections.Counter(str(r['exit']) for r in rows if r['exit'] is not None)
+    return {'jobs': len(rows), 'retry_attempts': retries if known else None,
+            'exit_counts': dict(sorted(exits.items())), 'missing_exit_jobs': sum(r['exit'] is None for r in rows),
+            'retry_rate': retries / known if known else None,
+            'retry_definition': 'extra logged attempts / jobs with explicit attempt_id (not inferred adjacency)',
+            'attempt_id_jobs': known, 'attempt_id_coverage': known / len(rows) if rows else 0,
+            'attempt_groups': len(migrated), 'median_queue_wait_s': median(r['queue_wait_s'] for r in waits),
+            'queue_wait_jobs': len(waits), 'queue_wait_coverage': len(waits) / len(rows) if rows else 0,
+            'wait_definition': 'pre-execution elapsed including admission/probe/source staging; not isolated scheduler wait; explicit queue_wait_s or started_ts minus queued_ts, never log mtime',
+            'median_runtime_s': median(r['runtime_s'] for r in runtimes), 'runtime_jobs': len(runtimes),
+            'median_time_to_green_s': median(durations), 'time_to_green_groups': len(durations),
+            'time_to_green_group_coverage': len(durations) / len(migrated) if migrated else 0,
+            'time_to_green_definition': 'first explicit queued_ts to first successful finished_ts per explicit repo/class/attempt_id group; all attempts require queued_ts; unresolved groups excluded',
+            'time_to_green_sample_ids': sorted(set(green_samples)),
+            'sample_ids': [r['job_id'] for r in rows]}
+
+
+def learned_parameters(rows):
+    """Evidence summaries, not automatically applied scheduling parameters."""
+    successful = [r for r in rows if r['exit'] == 0]
+    timed = [r for r in successful if r['runtime_s'] is not None]
+    peaks = [r for r in successful if r['repo'] and r['workload_kind'] != 'synthetic_memory_probe'
+             and r['cmd_class'] != 'other' and r['peak_memory_bytes'] is not None and r['peak_memory_bytes'] > 0]
+    tool_evidence = collections.defaultdict(list)
+    for row in rows:
+        if row['cmd_class'] != 'other':
+            tool = 'java' if row['cmd_class'] == 'gradle' else row['cmd_class']
+            tool_evidence[tool].append({'job_id': row['job_id'], 'status': 'inference_command_class',
+                                        'provenance': row['provenance']['cmd_class']})
+        if row['missing_tool']:
+            tool_evidence[row['missing_tool']].append({'job_id': row['job_id'], 'status': 'observed_missing',
+                                                      'provenance': row['provenance']['missing_tool']})
+    return {'memory_floor_mb': math.ceil(max(r['peak_memory_bytes'] for r in peaks) / 2**20) if peaks else None,
+            'memory_floor_definition': 'observed workload-budget lower bound: ceil(max successful known-repo/class nonsynthetic peak / MiB); NOT host reserved lane.mem_floor_mb or a recommended configuration change',
+            'memory_floor_sample_ids': [r['job_id'] for r in peaks],
+            'memory_floor_coverage': len(peaks) / len(successful) if successful else 0,
+            'required_toolchains': [{'tool': tool, 'sample_ids': sorted({e['job_id'] for e in evidence}),
+                                     'evidence': evidence, 'installation_status': 'unknown'}
+                                    for tool, evidence in sorted(tool_evidence.items())],
+            'typical_successful_runtime_s': median(r['runtime_s'] for r in timed),
+            'successful_runtime_sample_ids': [r['job_id'] for r in timed],
+            'successful_runtime_coverage': len(timed) / len(successful) if successful else 0,
+            'successful_jobs': len(successful),
+            'authority': 'observational candidate; no automatic scheduler or configuration changes'}
+
+
+def analyze(rows, registry):
+    findings = []
+
+    def add(kind, severity, claim, samples, status='inference', details=None):
+        ids = sorted({row['job_id'] for row in samples})
+        findings.append({'key': kind + '-' + hashlib.sha256(json.dumps(ids).encode()).hexdigest()[:10],
+                         'kind': kind, 'severity': severity, 'status': status, 'claim': claim,
+                         'sample_ids': ids, 'sample_count': len(ids), 'details': details or {}})
+
+    buckets = collections.defaultdict(list)
+    missing_by_tool = collections.defaultdict(list)
+    for row in rows:
+        buckets[(row['node'], row['cmd_class'])].append(row)
+        if row['exit'] == 127:
+            missing_by_tool[(row['node'], row['missing_tool'] or row['cmd_class'])].append(row)
+    for (node, tool), missing in missing_by_tool.items():
+        if len(missing) >= 2:
+            add('toolchain', 90, f'{node}/{tool}: repeated exit 127; missing command/toolchain candidate, not proof of installation state.', missing)
+    for (node, cls), samples in buckets.items():
+        memory = [r for r in samples if r['exit'] == 137]
+        if memory:
+            synthetic = all(r['workload_kind'] == 'synthetic_memory_probe' for r in memory)
+            claim = (f'{node}/{cls}: exit 137 occurred only in synthetic bytearray memory probes; no production memory floor can be inferred.'
+                     if synthetic else f'{node}/{cls}: exit 137 is a memory-limit/floor review candidate; SIGKILL may have other causes, not definite OOM.')
+            add('memory_floor', 80, claim, memory,
+                details={'synthetic_probe_only': synthetic, 'observed_peak_bytes': [r['peak_memory_bytes'] for r in memory],
+                         'limits_mb': [r['memory_limit_mb'] for r in memory], 'recommended_change': None})
+        holds = [r for r in samples if r['queue_wait_s'] is not None and r['queue_wait_s'] > 0 or isinstance(r['gate_reason'], str) and ('lane has' in r['gate_reason'] or 'other jobs running' in r['gate_reason'])]
+        if holds:
+            add('queue_contention', 60, f'{node}/{cls}: measured queue wait or explicit shared-lane holds; wait alone does not establish resource cause.', holds,
+                details={'median_queue_wait_s': median(r['queue_wait_s'] for r in holds),
+                         'samples': [{'job_id': r['job_id'], 'queue_wait_s': r['queue_wait_s'],
+                                      'gate_reason': r['gate_reason'], 'probe_lane': (r['probe'] or {}).get('lane')}
+                                     for r in holds],
+                         'lane_note': 'agentjob_procs counts processes, not jobs; no queue size inferred'})
+    # Bursts require actual timestamps, not adjacency or file modification time.
+    reasons = collections.defaultdict(list)
+    for row in rows:
+        if row['exit'] == 75:
+            reasons[(row['node'], row['gate_reason'] or 'unknown')].append(row)
+    for (node, reason), samples in reasons.items():
+        timed = [(next((r[k] for k in ('queued_ts', 'started_ts', 'id_ts') if r[k] is not None), None), r) for r in samples]
+        timed = sorted(((t, r) for t, r in timed if t is not None), key=lambda pair: (pair[0], pair[1]['job_id']))
+        burst, left = [], 0
+        for right, (ts, _row) in enumerate(timed):
+            while ts - timed[left][0] > 900:
+                left += 1
+            if right - left + 1 > len(burst):
+                burst = [r for _, r in timed[left:right + 1]]
+        if len(burst) >= 2:
+            add('gate_burst', 70, f'{node}: repeated exit 75 within 15 minutes; recorded reason: {reason}. Unknown reasons remain unknown.', burst, 'observation')
+    pressure = []
+    for row in rows:
+        conditions = (row['k8s'] or {}).get('conditions', {})
+        conditions = conditions if isinstance(conditions, dict) else {}
+        reasons = (row['health'] or {}).get('reasons', [])
+        reasons = reasons if isinstance(reasons, list) else []
+        legacy_flags = [k for k in ('MemoryPressure', 'DiskPressure', 'PIDPressure') if 'k8s ' + k in reasons]
+        flags = [k for k in ('MemoryPressure', 'DiskPressure', 'PIDPressure')
+                 if conditions.get(k) in ('True', True) or k in legacy_flags]
+        pressure_events = [event for event in row['events'] if re.search(r'pressure|evict|oom', str(event.get('reason', '')) + ' ' + str(event.get('message', '')), re.I)]
+        if not flags and not pressure_events:
+            continue
+        health = node_settings(registry, row['node'], 'health')
+        mem_floor = number(health.get('min_mem_available_mb'))
+        disk_floor = number(health.get('min_disk_free_gb'))
+        mem = row['probe_mem_available_mb']
+        disks = [number(d.get('free_gb')) for d in (row['probe_disk'] or {}).values()]
+        disks = [v for v in disks if v is not None]
+        headroom = {'memory_above_health_floor': mem >= mem_floor if mem is not None and mem_floor is not None else None,
+                    'all_observed_disks_above_health_floor': min(disks) >= disk_floor if disks and disk_floor is not None else None,
+                    'conditions': flags, 'event_reasons': [e.get('reason') for e in pressure_events],
+                    'legacy_health_reason_conditions': legacy_flags,
+                    'condition_provenance': row['provenance'].get('health') if legacy_flags else row['provenance'].get('k8s')}
+        pressure.append((row, headroom))
+    if pressure:
+        add('pressure_headroom', 85, 'Prior Kubernetes pressure/events coexist with host headroom observations; kubelet thresholds/hysteresis and host admission differ. Do not equate free RAM/disk with cleared pressure.', [r for r, _ in pressure], details={'samples': [{'job_id': r['job_id'], **h} for r, h in pressure]})
+    thermal = collections.defaultdict(list)
+    for row in rows:
+        if row['repo'] and row['exit'] == 0 and row['runtime_s'] is not None and row['probe_temp_c'] is not None:
+            thermal[(row['repo'], row['node'], row['cmd_class'])].append(row)
+    for (repo, node, cls), samples in thermal.items():
+        ordered = sorted(samples, key=lambda r: r['probe_temp_c'])
+        half = len(ordered) // 2
+        cool, hot = ordered[:half], ordered[half:]
+        if len(cool) < 3 or len(hot) < 3:
+            continue
+        delta = median(r['probe_temp_c'] for r in hot) - median(r['probe_temp_c'] for r in cool)
+        if delta < 5:
+            continue
+        cold_runtime, hot_runtime = median(r['runtime_s'] for r in cool), median(r['runtime_s'] for r in hot)
+        if cold_runtime and hot_runtime >= cold_runtime * 1.2:
+            add('thermal_runtime', 50, f'{repo}/{node}/{cls}: hotter successful jobs have longer median runtime in matched repo/node/class cohorts (at least 3 each); exploratory association, command/input/cache differences remain confounders.', ordered,
+                details={'cool_median_runtime_s': cold_runtime, 'hot_median_runtime_s': hot_runtime, 'temperature_median_delta_c': delta})
+    source_failures = [r for r in rows if r['source_integrity_errors']]
+    if source_failures:
+        add('source_integrity', 95, 'Archive transfer reports tar Cannot stat/Cannot open or tar failure; a result from a partial source tree cannot certify the intended checkout.', source_failures, 'observation',
+            details={'errors': [entry for row in source_failures for entry in row['source_integrity_errors']]})
+    findings.sort(key=lambda f: (-f['severity'], -f['sample_count'], f['key']))
+    grouped = collections.defaultdict(list)
+    for row in rows:
+        grouped[(row['repo'], row['node'])].append(row)
+    parameters = {'schema_version': 1, 'mode': 'observational_only', 'baseline': baseline(rows),
+                  'per_repo_node': [{'repo': repo, 'node': node, 'metrics': baseline(samples),
+                                     'observed_memory_limit_mb': sorted({r['memory_limit_mb'] for r in samples if r['memory_limit_mb'] is not None}),
+                                     'median_peak_memory_bytes': median(r['peak_memory_bytes'] for r in samples),
+                                     'learned_parameters': learned_parameters(samples),
+                                     'provenance': 'observed logs only; no automatic scheduler or configuration changes'}
+                                    for (repo, node), samples in sorted(grouped.items(), key=lambda item: (str(item[0][0]), str(item[0][1])))]}
+    return findings, parameters
+
+
+def lesson_envelope(findings, rows):
+    by_id = {row['job_id']: row for row in rows}
+    lessons = []
+    for finding in findings:
+        evidence, repos = [], set()
+        for job in finding['sample_ids']:
+            row = by_id[job]
+            repo = row['repo'] or ''
+            if re.fullmatch(r'kvnloo/[\w.-]+', repo):
+                repos.add(repo)
+            else:
+                repos.add('*')
+            for source in row['sources']:
+                evidence.append({**source, 'job_id': job, 'section': finding['kind'], 'observation': finding['claim']})
+        lessons.append({'key': finding['key'], 'theme': finding['claim'], 'repos': sorted(repos),
+                        'tags': finding['kind'].split('_'), 'confidence': 'medium' if finding['status'] == 'observation' else 'low',
+                        'authority': AUTHORITY, 'review_status': 'candidate', 'reviewed_by': None, 'evidence': evidence})
+    return {'schema_version': 1, 'kind': 'curated_observational_hypotheses',
+            'evidence': {'status': 'observational_candidates', 'scope': 'fleet logs and nearest prior health within 300 seconds',
+                         'instruction': 'Review before prompt-memory promotion; current goal_lock overrides; unknowns are not facts.'},
+            'cross_cutting': lessons, 'project_signals': []}
+
+
+def report(rows, findings, parameters, errors, action):
+    metrics = parameters['baseline']
+    lines = ['# Fleet steward report', '', 'Observational only; not a scheduler. Historical hypotheses do not override the current goal_lock.', '',
+             f'Jobs: {len(rows)}. Findings: {len(findings)}. Unknown telemetry is null; log mtime is never a duration.', '', '## Baseline metrics', '']
+    for key in ('retry_attempts', 'retry_rate', 'attempt_id_coverage', 'median_queue_wait_s', 'queue_wait_coverage', 'median_runtime_s', 'median_time_to_green_s', 'time_to_green_group_coverage'):
+        lines.append(f'- {key}: {json.dumps(metrics[key])}')
+    lines += ['', metrics['retry_definition'], '', metrics['wait_definition'], '', metrics['time_to_green_definition'], '',
+              'Metric sample IDs and group coverage are in parameters.json; ledger.jsonl carries per-field provenance.', '', '## Ranked findings', '']
+    for finding in findings:
+        lines.extend([f'- [{finding["status"]}] {finding["claim"]}', f'  Sample IDs: {", ".join(finding["sample_ids"])}'])
+    if not findings:
+        lines.append('No supported findings at configured sample floors; this does not establish fleet health.')
+    lines += ['', '## Cache action', '', json.dumps(action, sort_keys=True), '', '## Input diagnostics', '']
+    lines += ['- ' + error for error in errors] or ['None.']
+    return '\n'.join(lines) + '\n'
+
+
+# This program is fixed code, never assembled from a log, path, or command string.
+PRUNE_PROGRAM = '''import json,math,pathlib,shutil,subprocess,time
+p=json.loads(subprocess.check_output(['python3','/usr/local/bin/fleet-node-probe'],timeout=60))
+threshold=float(__import__('sys').argv[1])
+ts=p.get('ts'); d=p.get('disk_lane') or {}; free=d.get('free_gb')
+valid=lambda x:isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x)
+if not valid(ts) or abs(time.time()-ts)>60 or not valid(free) or not 0<=free<threshold:
+ print(json.dumps({'status':'held','reason':'fresh low-disk lane probe required','probe':p})); raise SystemExit(0)
+paths=('/home/agentjob/.cache/uv','/home/agentjob/.npm/_cacache','/home/agentjob/.bun/install/cache','/home/agentjob/.cache/go-build')
+if __import__('os').getuid()!=__import__('pwd').getpwnam('agentjob').pw_uid:
+ raise SystemExit('requires agentjob')
+removed=[]
+before_free_bytes=shutil.disk_usage('/home/agentjob').free
+for raw in paths:
+ path=pathlib.Path(raw)
+ if path.resolve()!=path or path.is_symlink():
+  raise SystemExit('cache path must not traverse symlinks')
+for raw in paths:
+ path=pathlib.Path(raw)
+ if path.is_dir(): shutil.rmtree(path); removed.append(raw)
+after_free_bytes=shutil.disk_usage('/home/agentjob').free
+print(json.dumps({'status':'applied','removed':removed,'probe':p,'before_free_bytes':before_free_bytes,
+ 'after_free_bytes':after_free_bytes,'physical_free_delta_bytes':after_free_bytes-before_free_bytes}))
+'''
+
+
+def cache_action(registry, apply=False):
+    planned = {'status': 'dry_run', 'node': 'mbp', 'user': 'agentjob', 'paths': list(CACHE_PATHS),
+               'condition': 'fresh remote probe <=60s and disk_lane.free_gb below registry min_disk_free_gb'}
+    if not apply:
+        return planned
+    node = registry.get('nodes', {}).get('mbp', {})
+    threshold = number(node_settings(registry, 'mbp', 'health').get('min_disk_free_gb'))
+    if threshold is None or threshold <= 0 or node.get('ssh_user', 'agentjob') != 'agentjob':
+        return {'status': 'held', 'reason': 'mbp agentjob registry and disk threshold required'}
+    try:
+        host = str(ipaddress.ip_address(node.get('tailnet_ip', '')))
+        port = int(node.get('ssh_port', 22))
+        if not 1 <= port <= 65535:
+            raise ValueError('bad port')
+    except ValueError:
+        return {'status': 'held', 'reason': 'valid mbp registry address and port required'}
+    remote = 'python3 -c ' + shlex.quote(PRUNE_PROGRAM) + ' ' + shlex.quote(str(threshold))
+    command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'IdentitiesOnly=yes',
+               '-i', os.environ.get('FLEET_SSH_KEY', str(Path.home() / '.ssh/id_ed25519')),
+               '-p', str(port), f'agentjob@{host}', remote]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+        if result.returncode:
+            return {'status': 'failed', 'reason': 'fixed remote prune failed', 'exit': result.returncode}
+        value = json.loads(result.stdout)
+        return value if isinstance(value, dict) and value.get('status') in ('applied', 'held') else {'status': 'failed', 'reason': 'invalid prune response'}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {'status': 'failed', 'reason': type(exc).__name__}
+
+
+def atomic_write(path, content):
+    """Readers see a complete file; the lock serializes steward writers."""
+    fd, temporary = tempfile.mkstemp(prefix='.' + path.name + '-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--state', type=Path, default=STATE)
+    parser.add_argument('--output', type=Path, help='default: STATE/steward')
+    parser.add_argument('--registry', type=Path, help='JSON facts exported from existing fleet registry; default STATE/registry.json')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--dry-run', action='store_true', help='default; reports only, never probes or mutates nodes')
+    mode.add_argument('--apply', action='store_true', help='only fixed mbp agentjob cache pruning after fresh low disk probe')
+    args = parser.parse_args(argv)
+    output = args.output or args.state / 'steward'
+    output.mkdir(parents=True, exist_ok=True)
+    args.state.mkdir(parents=True, exist_ok=True)
+    with (args.state / '.steward.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('fleet-steward: another writer holds the output lock', file=sys.stderr)
+            return 75
+        errors = []
+        registry = read_registry(args.registry or args.state / 'registry.json', errors)
+        rows = ledger(args.state, errors)
+        findings, parameters = analyze(rows, registry)
+        lessons = lesson_envelope(findings, rows)
+        action = cache_action(registry, args.apply)
+        payloads = {'ledger.jsonl': ''.join(json.dumps(row, sort_keys=True) + '\n' for row in rows),
+                    'findings.json': json.dumps({'schema_version': 1, 'findings': findings, 'input_diagnostics': errors, 'cache_action': action}, indent=2) + '\n',
+                    'parameters.json': json.dumps(parameters, indent=2) + '\n',
+                    'lessons.json': json.dumps(lessons, indent=2) + '\n',
+                    'lessons.jsonl': ''.join(json.dumps(lesson, sort_keys=True) + '\n' for lesson in lessons['cross_cutting']),
+                    'report.md': report(rows, findings, parameters, errors, action)}
+        for name, content in payloads.items():
+            atomic_write(output / name, content)
+        from fleet_steward_capacity import export_capacity
+        export_capacity(args.state, output)
+    print(f'fleet-steward: {len(rows)} jobs, {len(findings)} findings; {output}')
+    return 1 if action['status'] == 'failed' else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

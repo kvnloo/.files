@@ -9,7 +9,7 @@
       (--class matches a node's classes or its capabilities, e.g. android-build;
        scripts/fleet-build wraps this with the default routing for builds)
   fleet kill NODE JOB_ID                        stop a running host-lane job
-  fleet health [--node N] [--strikes K] [--set key=value]   probe, judge, cordon/uncordon
+  fleet health [--node N] [--dry-run] [--steward]   probe, judge, cordon/uncordon; steward observes
   fleet labels                                  apply class labels/taints from config/fleet/nodes.yaml
   fleet enroll NODE                             harden a registered Linux node over root ssh
   fleet toolchain NODE [--check]                install the node's `toolchains` (JDK, Android SDK, Bun)
@@ -121,13 +121,13 @@ def probe(n):
 
 def kc(*args, check=True):
     return subprocess.run(["kubectl", *args], env={**os.environ, "KUBECONFIG": KUBECONFIG},
-                          capture_output=True, text=True, check=check)
+                          capture_output=True, text=True, check=check, timeout=30)
 
 
 def k8s_nodes():
     try:
         items = json.loads(kc("get", "nodes", "-o", "json").stdout)["items"]
-    except (subprocess.CalledProcessError, ValueError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return {}
     out = {}
     for it in items:
@@ -138,6 +138,21 @@ def k8s_nodes():
             "cordoned_by": it["metadata"].get("annotations", {}).get(ANNOT),
         }
     return out
+
+
+def node_events():
+    """Persist node events only. Pod messages may contain workload-private text."""
+    try:
+        items = json.loads(kc("get", "events", "-A", "--field-selector",
+                              "involvedObject.kind=Node", "-o", "json").stdout)["items"]
+        return [{"node": it.get("involvedObject", {}).get("name"),
+                 "reason": it.get("reason"), "message": it.get("message"),
+                 "firstTimestamp": it.get("firstTimestamp"),
+                 "lastTimestamp": it.get("lastTimestamp"),
+                 "eventTime": it.get("eventTime"), "count": it.get("count", 1)}
+                for it in items]
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError) as exc:
+        return [{"observation_error": type(exc).__name__}]
 
 
 def tailnet_online():
@@ -312,10 +327,30 @@ def cmd_health(args):
         st = android_state(n)
         if st:
             probes[n["name"]]["android"] = st
+    bindings = None
+    if any(n["role"] == "server" for n in sel):
+        adapter = REPO / "scripts/fleet-z0-health"
+        try:
+            observed = subprocess.run([sys.executable, str(adapter), "--json", "--host-profile",
+                                       str(REPO / "fleet.toml")],
+                                      capture_output=True, text=True, timeout=45)
+            bindings = json.loads(observed.stdout)
+            if not isinstance(bindings, dict) or "status" not in bindings:
+                raise ValueError("missing status")
+            bindings["adapter_exit"] = observed.returncode
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            bindings = {"status": "UNKNOWN", "reason": f"binding adapter unavailable: {type(exc).__name__}"}
+        print(f"fleet: local z0 bindings {bindings['status']} (observation only)")
     hdir = STATE / "health"
     hdir.mkdir(parents=True, exist_ok=True)
+    registry_f = STATE / "registry.json"
+    registry_tmp = registry_f.with_name(f".registry.{os.getpid()}.tmp")
+    registry_tmp.write_text(json.dumps(reg, indent=1) + "\n")
+    registry_tmp.replace(registry_f)
     state_f = hdir / "state.json"
     state = json.loads(state_f.read_text()) if state_f.exists() else {}
+    (hdir / "k8s-events.json").write_text(json.dumps(
+        {"observed_ts": time.time(), "events": node_events()}, indent=1) + "\n")
     rc = 0
     for n in sel:
         name = n["name"]
@@ -331,13 +366,13 @@ def cmd_health(args):
         kn = k8s.get(name)
         # Placement gate closes on the FIRST bad sample, independently of strike
         # hysteresis used for cordon/uncordon. Kueue CPU flavors require this label.
-        if n["role"] == "worker" and n["k8s"] and kn:
+        if not args.dry_run and n["role"] == "worker" and n["k8s"] and kn:
             thermal = probes[name].get("max_temp_c")
             safe = not bad and isinstance(thermal, (int, float)) and not isinstance(thermal, bool) and math.isfinite(thermal) and thermal > 0
             kc("label", "--overwrite", "node", name, f"z0.dev/cpu-admit={str(safe).lower()}")
-        if bad and s["bad"] >= strikes and n["kind"] == "phone":
+        if not args.dry_run and bad and s["bad"] >= strikes and n["kind"] == "phone":
             action = maybe_revive(n, probes[name].get("android"), s, probes[name]) or action
-        if bad and s["bad"] >= strikes:
+        if not args.dry_run and bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)
                 kc("annotate", "--overwrite", "node", name, f"{ANNOT}=fleet-health",
@@ -346,7 +381,7 @@ def cmd_health(args):
             elif mode == "pause" and not s["paused"]:
                 action = "paused"
             s["paused"] = True
-        elif not bad and s["good"] >= strikes and s.get("paused"):
+        elif not args.dry_run and not bad and s["good"] >= strikes and s.get("paused"):
             if mode == "cordon" and kn and kn["unschedulable"] and kn["cordoned_by"] == "fleet-health":
                 kc("uncordon", name)
                 kc("annotate", "node", name, f"{ANNOT}-", "z0.dev/unhealthy-reason-", check=False)
@@ -355,10 +390,12 @@ def cmd_health(args):
                 action = "resumed"
             s["paused"] = False
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
-               "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
+               "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name],
+               "k8s": kn, "dry_run": args.dry_run,
+               "bindings": bindings if n["role"] == "server" else None}
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
-            f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
+            f.write(json.dumps(rec) + "\n")
         if n["kind"] == "phone":  # keep-alive log: services, doctor, Android side
             pr = probes[name]
             with open(hdir / "phone-keepalive.jsonl", "a") as f:
@@ -369,11 +406,22 @@ def cmd_health(args):
         print(f"{flag} {name:14} action={action:10} {'; '.join(bad) or '-'}"
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
         rc |= bool(bad)
-    state_f.write_text(json.dumps(state, indent=1) + "\n")
+    if not args.dry_run:
+        state_f.write_text(json.dumps(state, indent=1) + "\n")
     for hist in (hdir / "history.jsonl", hdir / "phone-keepalive.jsonl"):
         lines = hist.read_text().splitlines() if hist.exists() else []
         if len(lines) > 20000:
             hist.write_text("\n".join(lines[-10000:]) + "\n")
+    # The existing timer executes `fleet health`. Steward is observational by
+    # default and never changes scheduling policy or host configuration.
+    try:
+        steward = subprocess.run([sys.executable, str(REPO / "scripts/fleet-steward"),
+                                  "--state", str(STATE), "--registry", str(registry_f), "--dry-run"],
+                                 check=False, timeout=90)
+        if steward.returncode:
+            print(f"fleet: steward observation failed ({steward.returncode})", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"fleet: steward observation unavailable: {type(exc).__name__}", file=sys.stderr)
     return rc
 
 
@@ -393,10 +441,68 @@ def eligible(n, args, state):
     return None
 
 
+def queued_time():
+    try:
+        value = float(os.environ.get("FLEET_QUEUED_TS", time.time()))
+        return value if math.isfinite(value) and 0 < value <= time.time() else time.time()
+    except ValueError:
+        return time.time()
+
+
+def job_repo(args):
+    if getattr(args, "no_src", False):
+        return None
+    src = Path(args.src or os.getcwd()).resolve()
+    try:
+        remote = subprocess.run(["git", "-C", str(src), "config", "--get", "remote.origin.url"],
+                                capture_output=True, text=True, timeout=5).stdout.strip()
+        match = re.search(r"github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$", remote)
+        if match:
+            return match[1].removesuffix(".git")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return str(src)
+
+
+def admission_hold(args, reason, node=None, probe_data=None, k8s=None):
+    """Record controller holds without allocating a remote job or replaying work."""
+    jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**8):08x}"
+    logdir = STATE / "runs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    metadata = {"queued_ts": queued_time(), "finished_ts": now, "started_ts": None,
+                "queue_wait_s": None, "runtime_s": 0, "repo": job_repo(args),
+                "attempt_id": os.environ.get("FLEET_ATTEMPT_ID", jid),
+                "gate_reason": reason, "admission_only": True,
+                "probe": probe_data, "k8s": k8s, "peak_memory_bytes": None,
+                "memory_limit_mb": mb(args.mem) if args.mem else None}
+    log = logdir / f"{jid}-{node or 'unassigned'}.log"
+    log.write_text(f"# fleet job {jid} node={node or 'unassigned'} cmd={shlex.join(args.cmd)}\n"
+                   + "# steward " + json.dumps(metadata) + "\n"
+                   + f"fleet: controller gate held: {reason}\n# exit 75\n")
+    print(f"fleet: admission hold log {log}", file=sys.stderr)
+    die(reason, 75)
+
+
+def transfer_git_index(src, ssh, jdir):
+    """Rebuild the current tracked index without controller git metadata."""
+    tracked = subprocess.run(["git", "-C", str(src), "ls-files", "--cached", "-z"],
+                             capture_output=True, check=True).stdout.split(b"\0")
+    present = [path for path in tracked if path and
+               ((src / os.fsdecode(path)).exists() or (src / os.fsdecode(path)).is_symlink())]
+    subprocess.run(ssh + [
+        f"git -c init.templateDir= init -q {jdir}/src && "
+        f"git --literal-pathspecs -C {jdir}/src add -f --pathspec-from-file=- --pathspec-file-nul"],
+        input=b"\0".join(present) + (b"\0" if present else b""), check=True)
+
+
 def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
         die("usage: fleet run [opts] -- CMD...")
+    os.environ.setdefault("FLEET_QUEUED_TS", str(time.time()))
+    if args.git and args.no_src:
+        die("--git requires source transfer")
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
@@ -405,14 +511,14 @@ def cmd_run(args):
         cands = [nodes[args.node]]
         why = eligible(cands[0], args, state)
         if why and not why.startswith("taint"):
-            die(f"{args.node}: {why}", 75)
+            admission_hold(args, f"{args.node}: {why}", args.node)
     else:
         cands, skipped = [], []
         for n in nodes.values():
             why = eligible(n, args, state)
             (skipped.append(f"{n['name']}({why})") if why else cands.append(n))
         if not cands:
-            die("no eligible node: " + ", ".join(skipped), 75)
+            admission_hold(args, "no eligible node: " + ", ".join(skipped))
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in cands], ex.map(probe, cands)))
@@ -438,9 +544,11 @@ def cmd_run(args):
         if best is None or score < best[0]:
             best = (score, n, p)
     if not best:
-        die("no node has room now: " + "; ".join(notes), 75)
+        selected = args.node if args.node and args.node != "auto" else None
+        admission_hold(args, "no node has room now: " + "; ".join(notes), selected,
+                       probes.get(selected), k8s.get(selected))
     _, n, p = best
-    jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
+    jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**8):08x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
     logdir = STATE / "runs"
@@ -464,8 +572,13 @@ def cmd_run(args):
             tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
             send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
             tar.stdout.close(); send.wait(); tar.wait()
-        if send.returncode:
-            die("source transfer failed")
+        # Both ends must succeed: a sender that hits "Cannot stat" (e.g. a checkout
+        # switching under it) still yields a valid gzip the receiver accepts, so
+        # checking only the receiver would run tests on a partial or mixed tree.
+        if send.returncode or tar.returncode:
+            die(f"source transfer failed (local tar exit {tar.returncode}, remote tar exit {send.returncode})")
+        if args.git:
+            transfer_git_index(src, ssh, jdir)
     # Exact artifact inputs are staged only AFTER health admission, never by
     # recursively scanning a render store. Relative destinations cannot escape src.
     for item in getattr(args, 'input', []) or []:
@@ -481,6 +594,11 @@ def cmd_run(args):
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
     mem = mb(args.mem or n["lane"]["default_mem"])
     floor = int(n["lane"]["mem_floor_mb"])
+    measured_cmd = (f"bash -c {shlex.quote(cmd)}; fleet_rc=$?; "
+                    "cg=$(awk -F: '$1 == 0 {print $3}' /proc/self/cgroup); "
+                    "peak=$(cat \"/sys/fs/cgroup${cg}/memory.peak\" 2>/dev/null); "
+                    "case $peak in ''|*[!0-9]*) ;; *) printf '# fleet_peak_memory_bytes %s\\n' \"$peak\" ;; esac; "
+                    "exit $fleet_rc")
     if n["kind"] == "phone":
         inner = (f"cd {jdir}/src && exec ~/.local/lib/fleet/polite-run --mem-mb {mem} --floor-mb {floor} "
                  f"--cpus {n['lane'].get('cpus', '0-3')} --timeout {args.timeout} -- "
@@ -510,15 +628,33 @@ def cmd_run(args):
                  f"[ -r /etc/fleet/toolchain.env ] && . /etc/fleet/toolchain.env; "
                  f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
                  f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
-                 f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; rc=$?; "
+                 f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(measured_cmd)}; rc=$?; "
                  f"systemctl --user stop fleet-{jid}.scope 2>/dev/null; exit $rc")
     with open(log, "w") as lf:
         lf.write(f"# fleet job {jid} node={n['name']} cmd={cmd}\n")
+        started = time.time()
+        queued = queued_time()
+        metadata = {"queued_ts": queued, "started_ts": started,
+                    "queue_wait_s": round(started - queued, 6),
+                    "queue_wait_scope": "pre-execution elapsed including health admission and source staging",
+                    "attempt_id": os.environ.get("FLEET_ATTEMPT_ID", jid),
+                    "repo": job_repo(args),
+                    "memory_limit_mb": mem, "probe": p, "k8s": k8s.get(n["name"]),
+                    "runtime_scope": "controller remote execution including worker admission",
+                    "peak_memory_bytes": None}
+        lf.write("# steward " + json.dumps(metadata) + "\n")
+        lf.flush()
+        clock = time.monotonic()
         proc = subprocess.Popen(ssh + [inner], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in proc.stdout:
             sys.stdout.buffer.write(line); sys.stdout.flush()
             lf.write(line.decode(errors="replace"))
+            peak = re.fullmatch(rb"# fleet_peak_memory_bytes (\d+)\s*", line)
+            if peak:
+                metadata["peak_memory_bytes"] = int(peak[1])
         rc = proc.wait()
+        metadata.update({"finished_ts": time.time(), "runtime_s": round(time.monotonic() - clock, 6)})
+        lf.write("# steward " + json.dumps(metadata) + "\n")
         lf.write(f"# exit {rc}\n")
     for path in args.fetch or []:
         dest = logdir / jid
@@ -703,6 +839,7 @@ def main():
     r.add_argument("--node"); r.add_argument("--class", dest="cls"); r.add_argument("--arch")
     r.add_argument("--tolerate", action="append"); r.add_argument("--mem"); r.add_argument("--cpus")
     r.add_argument("--timeout", type=int, default=3600); r.add_argument("--src"); r.add_argument("--no-src", action="store_true")
+    r.add_argument("--git", action="store_true", help="rebuild tracked index on worker (no history/remotes/hooks)")
     r.add_argument("--fetch", action="append"); r.add_argument("--keep", action="store_true")
     r.add_argument("--input", action="append", default=[], metavar="FILE:RELATIVE_PATH",
                    help="stage an exact artifact under job src after health admission (no directory scans)")
@@ -710,6 +847,8 @@ def main():
     k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
     h = sub.add_parser("health"); h.add_argument("--node"); h.add_argument("--strikes", type=int)
     h.add_argument("--set", action="append", help="override a health threshold, e.g. min_disk_free_gb=99999")
+    h.add_argument("--dry-run", action="store_true", help="observe without labels, cordons, revivals or state counters")
+    h.add_argument("--steward", action="store_true", help="explicit steward observation (also runs by default)")
     sub.add_parser("labels")
     e = sub.add_parser("enroll"); e.add_argument("node"); e.add_argument("--port", type=int)
     u = sub.add_parser("update"); u.add_argument("node"); u.add_argument("--apply", action="store_true")

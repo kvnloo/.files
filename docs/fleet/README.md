@@ -52,10 +52,11 @@ fleet-build --light -- python3 -m pytest    # mbp or a phone, 512 MiB
   `fleet nodes` lists them. `scripts/fleet toolchain <node>` installs the node's
   `toolchains:` (`scripts/fleet-toolchain.sh`: Temurin JDK 17/21 and Bun pinned by
   sha256 in `/opt/fleet`, Android SDK with cmdline-tools pinned by Google's sha1 in
-  `/opt/android-sdk`, `/etc/fleet/toolchain.env` sourced by every Linux job);
-  `--check` reports only. Gradle caches stay in `/home/agentjob/.gradle` on the
-  node; the job's scope is stopped at the end, so Gradle/Kotlin daemons never
-  outlive it.
+  `/opt/android-sdk`, plus Corepack/pnpm and root-owned Rust as described below).
+  `/etc/fleet/toolchain.env` is sourced by every Linux job. Toolchain requirements
+  in the registry are desired state, not proof of a live installation. Gradle
+  caches stay in `/home/agentjob/.gradle`; the job's scope is stopped at the end,
+  so Gradle/Kotlin daemons never outlive it.
 
 ### `fleet run`
 
@@ -72,6 +73,16 @@ scripts/fleet kill mbp <job-id>
   worktree it sends tracked and untracked-but-not-ignored files (`git ls-files
   -co --exclude-standard`), so `.git`, build output and ignored files stay
   home. `--src DIR` picks another directory; `--no-src` sends nothing.
+  `--git` opts into a fresh remote repository and tracked-file index for checks
+  that call Git (also accepted by `fleet-build`). It does **not** copy the original
+  `.git`, history, remotes, hooks, credentials, branch or HEAD identity. It is a
+  current-tree fixture, not a historical checkout; tracked and untracked source
+  paths retain that distinction. History-sensitive checks need a separate,
+  explicitly reviewed source strategy. Without `--git`, no Git metadata is sent.
+  A local archive failure must abort transfer, not run checks on a partial tree;
+  live PR #41 head `62e5db9` resolved the reported CUA job
+  `20261022-224002-24a1` source-transfer failure. That live change is separate from
+  this branch's opt-in metadata work.
 - **Placement**: candidates are nodes with a host lane, the asked class/arch,
   tolerated taints, not cordoned and not paused by `fleet health`. Each is
   probed live; a node qualifies only when `MemAvailable >= mem_floor + --mem`.
@@ -83,14 +94,14 @@ scripts/fleet kill mbp <job-id>
   `CPUQuota=--cpus` and `timeout`. The whole `agentjob` user slice is capped
   root-side (mbp: 7 GiB, 400 % CPU, 4096 tasks) and cannot reach 10/8,
   172.16/12, 192.168/16, 100.64/10 (tailnet), link-local or ULA addresses.
-  Internet works. A job that passes its memory cap is OOM-killed inside its
-  scope (exit 137); the host and k3s are untouched.
+  Internet works. Crossing the memory cap can cause a scoped OOM kill, but exit
+  137 alone only indicates a SIGKILL-shaped termination, not its cause.
 - **Results**: output streams back and is saved to
   `~/.local/state/fleet/runs/<job-id>-<node>.log`; `--fetch PATH` (relative to
   the job dir, e.g. `src/dist`) copies files back to
   `~/.local/state/fleet/runs/<job-id>/`. The remote job dir is deleted unless
-  `--keep`. Exit code = the job's exit code (75 no room/drained, 124 timeout,
-  137 memory).
+  `--keep`. Exit code = the job's exit code (75 admission hold/drained, 124 timeout;
+  137 requires supporting memory evidence before it is called an OOM).
 - **Trust**: the host lane is for the owner's own agents' code. Anything from
   an unknown repo goes through the k3s `factory` queue.
 
@@ -127,7 +138,170 @@ report-only (it hosts the control plane, Kueue and the factory gateway). Phones
 are `pause`d: `fleet run` skips them. Reports: `~/.local/state/fleet/health/<node>.json`
 and `history.jsonl` (bounded). Warnings (pending updates, reboot needed) do not cordon.
 
-Forced test (what the PR verified):
+### Cluster steward: branch proposal and evidence limits
+
+The steward reuses fleet run logs and health history; it is not another scheduler.
+The branch adds a dry-run analysis hook to the existing `fleet health` path.
+An explicit observation-only invocation is:
+
+```sh
+scripts/fleet health --dry-run --steward
+# Or scope the health observation:
+scripts/fleet health --node mbp --dry-run --steward
+```
+
+The hook calls `scripts/fleet-steward` with the selected fleet state directory,
+its `registry.json` snapshot, and `--dry-run`. Outputs live under
+`${FLEET_STATE:-~/.local/state/fleet}/steward/`: `ledger.jsonl`, `findings.json`,
+`parameters.json`, `lessons.json` (full envelope), `lessons.jsonl` (candidates),
+`capacity.json`, and `report.md`. Dry-run
+allows local report files, not cluster changes or cache deletion. Only the fixed
+agentjob UV/npm/Bun/Go-build cache paths on MBP are eligible for an explicitly
+applied, fresh-low-disk cleanup; no owner directories or sudo actions are automatic.
+
+New run records carry `# steward ` JSON metadata alongside the legacy
+`# fleet job ...` and `# exit ...` lines. `fleet-build` exports epoch-seconds
+`FLEET_QUEUED_TS` and an opaque `FLEET_ATTEMPT_ID` once before its retry loop.
+Every admission retry shares them, including when values came from a caller.
+Queue wait is not reset at each retry. These fields add evidence, not another
+queue or global lock. A non-admission exit (for example exit 1) still ends the
+wrapper; `--wait 1800` is an admission window, not a promise to replay failed jobs.
+An allocated job that returns 75 is not blindly replayed.
+
+Historical logs often have no source identity, memory limit, peak, queue entry,
+or completion timestamp. Those fields remain **null with provenance**. The
+timestamp in a legacy job ID is local time; a log's mtime is not runtime.
+Never execute log content to reconstruct a result.
+
+| Evidence read on 2026-10-22 | Interpretation and proposal |
+| --- | --- |
+| `20261022-205911-3b11-mbp.log`: Omnara frontend exits 127, `corepack: command not found` | **Confirmed missing command in that run.** Propose Corepack/pnpm provisioning below; registry entries alone do not repair MBP. |
+| `20261020-170927-9192-mbp.log`: synthetic Python allocation, 512 MiB scope, exit 137 | Cap exercise, **not a production repository's memory requirement**; no repo budget learned. |
+| `20261020-171304-677a-omarchy-phone.log`: synthetic allocation, explicit RSS drain above 256 MiB, exit 137 | Confirms that phone guard's drain report, not any build's budget. |
+| `20261020-234206-c24d-mbp.log`: NOOP Android, 2048 MiB scope, exit 143 | Repository identified from Gradle tasks/tests, but **not confirmed OOM**. |
+| `20261020-235612-838b-mbp.log`: NOOP Android succeeds with in-process Kotlin and a 3 GiB JVM heap | Success is confirmed; total budget/peak is absent. **Candidate**: shell-wrapped builds run from NOOP's `android/` subtree use the existing 6 GiB Android envelope rather than generic 3 GiB. |
+| `20261021-014404-a7c5-mbp.log`: lane has 7165 MiB left for a 7168 MiB request | Do not default to the entire 7 GiB lane: even small resident overhead can hold it. The lane cap stays 7 GiB. |
+| `20261022-220746-b01f-mbp.log`: OMP pii-redact/typecheck workflow, explicit timeout 900 s, exit 143 | Termination is observed, but this is **not GEV full npm-test evidence**. Do not invent a repo-wide runtime default or call it OOM. |
+
+The NOOP candidate matches the canonical `remote.origin.url` repository name,
+not a worktree directory name. It changes only build-mode defaults inside
+`android/`; other NOOP builds and unknown repos remain 3 GiB, light jobs 512 MiB,
+and direct Gradle/`--android` jobs 6 GiB. Explicit `--mem` always wins. Lawnchair
+keeps its existing Android envelope; no blanket increase or adaptive retry on
+exit 137 is added. New peak/cgroup evidence is needed to confirm any budget.
+
+### PROPOSE only: worker toolchains and existing timer cutover
+
+No commands in this proposal were applied by the steward. On MBP, from the
+reviewed checkout, the exact privileged provisioning command is:
+
+```sh
+# PROPOSE ONLY — owner runs on MBP after review, not on groot:
+sudo bash scripts/fleet-toolchain.sh install corepack pnpm rust
+```
+
+Corepack 0.33.0 and pnpm 10.11.0 use separate root-owned `/opt/fleet/<name>`
+prefixes, so Corepack's bundled pnpm shim cannot overwrite the standalone tool.
+Existing commands are retained. Missing Node/npm prerequisites use the existing
+distro pattern (`pacman -S --needed --noconfirm nodejs npm`, or
+`apt-get install -y nodejs npm`, or `dnf/yum install -y nodejs npm`), without a
+database refresh or full OS upgrade. npm installs use `--ignore-scripts` and
+`--engine-strict`; unsupported installed Node versions fail rather than bypassing
+engine requirements. Project `packageManager` pins remain the project's choice.
+Version metadata: [Corepack](https://registry.npmjs.org/corepack/0.33.0),
+[pnpm](https://registry.npmjs.org/pnpm/10.11.0).
+
+Rust uses only trusted distro `/usr/bin/rustup` to install a stable/minimal
+toolchain in root-owned `/opt/fleet/rust`; controlled installer state stays
+there, not in an owner's or agentjob's home. `/opt/fleet/rust/current` exposes
+the actual toolchain binaries, not rustup proxies. Both `cargo` and `rustc`
+must exist and report their versions before installation/check succeeds.
+Jobs receive that read-only compiler bin directory and writable
+`CARGO_HOME=$HOME/.cargo` for their own dependency caches. Existing healthy
+managed installs are retained; this does not automatically honor project
+`rust-toolchain.toml` overrides or upgrade to another compiler. A different
+required compiler needs an owner-reviewed toolchain change. The installer does
+not expose `/home/kvn/.cargo/bin`, change home permissions, grant sudo access,
+or execute any agentjob-owned rustup program as root.
+
+The actual existing timer is a **user** timer under
+`~/.config/systemd/user`, every 2 minutes. Its service and
+`50-admission-owner.conf` currently point at
+`/mnt/zer0models/worktrees/files-desktop-cpu-admission/scripts/fleet health`.
+There is no system `fleet-health.service`/timer. This isolated branch is not
+the active timer checkout. After review, the owner can stop the existing user
+timer, merge the reviewed changes into its live checkout, then start the same
+timer; do not install a second timer or point a live unit at this draft worktree.
+
+```sh
+# PROPOSE ONLY — owner-controlled cutover on groot; no sudo required:
+systemctl --user stop fleet-health.timer
+git -C /mnt/zer0models/worktrees/files-desktop-cpu-admission merge --no-ff feat/fleet-cluster-steward-20261022
+systemctl --user start fleet-health.timer
+```
+
+### Cooperative MBP quiet windows and validation plan
+
+Observed contention (load 13.6/8 and an almost-full 7 GiB lane) is an environment
+constraint, not a reason to loosen timing assertions. Operators on groot
+temporarily cooperate through the same lock:
+
+```sh
+# Normal exact-head job; request the smallest real envelope:
+flock -s /tmp/mbp-quiet.lock /home/kvn/.local/bin/fleet-build --wait 0 --mem 512M --cpus 1 -- python3 -m unittest discover -s tests -p 'test_fleet*.py'
+# Timing-sensitive or large-memory exact-head gate; hold it <=20 minutes:
+flock -x -w 3600 /tmp/mbp-quiet.lock /home/kvn/.local/bin/fleet-build --wait 0 --mem 512M --cpus 1 --timeout 1200 -- python3 -m unittest discover -s tests -p 'test_fleet*.py'
+```
+
+Choose one validation command above, not two concurrent runs. Run one job
+per lead; after an admission exit 75, wait at least 5 minutes before resubmitting.
+These are operator-chosen wrappers, not a new automatic global lock in fleet.
+Longer-term reservation/priority and fairness belong in the existing Kueue lanes
+and workload repository, with their reviewed schema and capacity owner—not a
+second host scheduler or fabricated capacity model.
+
+Focused wrapper/toolchain tests use temporary fixtures and fake dispatchers.
+They do not install tools or run builds. Certify the exact integrated head once.
+Keep command output with the review receipt. A loaded-host timeout is environment
+evidence, not permission to relax a test deadline.
+
+
+### PROPOSE only: ranked OSS follow-through
+
+All four research artifacts have arrived:
+[Z01-K8S-OSS](https://github.com/kvnloo/z0intelligence/issues/131#issuecomment-6356877382),
+[Z01-K8S-LEARN](https://github.com/kvnloo/z0intelligence/issues/131#issuecomment-6356843385),
+[Z01-K8S-MIGRATE](https://github.com/kvnloo/z0intelligence/issues/131#issuecomment-6356821555),
+and [Z01-K8S-STEWARD](https://github.com/kvnloo/z0intelligence/issues/131#issuecomment-6356895926).
+These are research proposals, not deployment receipts. The OSS ranking is:
+
+1. **Existing kubelet/Btrfs physical accounting first.** Inspect effective
+   drop-ins, mounts, free bytes and inodes. The 2% minimum-reclaim setting is
+   already in the #41 source and reported applied; do not claim it as a new fix.
+   Pressure clearance still depends on effective thresholds and hysteresis.
+2. **Existing health diagnostics next.** Keep sensor provenance and the owner's
+   MBP `max_temp_c: 110` policy. STEWARD/MIGRATE's older 95 C admission proposals
+   are stale and explicitly rejected; a diagnostic warning at 95 C must not
+   override current admission or add a new automatic hold/taint.
+3. **Reconcile installed Kueue budgets with actual host use.** The host lane's
+   aggregate 7 GiB/4 CPU slice and pods share physical resources; queue quotas
+   are not independent extra capacity. Reservations/fair sharing belong in the
+   existing workload repository after installed-CRD review. Kueue does not
+   schedule host-lane requests. No new scheduler, preemption, or groot CPU
+   fallback is proposed.
+4. **Defer scoped kube-state-metrics** until a scrape/history sink and IO/resource
+   headroom are qualified. Limit any future pilot to nodes/pods/jobs/namespaces;
+   research sizing is not measured capacity or repair authority.
+5. **Defer a single-node VictoriaMetrics pilot** until storage/IO headroom is
+   proven. Prefer its built-in scraper; do not add an operator/vmagent stack.
+   If no safe storage exists, retain existing fleet histories. Scraping agents
+   without a remote receiver are not local query storage.
+
+This is a Draft-PR documentation fold-in, **not a workload deployment**.
+Android, phones, GUI work and persistent sessions remain on their existing host
+lanes; no Kubernetes migration is implied.
+
+### Historical health exercise (prior PR)
 
 ```sh
 scripts/fleet health --node mbp --strikes 1 --set min_disk_free_gb=100000   # BAD ... action=cordoned
