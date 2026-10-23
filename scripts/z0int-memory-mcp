@@ -1,0 +1,5 @@
+#!/bin/sh
+# One stdio session per private user-socket connection; no TCP listener.
+set -eu
+runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+exec /usr/bin/socat STDIO "UNIX-CONNECT:$runtime/z0int-memory-mcp/operator.sock"
