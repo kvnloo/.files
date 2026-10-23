@@ -1,0 +1,28 @@
+[Unit]
+Description=Netdata notify-send relay to the desktop notification daemon
+Requires=netdata-desktop-notify.socket
+After=netdata-desktop-notify.socket
+
+[Service]
+# User, HOME and DBUS_SESSION_BUS_ADDRESS are installed in desktop-user.conf.
+# Never run this relay as root or load code from the user's checkout/home.
+User=nobody
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/netdata-desktop-notify serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=64M
+TasksMax=16
+Nice=19
+IOSchedulingClass=idle

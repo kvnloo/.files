@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly cleanup at 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Unit=nightly-cleanup.service
+
+[Install]
+WantedBy=timers.target
