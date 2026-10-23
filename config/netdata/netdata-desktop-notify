@@ -1,0 +1,123 @@
+#!/usr/bin/python3 -I
+"""Netdata alarm exec -> protected Unix socket -> unprivileged notify-send.
+
+Installed root-owned in /usr/local/libexec. The system socket is root:netdata
+0660; the service runs as the desktop user. No shell, sudo, user plugins,
+Telegram credentials, or root execution are involved in alert delivery.
+"""
+
+import html
+import json
+import os
+import pwd
+import socket
+import struct
+import subprocess
+import sys
+
+SOCKET = "/run/netdata-desktop-notify.sock"
+LIMIT = 16384
+STATUSES = {"WARNING", "CRITICAL", "CLEAR"}
+
+
+def text(value, limit):
+    if not isinstance(value, str):
+        raise ValueError("notification fields must be strings")
+    return "".join(c for c in value if c == "\n" or c.isprintable())[:limit]
+
+
+def deliver(event):
+    status = event["status"]
+    if status not in STATUSES:
+        raise ValueError("unsupported notification status")
+    host = text(event["host"], 128)
+    name = text(event["name"], 160)
+    chart = text(event["chart"], 200)
+    info = text(event["info"], 1000)
+    value = text(event["value"], 120)
+    units = text(event["units"], 80)
+    # Noctalia implements org.freedesktop.Notifications on this user's bus.
+    # Escape body markup; all fields remain argv data and are never commands.
+    title = f"Netdata {status}: {host} / {name}"
+    body = html.escape(f"{chart}: {value} {units}\n{info}")
+    subprocess.run(
+        ["/usr/bin/notify-send", "--app-name=Netdata", "--icon=utilities-system-monitor",
+         "--urgency=" + ("critical" if status == "CRITICAL" else "normal"),
+         "--expire-time=15000", "--", title, body],
+        check=True, timeout=5,
+    )
+    print(f"Delivered {status} {host} {name}", flush=True)
+
+
+def serve():
+    if os.getuid() == 0:
+        raise RuntimeError("desktop relay must not run as root")
+    if os.environ.get("LISTEN_PID") != str(os.getpid()) or os.environ.get("LISTEN_FDS") != "1":
+        raise RuntimeError("expected one systemd-activated socket")
+    allowed = {0, os.getuid(), pwd.getpwnam("netdata").pw_uid}
+    listener = socket.socket(fileno=3)
+    while True:
+        conn, _ = listener.accept()
+        with conn:
+            conn.settimeout(5)
+            try:
+                _, uid, _ = struct.unpack("3i", conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                if uid not in allowed:
+                    raise PermissionError("unauthorized notification sender")
+                payload = bytearray()
+                while not payload.endswith(b"\n"):
+                    chunk = conn.recv(min(4096, LIMIT + 1 - len(payload)))
+                    if not chunk:
+                        raise ValueError("incomplete notification")
+                    payload.extend(chunk)
+                    if len(payload) > LIMIT:
+                        raise ValueError("notification too large")
+                deliver(json.loads(payload))
+                conn.sendall(b"OK\n")
+            except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+                print(f"Notification failed: {error}", file=sys.stderr, flush=True)
+                try:
+                    conn.sendall(b"ERROR\n")
+                except OSError:
+                    pass
+
+
+def send(args):
+    if len(args) == 2 and args[0] == "--test" and args[1] in STATUSES:
+        event = dict(status=args[1], host=socket.gethostname(), name="notification_route_test",
+                     chart="manual.transport", value="1", units="test",
+                     info="Manual Netdata -> notify-send -> desktop notification daemon test")
+    else:
+        # Netdata 2.x alarm-notify positional contract: roles, host, event IDs,
+        # timestamp, name, chart, status, old_status, value, ..., units, info.
+        if len(args) < 17:
+            raise ValueError("expected Netdata alarm arguments or --test WARNING|CRITICAL|CLEAR")
+        status, previous = args[8], args[9]
+        if "silent" in args[0].split() or status not in STATUSES:
+            return
+        if status == "CLEAR" and previous not in {"WARNING", "CRITICAL"}:
+            return
+        event = dict(status=status, host=args[1], name=args[6], chart=args[7],
+                     value=args[10], units=args[15], info=args[16])
+    # Bound every accepted field on both sides of the privilege boundary.
+    event = {key: text(value, 1000) for key, value in event.items()}
+    payload = json.dumps(event, ensure_ascii=True).encode() + b"\n"
+    if len(payload) > LIMIT:
+        raise ValueError("notification too large")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+        conn.settimeout(15)
+        conn.connect(SOCKET)
+        conn.sendall(payload)
+        if conn.recv(16) != b"OK\n":
+            raise RuntimeError("desktop relay did not confirm delivery; inspect its journal")
+
+
+if __name__ == "__main__":
+    try:
+        if sys.argv[1:] == ["serve"]:
+            serve()
+        else:
+            send(sys.argv[1:])
+    except (OSError, ValueError, RuntimeError, KeyError) as error:
+        print(f"netdata-desktop-notify: {error}", file=sys.stderr)
+        sys.exit(1)
