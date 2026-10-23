@@ -310,11 +310,11 @@ def remote(args):
             if dest.exists():
                 verify(dest, stat)
                 continue
-            with tempfile.TemporaryDirectory(prefix='atop-fleet-') as fetched:
+            with tempfile.TemporaryDirectory(prefix='atop-fleet-', dir='/workspace/cache') as fetched:
                 command = ['flock', '-w', '30', '/tmp/mbp-turnstile.lock', 'true']
                 subprocess.run(command, check=True)
                 cmd = ['flock', '-s', '-w', '30', '/tmp/mbp-quiet.lock', str(Path.home() / '.local/bin/fleet-build'),
-                    '--node', 'mbp', '--mem', '3G', '--cpus', '1', '--timeout', '3600', '--wait', '0',
+                    '--node', 'mbp', '--mem', '1G', '--cpus', '1', '--timeout', '3600', '--wait', '0',
                     '--src', str(root), '--input', str(raw) + ':input/' + raw.name,
                     '--input', str(package) + ':input/atop.pkg.tar.zst', '--fetch', 'output/' + dest.name,
                     '--out', fetched, '--', 'bash', '-c',

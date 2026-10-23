@@ -30,8 +30,10 @@ only if per-process historical GPU attribution is worth that extra polling.
 `scripts/atop-rollup.py remote --limit 0` converts closed archives one day at a
 time **on the MBP via fleet-build**, under the turnstile/quiet locks. Groot only
 streams compressed input and receives the small SQLite shard. A matching
-cached atop package is staged to the worker; no root package install is needed
-for conversion. `--atop-package` selects another explicitly supplied reader.
+cached atop package is staged to the worker; no root package install or build
+is needed for conversion. Each conversion has a one-CPU, 1 GiB worker limit;
+the normal fleet memory/temperature floors still apply. `--atop-package`
+selects another explicitly supplied reader.
 Missing readers, format errors, changed sources and failed coverage checks
 retain the raw source. Today's active file is never read or retired.
 
