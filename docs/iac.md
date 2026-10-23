@@ -84,7 +84,7 @@ Observed state is stored outside Git by default:
 ~/.local/state/dotfiles/iac/<hostname>/observed.json
 ```
 
-The next slice adds `fleet.toml` and `./iac plan` only after observations from the real hosts are available.
+The existing `./iac plan` compares collected state with `fleet.toml` without mutation. Its optional `--z0-bindings` projection is read-only and separately scoped.
 
 
 ## z0 host component intent

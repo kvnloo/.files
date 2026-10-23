@@ -72,13 +72,13 @@ user_timers = ["z0int-loop-tick.timer"]
 nix_profile = "mbp"
 hypr_host = "mbp"
 
-# Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
-# Use the explicit logical id: the guest kernel hostname is "localhost".
 # MBP has a z0int timer, but no independently qualified harness/component
 # activation. Explicitly select none; do not infer desired from timer state.
 [hosts.mbp.z0_components]
 components = []
 
+# Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
+# Use the explicit logical id: the guest kernel hostname is "localhost".
 [hosts.phone]
 match_hostnames = ["omarchy-phone"]
 platform = "arch"
