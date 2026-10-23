@@ -17,10 +17,11 @@ as_user ssh -o BatchMode=yes mbp "mkdir -p '$remote_stage'"
 tar -C "$root" -czf - config/netdata scripts/setup-netdata.sh | as_user ssh -o BatchMode=yes mbp "tar -xzf - -C '$remote_stage'"
 # Kevin types the remote sudo password in this SSH terminal if required.
 # Package transactions install only the requested monitoring dependencies.
-as_user ssh -tt mbp "sudo /usr/bin/bash -c 'pacman -S --needed --noconfirm netdata smartmontools python libnotify && /usr/bin/bash \"$remote_stage/scripts/setup-netdata.sh\" apply mbp \"$user\" && runuser -u netdata -- /usr/local/libexec/netdata-desktop-notify --test WARNING'"
+as_user ssh -tt mbp "sudo /usr/bin/bash -c 'pacman -S --needed --noconfirm netdata smartmontools python libnotify && /usr/bin/bash \"$remote_stage/scripts/setup-netdata.sh\" apply mbp \"$user\" && runuser -u netdata -- /usr/local/libexec/netdata-desktop-notify --test WARNING && python3 \"$remote_stage/config/netdata/test-alert.py\"'"
 pacman -S --needed --noconfirm netdata smartmontools python libnotify atop
 bash "$root/scripts/setup-netdata.sh" apply desktop "$user"
 runuser -u netdata -- /usr/local/libexec/netdata-desktop-notify --test WARNING
+python3 "$root/config/netdata/test-alert.py"
 as_user python3 "$root/scripts/setup-netdata-mcp.py"
 
 # Install only root-owned executables into privileged service paths.

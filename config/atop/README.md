@@ -89,6 +89,12 @@ replace recent raw process forensics. Keep the small historical rollups anyway.
 Notifications go through a fixed local Unix-socket relay running as Kevin and
 `notify-send` on his session bus (Noctalia). They never use the intake-only
 Telegram bot. A missing desktop bus is a delivery error, not a successful send.
+The root batch also runs `config/netdata/test-alert.py` on each host: it creates
+one explicitly labelled transient `system.cpu` health rule, reloads health,
+requires an actual local API `WARNING`, and removes/reloads the owned rule in
+cleanup. A conflicting preexisting file is never overwritten. This exercises
+the native evaluator separately from the notification transport's `--test`.
+
 The optional OMP MCP registration uses the official `nd-mcp` stdio bridge to
 `ws://127.0.0.1:19999/mcp`; no Cloud claim or credential is needed for basic
 metric discovery/query/alerts. Upstream restricts sensitive logs/live functions
