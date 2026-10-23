@@ -543,8 +543,10 @@ def analyze(rows, registry, health=None):
             observed.append({'node': node, 'ts': ts, 'source': source, 'conditions': flags,
                              'action': record.get('action'), 'mem_available_mb': number(probe.get('mem_available_mb')),
                              'disk': disks or None, 'headroom_status': 'observed_probe' if probe else 'unknown'})
+            pressure_names = ', '.join(flags)
+            headroom = 'has recorded probe fields' if probe else 'unknown (probe not recorded)'
             evidence.append({'source': source, 'section': f'health node={node} ts={ts}',
-                             'observation': f'{node} at {ts}: recorded Kubernetes {\", \".join(flags)}; action={record.get(\"action\")}; host headroom {\"has recorded probe fields\" if probe else \"unknown (probe not recorded)\"}. No job association inferred.'})
+                             'observation': f'{node} at {ts}: recorded Kubernetes {pressure_names}; action={record.get("action")}; host headroom {headroom}. No job association inferred.'})
         if evidence:
             add('pressure_health', 85,
                 f'{node}: standalone health records report Kubernetes pressure, including intervals without jobs; host headroom is unknown where probe fields were not recorded. No job IDs or temporal job associations inferred.',
