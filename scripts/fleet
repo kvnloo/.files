@@ -464,8 +464,11 @@ def cmd_run(args):
             tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
             send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
             tar.stdout.close(); send.wait(); tar.wait()
-        if send.returncode:
-            die("source transfer failed")
+        # Both ends must succeed: a sender that hits "Cannot stat" (e.g. a checkout
+        # switching under it) still yields a valid gzip the receiver accepts, so
+        # checking only the receiver would run tests on a partial or mixed tree.
+        if send.returncode or tar.returncode:
+            die(f"source transfer failed (local tar exit {tar.returncode}, remote tar exit {send.returncode})")
     # Exact artifact inputs are staged only AFTER health admission, never by
     # recursively scanning a render store. Relative destinations cannot escape src.
     for item in getattr(args, 'input', []) or []:
