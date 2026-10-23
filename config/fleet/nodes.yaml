@@ -12,7 +12,7 @@
 #            `--class android-build` lands on a node that can run ./gradlew assemble*.
 #            `fleet labels` mirrors them as node labels z0.dev/cap-<name>=true|false.
 # toolchains: what `fleet toolchain <node>` (and `fleet enroll`) installs there with
-#            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk.
+#            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk node corepack pnpm rust.
 # health:    thresholds for `fleet health`; on_unhealthy: cordon | report
 # lane:      limits for host jobs (`fleet run`): the agentjob user slice is capped at
 #            mem_max/cpu_quota; a job only starts when MemAvailable >= mem_floor_mb
@@ -45,8 +45,9 @@ nodes:
     # The default build node (docs/fleet/README.md "Default routing"): NOOP and
     # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
     # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
-    capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
-    toolchains: [jdk17, jdk21, bun, android-sdk]
+    # Required desired state, not a claim that missing tools were installed live.
+    capabilities: [android-build, jdk17, jdk21, bun, node, corepack, pnpm, rust, python, git]
+    toolchains: [jdk17, jdk21, bun, android-sdk, corepack, pnpm, rust]
     lane:
       mem_max: 7G           # 16 GiB laptop; a NOOP debug build (Gradle + Kotlin daemons) wants ~5-6 GiB
       # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the

@@ -25,6 +25,8 @@
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
+#   --git            reconstruct tracked-file Git metadata for Git-aware checks;
+#                    no original history, remotes, hooks or credentials are shipped.
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -41,7 +43,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; with_git=0; wait_s=1800
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -60,6 +62,7 @@ while [ $# -gt 0 ]; do
     --fetch) fetch+=("$2"); shift 2 ;;
     --input) inputs+=("$2"); shift 2 ;;
     --keep) keep=1; shift ;;
+    --git) with_git=1; shift ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     --) shift; break ;;
     -*) echo "fleet-build: unknown option $1" >&2; exit 2 ;;
@@ -79,16 +82,30 @@ here=$(pwd)
 case $here/ in "$src"/*) rel=${here#"$src"}; rel=${rel#/} ;; *) rel="" ;; esac
 rel=${rel:-.}
 
+# Worktree directory names are not repository identities. Only recognize a known
+# origin; never interpret command text or learn a budget from an exit code.
+origin=$(git -C "$src" config --get remote.origin.url 2>/dev/null || true)
+repo=${origin##*/}; repo=${repo##*:}; repo=${repo%.git}
+build_mem=3G
+case $repo in
+  noop-oura)
+    # Candidate, not a measured peak: historical NOOP Gradle success has no
+    # recorded budget. Shell-wrapped jobs in android/ need the Android envelope,
+    # not the generic 3G, while NOOP's other builds keep the generic default.
+    if [ "$rel" = android ] || [[ $rel = android/* ]]; then build_mem=6G; fi ;;
+esac
+
 args=(run --src "$src")
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
-  build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
+  build)   args+=(--class build --mem "${mem:-$build_mem}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
   light)   args+=(--tolerate phone --mem "${mem:-512M}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
   phone)   args+=(--arch arm64 --tolerate phone --mem "${mem:-512M}") ;;
 esac
 [ -n "$node" ] && args+=(--node "$node")
 [ -n "$timeout" ] && args+=(--timeout "$timeout")
 [ "$keep" = 0 ] || args+=(--keep)
+[ "$with_git" = 0 ] || args+=(--git)
 for input in "${inputs[@]}"; do args+=(--input "$input"); done
 pre=src/; [ "$rel" = . ] || pre=src/$rel/
 for f in "${fetch[@]}"; do args+=(--fetch "$pre$f"); done
@@ -112,6 +129,11 @@ esac
 exec "$@"'
 [ "$mode" = android ] || gradle_args=""
 args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
+
+# One logical submission may encounter several admission holds. Preserve its
+# original queue entry and identity across every retry, without another queue.
+export FLEET_QUEUED_TS=${FLEET_QUEUED_TS:-$(date +%s)}
+export FLEET_ATTEMPT_ID=${FLEET_ATTEMPT_ID:-$(cat /proc/sys/kernel/random/uuid)}
 
 err=$(mktemp); trap 'rm -f "$err"' EXIT
 deadline=$(( $(date +%s) + wait_s ))
