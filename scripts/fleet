@@ -335,11 +335,15 @@ def cmd_health(args):
                                        str(REPO / "fleet.toml")],
                                       capture_output=True, text=True, timeout=45)
             bindings = json.loads(observed.stdout)
-            if not isinstance(bindings, dict) or "status" not in bindings:
-                raise ValueError("missing status")
+            expected = {"MATCH": 0, "DRIFT": 1, "UNKNOWN": 2, "ERROR": 2}
+            if (not isinstance(bindings, dict) or not isinstance(bindings.get("status"), str)
+                    or bindings["status"] not in expected
+                    or observed.returncode != expected[bindings["status"]]):
+                raise ValueError("invalid or contradictory adapter result")
             bindings["adapter_exit"] = observed.returncode
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            bindings = {"status": "UNKNOWN", "reason": f"binding adapter unavailable: {type(exc).__name__}"}
+            bindings = {"status": "UNKNOWN", "healthy": False, "available": False,
+                        "reason": f"binding adapter unavailable: {type(exc).__name__}"}
         print(f"fleet: local z0 bindings {bindings['status']} (observation only)")
     hdir = STATE / "health"
     hdir.mkdir(parents=True, exist_ok=True)
