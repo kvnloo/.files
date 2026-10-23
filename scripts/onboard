@@ -124,6 +124,16 @@ run_core_links() {
   onboard_link "$repo/config/.tmux.conf" "$HOME/.tmux.conf"
   onboard_link "$repo/config/fish" "$HOME/.config/fish"
 
+  # These relocated archives exist on groot, not on every fleet host.
+  if [[ -d /mnt/zer0models/host-offload/home_kvn_.ctx ]]; then
+    mkdir -p "$HOME/.config/environment.d"
+    onboard_link "$repo/config/environment.d/ctx.conf" "$HOME/.config/environment.d/ctx.conf"
+  fi
+  if [[ -d /mnt/zer0models/sft-svlm/data/agentsview ]]; then
+    mkdir -p "$HOME/.config/environment.d"
+    onboard_link "$repo/config/environment.d/agentsview.conf" "$HOME/.config/environment.d/agentsview.conf"
+  fi
+
   if [[ -d "$repo/config/hyprland" ]]; then
     mkdir -p "$HOME/.config/hypr"
     onboard_link "$repo/config/hyprland/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"

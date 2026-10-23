@@ -27,6 +27,44 @@ The Hyprlang and Lua configurations contain the same explorer bindings.
 The release pin and runtime dependencies are recorded in `fleet.toml`.
 The system file chooser and FileManager1 D-Bus provider remain unchanged.
 
+## Memory archive read paths on groot
+
+ctx and AgentsView reject a symlink as their private runtime root. Groot relocates
+both archives. Use their canonical roots, not `~/.ctx` or `~/.agentsview`:
+
+```sh
+export CTX_DATA_ROOT=/mnt/zer0models/host-offload/home_kvn_.ctx
+export AGENTSVIEW_DATA_DIR=/mnt/zer0models/sft-svlm/data/agentsview
+```
+
+`config/zsh/env.zsh` supplies these defaults when the directories exist. It preserves
+explicit overrides. `environment.d` supplies user-service settings. The z0int tick
+inherits the service environment instead of overriding AgentsView with a symlink.
+Existing terminal or agent processes do not acquire new environment variables.
+Pass the variables explicitly to those processes. Do not restart a live agent to
+repair a read-only query.
+
+Read-only acceptance commands:
+
+```sh
+env CTX_DATA_ROOT=/mnt/zer0models/host-offload/home_kvn_.ctx \
+  ctx search 'forgot memory correction' --since 14d --refresh off --limit 4 --format json
+env AGENTSVIEW_DATA_DIR=/mnt/zer0models/sft-svlm/data/agentsview AGENTSVIEW_NO_DAEMON=1 \
+  agentsview session search forgot --fts --since 14d --context 2 --json --limit 4
+```
+
+Canonical paths remove runtime validation failures. They do not fix query latency,
+missing semantic embeddings, stale ingestion, or missing scope filters. Set a caller
+deadline. A timeout is unavailable, not an empty result. `--refresh off` avoids ctx
+refresh work. AgentsView's `AGENTSVIEW_NO_DAEMON=1` suppresses daemon autostart but can
+still route a query through an existing server.
+
+The October 23 read-health audit found intermittent ctx timeouts, AgentsView HTTP
+timeouts, no AgentsView semantic configuration, and incomplete TencentDB ingestion
+and scope exposure. Preserve native source access as the fallback. Do not ingest
+private transcripts or enable new scope grants as a health repair.
+
+
 ## Method 1 — LLM harness (interactive through chat)
 
 Works with Cursor, Claude Code, Codex, OpenCode, Gemini CLI, Oh My Pi, and similar
