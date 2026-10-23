@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Read-only local z0 binding health; shared by fleet health and operators."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "iac"))
+from z0_health import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("iac_z0_plan", ROOT / "scripts/iac/plan.py")
+spec = importlib.util.spec_from_file_location("fleet_z0_health", ROOT / "scripts/iac/z0_health.py")
 plan = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(plan)
@@ -194,21 +194,15 @@ def test_subprocess_and_schema_fail_closed(
     assert result["available"] is False and result["healthy"] is False
 
 
-def test_plan_cli_preserves_existing_checks_and_separate_health(monkeypatch, tmp_path, capsys):
-    observed_path = tmp_path / "observed.json"
-    observed_path.write_text(json.dumps({"host": {"hostname": "mbp"}}))
-    monkeypatch.setattr(plan, "build_plan", lambda *args: {
-        "status": "MATCH", "host_id": "mbp", "hostname": "mbp"
-    })
+def test_health_cli_reports_unavailable_without_touching_compute_health(monkeypatch, capsys):
     monkeypatch.setattr(plan, "z0_binding_health", lambda *args: {
         "status": "UNKNOWN", "available": False, "healthy": False,
         "host_id": "mbp", "configs": [], "findings": [], "reason": "z0-executable-unavailable"
     })
-    assert plan.main(["--observed", str(observed_path), "--z0-bindings", "--json"]) == 2
+    assert plan.main(["--host-profile", str(ROOT / "fleet.toml"), "--json"]) == 2
     result = json.loads(capsys.readouterr().out)
-    assert result["status"] == "MATCH"
-    assert result["z0_bindings"]["status"] == "UNKNOWN"
-    assert not result["z0_bindings"]["healthy"]
+    assert result["status"] == "UNKNOWN"
+    assert not result["healthy"]
 
 
 def test_disabled_desired_binding_cannot_be_reported_healthy(monkeypatch, fleet, manifest):
@@ -235,5 +229,24 @@ def test_disabled_desired_binding_cannot_be_reported_healthy(monkeypatch, fleet,
     assert result["status"] == "DRIFT"
     assert result["available"] is True and result["healthy"] is False
     assert result["configs"][0]["findings"] == [{
-        "kind": "missing-desired-component", "component": "tencentdb-memory"
+        "kind": "missing-desired-component", "component": "tencentdb-memory", "status": "DRIFT"
     }]
+
+
+def test_informational_unselected_mismatch_does_not_invent_drift(monkeypatch, fleet, manifest):
+    monkeypatch.setattr(plan.shutil, "which", lambda _: "/usr/bin/z0")
+    info = {"kind": "binding-mismatch", "component": "ctx", "status": "INFO"}
+    report = {"host": "groot", "status": "MATCH", "configs": [
+        {"harness": "codex", "profile": "global", "status": "MATCH",
+         "desired": [], "bound": [], "findings": [info]}], "findings": [info]}
+    result = plan.z0_binding_health(
+        fleet, manifest, "groot", local_hostname="groot",
+        runner=lambda argv, **kw: subprocess.CompletedProcess(argv, 0, json.dumps(report), "")
+    )
+    assert result["status"] == "MATCH" and result["healthy"]
+    assert result["configs"][0]["findings"][0]["status"] == "INFO"
+
+
+def test_exact_logical_host_beats_alias_collision():
+    fleet = {"hosts": {"mbp": {}, "other": {"match_hostnames": ["mbp"]}}}
+    assert plan.resolve_host(fleet, "mbp") == ("mbp", {})

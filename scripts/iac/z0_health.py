@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only desired-vs-observed planner for the .files fleet manifest."""
+"""Read-only local native binding health for the existing fleet command."""
 
 from __future__ import annotations
 
@@ -21,119 +21,18 @@ def load_toml(path: Path) -> dict[str, Any]:
 
 
 def resolve_host(fleet: dict[str, Any], hostname: str) -> tuple[str, dict[str, Any]]:
-    matches = []
-    for host_id, cfg in (fleet.get("hosts") or {}).items():
-        names = cfg.get("match_hostnames") or []
-        if hostname == host_id or hostname in names:
-            matches.append((host_id, cfg))
+    hosts = fleet.get("hosts") or {}
+    if hostname in hosts:
+        return hostname, hosts[hostname]
+    matches = [(host_id, cfg) for host_id, cfg in hosts.items()
+               if hostname in (cfg.get("match_hostnames") or [])]
     if len(matches) != 1:
         raise ValueError(f"hostname {hostname!r} matched {len(matches)} fleet hosts")
     return matches[0]
 
 
-def _package_name(entry: Any, platform: str) -> str:
-    if isinstance(entry, str):
-        return entry
-    if isinstance(entry, dict):
-        value = entry.get(platform)
-        if isinstance(value, str):
-            return value
-        if isinstance(value, dict) and isinstance(value.get("name"), str):
-            return value["name"]
-    raise ValueError(f"cannot resolve package override for {platform}: {entry!r}")
-
-
-def desired_packages(packages: dict[str, Any], groups: list[str], platform: str = "arch") -> set[str]:
-    overrides = packages.get("overrides") or {}
-    wanted: set[str] = set()
-    for group in groups:
-        section = packages.get(group)
-        if not isinstance(section, dict):
-            raise ValueError(f"unknown package group {group!r}")
-        for canonical in section.get("packages") or []:
-            override = overrides.get(canonical)
-            wanted.add(_package_name(override, platform) if override is not None else canonical)
-    return wanted
-
-
-def _unit_names(lines: list[str]) -> set[str]:
-    out = set()
-    for line in lines:
-        fields = line.split()
-        if fields:
-            out.add(fields[0])
-    return out
-
-
-def build_plan(fleet: dict[str, Any], packages: dict[str, Any], observed: dict[str, Any]) -> dict[str, Any]:
-    hostname = observed["host"]["hostname"]
-    host_id, host = resolve_host(fleet, hostname)
-    obs = observed.get("observations") or {}
-
-    installed = set((obs.get("pacman_explicit") or {}).get("data") or [])
-    installed |= set((obs.get("pacman_foreign") or {}).get("data") or [])
-    groups = list(host.get("package_groups") or [])
-    wanted = desired_packages(packages, groups)
-
-    enabled_system = _unit_names((obs.get("system_services_enabled") or {}).get("data") or [])
-    enabled_user = _unit_names((obs.get("user_services_enabled") or {}).get("data") or [])
-    enabled_system_timers = _unit_names((obs.get("system_timers_enabled") or {}).get("data") or [])
-    enabled_system_sockets = _unit_names((obs.get("system_sockets_enabled") or {}).get("data") or [])
-    enabled_user_timers = _unit_names((obs.get("user_timers_enabled") or {}).get("data") or [])
-
-    desired_system = set(host.get("system_services") or [])
-    desired_user = set(host.get("user_services") or [])
-    desired_system_timers = set(host.get("system_timers") or [])
-    desired_system_sockets = set(host.get("system_sockets") or [])
-    desired_user_timers = set(host.get("user_timers") or [])
-
-    return {
-        "schema_version": 1,
-        "host_id": host_id,
-        "hostname": hostname,
-        "status": "DRIFT" if (
-            wanted - installed
-            or desired_system - enabled_system
-            or desired_user - enabled_user
-            or desired_system_timers - enabled_system_timers
-            or desired_system_sockets - enabled_system_sockets
-            or desired_user_timers - enabled_user_timers
-        ) else "MATCH",
-        "packages": {
-            "groups": groups,
-            "missing": sorted(wanted - installed),
-            "observed_unmanaged_count": len(installed - wanted),
-        },
-        "system_services": {
-            "missing_enabled": sorted(desired_system - enabled_system),
-            "observed_unmanaged_count": len(enabled_system - desired_system),
-        },
-        "user_services": {
-            "missing_enabled": sorted(desired_user - enabled_user),
-            "observed_unmanaged_count": len(enabled_user - desired_user),
-        },
-        "system_timers": {
-            "missing_enabled": sorted(desired_system_timers - enabled_system_timers),
-            "observed_unmanaged_count": len(enabled_system_timers - desired_system_timers),
-        },
-        "system_sockets": {
-            "missing_enabled": sorted(desired_system_sockets - enabled_system_sockets),
-            "observed_unmanaged_count": len(enabled_system_sockets - desired_system_sockets),
-        },
-        "user_timers": {
-            "missing_enabled": sorted(desired_user_timers - enabled_user_timers),
-            "observed_unmanaged_count": len(enabled_user_timers - desired_user_timers),
-        },
-        "notes": [
-            "Observed unmanaged items are informational, not removal candidates.",
-            "No mutation is performed by plan.",
-        ],
-    }
-
-
-
 # Read-only projection of z0's registry-owned native binding health. The registry
-# owns recipes and the doctor format; this planner never applies a binding.
+# owns recipes and the doctor format; this adapter never applies a binding.
 Z0_HARNESSES = frozenset(("hermes", "claude", "codex", "omp"))
 Z0_STATUSES = frozenset(("MATCH", "DRIFT", "UNKNOWN", "ERROR"))
 _Z0_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}\Z")
@@ -231,7 +130,7 @@ def _z0_findings(raw: Any) -> list[dict[str, str]]:
         if not isinstance(item, dict):
             raise ValueError("invalid doctor finding record")
         # In particular, never forward text, path, env, args, URL or config.
-        safe = {key: token for key in ("kind", "code", "component", "harness", "profile")
+        safe = {key: token for key in ("kind", "code", "component", "harness", "profile", "status")
                 if (token := _z0_token(item.get(key))) is not None}
         out.append(safe or {"kind": "unclassified"})
     return out
@@ -338,7 +237,7 @@ def z0_binding_health(
         return _z0_unavailable(host_id, "doctor-malformed-schema", "ERROR")
 
     # A MATCH cannot swallow unknown profiles or contradictory native records.
-    severity = {"MATCH": 0, "DRIFT": 1, "UNKNOWN": 2, "ERROR": 3}
+    severity = {"MATCH": 0, "UNKNOWN": 1, "DRIFT": 2, "ERROR": 3}
     status = reported_status
     for item in configs:
         if item["desired"] is None:
@@ -346,13 +245,15 @@ def z0_binding_health(
         if item["status"] is not None:
             status = max((status, item["status"]), key=severity.get)
         for finding in item["findings"]:
-            if finding.get("kind") in {"missing-desired-component", "binding-mismatch",
-                                       "config-changed-during-observation"}:
-                status = max((status, "DRIFT"), key=severity.get)
+            finding_status = finding.get("status")
+            if finding_status in severity:
+                status = max((status, finding_status), key=severity.get)
+            elif finding_status != "INFO" and finding.get("component") in (item["desired"] or []):
+                if finding.get("kind") in {"missing-desired-component", "binding-mismatch"}:
+                    status = max((status, "DRIFT"), key=severity.get)
     for finding in findings:
-        if finding.get("kind") in {"missing-desired-component", "binding-mismatch",
-                                   "config-changed-during-observation"}:
-            status = max((status, "DRIFT"), key=severity.get)
+        if finding.get("status") in severity:
+            status = max((status, finding["status"]), key=severity.get)
     return {
         "status": status, "available": status in {"MATCH", "DRIFT"},
         "healthy": status == "MATCH", "host_id": host_id,
@@ -364,52 +265,23 @@ def z0_binding_health(
     }
 
 
-def default_observed(hostname: str) -> Path:
-    import os
-    state = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return state / "dotfiles" / "iac" / hostname / "observed.json"
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="iac plan")
-    parser.add_argument("--observed", type=Path)
+    parser = argparse.ArgumentParser(prog="fleet-z0-health")
+    parser.add_argument("--host-profile", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "fleet.toml")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--z0-bindings", action="store_true", help="read-only local z0 doctor binding health")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
-
-    repo = Path(__file__).resolve().parents[2]
-    fleet = load_toml(repo / "fleet.toml")
-    packages = load_toml(repo / "packages" / "packages.toml")
-
-    observed_path = args.observed
-    if observed_path is None:
-        import socket
-        observed_path = default_observed(socket.gethostname())
-    observed = json.loads(observed_path.read_text())
-
-    result = build_plan(fleet, packages, observed)
-    if args.z0_bindings:
-        result["z0_bindings"] = z0_binding_health(fleet, repo / "fleet.toml", observed["host"]["hostname"])
+    try:
+        fleet = load_toml(args.host_profile)
+        result = z0_binding_health(fleet, args.host_profile, socket.gethostname())
+    except (OSError, ValueError, TypeError):
+        result = _z0_unavailable(None, "fleet-manifest-unavailable", "ERROR")
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
-        print(f"{result['status']} host={result['host_id']} hostname={result['hostname']}")
-        for section in ("packages", "system_services", "user_services", "system_timers", "system_sockets", "user_timers"):
-            data = result[section]
-            missing = data.get("missing") or data.get("missing_enabled") or []
-            print(f"{section}: missing={len(missing)} unmanaged_observed={data['observed_unmanaged_count']}")
-            for item in missing:
-                print(f"  MISSING {item}")
-    if args.z0_bindings:
-        z0 = result["z0_bindings"]
-        if not args.json:
-            print(f"z0_bindings: {z0['status']} available={z0['available']} healthy={z0['healthy']} "
-                  f"configs={len(z0['configs'])} findings={len(z0['findings'])} reason={z0['reason']}")
-        if z0["status"] in {"UNKNOWN", "ERROR"}:
-            return 2
-        if z0["status"] == "DRIFT":
-            return 1
-    return 1 if result["status"] == "DRIFT" else 0
+        print(f"z0_bindings: {result['status']} host={result['host_id']} "
+              f"healthy={result['healthy']} reason={result['reason']}")
+    return {"MATCH": 0, "DRIFT": 1, "UNKNOWN": 2, "ERROR": 2}[result["status"]]
 
 
 if __name__ == "__main__":
