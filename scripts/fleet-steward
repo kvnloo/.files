@@ -490,9 +490,9 @@ def analyze(rows, registry, health=None):
         pressure_events = [event for event in row['events'] if re.search(r'pressure|evict|oom', str(event.get('reason', '')) + ' ' + str(event.get('message', '')), re.I)]
         if not flags and not pressure_events:
             continue
-        health = node_settings(registry, row['node'], 'health')
-        mem_floor = number(health.get('min_mem_available_mb'))
-        disk_floor = number(health.get('min_disk_free_gb'))
+        policy = node_settings(registry, row['node'], 'health')
+        mem_floor = number(policy.get('min_mem_available_mb'))
+        disk_floor = number(policy.get('min_disk_free_gb'))
         mem = row['probe_mem_available_mb']
         disks = [number(d.get('free_gb')) for d in (row['probe_disk'] or {}).values()]
         disks = [v for v in disks if v is not None]
