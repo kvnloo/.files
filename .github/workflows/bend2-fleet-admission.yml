@@ -1,0 +1,69 @@
+name: Bend2 fleet admission law (draft verification)
+
+on:
+  pull_request:
+    paths:
+      - scripts/fleet
+      - scripts/fleet-build
+      - scripts/fleet_admission.py
+      - bend/fleet_admission/**
+      - tests/test_fleet_admission.py
+      - tests/fleet_admission_*.py
+      - .github/workflows/bend2-fleet-admission.yml
+  push:
+    branches:
+      - feat/bend2-fleet-admission-law
+
+permissions:
+  contents: read
+
+jobs:
+  verified-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin and download release artifact (fail closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          p = json.load(open("bend/fleet_admission/toolchain.json"))
+          assert p["bend_version"] == "2.0.34"
+          assert p["platform"] == "linux-x64"
+          assert p["url"] == "https://github.com/bendlang/bend/releases/download/v2.0.34/bend-2.0.34-linux-x64.tar.gz"
+          assert p["sha256"] == "78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf"
+          assert p["source_semantics_attested"] is False
+          assert p["proof_is_permission"] is False
+          PY
+          curl --fail --location --silent --show-error --retry 3 \
+            --output "$RUNNER_TEMP/bend.tar.gz" \
+            https://github.com/bendlang/bend/releases/download/v2.0.34/bend-2.0.34-linux-x64.tar.gz
+          printf '%s  %s\n' \
+            78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf \
+            "$RUNNER_TEMP/bend.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/bend-bin"
+          tar -xzf "$RUNNER_TEMP/bend.tar.gz" -C "$RUNNER_TEMP/bend-bin"
+          BEND="$(find "$RUNNER_TEMP/bend-bin" -type f -name bend -print -quit)"
+          test -n "$BEND" || { echo 'Pinned Bend archive lacks a bend executable' >&2; exit 1; }
+          chmod +x "$BEND"
+          echo "BEND=$BEND" >> "$GITHUB_ENV"
+      - name: Actual Bend kernel verdict (not a cached fixture)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd bend/fleet_admission
+          env -u BENDTT "$BEND" PROOF.bend --verdict 2>&1 | tee "$RUNNER_TEMP/bend-verdict.log"
+          grep -q 'ALL PROOFS CHECK' "$RUNNER_TEMP/bend-verdict.log"
+          ! grep -q 'SOME PROOFS FAIL' "$RUNNER_TEMP/bend-verdict.log"
+      - name: Python and shell adapter fixtures (no network/device)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/admission-venv"
+          source "$RUNNER_TEMP/admission-venv/bin/activate"
+          python -m pip install --disable-pip-version-check 'PyYAML==6.0.2'
+          python -m unittest discover -s tests -p 'test_fleet_admission.py' -v
+          python tests/fleet_admission_parity.py
+          python tests/fleet_admission_mutation.py
