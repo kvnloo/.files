@@ -12,6 +12,7 @@ system_services = ["docker.service", "tailscaled.service", "tern-remote.service"
 system_timers = ["tern-remote-refresh.timer"]
 system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service"]
+user_sockets = ["z0int-memory-mcp.socket"]
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
