@@ -85,3 +85,8 @@ Observed state is stored outside Git by default:
 ```
 
 The next slice adds `fleet.toml` and `./iac plan` only after observations from the real hosts are available.
+
+
+## z0 host component intent
+
+See [docs/z0-host-profiles.md](z0-host-profiles.md) for the registry-owned bindings contract, host/profile selections, advisory read-only doctor integration, MBP-only test commands, and owner-reviewed clean dry-run/apply instructions.
