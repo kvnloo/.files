@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# fleet-build: the default way for agents to run a build or test suite OFF groot.
+# It wraps `scripts/fleet run` with the owner's routing rule (docs/fleet/README.md,
+# "Default routing"): builds go to the MBP, light arm64-safe work may go to the
+# phones, and nothing queues on groot behind heavy.lock.
+#
+#   fleet-build [opts] [--] CMD...        run from anywhere inside the repo
+#
+#   --android        Gradle/Android build: class android-build (mbp), --mem 6G, 4 CPUs, JDK 17.
+#                    Implied when CMD starts with ./gradlew or gradle.
+#   --jdk 17|21      JAVA_HOME for the job (Lawnchair needs 21; NOOP uses 17)
+#   --gradle-args S  flags put after ./gradlew to fit the job's memory cap (default
+#                    below: one JVM, Kotlin in-process, 4 GiB heap, 4 workers; a
+#                    Gradle 2 GiB + Kotlin 4 GiB daemon pair peaked at 6.5 GiB and was
+#                    OOM-killed in a 6 GiB scope). --gradle-args '' keeps the repo's own.
+#   --light          lint / pure-Python tests / scans / git work: phones allowed
+#                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
+#                    its 1200 MiB floor); mbp still wins unless it is busier
+#   --phone          like --light but only on a phone (arm64)
+#   --node NAME      pin a node (mbp, s22, omarchy-phone)
+#   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
+#   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
+#                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
+#                    queue: it waits for mbp, never falls back to groot.
+#   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
+#   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
+#   --src DIR        repo to ship (default: the git toplevel of the cwd)
+#
+# Examples:
+#   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
+#   cd lawnchair && fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
+#   fleet-build -- bun test
+#   fleet-build --light -- python3 -m pytest tests/unit
+#
+# Exit codes are the job's; 75 = no worker has room right now. Then wait and retry,
+# lower --mem, or try --light. Do not fall back to a groot build unless the toolchain
+# exists only there (GPU), and say so.
+set -euo pipefail
+FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
+# One brace group: bash parses the whole script before running it, so editing this file
+# while a long build runs cannot break the running copy.
+{
+
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800
+gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --android) mode=android; shift ;;
+    --light) mode=light; shift ;;
+    --phone) mode=phone; shift ;;
+    --jdk) jdk=$2; shift 2 ;;
+    --gradle-args) gradle_args=$2; shift 2 ;;
+    --node) node=$2; shift 2 ;;
+    --mem) mem=$2; shift 2 ;;
+    --cpus) cpus=$2; shift 2 ;;
+    --timeout) timeout=$2; shift 2 ;;
+    --wait) wait_s=$2; shift 2 ;;
+    --src) src=$2; shift 2 ;;
+    --out) out=$2; shift 2 ;;
+    --fetch) fetch+=("$2"); shift 2 ;;
+    --input) inputs+=("$2"); shift 2 ;;
+    --keep) keep=1; shift ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "fleet-build: unknown option $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
+case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
+[ -n "$jdk" ] && [ "$mode" = build ] && mode=android
+
+# Ship the whole repo, run from the same subdirectory the caller is in.
+if [ -z "$src" ]; then
+  src=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+fi
+src=$(cd "$src" && pwd)
+here=$(pwd)
+case $here/ in "$src"/*) rel=${here#"$src"}; rel=${rel#/} ;; *) rel="" ;; esac
+rel=${rel:-.}
+
+args=(run --src "$src")
+case $mode in
+  android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
+  build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
+  light)   args+=(--tolerate phone --mem "${mem:-512M}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
+  phone)   args+=(--arch arm64 --tolerate phone --mem "${mem:-512M}") ;;
+esac
+[ -n "$node" ] && args+=(--node "$node")
+[ -n "$timeout" ] && args+=(--timeout "$timeout")
+[ "$keep" = 0 ] || args+=(--keep)
+for input in "${inputs[@]}"; do args+=(--input "$input"); done
+pre=src/; [ "$rel" = . ] || pre=src/$rel/
+for f in "${fetch[@]}"; do args+=(--fetch "$pre$f"); done
+
+# Remote side: cd to the same subdirectory, pick the JDK, run CMD unchanged.
+# JAVA17_HOME/JAVA21_HOME come from the node's /etc/fleet/toolchain.env.
+script='cd "$1" && shift
+case ${FLEET_BUILD_JDK:-} in
+  17) [ -n "${JAVA17_HOME:-}" ] || { echo "fleet-build: no JDK 17 on $(hostname)" >&2; exit 3; }; export JAVA_HOME=$JAVA17_HOME ;;
+  21) [ -n "${JAVA21_HOME:-}" ] || { echo "fleet-build: no JDK 21 on $(hostname)" >&2; exit 3; }; export JAVA_HOME=$JAVA21_HOME ;;
+esac
+[ -n "${JAVA_HOME:-}" ] && export PATH=$JAVA_HOME/bin:$PATH
+case $1 in
+  ./gradlew|gradlew|gradle)
+    g=$1; shift
+    # FLEET_GRADLE_ARGS is word-split on purpose; "\ " keeps a space inside one flag.
+    eval "set -- $FLEET_GRADLE_ARGS \"\$@\""
+    set -- "$g" "$@"
+    echo "fleet-build: $*" >&2 ;;
+esac
+exec "$@"'
+[ "$mode" = android ] || gradle_args=""
+args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
+
+err=$(mktemp); trap 'rm -f "$err"' EXIT
+deadline=$(( $(date +%s) + wait_s ))
+while :; do
+  set +e
+  "$FLEET" "${args[@]}" 2> >(tee "$err" >&2)
+  rc=$?
+  set -e
+  wait 2>/dev/null || true
+  # Admission holds are retryable. Once a job ID was allocated, a 75 might
+  # come from a partially executed workflow; never replay side effects blindly.
+  [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
+  echo "fleet-build: no room yet; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
+  sleep 60
+done
+jid=$(sed -n 's/^fleet: job \([0-9a-f-]*\) -> .*/\1/p' "$err" | head -1)
+if [ $rc -eq 75 ]; then
+  echo "fleet-build: no worker has room now (exit 75). Retry later or lower --mem; do not queue it on groot." >&2
+fi
+if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
+  state=${FLEET_STATE:-$HOME/.local/state/fleet}
+  mkdir -p "$out"
+  for f in "${fetch[@]}"; do
+    p="$state/runs/$jid/$pre$f"
+    [ -e "$p" ] && cp -a "$p" "$out/" && echo "fleet-build: $f -> $out/$(basename "$f")" >&2
+  done
+fi
+exit $rc
+}

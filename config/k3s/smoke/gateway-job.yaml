@@ -1,0 +1,74 @@
+# The factory gateway is the only host door for untrusted pods, and it is token-gated.
+# Expect GATEWAY_OK: gateway reachable, an unauthenticated GitHub read refused (401),
+# the host listener behind it, the API, the tailnet and the LAN all blocked.
+# Needs ghcache running on groot (oss-factory tools/factory/install-user-units.sh).
+#   kubectl create -f config/k3s/smoke/gateway-job.yaml
+# Pin to a node: add spec.template.spec.nodeSelector {kubernetes.io/hostname: mbp}.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-gateway-
+  namespace: factory
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: smoke
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        - "fail=0\nexpect() { want=$1; shift; if \"$@\" >/dev/null 2>&1; then got=open; else got=blocked; fi\n  echo \"$want/$got $*\"; [ \"$want\" = \"$got\" ] || fail=1; }\necho node=$NODE_NAME\nexpect\
+          \ open    nc -z -w 5 factory-gateway.z0.svc 8080\nexpect open    wget -q -O /dev/null -T 5 http://factory-gateway.z0.svc:8080/healthz\nexpect blocked wget -q -O /dev/null -T 5 http://factory-gateway.z0.svc:8080/gh/repos/kvnloo/.files\n\
+          expect blocked nc -z -w 5 10.42.0.1 18091\nexpect blocked nc -z -w 5 10.42.0.1 18090\nexpect blocked nc -z -w 5 100.113.138.100 6443\nexpect blocked nc -z -w 5 \"$KUBERNETES_SERVICE_HOST\" \"\
+          $KUBERNETES_SERVICE_PORT\"\nexpect blocked nc -z -w 5 192.168.1.1 80\n[ $fail = 0 ] && echo GATEWAY_OK || { echo GATEWAY_FAIL; exit 1; }\n"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      initContainers:
+      - name: netpol-ready
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 32Mi
+    metadata:
+      labels:
+        z0.dev/gateway-client: 'true'

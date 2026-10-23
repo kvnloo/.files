@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# fleet-polite-run: run one host-lane job on a phone's Linux guest (Omalauncher
+# PRoot) without hurting the phone. Installed as ~/.local/lib/fleet/polite-run by
+# scripts/fleet-phone-setup.sh; `scripts/fleet run` calls it over ssh.
+#
+#   polite-run [--mem-mb 1024] [--cpus 0-1] [--timeout 3600] [--floor-mb 1200] -- cmd...
+#
+# Admission reads ~/.config/fleet/phone-mode.json and the owner pause switch.
+# Light: battery >=50% or charging, battery <=40 C, Android thermal <=1.
+# Worker: explicit owner override, no charging/thermal gate; only the profile's
+# battery floor (S25 2%, S22 none). Thermal readings remain in receipts.
+# All profiles reserve aggregate requested RAM and slots with inherited flocks,
+# retain the available-memory floor, nice 19, idle I/O and configured affinity.
+# Read-only adb supplies telemetry. PRoot cannot safely SIGSTOP a job, so two
+# failed runtime gates drain its process group (TERM, then KILL; exit 75).
+# Sampled RSS and the 800 MiB emergency floor are best effort, not cgroups.
+# Android apps and settings are never changed.
+set -u
+MEM_MB=1024; CPUS=0-1; TIMEOUT=3600; FLOOR_MB=1200; HARD_FLOOR_MB=800
+MIN_BATT=50; MAX_BATT_C=40; MAX_THERMAL=1; GATE_EVERY=30; STRIKES=2
+while [ $# -gt 0 ]; do
+  case $1 in
+    --mem-mb) MEM_MB=$2; shift 2 ;;
+    --cpus) CPUS=$2; shift 2 ;;
+    --timeout) TIMEOUT=$2; shift 2 ;;
+    --floor-mb) FLOOR_MB=$2; shift 2 ;;
+    --gate-only) GATE_ONLY=1; shift ;;
+    --) shift; break ;;
+    *) echo "polite-run: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+log() { echo "[polite-run $(date +%H:%M:%S)] $*" >&2; }
+case $(uname -r) in *android*) ;; *) log "unsupported: phone adapter requires Android PRoot"; exit 78 ;; esac
+memavail() { awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo; }
+
+load_profile() {
+  local values
+  values=$(python3 -c '
+import json,re,sys
+from pathlib import Path
+p=Path.home()/".config/fleet/phone-mode.json"
+v=json.loads(p.read_text()) if p.exists() else {"mode":"light","cpus":"0-1","slots":1,"memory_pct":25}
+assert v["mode"] in ("light","worker")
+assert re.fullmatch(r"[0-7](?:-[0-7])?(?:,[0-7](?:-[0-7])?)*",v["cpus"])
+assert type(v["slots"]) is int and 1<=v["slots"]<=8
+assert type(v["memory_pct"]) is int and 1<=v["memory_pct"]<=80
+r=v.get("runtime",{})
+print(v["mode"],v["cpus"],v["slots"],v["memory_pct"],v.get("min_battery_pct",0),r.get("node","-"),r.get("bun","-"),sep="\n")
+') || { echo "phone profile unreadable"; return 1; }
+  local fields
+  mapfile -t fields <<<"$values"
+  MODE=${fields[0]}; CPUS=${fields[1]}; SLOTS=${fields[2]}; MEMORY_PCT=${fields[3]}
+  WORKER_BATT=${fields[4]}; NODE_VERSION=${fields[5]}; BUN_VERSION=${fields[6]}
+}
+
+serial() {
+  local f=$HOME/.config/fleet/adb-serial
+  if [ -s "$f" ]; then cat "$f"; else adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}'; fi
+}
+
+# Prints a reason and returns 1 when the phone should not run work now.
+gate() {
+  local s b level status plugged temp thermal avail minimum
+  load_profile || return 1
+  [ -z "${START_MODE:-}" ] || [ "$MODE" = "$START_MODE" ] || { echo "phone mode changed"; return 1; }
+  # Owner switch: `touch ~/.config/fleet/pause` stops phone work (running jobs drain).
+  [ ! -e "$HOME/.config/fleet/pause" ] || { echo "paused by ~/.config/fleet/pause"; return 1; }
+  avail=$(memavail)
+  [ "$avail" -ge "$FLOOR_MB" ] || { echo "memory ${avail}MiB < ${FLOOR_MB}MiB"; return 1; }
+  s=$(serial)
+  b=$(timeout 15 adb -s "$s" shell dumpsys battery 2>/dev/null) || b=""
+  level=$(awk -F': ' '/^  level:/{print $2}' <<<"$b")
+  status=$(awk -F': ' '/^  status:/{print $2}' <<<"$b")
+  temp=$(awk -F': ' '/^  temperature:/{print $2}' <<<"$b")
+  plugged=$(grep -cE '^  (AC|USB|Wireless|Dock) powered: true' <<<"$b")
+  thermal=$(timeout 15 adb -s "$s" shell dumpsys thermalservice 2>/dev/null | awk -F': ' '/^Thermal Status:/{print $2; exit}')
+  if [ "$MODE" = worker ]; then
+    if [ "$WORKER_BATT" -gt 0 ]; then
+      [[ "$level" =~ ^[0-9]+$ ]] || { echo "battery unreadable"; return 1; }
+      [ "$level" -ge "$WORKER_BATT" ] || { echo "battery ${level}% < ${WORKER_BATT}%"; return 1; }
+    fi
+  else
+    [[ "$level" =~ ^[0-9]+$ && "$temp" =~ ^[0-9]+$ && "$thermal" =~ ^[0-9]+$ ]] || { echo "battery/thermal unreadable"; return 1; }
+    if [ "$level" -lt "$MIN_BATT" ] && [ "$plugged" -eq 0 ] && [ "$status" != 2 ]; then
+      echo "battery ${level}% and not charging"; return 1
+    fi
+    [ "$temp" -le $((MAX_BATT_C * 10)) ] || { echo "battery $((temp / 10))C > ${MAX_BATT_C}C"; return 1; }
+    [ "$thermal" -le "$MAX_THERMAL" ] || { echo "thermal status $thermal > $MAX_THERMAL"; return 1; }
+  fi
+  echo "ok: mode=$MODE battery ${level:-unknown}% plugged=$plugged temp ${temp:-unknown}/10C thermal ${thermal:-unknown} mem ${avail}MiB cpus=$CPUS slots=$SLOTS"
+}
+
+load_profile || exit 75
+reason=$(gate); rc=$?
+log "$reason"
+[ -n "${GATE_ONLY:-}" ] && exit $rc
+[ $rc -eq 0 ] || exit 75
+[ $# -gt 0 ] || { echo "polite-run: no command" >&2; exit 2; }
+if [ "$MODE" = light ]; then
+  case "$reason" in *"plugged=0"*) CPUS=0 ;; esac
+fi
+
+# Reserve aggregate requested memory and a slot across both execution paths.
+ST=$HOME/.local/state/fleet/phone-lane
+mkdir -p "$ST"
+exec 8>"$ST/admission.lock"
+flock -x 8
+reserved=0
+for file in "$ST"/slot-*.lock; do
+  [ -e "$file" ] || continue
+  exec 7>"$file"
+  if ! flock -n 7; then
+    read -r reservation < "${file%.lock}.mem" || exit 75
+    reserved=$((reserved + reservation))
+  fi
+  exec 7>&-
+done
+total=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo)
+budget=$((total * MEMORY_PCT / 100))
+avail=$(memavail)
+if [ $((reserved + MEM_MB)) -gt "$budget" ] || [ "$avail" -lt $((FLOOR_MB + reserved + MEM_MB)) ]; then
+  log "memory reservation held: reserved=$reserved request=$MEM_MB budget=$budget available=$avail floor=$FLOOR_MB"
+  exit 75
+fi
+for ((slot=1; slot<=SLOTS; slot++)); do
+  exec 9>"$ST/slot-$slot.lock"
+  flock -n 9 && break
+  exec 9>&-
+done
+[ "$slot" -le "$SLOTS" ] || { log "all $SLOTS phone slots are occupied"; exit 75; }
+printf '%s\n' "$MEM_MB" > "$ST/slot-$slot.mem"
+flock -u 8
+exec 8>&-
+START_MODE=$MODE
+# Mise shims use explicit versions/data even after payload HOME changes.
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+export MISE_DATA_DIR="$HOME/.local/share/mise"
+[ "$NODE_VERSION" = - ] || export MISE_NODE_VERSION="$NODE_VERSION"
+[ "$BUN_VERSION" = - ] || export MISE_BUN_VERSION="$BUN_VERSION"
+
+# setsid gives the job its own process group so it can be drained as a whole.
+setsid nice -n 19 ionice -c3 taskset -c "$CPUS" "$@" &
+pid=$!
+start=$(date +%s); last_gate=$start; bad=0; why=""
+drain() {
+  why=$1; log "draining job: $why"
+  kill -TERM -"$pid" 2>/dev/null; sleep 10; kill -KILL -"$pid" 2>/dev/null
+}
+trap 'drain "executor stop/cancel/lease expiry"; wait "$pid" 2>/dev/null; exit 75' TERM INT HUP
+while kill -0 "$pid" 2>/dev/null; do
+  sleep 5
+  now=$(date +%s)
+  rss=$(ps -o rss= -g "$pid" 2>/dev/null | awk '{s+=$1} END{print int(s/1024)}')
+  if [ "${rss:-0}" -gt "$MEM_MB" ]; then drain "rss ${rss}MiB > ${MEM_MB}MiB"; break; fi
+  if [ "$(memavail)" -lt "$HARD_FLOOR_MB" ]; then drain "phone under ${HARD_FLOOR_MB}MiB available"; break; fi
+  if [ $((now - start)) -gt "$TIMEOUT" ]; then drain "timeout ${TIMEOUT}s"; break; fi
+  if [ $((now - last_gate)) -ge "$GATE_EVERY" ]; then
+    last_gate=$now
+    if reason=$(gate); then bad=0; else bad=$((bad + 1)); log "gate failed ($bad/$STRIKES): $reason"; fi
+    if [ "$bad" -ge "$STRIKES" ]; then drain "$reason"; break; fi
+  fi
+done
+wait "$pid"; rc=$?
+case $why in
+  "") exit $rc ;;
+  timeout*) log "job stopped: $why"; exit 124 ;;
+  rss*) log "job killed: $why"; exit 137 ;;
+  *) log "job drained: $why"; exit 75 ;;
+esac
