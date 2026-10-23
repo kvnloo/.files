@@ -52,6 +52,12 @@ nodes:
       # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the
       # i7-4870HQ at 96-98 C with both fans at max (crit 100 C), and health paused it.
       cpu_quota: 400%
+    health:
+      # Owner decision 2026-10-22: worn thermal paste keeps this i7-4870HQ near
+      # 92-98 C under load. Do not pause on temperature; the CPU's own PROCHOT
+      # throttling (TjMax 105 C) protects it. 110 sits above anything a probe can
+      # report while still requiring a finite reading (missing data still holds).
+      max_temp_c: 110
     kubelet:
       system_reserved: cpu=1,memory=2Gi
       kube_reserved: cpu=500m,memory=1Gi
