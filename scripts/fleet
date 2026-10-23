@@ -593,7 +593,8 @@ def cmd_enroll(args):
     kargs = []
     for flag, key in (("system-reserved", "system_reserved"), ("kube-reserved", "kube_reserved"),
                       ("eviction-hard", "eviction_hard"), ("eviction-soft", "eviction_soft"),
-                      ("eviction-soft-grace-period", "eviction_soft_grace")):
+                      ("eviction-soft-grace-period", "eviction_soft_grace"),
+                      ("eviction-minimum-reclaim", "eviction_minimum_reclaim")):
         if kl.get(key):
             kargs += ["--kubelet-arg", f"{flag}={kl[key]}"]
     lane = n["lane"]
