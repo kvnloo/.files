@@ -25,6 +25,33 @@ class Toolchain(unittest.TestCase):
         return subprocess.run(["bash", "-c", SOURCE + setup + body],
                               env={**os.environ, "HOME": str(self.root)}, capture_output=True, text=True)
 
+    def test_bunx_check_never_repairs_missing_native_entry(self):
+        result = self.call('''
+arch_ok() { :; }
+need_archive() { :; }
+tc_bun
+printf '%s\\n' "${MISSING[@]}"
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "bunx")
+        self.assertFalse((self.root / "opt/bun/bunx").exists())
+
+    def test_bunx_native_symlink_is_installed_once(self):
+        result = self.call('''
+arch_ok() { :; }
+need_archive() {
+  mkdir -p "$OPT/bun"
+  printf '#!/bin/sh\\nexit 0\\n' > "$OPT/bun/bun"
+  chmod +x "$OPT/bun/bun"
+}
+tc_bun; tc_bun
+printf 'changes=%s\\n' "${#CHANGED[@]}"
+''', mode="install")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "opt/bun/bunx").is_symlink())
+        self.assertEqual(os.readlink(self.root / "opt/bun/bunx"), "bun")
+        self.assertIn("changes=1", result.stdout)
+
     def test_check_missing_pnpm_and_corepack_never_installs(self):
         result = self.call('''
 tc_node() { :; }

@@ -176,6 +176,7 @@ Never execute log content to reconstruct a result.
 | Evidence read on 2026-10-22 | Interpretation and proposal |
 | --- | --- |
 | `20261022-205911-3b11-mbp.log`: Omnara frontend exits 127, `corepack: command not found` | **Confirmed missing command in that run.** Propose Corepack/pnpm provisioning below; registry entries alone do not repair MBP. |
+| Nine MBP exit-127 runs report missing `bunx`, including `20261022-223307-f3dc` | Propose Bun's native `bunx` symlink in the managed Bun prefix. A Bun binary alone is not its complete command surface. |
 | `20261020-170927-9192-mbp.log`: synthetic Python allocation, 512 MiB scope, exit 137 | Cap exercise, **not a production repository's memory requirement**; no repo budget learned. |
 | `20261020-171304-677a-omarchy-phone.log`: synthetic allocation, explicit RSS drain above 256 MiB, exit 137 | Confirms that phone guard's drain report, not any build's budget. |
 | `20261020-234206-c24d-mbp.log`: NOOP Android, 2048 MiB scope, exit 143 | Repository identified from Gradle tasks/tests, but **not confirmed OOM**. |
@@ -197,7 +198,7 @@ reviewed checkout, the exact privileged provisioning command is:
 
 ```sh
 # PROPOSE ONLY — owner runs on MBP after review, not on groot:
-sudo bash scripts/fleet-toolchain.sh install corepack pnpm rust
+sudo bash scripts/fleet-toolchain.sh install bun corepack pnpm rust
 ```
 
 Corepack 0.33.0 and pnpm 10.11.0 use separate root-owned `/opt/fleet/<name>`

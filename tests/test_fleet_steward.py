@@ -144,6 +144,16 @@ class Steward(unittest.TestCase):
         self.assertEqual(tools[0]['sample_ids'], ['a0', 'a1'])
         self.assertIn('mbp/pnpm', tools[0]['claim'])
 
+    def test_single_corepack_missing_is_observation_not_repeated_pattern(self):
+        row = self.row(job='corepack-once', command='corepack pnpm test', code=127,
+                       body='bash: line 1: corepack: command not found\n')
+        findings, _ = steward.analyze([row], self.registry)
+        missing = next(f for f in findings if f['kind'] == 'missing_tool_observation')
+        self.assertEqual(missing['status'], 'observation')
+        self.assertEqual(missing['sample_ids'], ['corepack-once'])
+        self.assertIn('mbp/corepack', missing['claim'])
+        self.assertFalse(any(f['kind'] == 'toolchain' for f in findings))
+
     def test_137_never_asserts_oom_or_production_floor_for_synthetic_probe(self):
         row = self.row(command='python3 -c "a=bytearray(1500*1024*1024)"', code=137)
         findings, _ = steward.analyze([row], self.registry)
@@ -235,6 +245,43 @@ class Steward(unittest.TestCase):
         self.assertEqual(sample['legacy_health_reason_conditions'], ['DiskPressure'])
         self.assertEqual(sample['condition_provenance']['status'], 'observed_prior')
         self.assertIsNone(sample['all_observed_disks_above_health_floor'])
+
+    def test_standalone_pressure_without_jobs_has_health_evidence_not_job_ids(self):
+        self.health([{'node': 'mbp', 'ts': 1000, 'reasons': ['k8s DiskPressure'], 'action': 'cordoned'},
+                     {'node': 'mbp', 'ts': 1100, 'reasons': ['k8s DiskPressure'], 'action': 'none'}])
+        observations = steward.load_health(self.state, self.errors)
+        rows = steward.ledger(self.state, self.errors, observations)
+        self.assertEqual(rows, [])
+        findings, parameters = steward.analyze(rows, self.registry, observations[0])
+        finding = next(f for f in findings if f['kind'] == 'pressure_health')
+        self.assertEqual(finding['sample_ids'], [])
+        self.assertEqual(finding['job_sample_count'], 0)
+        self.assertEqual(finding['health_sample_count'], 2)
+        self.assertEqual(finding['details']['samples'][0]['node'], 'mbp')
+        self.assertEqual(finding['details']['samples'][0]['ts'], 1000)
+        self.assertIsNone(finding['details']['samples'][0]['mem_available_mb'])
+        self.assertIsNone(finding['details']['samples'][0]['disk'])
+        self.assertEqual(finding['details']['samples'][0]['headroom_status'], 'unknown')
+        self.assertTrue(finding['evidence'][0]['source'].endswith('history.jsonl:1'))
+        lessons = steward.lesson_envelope(findings, rows)
+        lesson = lessons['cross_cutting'][0]
+        self.assertEqual(lesson['repos'], ['*'])
+        self.assertNotIn('job_id', lesson['evidence'][0])
+        text = steward.report(rows, findings, parameters, [], {'status': 'dry_run'})
+        self.assertIn('health node=mbp ts=1000', text)
+        self.assertNotIn('  Sample IDs:', text)
+
+    def test_cli_analyzes_health_even_without_jobs(self):
+        self.health([{'node': 'mbp', 'ts': 1000, 'reasons': ['k8s DiskPressure'], 'action': 'cordoned'}])
+        (self.state / 'registry.json').write_text(json.dumps(self.registry))
+        capacity = types.SimpleNamespace(export_capacity=lambda state, output: None)
+        with patch.dict(sys.modules, {'fleet_steward_capacity': capacity}), \
+             patch.object(steward.subprocess, 'run', side_effect=AssertionError('dry run SSH')), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(steward.main(['--state', str(self.state)]), 0)
+        output = self.state / 'steward'
+        findings = json.loads((output / 'findings.json').read_text())['findings']
+        self.assertEqual(findings[0]['kind'], 'pressure_health')
+        self.assertEqual((output / 'ledger.jsonl').read_text(), '')
 
     def test_learned_parameters_exclude_synthetic_peaks_and_carry_tool_evidence(self):
         synthetic = self.row(job='synthetic', command='python3 -c "bytearray(100)"',
