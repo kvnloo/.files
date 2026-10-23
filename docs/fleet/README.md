@@ -1,12 +1,13 @@
 # Fleet: permanent workers over Tailscale
 
-groot (the desktop) is the controller and the k3s server. Other devices take
-work in two lanes:
+groot (the desktop) is the controller and the k3s server. Other devices and
+Avrea take work in three lanes:
 
 | Lane | For | How | Isolation |
 | --- | --- | --- | --- |
 | **k3s** (`factory`, `lanes`, `z0` queues) | untrusted repo work, anything that fits a container | oss-factory `factory submit`, or a Job with `kueue.x-k8s.io/queue-name` | restricted Pod Security, `netpol-ready` gate, egress only to DNS + internet (docs/k3s/ONBOARDING.md) |
 | **host** (`fleet run`) | our own builds/tests that need the host toolchain (Gradle/Android, bun, cargo, make, ...) | `scripts/fleet-build -- <cmd>` (default routing) or `scripts/fleet run <node> -- <cmd>` | unprivileged `agentjob` user, capped systemd scope, no LAN/tailnet egress; phones: polite-run |
+| **Avrea** (public exact-head CI) | public-source heavy installs, full suites, compiler gates, factory verification | `scripts/fleet-build --node avrea -- <cmd>` | ephemeral runner, public checkout only, no workflow secrets or persisted checkout credentials |
 
 The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
 re-running a command with the same registry changes nothing.
@@ -16,7 +17,7 @@ re-running a command with the same registry changes nothing.
 | Device | Role | State |
 | --- | --- | --- |
 | groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
-| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane; **the default build node** | hardened and verified; JDK 17/21, Android SDK (34/35/37.2, build-tools 34/35/37), Bun, Node, Python; NOOP debug APK built there 2026-10-20 |
+| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane; local-data and native-toolchain builds | hardened and verified; JDK 17/21, Android SDK (34/35/37.2, build-tools 34/35/37), Bun, Node, Python; NOOP debug APK built there 2026-10-20 |
 | omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
 | galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only | ssh on 8022; explicit light/worker profiles below |
 | cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
@@ -34,13 +35,21 @@ Builds and test suites do **not** run on groot. Use `scripts/fleet-build`
 
 ```sh
 cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/full/debug --out /tmp/apk -- ./gradlew assembleFullDebug
-fleet-build -- bun test                     # class build -> mbp
-fleet-build --light -- python3 -m pytest    # mbp or a phone, 512 MiB
+fleet-build --node avrea -- bash -lc 'bun install --frozen-lockfile && bun test'
+fleet-build --light -- python3 -m pytest    # phones for light arm64-safe work
 ```
 
-- Gradle/Android -> capability `android-build` (mbp; 6 GiB, 4 CPUs, JDK 17, or
-  `--jdk 21`). Everything else that builds or tests -> class `build` (mbp).
-  Light arm64-safe work -> `--light` (phones allowed).
+- Public committed source + heavy verification -> **Avrea first**. Default
+  `avrea-ubuntu-latest-4-vcpu` (16 GB); `-4-vcpu-8gb` saves minutes for
+  CPU-bound work. Standard GitHub public runners remain the no-Avrea-budget
+  baseline and fallback, not a reason to contend for MBP memory.
+- Local/private data and native-only toolchains -> MBP. Gradle/Android ->
+  capability `android-build` (mbp; 6 GiB, 4 CPUs, JDK 17, or `--jdk 21`).
+  Uncommitted local work stays on the host lane; Avrea never uploads it.
+- Phones -> light arm64-safe work (`--light`), not full dependency installs or
+  x86 jobs. Boat -> x86 overflow and Docker jobs within its trial allowance.
+  Avrea ARM/macOS are available when architecture/native macOS is required,
+  not the default: ARM reference-minute cost is 3x x86.
 - groot only for the GPU or a toolchain that exists only there, said explicitly.
   No room (busy, hot, cordoned) -> `fleet-build` retries every 60 s for
   `--wait` seconds (default 1800), then exits 75; never queue it on groot instead.
@@ -112,6 +121,94 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
 The [Boat operations guide](BOAT.md) describes the reaper and encrypted-secret
 mechanism. The [scoped-key proposal](BOAT-SECRETS-PROPOSAL.md) requires Kevin's
 approval. This integration sends no worker credentials.
+### Avrea public exact-head lane
+
+The dedicated public repository is
+[kvnloo/fleet-runner](https://github.com/kvnloo/fleet-runner), workflow
+`.github/workflows/verify.yml`. This is the only dispatch repository used by
+`fleet-build`; a target project does not need its own workflow or app installation.
+Kevin's Avrea installation covers all 1,292 repositories (console, 2026-10-23).
+The dedicated repo has provisioned an Avrea runner successfully. For a future
+selected-repository installation, add it through
+[the Avrea app installation](https://github.com/apps/avrea/installations/new).
+
+```sh
+# Commit and push first. Otherwise select a public SHA explicitly.
+fleet-build --node avrea --fetch 'test-results/**' --out /tmp/gate -- \
+  bash -lc 'python3 -m pip install -e ".[test]" && python3 -m pytest'
+fleet-build --node avrea --repo OWNER/REPO --sha FULL_40_CHARACTER_SHA \
+  --runner avrea-ubuntu-latest-4-vcpu-8gb --timeout 1800 -- bash -lc 'make test'
+# JSON file: an array of independent shell command strings, each at the same SHA.
+fleet-build --node avrea --matrix /tmp/commands.json --parallel 3 -- make test
+```
+
+Inputs are a **public** repository, full commit SHA, shell command, runner
+label, relative artifact globs, optional command matrix, parallel bound, and
+timeout. No local source/data/credentials are transferred. The client rejects
+private repos and implicit dirty heads; the workflow independently verifies
+public visibility and checks out the exact SHA with `persist-credentials: false`.
+Commands execute at the repo root for explicit `--sha`, or in the caller's
+subdirectory for inferred clean local heads. Include dependency/toolchain setup
+in the command. `--input`, `--keep`, local JDK/resource flags and `--light` are
+host-only, not silently ignored.
+
+The client dispatches with `gh workflow run`, correlates a unique request ID
+(never someone else's latest run), waits, downloads artifacts, validates
+exact-head receipts and returns the command's exit status. Matrix failures do
+not cancel siblings. Results include `request.json`, `budget.json`, `run.json`,
+`status.json`, and per-job `receipt.json`/`stdout.log` plus requested artifacts.
+Queue timeout requests cancellation; ambiguous dispatch failures retain their
+budget reservation and must not be blindly replayed. All logs, commands and
+artifacts are public: never put secrets or private data in them.
+
+**Runner/account facts:** [labels and RAM](https://docs.avrea.com/runners/),
+[rates](https://avrea.com/pricing), [billing](https://docs.avrea.com/billing/).
+Linux x86 sizes are 1/2/4/8/16/32 vCPU; ARM 1/2/4/8/16.
+`avrea-ubuntu-latest` is 2 vCPU/8 GB, latest currently Ubuntu24.04.
+Memory-qualified 4-vCPU/8-GB and 8-vCPU/16-GB variants are cheaper.
+`avrea-macos-26-{8,16}-vcpu` uses Apple M5 Max ARM (24/48 GB).
+Windows2025 labels are `avrea-windows-2025-{2,4,8,16}-vcpu`; no Windows32 label.
+Free-tier job/vCPU caps are lower and usage-dependent, not a published number.
+Start at an operator-approved parallel bound of4 and back off on queueing;
+this is a discovery policy, not a claim the service guarantees4 slots.
+
+**Monthly guard:** `scripts/fleet-avrea-budget check` runs before every lane
+dispatch. At80% used it warns; at95% projected usage it refuses (exit75),
+including timeout-based reservations for the requested fan-out. Reference
+minutes are priced at Linux x86 2-vCPU/$0.004: x864-vCPU/16-GB costs2x,
+4-vCPU/8-GB1.5x, 8-vCPU/16-GB3x, 8-vCPU/32-GB4x, 32-vCPU16x;
+ARM is3x its corresponding x86 type, Windows8 costs8x, macOS8 costs20x.
+Accounting is per second, not rounded job minutes. Other metered resources
+can consume the same free credit.
+
+The initial operator-confirmed baseline is org`z0`, **2,955 remaining of3,000**
+at2026-10-23 18:45CDT (23:45UTC), therefore45 reference minutes used.
+No card is on file; exhaustion stops jobs, but the guard deliberately holds
+earlier. Re-baseline from Kevin's Billing screenshot when a new balance is
+provided. No documented CLI billing field supplies this current free balance.
+The guard refuses missing/stale/invalid accounting rather than assuming zero.
+See `fleet-avrea-budget --help` for the local authoritative snapshot schema,
+factory workflow scope and reservation lifecycle. Snapshot/ledger live under
+`~/.local/state/fleet/avrea/`, never in public source. Protect that baseline as
+operator input; it is not self-reported by target code.
+
+Caching is colocated: `actions/cache@v4+` and language setup caches work
+without migration; package registries and supported build tools are proxied.
+Regular cache quota25GB/repo, LRU eviction, unused entries eligible after7days.
+Run a full gate twice and report both timings; do not call a second run a
+cache hit without cache evidence. [Cache docs](https://docs.avrea.com/cache/overview/).
+The documented CLI (`avr`, Python3.14+) exposes JSON run/job/repo/org inventory,
+logs, metrics, caches and SSH (`avr job ssh JOB_ID`); authenticate separately.
+SSH is only available while the job is live. [CLI](https://docs.avrea.com/cli/),
+[SSH](https://docs.avrea.com/debugging/).
+
+**Security:** dispatch is manual only, no `pull_request_target`, no workflow
+secrets, no deployment environments or credentials forwarded to target commands.
+Only public code/data is eligible; never execute untrusted fork PR code with
+secrets. Target checkout tokens are not persisted. The verification job's
+GitHub permission is read-only contents; artifact upload is the only write
+service it uses. Existing fork CI conversions live on downstream branches,
+never existing project default branches.
 
 ### `fleet run`
 

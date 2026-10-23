@@ -6,18 +6,30 @@ suites go to the workers by default:
 
 | Work | Where | Command |
 | --- | --- | --- |
-| Gradle / Android (NOOP, Lawnchair) | mbp | `fleet-build -- ./gradlew assembleFullDebug` |
-| Bun, Node, Python suites, `make` | mbp | `fleet-build -- bun test` |
-| lint, pure-Python tests, scans, git work (arm64-safe) | mbp or a phone | `fleet-build --light -- python3 -m pytest tests/unit` |
+| Public-source heavy installs/full suites/compiler gates | Avrea (4 vCPU by default) | `fleet-build --node avrea -- bash -lc 'npm ci && npm test'` |
+| Local/private data, native-toolchain Gradle/Android | mbp | `fleet-build -- ./gradlew assembleFullDebug` |
+| Local-data Bun/Node/Python suites, `make` | mbp | `fleet-build -- bun test` |
+| Light arm64-safe tests, scans, git work | phones | `fleet-build --phone -- python3 -m pytest tests/unit` |
+| x86 overflow and Docker | boat (trial allowance) | pin the admitted boat host lane |
 | Genuine GPU work | groot, inside the bounded agent envelope | allocate/prove the GPU; a name or render label is not enough |
 | CPU-only film delivery | mbp | `fleet-fframes-delivery --out NEW_DIRECTORY --wait 0` |
 | code from an unknown repo | k3s `factory` queue | oss-factory `factory submit` |
 
 `~/.local/bin/fleet-build` points to the installed admission owner's isolated
-dotfiles tree (inspect `readlink -f` rather than assuming a branch). Run it from anywhere inside a repo: it
-ships the repo's tracked and untracked-but-not-ignored files, runs the command
-in the same subdirectory on the worker, streams the output, and exits with the
-job's code. It never picks groot (groot has no host lane).
+dotfiles tree (inspect `readlink -f` rather than assuming a branch). Public
+committed heavy work prefers `--node avrea`: it dispatches an exact public SHA
+to [fleet-runner](https://github.com/kvnloo/fleet-runner), never ships local data,
+downloads per-job receipts/artifacts and returns the command exit status.
+Commit/push first or select `--repo OWNER/REPO --sha FULL_SHA` explicitly.
+Use `--matrix FILE --parallel 3` for independent commands at the same head;
+the operator-approved initial bound is4, back off if the free tier queues.
+The monthly budget guard warns at80% and refuses at95% projected usage,
+with rate-normalized minutes and a current operator billing baseline.
+See [Avrea routing, budget and security](README.md#avrea-public-exact-head-lane).
+
+The host lane remains for local-data/native jobs: run from anywhere inside a
+repo, ship tracked and untracked-but-not-ignored files, execute in the same
+subdirectory, stream output and return the job code. It never picks groot.
 
 ```sh
 cd /mnt/zer0models/noop-oura/android

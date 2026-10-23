@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# fleet-build: the default way for agents to run a build or test suite OFF groot.
-# It wraps `scripts/fleet run` with the owner's routing rule (docs/fleet/README.md,
-# "Default routing"): builds go to the MBP, light arm64-safe work may go to the
-# phones, and nothing queues on groot behind heavy.lock.
+# fleet-build: run verification OFF groot. Public committed heavy work prefers
+# --node avrea; local-data/native jobs use the host fleet. Routing policy:
+# docs/fleet/README.md, "Default routing".
 #
 #   fleet-build [opts] [--] CMD...        run from anywhere inside the repo
 #
@@ -17,7 +16,7 @@
 #                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
 #                    its 1200 MiB floor); mbp still wins unless it is busier
 #   --phone          like --light but only on a phone (arm64)
-#   --node NAME      pin a node (boat, mbp, s22, omarchy-phone)
+#   --node NAME      pin a node (avrea, mbp, s22, omarchy-phone, boat)
 #   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
 #   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
 #                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
@@ -28,6 +27,8 @@
 #   --public         reviewed public source; allow Boat overflow before queueing
 #   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
 #   --local-data     never send this job to Boat, even with --public
+#   --repo OWNER/REPO --sha SHA  Avrea: public exact head (otherwise clean local origin/HEAD)
+#   --runner LABEL --matrix FILE --parallel N --snapshot FILE  Avrea options
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -44,7 +45,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
@@ -57,6 +58,7 @@ while [ $# -gt 0 ]; do
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
+    --repo|--sha|--runner|--matrix|--parallel|--snapshot) avrea_opts+=("$1" "$2"); shift 2 ;;
     --mem) mem=$2; shift 2 ;;
     --cpus) cpus=$2; shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;
@@ -72,6 +74,18 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+if [ "$node" = avrea ]; then
+  [ ${#inputs[@]} -eq 0 ] && [ "$keep" = 0 ] && [ -z "$jdk" ] && [ "$mode" = build ] && [ -z "$mem" ] && [ -z "$cpus" ] || {
+    echo "fleet-build: Avrea uses public exact commits and --runner; local input/keep/JDK/mode/resource flags are host-only." >&2; exit 2;
+  }
+  [ -z "$src" ] || avrea_opts+=(--src "$src")
+  [ -z "$out" ] || avrea_opts+=(--out "$out")
+  [ -z "$timeout" ] || avrea_opts+=(--timeout "$timeout")
+  avrea_opts+=(--wait "$wait_s")
+  for f in "${fetch[@]}"; do avrea_opts+=(--fetch "$f"); done
+  exec "$(dirname "$FLEET")/fleet-avrea" "${avrea_opts[@]}" -- "$@"
+fi
+[ ${#avrea_opts[@]} -eq 0 ] || { echo "fleet-build: Avrea-only flags require --node avrea" >&2; exit 2; }
 [ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
