@@ -82,6 +82,9 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
   Review all source files and explicit `--input` files before upload.
 - `--src` must be a Git checkout. Tracked and unignored files form one tarball.
   Environment files refuse transfer. The archive limit is 32 MiB compressed.
+  Boat's JSON file API accepts only 5 MiB decoded. Larger archives use its
+  signed raw-upload URL. The host sends no account Authorization header there.
+  Signed URLs remain secret and do not enter job logs.
   Keep vendor trees and build caches ignored. `--no-src` can run standalone
   commands without an archive checkout. No host environment is forwarded.
 - Boat creates a lease, uploads the archive, runs the command, fetches each

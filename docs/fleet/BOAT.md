@@ -288,7 +288,7 @@ List-price equivalent was $0.00210 total, $0.00015 incremental, trial-covered.
 This is a qualification snapshot, not the account's future usage after other agents run.
 
 Compilation and Bash syntax checks passed. Executed behavioral coverage totals
-42 tests: Boat policy 11, Boat transfer/routing 16, phone lane 8, phone policy 7.
+44 tests: Boat policy 11, Boat transfer/routing 18, phone lane 8, phone policy 7.
 The transfer/routing cases include source and output traversal, capacity races,
 private-data routing, original failed-command status with missing artifacts,
 and successful-command failure when a requested artifact cannot be fetched.
@@ -300,6 +300,30 @@ Per-job logs and fetched outputs remain in that directory and under
 `~/.local/state/fleet/runs/`. The all-results receipt records the two S25 holds
 as failures. It must not be described as seven successful jobs.
 Usage and budget rules were broadcast to all 21 available peer agents.
+
+### Large-source upload correction
+
+A later public workload exposed the provider's separate **5 MiB decoded limit**
+on `PUT /files`. Its 5,943,644-byte source archive passed the local 32 MiB guard,
+but the provider returned `sandbox_direct_failed` before test output.
+That failed lease deleted its VM. Retrying the same JSON upload was not justified.
+
+The adapter now uses JSON writes only through 5 MiB. Larger archives use the
+documented [signed raw-upload endpoint](https://docs.boat.dev/api/reference/agent/create-upload-url.md).
+This preserves the original Git working-tree tarball rather than silently
+replacing it with a remote branch checkout. The local 32 MiB archive guard stays.
+The raw PUT sends no account Authorization header. Signed URLs are never logged.
+
+The correction passed scratch compilation and 18 transfer/routing tests before
+atomic installation. A real **6,294,224-byte compressed archive** then passed
+through `fleet-build --node boat`, beyond the 5,242,880-byte JSON limit.
+The guest verified all **6,291,456 bytes** of the public synthetic payload and
+its SHA-256 `e009f0a2dc066a36ef357b7ed185c156b00eb9c9d2a9f556627ac4e406c1e5b0`.
+It fetched `result.json`, exited 0, and completed deletion of `bx_4yztg25r`.
+Fleet job: `20261023-180937-b659d22a`. Invocation wall: **14.634 seconds**.
+Provider usage before deletion: 2 metered seconds. Receipt and fetched output:
+`/tmp/boat-fleet-evidence/large-upload/`. FactoryScale2 was notified after this proof.
+
 
 ## Periodic reaper installation
 

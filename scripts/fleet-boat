@@ -16,6 +16,9 @@ import tarfile
 import tempfile
 import time
 import uuid
+import urllib.error
+import urllib.parse
+import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 loader = importlib.machinery.SourceFileLoader("fleet_boat_policy", str(ROOT / "scripts/boat"))
@@ -56,12 +59,34 @@ def pack_source(src, archive, inputs, no_src=False):
         raise ValueError("Boat source archive exceeds 32 MiB; send a smaller reviewed snapshot")
 
 
+def upload_source(prefix, archive):
+    content = Path(archive).read_bytes()
+    destination = "/home/user/fleet-source.tar.gz"
+    if len(content) <= 5 * 1024 * 1024:
+        boat.api(prefix + "/files", "PUT", {"path": destination, "encoding": "base64",
+                                         "content": base64.b64encode(content).decode()})
+        return
+    upload = boat.api(prefix + "/files/upload-url", "POST",
+                      {"path": destination, "ttlSeconds": 300})
+    url = upload.get("url", "")
+    if upload.get("method") != "PUT" or urllib.parse.urlsplit(url).scheme != "https":
+        raise boat.BoatError("Invalid signed source upload response")
+    # The URL itself authorizes this one path. Never forward the Boat key.
+    request = urllib.request.Request(url, data=content, method="PUT",
+                                     headers={"Content-Type": "application/octet-stream"})
+    try:
+        with urllib.request.urlopen(request, timeout=90):
+            pass
+    except (urllib.error.URLError, OSError, ValueError):
+        # urllib errors can contain the signed URL. Keep it out of job logs.
+        raise boat.BoatError("Signed source upload failed; URL withheld") from None
+
+
 def callback(manifest_path):
     data = json.loads(Path(manifest_path).read_text())
     sid = os.environ["BOAT_SANDBOX_ID"]
     prefix = "/sandboxes/" + sid
-    encoded = base64.b64encode(Path(data["archive"]).read_bytes()).decode()
-    boat.api(prefix + "/files", "PUT", {"path": "/home/user/fleet-source.tar.gz", "encoding": "base64", "content": encoded})
+    upload_source(prefix, data["archive"])
     boat.remote(sid, "mkdir -p /home/user/fleet-job/src && tar -xzf /home/user/fleet-source.tar.gz -C /home/user/fleet-job && rm /home/user/fleet-source.tar.gz")
     # A fresh VM is the isolation/resource boundary. --mem/--cpus choose a
     # provider shape, not a fictitious per-process cgroup on the guest.

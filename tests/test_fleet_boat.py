@@ -42,6 +42,29 @@ class BoatTransferTests(unittest.TestCase):
             self.assertEqual(set(tar.getnames()), {"src/.gitignore", "src/public.py", "src/data/input"})
             self.assertEqual(tar.extractfile("src/data/input").read(), b"exact artifact")
 
+    def test_large_source_uses_signed_raw_upload_without_account_authorization(self):
+        from unittest.mock import MagicMock
+        content = b"public" * (5 * 1024 * 1024 // 6 + 1)
+        self.archive.write_bytes(content)
+        response = {"method": "PUT", "url": "https://uploads.boat.dev/example?signed=private"}
+        with patch.object(adapter.boat, "api", return_value=response) as api, \
+                patch.object(adapter.urllib.request, "urlopen", return_value=MagicMock()) as upload:
+            adapter.upload_source("/sandboxes/bx_23456789", self.archive)
+        self.assertEqual(api.call_args.args[:2], ("/sandboxes/bx_23456789/files/upload-url", "POST"))
+        request = upload.call_args.args[0]
+        self.assertEqual(request.get_method(), "PUT")
+        self.assertEqual(request.data, content)
+        self.assertFalse(request.has_header("Authorization"))
+
+    def test_signed_upload_failure_does_not_disclose_url(self):
+        self.archive.write_bytes(b"x" * (5 * 1024 * 1024 + 1))
+        url = "https://uploads.boat.dev/example?signed=private"
+        with patch.object(adapter.boat, "api", return_value={"method": "PUT", "url": url}), \
+                patch.object(adapter.urllib.request, "urlopen", side_effect=adapter.urllib.error.URLError(url)):
+            with self.assertRaises(adapter.boat.BoatError) as error:
+                adapter.upload_source("/sandboxes/bx_23456789", self.archive)
+        self.assertNotIn(url, str(error.exception))
+
     def test_environment_files_refuse_shipping(self):
         (self.src / ".env").write_text("not a real key")
         with self.assertRaisesRegex(ValueError, "environment file"):
