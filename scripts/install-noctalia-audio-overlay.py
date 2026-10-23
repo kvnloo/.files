@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
+import os
 import shutil
 from pathlib import Path
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIGHTNESS_PANEL_SOURCE = ROOT / "config/noctalia/overlays/BrightnessPanel.qml"
@@ -903,6 +906,25 @@ def mirror_overlay(source: Path, target: Path, relative: Path = Path()) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--display-panel-only", action="store_true",
+                        help="Atomically update only the installed Display Center; do not rebuild other overlays")
+    args = parser.parse_args()
+    if args.display_panel_only:
+        destination = TARGET / BRIGHTNESS_PANEL_OVERRIDE
+        if TARGET.is_symlink() or not destination.is_file() or destination.is_symlink() or not destination.resolve().is_relative_to(TARGET.resolve()):
+            raise SystemExit("Install the full user-local overlay before updating its display panel.")
+        with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, delete=False) as out:
+            temporary = Path(out.name)
+            try:
+                out.write(BRIGHTNESS_PANEL_SOURCE.read_text())
+                out.close()
+                os.chmod(temporary, destination.stat().st_mode & 0o777)
+                temporary.replace(destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+        print(destination)
+        return
     missing = [SOURCE / override for override in CUSTOMIZERS if not (SOURCE / override).is_file()]
     if missing:
         raise SystemExit("Noctalia source not found: " + ", ".join(map(str, missing)))
