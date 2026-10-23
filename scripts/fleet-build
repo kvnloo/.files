@@ -75,6 +75,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ "$node" = avrea ]; then
+  [ "$local_data" = 0 ] || { echo "fleet-build: --local-data cannot use Avrea" >&2; exit 2; }
   [ ${#inputs[@]} -eq 0 ] && [ "$keep" = 0 ] && [ -z "$jdk" ] && [ "$mode" = build ] && [ -z "$mem" ] && [ -z "$cpus" ] || {
     echo "fleet-build: Avrea uses public exact commits and --runner; local input/keep/JDK/mode/resource flags are host-only." >&2; exit 2;
   }

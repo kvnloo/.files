@@ -98,6 +98,10 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
   commands without an archive checkout. No host environment is forwarded.
 - Boat creates a lease, uploads the archive, runs the command, fetches each
   requested output, and deletes the VM. Fetches reject archive traversal.
+  Outputs are archived on the VM, not base64-streamed through command stdout.
+  Archives over 5 MiB use Boat's signed raw-download URL; smaller archives use
+  the bounded file API. Both paths verify the remote archive's byte count and
+  SHA256 before extraction. Receipts retain archive hashes and transport.
   Outputs and receipts remain under `~/.local/state/fleet/runs/JOB/`.
   Each output archive uses a signed raw-download URL, not command stdout.
   Downloads stream through a host temporary file before safe extraction.
@@ -191,6 +195,12 @@ See `fleet-avrea-budget --help` for the local authoritative snapshot schema,
 factory workflow scope and reservation lifecycle. Snapshot/ledger live under
 `~/.local/state/fleet/avrea/`, never in public source. Protect that baseline as
 operator input; it is not self-reported by target code.
+  Incremental accounting covers the configured factory workflows only, not
+  unrelated account activity after the screenshot. Unknown live factory jobs
+  accrue elapsed runtime; their future usage is not reserved. Locally admitted
+  dispatches retain full requested-time reservations until terminal evidence
+  settles them. Refresh the baseline after unrelated metered usage. This is
+  an admission guard, not a hard all-account billing ceiling.
 
 Caching is colocated: `actions/cache@v4+` and language setup caches work
 without migration; package registries and supported build tools are proxied.

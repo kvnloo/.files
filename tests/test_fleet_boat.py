@@ -1,5 +1,6 @@
 """Behavior tests for public-source transfer, output retrieval and routing."""
 import base64
+import hashlib
 import importlib.machinery
 import importlib.util
 import io
@@ -95,6 +96,8 @@ class BoatTransferTests(unittest.TestCase):
             member.size = 6
             tar.addfile(member, io.BytesIO(b"result"))
         def api(path, method="GET", body=None):
+            if "/files?" in path:
+                return {"encoding": "base64", "size": len(bundle.getvalue()), "content": base64.b64encode(bundle.getvalue()).decode()}
             if path.endswith("/files"):
                 with tarfile.open(fileobj=io.BytesIO(base64.b64decode(body["content"]))) as tar:
                     self.assertEqual(tar.extractfile("src/public.py").read(), b"print('public')\n")
@@ -103,8 +106,10 @@ class BoatTransferTests(unittest.TestCase):
                 return {"method": "GET", "url": "https://downloads.boat.dev/example?signed=private"}
             return {"exitCode": job_rc, "stdout": "job output\n", "stderr": ""}
         def remote(sid, command):
-            if fetch_error and "fleet-output-" in command:
+            if fetch_error and command.startswith("tar -C"):
                 raise adapter.boat.BoatError("Missing requested artifact")
+            if command.startswith("tar -C"):
+                return json.dumps({"size": len(bundle.getvalue()), "sha256": hashlib.sha256(bundle.getvalue()).hexdigest()})
             return ""
         with patch.dict(os.environ, BOAT_SANDBOX_ID="bx_23456789"), \
                 patch.object(adapter.boat, "api", side_effect=api), \
@@ -127,19 +132,21 @@ class BoatTransferTests(unittest.TestCase):
         destination = self.root / "large-output"
         destination.mkdir()
         url = "https://downloads.boat.dev/example?signed=private"
-        with patch.object(adapter.boat, "remote", return_value="truncated command stdout"), \
+        metadata = {"size": len(bundle.getvalue()), "sha256": hashlib.sha256(bundle.getvalue()).hexdigest()}
+        with patch.object(adapter.boat, "remote", side_effect=[json.dumps(metadata), ""]) as remote, \
                 patch.object(adapter.boat, "api", return_value={"method": "GET", "url": url}), \
                 patch.object(adapter.urllib.request, "urlopen", return_value=io.BytesIO(bundle.getvalue())):
-            adapter.fetch_output("bx_23456789", "/sandboxes/bx_23456789", "src/large.bin", destination, 0)
+            adapter.fetch_output("bx_23456789", "src/large.bin", destination)
+        self.assertNotIn("base64", remote.call_args_list[0].args[1])
         self.assertEqual((destination / "src/large.bin").read_bytes(), payload)
 
     def test_signed_download_failure_does_not_disclose_url(self):
         url = "https://downloads.boat.dev/example?signed=private"
-        with patch.object(adapter.boat, "remote"), \
+        with patch.object(adapter.boat, "remote", return_value=json.dumps({"size": 6000000, "sha256": "0" * 64})), \
                 patch.object(adapter.boat, "api", return_value={"method": "GET", "url": url}), \
                 patch.object(adapter.urllib.request, "urlopen", side_effect=adapter.urllib.error.URLError(url)):
             with self.assertRaises(adapter.boat.BoatError) as error:
-                adapter.fetch_output("bx_23456789", "/sandboxes/bx_23456789", "src/result.txt", self.root, 0)
+                adapter.fetch_output("bx_23456789", "src/result.txt", self.root)
         self.assertNotIn(url, str(error.exception))
 
     def test_callback_fetches_outputs_and_preserves_failure_status(self):
@@ -162,6 +169,45 @@ class BoatTransferTests(unittest.TestCase):
         with self.assertRaises(tarfile.FilterError):
             self.callback("../../escaped")
         self.assertFalse((self.root / "escaped").exists())
+
+    def test_large_output_uses_signed_download_and_checks_sha256(self):
+        from unittest.mock import MagicMock
+        content = os.urandom(6 * 1024 * 1024)
+        bundle = io.BytesIO()
+        with tarfile.open(fileobj=bundle, mode="w:gz") as tar:
+            member = tarfile.TarInfo("src/random.bin")
+            member.size = len(content)
+            tar.addfile(member, io.BytesIO(content))
+        archive = bundle.getvalue()
+        digest = hashlib.sha256(archive).hexdigest()
+        response = MagicMock()
+        response.__enter__.return_value = io.BytesIO(archive)
+        dest = self.root / "large"
+        with patch.object(adapter.boat, "remote", side_effect=[json.dumps({"size": len(archive), "sha256": digest}), ""]), \
+                patch.object(adapter.boat, "api", return_value={"method": "GET", "url": "https://downloads.boat.dev/file?signed=private"}) as api, \
+                patch.object(adapter.urllib.request, "urlopen", return_value=response) as download:
+            receipt = adapter.fetch_output("bx_23456789", "src/random.bin", dest)
+        self.assertEqual((dest / "src/random.bin").read_bytes(), content)
+        self.assertEqual(receipt["archive_sha256"], digest)
+        self.assertEqual(receipt["transport"], "signed-download")
+        self.assertTrue(api.call_args.args[0].endswith("/files/download-url"))
+        self.assertFalse(download.call_args.args[0].has_header("Authorization"))
+
+    def test_checksum_mismatch_refuses_extraction(self):
+        with patch.object(adapter.boat, "remote", return_value=json.dumps({"size": 3, "sha256": "0" * 64})), \
+                patch.object(adapter.boat, "api", return_value={"content": base64.b64encode(b"bad").decode()}):
+            with self.assertRaisesRegex(adapter.boat.BoatError, "SHA256"):
+                adapter.fetch_output("bx_23456789", "src/result", self.root / "refused")
+        self.assertFalse((self.root / "refused").exists())
+
+    def test_signed_download_failure_withholds_url(self):
+        url = "https://downloads.boat.dev/file?signed=private"
+        with patch.object(adapter.boat, "remote", return_value=json.dumps({"size": 6000000, "sha256": "0" * 64})), \
+                patch.object(adapter.boat, "api", return_value={"method": "GET", "url": url}), \
+                patch.object(adapter.urllib.request, "urlopen", side_effect=adapter.urllib.error.URLError(url)):
+            with self.assertRaises(adapter.boat.BoatError) as error:
+                adapter.fetch_output("bx_23456789", "src/result", self.root / "refused")
+        self.assertNotIn(url, str(error.exception))
 
     def test_budget_hold_is_preadmission_and_does_not_create(self):
         args = SimpleNamespace(keep=False, mem_mb=512, cpus=None, timeout=30, fetch=[])
@@ -247,6 +293,11 @@ sys.exit(75)
 
     def test_local_data_rejects_explicit_boat(self):
         result, calls = self.invoke('--local-data', '--node', 'boat')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(calls, [])
+
+    def test_local_data_rejects_explicit_avrea(self):
+        result, calls = self.invoke('--local-data', '--node', 'avrea')
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [])
 
