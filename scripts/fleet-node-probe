@@ -6,6 +6,7 @@ scripts/fleet-harden.sh; scripts/fleet runs it over ssh (as agentjob) and judges
 the result on groot. It never decides anything itself.
 """
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -109,7 +110,8 @@ def max_temp_c():
 def disk(path):
     try:
         u = shutil.disk_usage(path)
-        return {"path": path, "free_gb": round(u.free / 2**30, 1), "total_gb": round(u.total / 2**30, 1)}
+        return {"path": path, "free_gb": round(u.free / 2**30, 1), "total_gb": round(u.total / 2**30, 1),
+                "free_bytes": u.free, "total_bytes": u.total}
     except OSError:
         return None
 
@@ -235,6 +237,9 @@ def main():
         pw = {**pw, "source": "no battery (mains)"}
     print(json.dumps({
         "host": socket.gethostname(),
+        "host_id": "host-" + hashlib.sha256(
+            (read("/etc/machine-id") or read("/var/lib/dbus/machine-id") or socket.gethostname()).encode()
+        ).hexdigest()[:20],
         "ts": int(time.time()),
         "kernel": kern,
         "reboot_required": not os.path.isdir(f"/usr/lib/modules/{kern}") and os.path.isdir("/usr/lib/modules"),
