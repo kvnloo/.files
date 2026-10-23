@@ -228,6 +228,31 @@ class ShellBoundaryTests(unittest.TestCase):
             self.assertIn("Refuse[NO_REMOTE]", result.stderr)
             self.assertIn("admission refused (exit 75", result.stderr)
 
+    def test_shell_never_relabels_a_remote_command_exit_75(self):
+        # An isolated fake fleet executable: never an actual SSH, device or build.
+        with tempfile.TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            script = workspace / "fleet-build"
+            script.write_text((SCRIPTS / "fleet-build").read_text())
+            fake_fleet = workspace / "fleet"
+            marker = workspace / "invocations"
+            fake_fleet.write_text(
+                "#!/bin/sh\n"
+                f"printf 'called\\n' >> '{marker}'\n"
+                "printf 'fleet: job deadbeef -> mbp (mocked)\\n' >&2\n"
+                "exit 75\n"
+            )
+            fake_fleet.chmod(0o755)
+            result = subprocess.run(
+                ["bash", str(script), "--node", "mbp", "--class", "build",
+                 "--wait", "65", "--src", temp, "--", "true"],
+                cwd=temp, env={**os.environ, "FLEET_STATE": str(workspace / "state")},
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 75)
+            self.assertEqual(marker.read_text().splitlines(), ["called"])
+            self.assertNotIn("admission refused", result.stderr)
+            self.assertIn("not a typed admission refusal", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

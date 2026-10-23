@@ -147,7 +147,11 @@ while :; do
 done
 jid=$(sed -n 's/^fleet: job \([0-9a-f-]*\) -> .*/\1/p' "$err" | head -1)
 if [ $rc -eq 75 ]; then
-  echo "fleet-build: admission refused (exit 75; typed Refuse reason above). Do not queue it on groot." >&2
+  if grep -q '^fleet: Refuse\[' "$err"; then
+    echo "fleet-build: admission refused (exit 75; typed Refuse reason above). Do not queue it on groot." >&2
+  else
+    echo "fleet-build: remote command or operational guard exited 75 (not a typed admission refusal); not retrying." >&2
+  fi
 fi
 if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
   state=${FLEET_STATE:-$HOME/.local/state/fleet}
