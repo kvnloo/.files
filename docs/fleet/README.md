@@ -304,6 +304,27 @@ through the package transaction and was removed only on success.
 | Large memory jobs | A 75% ceiling does not promise 75% free RAM. Live memory admission wins. |
 | GPU inference | Not qualified. S22 and default S25 Vulkan enumerate CPU llvmpipe. Forced S25 Freedreno finds no GPU. |
 
+Bun package installation must avoid PRoot hardlink emulation. Use
+`bun install --backend copyfile` and invoke an already-installed native compiler
+directly, such as `node_modules/.bin/tsgo`, rather than another `bunx` install.
+FactoryScale reported a real S25 OpenCode qualification at `7e399379`
+(`20261023-163855-1ddd`): 562 packages installed in 15.13 seconds with copyfile,
+then 133 tests passed with 747 assertions in 4.59 seconds under job-local Bun 1.4.2.
+The later bunx compiler install expanded `.l2s` pointers and reached sampled
+RSS 2012 MiB against a 1 GiB request. The memory guard correctly returned 137.
+That typecheck was NOT_RUN, not a source failure.
+The leftover job cache refused PRoot cleanup. Accessible entries measured
+345 KiB, not a complete size because some pointers returned EPERM. The phone
+still had 15 GiB free and all slot locks were free. Do not retry that expansion
+or recursively delete unrelated guest data to remove the isolated cache.
+For uv, set `UV_LINK_MODE=copy`. FactoryScale's initial S25
+`20261023-165620-f753` downloaded CPython 3.13.13 but failed venv seeding before
+tests because of hardlink emulation. Its accessible leftover size was 2824 KiB
+with nine inaccessible paths, while the filesystem retained 14 GiB free.
+The corrected copy-mode job `20261023-165805-1b96` passed 19 study tests,
+three manifest tests and the real producer/consumer check in 30.88 seconds.
+These are peer-reported qualification results, not tests rerun by PhoneFleet.
+
 S22 uses key-only SSH at `100.97.11.22:8022` (`ssh s22`), even when its Android
 Tailscale app is offline. Self-ADB uses `_adb-tls-connect._tcp` mDNS.
 Never touch its launcher UI for a build. Worker affinity excludes core 7.
@@ -331,15 +352,21 @@ exercise real wrapper execution, slot exclusion, aggregate memory admission,
 light-mode gates and the explicit worker override. Android telemetry inside
 the unit tests is an isolated fixture, not evidence of hardware performance.
 
-| Node | Eight-test payload | End-to-end fleet wall time | Job ID |
+| Node | Eight-test payload | Observed command wall | Job ID |
 | --- | ---: | ---: | --- |
 | S25 `omarchy-phone` | 25.704 s | 33.124 s | `20261023-161317-97f0` |
 | S22 `galaxy-s22plus` | 45.526 s | 55.319 s | `20261023-162125-2eb0` |
+| MBP `mbp` (1 CPU, 512 MiB) | 25.384 s | 87.87 s including quiet-lock wait | `20261023-165950-0d0c` |
 
-Both jobs exited 0 and printed matching source hashes:
+All three jobs exited 0 and printed matching source hashes:
 runner `d44ad6da0a61a4b78e3fab95ffc109a99d74df83b2f9af8c81f2859594b4aaa9`,
 tests `28140676e82c236c7e3e06a55b9fb183c05b36324c56b905405a87ecf2249427`.
 Logs remain under `~/.local/state/fleet/runs/JOB-NODE.log` on groot.
+Phone wall figures measure the direct fleet invocation. MBP's observed command
+wall includes the external quiet-lock wait, so it is not a normalized fleet-only
+comparison. Its persisted job log confirms all eight tests and exit 0.
+The MBP attempt used `--wait 0` inside the shared lock. Any admission retry
+must release the locks and sleep outside them.
 This suite includes wait-based concurrency tests. Do not treat these numbers
 as a CPU or GPU ranking. Source-transfer size also matters: shipping the whole
 dotfiles tree previously cost S25 118.041 seconds end-to-end for a 26.180-second

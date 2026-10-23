@@ -38,6 +38,11 @@ fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
   is hot, or cordoned): `fleet-build` waits and retries every 60 s for up to
   `--wait` seconds (default 1800), then exits 75. That wait is the queue. Do not
   fall back to a groot build to save time.
+- Never hold Groot's `/tmp/mbp-turnstile.lock` or `/tmp/mbp-quiet.lock` during
+  admission waits. Inside either lock, use `fleet-build --wait 0`.
+  On admission exit 75, release the locks, sleep outside them, then retry the
+  whole lock wrapper. A 55-minute admission wait inside an exclusive lock
+  blocked 19 jobs on 2026-10-23.
 - Explicit `--node mbp` does not bypass pause, thermal or health admission.
   Unknown/unhealthy thermal telemetry holds before source transfer. A missing CPU
   toolchain is not permission to run on groot; install it through fleet IaC or hold.
@@ -76,6 +81,10 @@ Guest package policy is `phone_packages` in the registry.
 phone jobs. `--check` only reads installed package versions.
 See the [phone audit](README.md#phone-audit-and-routing-2026-10-23) for measured
 results and GPU limits. Neither phone supports Docker/k3s or x86 executables.
+For phone dependency setup, use `bun install --backend copyfile` and
+`UV_LINK_MODE=copy` with uv. PRoot hardlink emulation can create inaccessible
+`.l2s` caches and memory expansion. Invoke an installed compiler directly rather
+than a second `bunx` package install. See the audit for real failure receipts.
 
 S25 memory (measured 2026-10-20 23:36): the phone has 11.1 GiB RAM and 12 GiB
 zram swap (6.2 GiB in use). `MemAvailable` is phone-wide, about 2.1 GiB. The
