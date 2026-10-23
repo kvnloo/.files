@@ -162,6 +162,19 @@ def guest_services():
     out["sshd"] = "active" if sshd else "down"
     serve = cmdline(f"{home}/.local/state/tern-remote/pid") or ""
     out["tern-remote"] = "active" if " remote serve --user " in serve else "down"
+    try:
+        from fleet_phone import alive, read as read_json
+        status = read_json(os.path.expanduser("~/.local/state/fleet-phone-supervisor/status.json"), {})
+        executor = read_json(os.path.expanduser("~/.local/state/fleet-phone-worker/executor.json"), {})
+        out["fleet-worker"] = "active" if alive(executor.get("identity")) else "down"
+        if alive(status.get("identity")):
+            out["fleet-supervise"] = "active" if status.get("observed") == "running" else "stopped"
+            for name, info in status.get("services", {}).items():
+                if info.get("state") != "running":
+                    out[name] = info.get("state", "unknown")
+            return out
+    except (ImportError, ValueError, OSError):
+        pass
     # The event-driven supervisor (fleet-phone-supervise): alive = its pid runs. No
     # heartbeat: it never wakes on a timer. Its session should be Omalauncher's audio PRoot.
     sup = f"{home}/.local/state/fleet/supervise"
@@ -206,6 +219,10 @@ def main():
     except (OSError, ValueError):
         pass
     kern = os.uname().release
+    try:
+        profile = json.loads(read(os.path.expanduser("~/.config/fleet/phone-mode.json"), "{}"))
+    except (ValueError, TypeError):
+        profile = {"mode": "invalid"}
     systemd = os.path.isdir("/run/systemd/system")
     k3s_unit = "k3s" if systemd and active("k3s") == "active" else "k3s-agent"
     pw = power()
@@ -235,6 +252,9 @@ def main():
         "max_temp_c": max_temp_c(),
         "updates": updates,
         "maintenance": os.path.exists("/var/lib/fleet/maintenance"),
+        "phone_profile": profile,
+        "paused": os.path.exists(os.path.expanduser("~/.config/fleet/pause")) or os.path.exists(os.path.expanduser("~/.config/fleet/no-autostart")),
+        "host_lane_supported": android and not systemd,
         "lane": lane_jobs(),
     }, separators=(",", ":")))
 

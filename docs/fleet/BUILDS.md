@@ -60,10 +60,22 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
 - Check a node's toolchain before relying on it:
   `scripts/fleet run --node mbp --no-src -- sh -c 'java -version; bun --version; echo $ANDROID_HOME'`.
 
-The phones (`omarchy-phone`, `galaxy-s22plus`) cannot run Gradle (arm64, about
-2-3 GiB free, no SDK) and refuse jobs under 50 % battery off-charger or when
-hot. `--light` (512 MiB per job) sends work there only when mbp is busier;
-`--phone` forces a phone.
+Prefer phone workers for arm64-friendly tests when the MBP queue is busy:
+`fleet-build --node galaxy-s22plus --light --mem 512M --wait 0 -- python3 ...`,
+or replace the node with `omarchy-phone`. Keep `--light` with the explicit pin,
+because phones do not advertise the default `build` class.
+Worker mode gives S25 cores 0-5/six slots and S22 cores 0-6/four slots.
+Both reserve at most 75% RAM and retain the live 1200 MiB floor plus reservations.
+Core 7 remains excluded for S22 launcher headroom. Jobs keep nice 19 and idle I/O.
+The owner's worker override removes thermal and charging gates, retaining only
+S25's 2% battery floor. Light mode keeps one slot and the original safety gates.
+Use `scripts/fleet phone-mode NODE worker|light` to switch, or omit the mode to read it.
+S25's profile exposes its existing mise Node 24.21.0 and Bun 1.3.14 to fleet jobs.
+Guest package policy is `phone_packages` in the registry.
+`scripts/fleet toolchain NODE` provisions those packages through normal admitted
+phone jobs. `--check` only reads installed package versions.
+See the [phone audit](README.md#phone-audit-and-routing-2026-10-23) for measured
+results and GPU limits. Neither phone supports Docker/k3s or x86 executables.
 
 S25 memory (measured 2026-10-20 23:36): the phone has 11.1 GiB RAM and 12 GiB
 zram swap (6.2 GiB in use). `MemAvailable` is phone-wide, about 2.1 GiB. The

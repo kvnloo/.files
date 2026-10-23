@@ -21,7 +21,7 @@ echo "==> checking $TARGET is an Android Linux guest"
 "${SSH[@]}" 'case "$(uname -r)" in *android*) ;; *) echo "not an Android kernel" >&2; exit 1;; esac
   command -v adb >/dev/null || { echo "adb missing in the guest: pacman -S android-tools" >&2; exit 1; }
   command -v python3 >/dev/null || { echo "python3 missing: pacman -S python" >&2; exit 1; }
-  for t in nice ionice taskset setsid timeout tar; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
+  for t in nice ionice taskset setsid timeout tar flock; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
 
 # Pick the adb device that is this phone (the guest reaches its own Android over
 # wireless debugging). With --model, refuse anything else.
