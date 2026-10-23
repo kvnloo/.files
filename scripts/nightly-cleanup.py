@@ -132,7 +132,7 @@ def cleanup_project(project):
         if depth >= 3:
             dirs[:] = []
     # Linked worktrees only: never recursively delete the primary clone/common store.
-    if not stale_worktree:
+    if not stale_worktree or any((project / name).exists() for name in ('products', 'data', 'sessions', 'memories')):
         return
     if git(project, 'status', '--porcelain', '--untracked-files=all'):
         return

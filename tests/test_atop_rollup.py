@@ -70,5 +70,40 @@ class RollupTests(unittest.TestCase):
             self.assertTrue(raw.exists())
 
 
+    def test_reader_reset_gaps_idempotence_and_changed_source_retention(self):
+        import argparse
+        import contextlib
+        import io
+        from unittest.mock import Mock, patch
+        base = 1767225600
+        template = {'host': 'fixture', 'CPU': {'utime': 10, 'itime': 90},
+                    'CPL': {'lavg1': 1.}, 'MEM': {'physmem': 1000},
+                    'SWP': {}, 'PAG': {'oomkills': 0}, 'PSI': {}, 'DSK': [], 'NET': []}
+        records = [dict(template, timestamp=base + stamp, elapsed=elapsed)
+                   for stamp, elapsed in [(0, 100000), (10, 10), (25, 10), (30, 1000), (40, 10)]]
+        with tempfile.TemporaryDirectory() as d:
+            rawdir, out = Path(d) / 'raw', Path(d) / 'rollups'
+            rawdir.mkdir()
+            raw = rawdir / 'atop_20260101'
+            raw.write_bytes(b'fixture-reader-input')
+            shard = out / (raw.name + '.sqlite')
+            args = argparse.Namespace(raw=str(raw), output=str(shard), source_identity=None, atop='/fixture-reader')
+            for _ in range(2):
+                proc = Mock()
+                proc.stdout = iter(json.dumps(r) + '\n' for r in records)
+                proc.wait.return_value = 0
+                proc.poll.return_value = 0
+                with patch.object(rollup.subprocess, 'check_output', return_value='fixture 1'), \
+                     patch.object(rollup.subprocess, 'Popen', return_value=proc), \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    rollup.convert(args)
+                manifest = rollup.verify(shard, rollup.identity(raw))
+                self.assertEqual((manifest['samples'], manifest['accepted_samples'], manifest['reset_samples']), (5, 3, 2))
+                self.assertEqual((manifest['gaps'], manifest['covered_seconds']), (1, 30.))
+            raw.write_bytes(b'changed-source')
+            with self.assertRaisesRegex(ValueError, 'identity differs'):
+                rollup.maintain(argparse.Namespace(raw_dir=str(rawdir), rollups=str(out), retire=True))
+            self.assertTrue(raw.exists())
+
 if __name__ == '__main__':
     unittest.main()
