@@ -118,15 +118,11 @@ The last two commands require the z0 feat/fleet-binding-health contract
 on MBP. If not installed, UNKNOWN/unavailable is an expected failure
 receipt, not a green gate. Do not treat unit tests or dry-run as proof
 of loaded bindings, successful retrieval, or verified model use.
-From the existing **Draft PR30** fleet controller checkout, if
-available, OMP can ship this branch for MBP-only checks using:
-
-~~~sh
-scripts/fleet-build --node mbp --light --wait 0 -- python3 -m pytest -q tests/test_iac_plan.py tests/test_iac_z0_health.py tests/test_iac_collect.py
-~~~
-
-The fleet controller lives on another Draft branch; the command above
-is a handoff example, NOT a command available on this dev-based branch.
+If OMP uses the existing **Draft PR30** fleet-build wrapper to execute
+these on MBP, it must run from this branch checkout and set --src to
+this branch checkout explicitly. That wrapper lives on a different
+Draft branch and is NOT included here; never accidentally ship PR30's
+source as this profile branch or run tests on groot.
 
 ## Owner-reviewed clean plan / apply (only on groot, later)
 
