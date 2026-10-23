@@ -24,6 +24,7 @@ the k3s `factory` queue instead (oss-factory `factory submit`).
 import argparse
 import concurrent.futures as cf
 import json
+import math
 import os
 import random
 import re
@@ -461,7 +462,8 @@ def cmd_run(args):
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
         mem_available, load, ncpu = (p.get("mem_available_mb"), p.get("load1"), p.get("ncpu"))
-        if any(isinstance(x, bool) or not isinstance(x, (int, float)) or x < 0
+        if any(isinstance(x, bool) or not isinstance(x, (int, float))
+               or not math.isfinite(x) or x < 0
                for x in (mem_available, load, ncpu)) or ncpu == 0:
             notes.append(f"{n['name']}: incomplete or invalid capacity probe"); continue
         available = True

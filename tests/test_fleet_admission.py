@@ -151,6 +151,10 @@ class FleetAdapterTests(unittest.TestCase):
         self.refusing(fake_args(self.source), "UNAVAILABLE", {"error": "offline"})
         self.refusing(fake_args(self.source), "UNAVAILABLE",
                       {"mem_available_mb": None, "load1": 0, "ncpu": 2})
+        self.refusing(fake_args(self.source), "UNAVAILABLE",
+                      {"mem_available_mb": float("nan"), "load1": 0, "ncpu": 2})
+        self.refusing(fake_args(self.source), "UNAVAILABLE",
+                      {"mem_available_mb": 4096, "load1": float("inf"), "ncpu": 2})
         self.refusing(fake_args(self.source), "NO_ROOM",
                       {"mem_available_mb": 400, "load1": 0, "ncpu": 2})
 

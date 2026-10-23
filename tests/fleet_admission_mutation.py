@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Fail if the verified laws accept a fallback/capacity-bypass mutation.
+"""Reject explicit groot fallback and capacity-bypass mutants under unchanged laws.
 
-Scratch copies only. The reference must check before a failed mutant can count.
+Scratch copies only. No real process, SSH, device or build effects occur.
+A valid reference verdict is mandatory before a mutant failure can count.
 """
 from __future__ import annotations
 
@@ -12,8 +13,14 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1] / "bend/fleet_admission"
-OLD = "    case False{}:\n      FRefuse{RNoRoom{}}"
-BROKEN = "    case False{}:\n      FAdmit{}"
+MUTATIONS = [
+    ("groot fallback",
+     "    case FGroot{}:\n      FRefuse{RGrootForbidden{}}",
+     "    case FGroot{}:\n      FAdmit{}"),
+    ("capacity bypass",
+     "    case False{}:\n      FRefuse{RNoRoom{}}",
+     "    case False{}:\n      FAdmit{}"),
+]
 
 
 def verify(bend, cwd):
@@ -32,19 +39,20 @@ def main():
         scratch = Path(folder)
         for filename in ("MODEL.bend", "LAWS.bend", "PROOF.bend"):
             shutil.copy2(ROOT / filename, scratch / filename)
-        code, text = verify(bend, scratch)
-        if code or "ALL PROOFS CHECK" not in text or "SOME PROOFS FAIL" in text:
-            raise AssertionError("reference proof failed: " + text[-2000:])
-        original = (scratch / "MODEL.bend").read_text()
-        if original.count(OLD) != 1:
-            raise AssertionError("fallback mutation anchor changed; update mutation review")
-        (scratch / "MODEL.bend").write_text(original.replace(OLD, BROKEN))
-        code, text = verify(bend, scratch)
-        if code == 0 and "ALL PROOFS CHECK" in text and "SOME PROOFS FAIL" not in text:
-            raise AssertionError("law-breaking local fallback mutation was accepted")
-        if "SOME PROOFS FAIL" not in text and code == 0:
-            raise AssertionError("mutant lacked an explicit failure verdict: " + text[-2000:])
-        print("fleet admission: no-room -> Admit mutation rejected")
+        code, output = verify(bend, scratch)
+        if code or "ALL PROOFS CHECK" not in output or "SOME PROOFS FAIL" in output:
+            raise AssertionError("reference proof failed: " + output[-2000:])
+        source = (scratch / "MODEL.bend").read_text()
+        for label, old, broken in MUTATIONS:
+            if source.count(old) != 1:
+                raise AssertionError(f"{label}: mutation anchor changed; review model diff")
+            (scratch / "MODEL.bend").write_text(source.replace(old, broken))
+            code, output = verify(bend, scratch)
+            # A toolchain crash isn't valid evidence of a rejected law.
+            if "SOME PROOFS FAIL" not in output:
+                raise AssertionError(f"{label}: no explicit failed-proof verdict: " + output[-2000:])
+            print(f"fleet admission: {label} mutation rejected")
+        (scratch / "MODEL.bend").write_text(source)
 
 
 if __name__ == "__main__":
