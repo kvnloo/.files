@@ -288,7 +288,7 @@ List-price equivalent was $0.00210 total, $0.00015 incremental, trial-covered.
 This is a qualification snapshot, not the account's future usage after other agents run.
 
 Compilation and Bash syntax checks passed. Executed behavioral coverage totals
-44 tests: Boat policy 11, Boat transfer/routing 18, phone lane 8, phone policy 7.
+46 tests: Boat policy 11, Boat transfer/routing 20, phone lane 8, phone policy 7.
 The transfer/routing cases include source and output traversal, capacity races,
 private-data routing, original failed-command status with missing artifacts,
 and successful-command failure when a requested artifact cannot be fetched.
@@ -323,6 +323,31 @@ It fetched `result.json`, exited 0, and completed deletion of `bx_4yztg25r`.
 Fleet job: `20261023-180937-b659d22a`. Invocation wall: **14.634 seconds**.
 Provider usage before deletion: 2 metered seconds. Receipt and fetched output:
 `/tmp/boat-fleet-evidence/large-upload/`. FactoryScale2 was notified after this proof.
+
+### Large-artifact download correction
+
+A later DSH build returned command exit 0 but failed artifact retrieval with
+`not a gzip file`. The old path transported base64 archives through command
+stdout. Provider output truncation was suspected, but its exact behavior was
+not isolated. No runtime artifact was claimed from that failed retrieval.
+
+Output retrieval now creates the archive on the VM and requests a
+[signed raw-download URL](https://docs.boat.dev/api/reference/agent/create-download-url.md).
+It streams raw bytes through a temporary host file and applies the existing
+safe extraction filter. Command stdout is no longer an artifact transport.
+The GET forwards no account Authorization header. Signed URLs remain suppressed.
+All transfer operations remain inside the same bounded, auto-deleted lease.
+
+Scratch compilation and 20 transfer/routing tests passed before atomic
+installation. The tests include a large raw output while mocked command stdout
+contains unrelated truncated text, plus traversal and URL-disclosure failures.
+A real **8,388,608-byte output** and its JSON receipt then fetched successfully.
+The host independently verified size and SHA-256:
+`5f5c86efc26d8dc01ba7d9e795535261b923f3769fef1be7745f121670c13476`.
+Fleet job `20261023-185340-67b6ff91` exited 0 in **21.536 seconds**.
+Deletion of VM `bx_x7nnkwf6` completed. Pre-deletion usage was 6 metered seconds.
+Evidence: `/tmp/boat-fleet-evidence/large-download/`.
+DshLead2 received the verified correction before its bounded exact-head replay.
 
 
 ## Periodic reaper installation

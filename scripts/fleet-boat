@@ -4,12 +4,12 @@ import argparse
 import base64
 import importlib.machinery
 import importlib.util
-import io
 import json
 import os
 import math
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -82,6 +82,26 @@ def upload_source(prefix, archive):
         raise boat.BoatError("Signed source upload failed; URL withheld") from None
 
 
+def fetch_output(sid, prefix, name, destination, index):
+    archive = f"/home/user/fleet-output-{index}.tar.gz"
+    boat.remote(sid, "tar -C /home/user/fleet-job -czf " + shlex.quote(archive) + " -- " + shlex.quote(name))
+    download = boat.api(prefix + "/files/download-url", "POST",
+                        {"path": archive, "ttlSeconds": 300})
+    url = download.get("url", "")
+    if download.get("method") != "GET" or urllib.parse.urlsplit(url).scheme != "https":
+        raise boat.BoatError("Invalid signed output download response")
+    request = urllib.request.Request(url, method="GET")
+    with tempfile.TemporaryFile() as stream:
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                shutil.copyfileobj(response, stream)
+        except (urllib.error.URLError, OSError, ValueError):
+            raise boat.BoatError("Signed output download failed; URL withheld") from None
+        stream.seek(0)
+        with tarfile.open(fileobj=stream, mode="r:gz") as tar:
+            tar.extractall(destination, filter="data")
+
+
 def callback(manifest_path):
     data = json.loads(Path(manifest_path).read_text())
     sid = os.environ["BOAT_SANDBOX_ID"]
@@ -98,18 +118,15 @@ def callback(manifest_path):
     rc = result.get("exitCode")
     rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
     Path(data["receipt"]).write_text(json.dumps({"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc}) + "\n")
-    for name in data["fetch"]:
+    for index, name in enumerate(data["fetch"]):
         relative(name)
-        transfer = "tar -C /home/user/fleet-job -czf - -- " + shlex.quote(name) + " | base64 -w0"
         try:
-            encoded = boat.remote(sid, "bash -o pipefail -c " + shlex.quote(transfer))
+            fetch_output(sid, prefix, name, data["dest"], index)
         except boat.BoatError as exc:
             print(f"fleet: fetch failed for {name}: {exc}; command exit {rc}", file=sys.stderr)
             if rc == 0:
                 raise
             continue
-        with tarfile.open(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True)), mode="r:gz") as tar:
-            tar.extractall(data["dest"], filter="data")
         print("fleet: fetched " + name + " -> " + data["dest"], file=sys.stderr)
     return rc
 

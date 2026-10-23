@@ -99,16 +99,48 @@ class BoatTransferTests(unittest.TestCase):
                 with tarfile.open(fileobj=io.BytesIO(base64.b64decode(body["content"]))) as tar:
                     self.assertEqual(tar.extractfile("src/public.py").read(), b"print('public')\n")
                 return {}
+            if path.endswith("/files/download-url"):
+                return {"method": "GET", "url": "https://downloads.boat.dev/example?signed=private"}
             return {"exitCode": job_rc, "stdout": "job output\n", "stderr": ""}
         def remote(sid, command):
-            if fetch_error and "base64" in command:
+            if fetch_error and "fleet-output-" in command:
                 raise adapter.boat.BoatError("Missing requested artifact")
-            return base64.b64encode(bundle.getvalue()).decode() if "base64" in command else ""
+            return ""
         with patch.dict(os.environ, BOAT_SANDBOX_ID="bx_23456789"), \
                 patch.object(adapter.boat, "api", side_effect=api), \
-                patch.object(adapter.boat, "remote", side_effect=remote):
+                patch.object(adapter.boat, "remote", side_effect=remote), \
+                patch.object(adapter.urllib.request, "urlopen", return_value=io.BytesIO(bundle.getvalue())) as download:
             rc = adapter.callback(manifest)
+        if download.called:
+            request = download.call_args.args[0]
+            self.assertEqual(request.get_method(), "GET")
+            self.assertFalse(request.has_header("Authorization"))
         return rc, dest, receipt
+
+    def test_large_output_uses_raw_download_not_command_stdout(self):
+        payload = os.urandom(6 * 1024 * 1024)
+        bundle = io.BytesIO()
+        with tarfile.open(fileobj=bundle, mode="w:gz") as tar:
+            member = tarfile.TarInfo("src/large.bin")
+            member.size = len(payload)
+            tar.addfile(member, io.BytesIO(payload))
+        destination = self.root / "large-output"
+        destination.mkdir()
+        url = "https://downloads.boat.dev/example?signed=private"
+        with patch.object(adapter.boat, "remote", return_value="truncated command stdout"), \
+                patch.object(adapter.boat, "api", return_value={"method": "GET", "url": url}), \
+                patch.object(adapter.urllib.request, "urlopen", return_value=io.BytesIO(bundle.getvalue())):
+            adapter.fetch_output("bx_23456789", "/sandboxes/bx_23456789", "src/large.bin", destination, 0)
+        self.assertEqual((destination / "src/large.bin").read_bytes(), payload)
+
+    def test_signed_download_failure_does_not_disclose_url(self):
+        url = "https://downloads.boat.dev/example?signed=private"
+        with patch.object(adapter.boat, "remote"), \
+                patch.object(adapter.boat, "api", return_value={"method": "GET", "url": url}), \
+                patch.object(adapter.urllib.request, "urlopen", side_effect=adapter.urllib.error.URLError(url)):
+            with self.assertRaises(adapter.boat.BoatError) as error:
+                adapter.fetch_output("bx_23456789", "/sandboxes/bx_23456789", "src/result.txt", self.root, 0)
+        self.assertNotIn(url, str(error.exception))
 
     def test_callback_fetches_outputs_and_preserves_failure_status(self):
         rc, dest, receipt = self.callback()

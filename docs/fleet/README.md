@@ -90,6 +90,9 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
 - Boat creates a lease, uploads the archive, runs the command, fetches each
   requested output, and deletes the VM. Fetches reject archive traversal.
   Outputs and receipts remain under `~/.local/state/fleet/runs/JOB/`.
+  Each output archive uses a signed raw-download URL, not command stdout.
+  Downloads stream through a host temporary file before safe extraction.
+  The host forwards no account Authorization header and never logs signed URLs.
   `--keep` is forbidden. Failed jobs also delete their VM.
   A failed command keeps its original exit code if a requested output is absent.
   A successful command with an unfetchable requested output still fails.
