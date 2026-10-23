@@ -1,0 +1,104 @@
+schema = 1
+
+# Stable logical host ids. Host-specific implementation layers should use these
+# names where practical; match_hostnames keeps older/live hostnames compatible.
+
+[hosts.desktop]
+match_hostnames = ["0", "groot"]
+platform = "cachyos"
+package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
+onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
+system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
+system_timers = ["tern-remote-refresh.timer"]
+system_sockets = ["keyd-layers.socket"]
+user_services = ["hermes-gateway.service"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
+nix_profile = "desktop"
+hypr_host = "0"
+
+# Verified upstream release; per-user default explorer, no portal takeover.
+[hosts.desktop.strata]
+repository = "https://github.com/lgse/strata"
+version = "1.0.0"
+asset = "strata-1.0.0-x86_64-unknown-linux-gnu.tar.gz"
+sha256 = "e15095a201165132a88032df15ecbeab795a13d6cacc4ebb943e276c35ff492e"
+verify_attestation = true
+binary = "~/.local/bin/strata"
+desktop_entry = "~/.local/share/applications/io.github.lgse.Strata.desktop"
+desktop_mime_registration = true
+default_folder_handler = "io.github.lgse.Strata.desktop"
+explorer_shortcuts = ["SUPER+E"]
+runtime_packages = ["bubblewrap", "ffmpeg", "ffmpegthumbnailer", "fontconfig", "gstreamer", "gst-libav", "gst-plugins-base", "gst-plugins-good", "gtk4", "gtksourceview5", "gvfs", "poppler-glib"]
+
+# z0 intent is declarative host/harness/profile selection, not observed activation.
+# Missing components = UNKNOWN; [] = explicitly no desired components.
+# The registry (kvnloo/z0) owns these IDs and native binding recipes.
+[hosts.desktop.z0_components]
+# No host-global components: other unspecified profiles remain UNKNOWN.
+
+# Candidate desired CONFIG only. Current Hermes clean has ctx/noop; z0 must
+# preserve both and all other unmanaged entries. No live clean edits here.
+[hosts.desktop.z0_components.harnesses.hermes.profiles.clean]
+components = ["tencentdb-memory", "z0intelligence"]
+
+# Existing host-supported TencentDB/z0int desired topology (#12, z0#15).
+# Observed service/config presence is not proof of retrieval or continuity.
+[hosts.desktop.z0_components.harnesses.hermes.profiles.default]
+components = ["tencentdb-memory", "z0intelligence"]
+
+[hosts.desktop.z0_components.harnesses.hermes.profiles.chiefstaff]
+components = ["tencentdb-memory", "z0intelligence"]
+
+# Do not silently promote observed native MCP entries to desired bindings.
+# Empty is deliberate, and the registry's native apply never prunes unmanaged
+# entries. Harness IDs are AODL-native: claude, not claude-code.
+[hosts.desktop.z0_components.harnesses.claude]
+components = []
+
+[hosts.desktop.z0_components.harnesses.codex]
+components = []
+
+[hosts.desktop.z0_components.harnesses.omp]
+components = []
+
+[hosts.mbp]
+match_hostnames = ["mbp"]
+platform = "cachyos"
+package_groups = ["core", "desktop", "dev", "shell", "fonts"]
+onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
+system_services = ["tailscaled.service"]
+user_services = []
+user_timers = ["z0int-loop-tick.timer"]
+nix_profile = "mbp"
+hypr_host = "mbp"
+
+# Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
+# Use the explicit logical id: the guest kernel hostname is "localhost".
+# MBP has a z0int timer, but no independently qualified harness/component
+# activation. Explicitly select none; do not infer desired from timer state.
+[hosts.mbp.z0_components]
+components = []
+
+[hosts.phone]
+match_hostnames = ["omarchy-phone"]
+platform = "arch"
+package_groups = []
+onboard_modules = []
+system_services = []
+user_services = []
+user_timers = []
+tern_plugin_source = "config/tern-phone/phone-controls"
+
+# Arch PRoot is a client/transport guest, not a proven local memory backend.
+# No local Hermes/Claude/Codex/OMP component bindings qualified for this host.
+# No systemd or memory service is requested by this selection.
+[hosts.phone.z0_components]
+components = []
+# Workload ownership stays in the workload repo. This declaration only says
+# where the local lab belongs once the repo URL is published.
+[clusters.hermes-lab]
+enabled = false
+host = "desktop"
+distribution = "kind"
+owner_repo = "hermes-k8s-lab"
+purpose = "local-hermes-experimentation"
