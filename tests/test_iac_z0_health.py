@@ -50,7 +50,7 @@ def test_unknown_empty_and_profile_override():
             }},
             "claude": {},
         }}
-    }}
+    }}}
     assert plan.z0_components_for(fleet, "0", "hermes", "clean") == ["z0intelligence"]
     assert plan.z0_components_for(fleet, "groot", "hermes", "chiefstaff") == []
     assert plan.z0_components_for(fleet, "desktop", "claude") == ["ctx"]
