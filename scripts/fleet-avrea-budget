@@ -1,0 +1,487 @@
+#!/usr/bin/env python3
+"""Conservative Avrea admission, in $0.004 Linux-x86-2-vCPU minute units.
+
+Billing/rates: https://docs.avrea.com/billing and https://avrea.com/pricing
+Labels: https://docs.avrea.com/runners
+
+An operator-provided JSON snapshot is REQUIRED; this tool cannot discover the
+account's free-credit eligibility or non-Actions charges from GitHub. Schema:
+  {"version":1, "month":"YYYY-MM", "captured_at":"...Z", "owner":"kvnloo",
+   "source":"authoritative account billing receipt", "allowance_confirmed":true,
+   "scope":"all-account-metered-usage",
+   "post_snapshot_scope":"factory-actions-only", "used_minutes":45,
+   "allowance_minutes":3000, "max_parallel":4,
+   "repositories":[{"repo":"kvnloo/fleet-runner","workflow":"verify.yml"}],
+   "active_runs":[]}
+The baseline includes ALL credit-consuming activity through captured_at.
+Incremental accounting is explicitly FACTORY-SCOPED, not a live account balance.
+Repositories must be public kvnloo repositories; workflow is optional (omitting
+it conservatively includes all workflows in that repository). active_runs lists
+{repo,run_id} for runs already open at the baseline. Older runs rerun after the
+baseline must also be listed; factory dispatches otherwise create NEW run IDs.
+Refresh within 24h and at each UTC month boundary. max_parallel is an operator
+exploratory bound, not a claimed Avrea service cap; start at four and reduce it
+if queueing occurs. Lower allowance_minutes if actual eligibility requires it.
+
+Every check paginates the explicit factory scope since the baseline, plus active
+and locally bound run IDs. Missing/failed/truncated requests fail closed. Runtime
+is an estimate, NOT an invoice: post-snapshot runtime plus a minute per Avrea job.
+Locally admitted queued/running jobs retain their FULL requested reservation.
+Other active factory jobs accrue elapsed runtime only: their unknown future
+runtime is NOT reserved, and is explicitly reported in the result. This is the
+authorized factory accounting scope, not a hard all-account spend guarantee.
+
+An ALLOWED check atomically charges a durable reservation, even before dispatch.
+Call settle after dispatch with its exact run ID; the charge is removed only
+when a subsequent scan observes the exact expected jobs terminal and accounts
+for their usage. release --undispatched is ONLY for a dispatch that never
+happened. Reservations never expire within the month (queued dispatch may be
+late). All dispatchers must share state-dir; this is a local, not distributed,
+admission lock. A completed run is not permission to release an unbound charge.
+"""
+import argparse
+from contextlib import contextmanager
+from datetime import datetime, timezone, timedelta
+from decimal import Decimal, InvalidOperation
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import tempfile
+import uuid
+from urllib.parse import urlencode
+
+OWNER = "kvnloo"
+BASE_RATE = Decimal("0.004")
+SNAPSHOT_MAX_AGE = timedelta(hours=24)
+DEFAULT_STATE = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "fleet/avrea"
+
+
+class AccountingError(ValueError):
+    pass
+
+
+def number(value, field, *, positive=False):
+    if isinstance(value, bool):
+        raise AccountingError(f"invalid {field}")
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise AccountingError(f"invalid {field}") from None
+    if not result.is_finite() or result < 0 or result > Decimal("1e12") or (positive and result == 0):
+        raise AccountingError(f"invalid {field}")
+    return result
+
+
+def integer(value, field, low=1, high=None):
+    if isinstance(value, bool) or not isinstance(value, int) or value < low or (high is not None and value > high):
+        raise AccountingError(f"invalid {field}")
+    return value
+
+
+def timestamp(value):
+    if not isinstance(value, str):
+        raise AccountingError("missing or invalid UTC timestamp")
+    try:
+        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if result.tzinfo is None:
+            raise ValueError()
+        return result.astimezone(timezone.utc)
+    except ValueError:
+        raise AccountingError("missing or invalid UTC timestamp") from None
+
+
+def runner_multiplier(label):
+    """Return Decimal normalized-minute multiplier; reject unknown labels."""
+    if not isinstance(label, str):
+        raise AccountingError("invalid Avrea runner label")
+    if label == "avrea-ubuntu-latest":
+        return Decimal(1)
+    match = re.fullmatch(r"avrea-ubuntu-(latest|22\.04|24\.04|26\.04)-(arm-)?(1|2|4|8|16|32)-vcpu(?:-(8|16)gb)?", label)
+    if match:
+        version, arm, cpus, memory = match.groups()
+        cpus = int(cpus)
+        if arm and (version == "22.04" or cpus == 32):
+            raise AccountingError(f"unsupported Avrea runner: {label}")
+        if memory and (cpus, memory) not in {(4, "8"), (8, "16")}:
+            raise AccountingError(f"unsupported Avrea runner: {label}")
+        ratio = Decimal({(4, "8"): "1.5", (8, "16"): "3"}.get((cpus, memory), str(cpus / 2)))
+        return ratio * (3 if arm else 1)
+    match = re.fullmatch(r"avrea-macos-26-(8|16)-vcpu", label)
+    if match:
+        return Decimal(match[1]) * Decimal("2.5")
+    match = re.fullmatch(r"avrea-windows-2025-(2|4|8|16)-vcpu", label)
+    if match:
+        return Decimal(match[1])
+    raise AccountingError(f"unsupported Avrea runner: {label}")
+
+
+def rates():
+    labels = ["avrea-ubuntu-latest"]
+    for arm, sizes in (("", (1, 2, 4, 8, 16, 32)), ("arm-", (1, 2, 4, 8, 16))):
+        labels += [f"avrea-ubuntu-latest-{arm}{n}-vcpu" for n in sizes]
+        labels += [f"avrea-ubuntu-latest-{arm}4-vcpu-8gb", f"avrea-ubuntu-latest-{arm}8-vcpu-16gb"]
+    labels += [f"avrea-macos-26-{n}-vcpu" for n in (8, 16)]
+    labels += [f"avrea-windows-2025-{n}-vcpu" for n in (2, 4, 8, 16)]
+    return {label: {"multiplier": float(runner_multiplier(label)),
+                    "dollars_per_minute": float(BASE_RATE * runner_multiplier(label))} for label in labels}
+
+
+def read_json(path):
+    try:
+        with Path(path).open() as stream:
+            return json.load(stream)
+    except (OSError, ValueError) as error:
+        raise AccountingError(f"cannot read accounting JSON: {path} ({type(error).__name__})") from None
+
+
+def snapshot_at(path, now):
+    data = read_json(path)
+    if not isinstance(data, dict) or data.get("version") != 1:
+        raise AccountingError("invalid snapshot version")
+    required = {"owner": OWNER, "scope": "all-account-metered-usage",
+                "post_snapshot_scope": "factory-actions-only"}
+    if data.get("allowance_confirmed") is not True or any(data.get(key) != value for key, value in required.items()):
+        raise AccountingError("snapshot must attest complete baseline usage, allowance and factory incremental scope")
+    if data.get("month") != now.strftime("%Y-%m"):
+        raise AccountingError("snapshot is not for the current UTC month")
+    captured = timestamp(data.get("captured_at"))
+    if captured.strftime("%Y-%m") != data["month"] or captured > now or now - captured > SNAPSHOT_MAX_AGE:
+        raise AccountingError("snapshot is future-dated, stale (>24h), or crosses a UTC month boundary")
+    if not isinstance(data.get("source"), str) or not data["source"].strip():
+        raise AccountingError("snapshot requires an authoritative source receipt")
+    number(data.get("used_minutes"), "snapshot used_minutes")
+    number(data.get("allowance_minutes", 3000), "snapshot allowance_minutes", positive=True)
+    integer(data.get("max_parallel"), "snapshot max_parallel")
+    repositories = data.get("repositories")
+    if not isinstance(repositories, list) or not repositories:
+        raise AccountingError("snapshot requires explicit factory repositories")
+    names = set()
+    for entry in repositories:
+        if not isinstance(entry, dict) or not re.fullmatch(OWNER + r"/[A-Za-z0-9_.-]+", str(entry.get("repo", ""))):
+            raise AccountingError("invalid factory repository")
+        if entry["repo"] in names:
+            raise AccountingError("duplicate factory repository")
+        names.add(entry["repo"])
+        if "workflow" in entry and (not isinstance(entry["workflow"], str) or not re.fullmatch(r"[A-Za-z0-9_.-]+\.ya?ml", entry["workflow"])):
+            raise AccountingError("invalid factory workflow filename")
+    if not isinstance(data.get("active_runs"), list):
+        raise AccountingError("snapshot must explicitly list active_runs (possibly empty)")
+    for item in data["active_runs"]:
+        if not isinstance(item, dict) or item.get("repo") not in names:
+            raise AccountingError("invalid baseline active run repository")
+        integer(item.get("run_id"), "baseline active run id")
+    return data, captured
+
+
+class GitHub:
+    def __init__(self, max_requests=200):
+        self.remaining = max_requests
+
+    def get(self, endpoint):
+        if self.remaining <= 0:
+            raise AccountingError("public scan request limit reached; accounting incomplete")
+        self.remaining -= 1
+        try:
+            proc = subprocess.run(["gh", "api", "--hostname", "github.com", endpoint],
+                                  capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            raise AccountingError("GitHub accounting request unavailable") from None
+        if proc.returncode:
+            raise AccountingError(f"GitHub accounting request failed (exit {proc.returncode})")
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            raise AccountingError("GitHub returned invalid accounting JSON") from None
+
+    def pages(self, endpoint, key=None):
+        separator = "&" if "?" in endpoint else "?"
+        page, count = 1, 0
+        while True:
+            data = self.get(f"{endpoint}{separator}per_page=100&page={page}")
+            rows = data.get(key) if isinstance(data, dict) and key else data
+            if not isinstance(rows, list) or len(rows) > 100 or any(not isinstance(row, dict) for row in rows):
+                raise AccountingError("GitHub returned incomplete or malformed page")
+            count += len(rows)
+            if key:
+                total = integer(data.get("total_count"), "GitHub total_count", low=0)
+                if count > total or (len(rows) < 100 and count != total):
+                    raise AccountingError("GitHub pagination totals changed or are incomplete")
+            yield from rows
+            if len(rows) < 100:
+                return
+            page += 1
+
+
+def avrea_label(job):
+    labels = job.get("labels")
+    if not isinstance(labels, list) or any(not isinstance(label, str) for label in labels):
+        raise AccountingError("job labels unavailable; cannot establish Avrea usage")
+    candidates = [label for label in labels if label.startswith("avrea-")]
+    if len(candidates) > 1:
+        raise AccountingError("ambiguous Avrea job labels")
+    if candidates:
+        runner_multiplier(candidates[0])
+        return candidates[0]
+    if "avrea" in str(job.get("runner_name", "")).lower() or "self-hosted" in labels:
+        raise AccountingError("unclassified self-hosted job; explicit Avrea labels required")
+    if not labels and job.get("conclusion") != "skipped":
+        raise AccountingError("unlabelled job; cannot exclude Avrea usage")
+    return None
+
+
+def scan(api, captured, now, requested_repo, reservations, snapshot):
+    repos = {entry["repo"]: entry for entry in snapshot["repositories"]}
+    if requested_repo not in repos or any(item["repo"] not in repos for item in reservations):
+        raise AccountingError("requested or reserved repository missing from explicit factory scope")
+    used, active_jobs = Decimal(0), 0
+    observed = {}
+    explicit = {(item["repo"], item["run_id"]) for item in reservations if "run_id" in item}
+    explicit.update((item["repo"], item["run_id"]) for item in snapshot["active_runs"])
+    for repo, entry in sorted(repos.items()):
+        metadata = api.get(f"/repos/{repo}")
+        if not isinstance(metadata, dict) or metadata.get("private") is not False or metadata.get("full_name") != repo:
+            raise AccountingError("factory repository is not confirmed public")
+        workflow_path = f"/workflows/{entry['workflow']}" if "workflow" in entry else ""
+        endpoint = f"/repos/{repo}/actions{workflow_path}/runs?" + urlencode({"created": ">=" + captured.isoformat()})
+        runs = {}
+        for run in api.pages(endpoint, "workflow_runs"):
+            run_id = integer(run.get("id"), "run id")
+            if run_id in runs:
+                raise AccountingError("run pages changed during scan; retry accounting")
+            runs[run_id] = run
+        for explicit_repo, run_id in sorted(explicit):
+            if explicit_repo == repo and run_id not in runs:
+                evidence = api.get(f"/repos/{repo}/actions/runs/{run_id}")
+                if not isinstance(evidence, dict) or evidence.get("id") != run_id:
+                    raise AccountingError("bound or baseline active run evidence missing")
+                runs[run_id] = evidence
+        for run_id, run in runs.items():
+            attempt_count = integer(run.get("run_attempt"), "run attempt")
+            jobs, ids = [], set()
+            for attempt in range(1, attempt_count + 1):
+                for job in api.pages(f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs"):
+                    job_id = integer(job.get("id"), "job id")
+                    if job_id in ids:
+                        raise AccountingError("duplicate job accounting evidence")
+                    ids.add(job_id)
+                    label = avrea_label(job)
+                    if label is None:
+                        continue
+                    jobs.append((job_id, label, job.get("status")))
+                    multiplier = runner_multiplier(label)
+                    if job.get("status") == "completed":
+                        if job.get("conclusion") == "skipped":
+                            continue
+                        start = timestamp(job.get("started_at"))
+                        end = timestamp(job.get("completed_at"))
+                        if end < start or end > now:
+                            raise AccountingError("invalid completed job interval")
+                        if end > captured:
+                            elapsed = Decimal(str((end - max(start, captured)).total_seconds())) / 60
+                            used += (elapsed + 1) * multiplier
+                    elif job.get("status") in {"queued", "in_progress", "waiting", "pending", "requested"}:
+                        if job.get("status") == "in_progress":
+                            start = timestamp(job.get("started_at"))
+                            if start > now:
+                                raise AccountingError("future running-job timestamp")
+                            used += (Decimal(str(max(0, (now - max(start, captured)).total_seconds()))) / 60 + 1) * multiplier
+                        active_jobs += 1
+                    else:
+                        raise AccountingError("unknown job lifecycle state")
+            observed[(repo, run_id)] = (run, jobs)
+    retained = []
+    for item in reservations:
+        evidence = observed.get((item["repo"], item.get("run_id")))
+        settled = False
+        if evidence:
+            run, jobs = evidence
+            settled = (run.get("status") == "completed" and len(jobs) == item["jobs"]
+                       and all(label == item["runner"] and status == "completed" for _, label, status in jobs)
+                       and timestamp(run.get("created_at")) >= timestamp(item["created_at"]))
+        if not settled:
+            retained.append(item)
+    return used, retained, len(repos), active_jobs
+
+
+@contextmanager
+def locked_state(directory):
+    directory = Path(directory)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(directory / "budget.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(descriptor, "w") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        yield directory / "budget.json"
+
+
+def load_state(path, month):
+    if not path.exists():
+        return {"version": 1, "month": month, "reservations": []}
+    data = read_json(path)
+    if not isinstance(data, dict) or data.get("version") != 1 or not re.fullmatch(r"\d{4}-\d{2}", str(data.get("month", ""))):
+        raise AccountingError("invalid reservation ledger")
+    if data["month"] > month:
+        raise AccountingError("reservation ledger is from a future month")
+    if data["month"] < month:
+        return {"version": 1, "month": month, "reservations": []}
+    if not isinstance(data.get("reservations"), list):
+        raise AccountingError("invalid reservation ledger")
+    ids, runs = set(), set()
+    for item in data["reservations"]:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or item["id"] in ids:
+            raise AccountingError("invalid reservation identity")
+        ids.add(item["id"])
+        if not re.fullmatch(OWNER + r"/[A-Za-z0-9_.-]+", str(item.get("repo", ""))):
+            raise AccountingError("invalid reserved repository")
+        ratio = runner_multiplier(item.get("runner", ""))
+        jobs = integer(item.get("jobs"), "reservation jobs")
+        timeout = integer(item.get("timeout_minutes"), "reservation timeout", high=360)
+        if number(item.get("minutes"), "reservation minutes") != ratio * jobs * timeout:
+            raise AccountingError("corrupt reservation charge")
+        if timestamp(item.get("created_at")).strftime("%Y-%m") != month:
+            raise AccountingError("reservation has wrong accounting month")
+        if "run_id" in item:
+            run_key = (item["repo"], integer(item["run_id"], "bound run id"))
+            if run_key in runs:
+                raise AccountingError("run bound to multiple reservations")
+            runs.add(run_key)
+    return data
+
+
+def save_state(path, data):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=".budget-", delete=False) as stream:
+            temporary = stream.name
+            json.dump(data, stream, allow_nan=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        temporary = None
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if temporary is not None:
+            os.unlink(temporary)
+
+
+def result(allowed, used=None, reserved=None, allowance=None, message="", **extra):
+    return {"allowed": allowed, "used_minutes": float(used) if used is not None else None,
+            "reserved_minutes": float(reserved) if reserved is not None else None,
+            "allowance_minutes": float(allowance) if allowance is not None else None,
+            "percent": float((used + reserved) * 100 / allowance) if allowance else None,
+            "message": message, **extra}
+
+
+def check(args, now=None):
+    if not re.fullmatch(OWNER + r"/[A-Za-z0-9_.-]+", args.repo):
+        raise AccountingError("only public kvnloo repositories are in scope")
+    ratio = runner_multiplier(args.runner)
+    jobs = integer(args.jobs, "jobs")
+    timeout = integer(args.timeout_minutes, "timeout-minutes", high=360)
+    parallel = integer(args.parallel, "parallel")
+    with locked_state(args.state_dir) as path:
+        now = now or datetime.now(timezone.utc)
+        snapshot, captured = snapshot_at(args.snapshot, now)
+        if parallel > snapshot["max_parallel"]:
+            return result(False, message="refused: parallel exceeds snapshot account cap",
+                          max_parallel=snapshot["max_parallel"]), 75
+        state = load_state(path, now.strftime("%Y-%m"))
+        incremental, retained, repo_count, active_jobs = scan(GitHub(args.max_api_requests), captured, now, args.repo, state["reservations"], snapshot)
+        used = number(snapshot["used_minutes"], "used_minutes") + incremental
+        requested = ratio * jobs * timeout
+        local = sum((number(item["minutes"], "reservation minutes") for item in retained), Decimal(0))
+        reserved = local + requested
+        allowance = number(snapshot.get("allowance_minutes", 3000), "allowance_minutes", positive=True)
+        percent = (used + reserved) * 100 / allowance
+        allowed = percent < 95
+        reservation_id = None
+        if allowed:
+            reservation_id = uuid.uuid4().hex
+            retained.append({"id": reservation_id, "repo": args.repo, "runner": args.runner,
+                             "jobs": jobs, "timeout_minutes": timeout, "minutes": str(requested),
+                             "created_at": now.isoformat()})
+        state["reservations"] = retained
+        save_state(path, state)
+        message = "refused: projected usage reaches 95%" if not allowed else ("alert: projected usage reaches 80%" if percent >= 80 else "allowed")
+        if active_jobs:
+            message += f"; {active_jobs} active factory jobs: unknown future runtime not reserved (local reservations retained)"
+        return result(allowed, used, reserved, allowance, message,
+                      reservation_id=reservation_id, requested_minutes=float(requested),
+                      max_parallel=snapshot["max_parallel"], source={"snapshot": snapshot["source"],
+                      "captured_at": snapshot["captured_at"], "scope": "factory-actions-only",
+                      "active_jobs": active_jobs, "running_accounting": "elapsed only for unknown active jobs; full durable local reservations",
+                      "incremental": "paginated factory GitHub jobs since baseline plus explicit run IDs; conservative runtime estimate",
+                      "public_repositories": repo_count, "billing": "https://docs.avrea.com/billing", "rates": "https://avrea.com/pricing"}), (0 if allowed else 75)
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise AccountingError(message)
+
+
+def main(argv=None):
+    parser = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("rates", help="read-only normalized rates (latest labels; pinned versions also accepted)")
+    check_parser = commands.add_parser("check", help="scan accounting and atomically reserve if allowed")
+    check_parser.add_argument("--repo", required=True)
+    check_parser.add_argument("--runner", required=True)
+    check_parser.add_argument("--jobs", type=int, required=True)
+    check_parser.add_argument("--timeout-minutes", type=int, required=True)
+    check_parser.add_argument("--parallel", type=int, default=1, help="requested concurrent jobs; checked against account snapshot cap")
+    check_parser.add_argument("--snapshot", default=os.environ.get("FLEET_AVREA_SNAPSHOT", str(DEFAULT_STATE / "snapshot.json")))
+    check_parser.add_argument("--max-api-requests", type=int, default=200)
+    for name in ("release", "settle"):
+        child = commands.add_parser(name)
+        child.add_argument("--reservation-id", required=True)
+        if name == "release":
+            child.add_argument("--undispatched", action="store_true", required=True)
+        else:
+            child.add_argument("--run-id", type=int, required=True)
+    for child in (check_parser, commands.choices["release"], commands.choices["settle"]):
+        child.add_argument("--state-dir", default=os.environ.get("FLEET_AVREA_STATE_DIR", str(DEFAULT_STATE)))
+    try:
+        args = parser.parse_args(argv)
+        now = datetime.now(timezone.utc)
+        if args.command == "rates":
+            print(json.dumps({"base_dollars_per_minute": float(BASE_RATE), "runners": rates(),
+                              "source": "https://avrea.com/pricing"}))
+            return 0
+        if args.command == "check":
+            integer(args.max_api_requests, "max-api-requests")
+            payload, code = check(args)
+        else:
+            with locked_state(args.state_dir) as path:
+                now = datetime.now(timezone.utc)
+                state = load_state(path, now.strftime("%Y-%m"))
+                item = next((item for item in state["reservations"] if item["id"] == args.reservation_id), None)
+                if item is None:
+                    raise AccountingError("reservation not found in current month")
+                if args.command == "release":
+                    if "run_id" in item:
+                        raise AccountingError("cannot release a dispatched reservation; settle and scan terminal evidence")
+                    state["reservations"].remove(item)
+                else:
+                    run_id = integer(args.run_id, "run-id")
+                    if "run_id" in item and item["run_id"] != run_id:
+                        raise AccountingError("reservation already bound to a different run")
+                    if any(other is not item and other.get("run_id") == run_id and other["repo"] == item["repo"] for other in state["reservations"]):
+                        raise AccountingError("run already bound to a reservation")
+                    item["run_id"] = run_id
+                save_state(path, state)
+                payload, code = {"reservation_id": item["id"], "message": "released undispatched reservation" if args.command == "release" else "bound to run; charge retained until terminal job evidence"}, 0
+        print(json.dumps(payload, allow_nan=False))
+        return code
+    except (AccountingError, OSError) as error:
+        print(json.dumps(result(False, message=f"accounting unavailable: {error}"), allow_nan=False))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
