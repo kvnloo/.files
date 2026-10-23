@@ -17,7 +17,7 @@
 #                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
 #                    its 1200 MiB floor); mbp still wins unless it is busier
 #   --phone          like --light but only on a phone (arm64)
-#   --node NAME      pin a node (mbp, s22, omarchy-phone)
+#   --node NAME      pin a node (boat, mbp, s22, omarchy-phone)
 #   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
 #   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
 #                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
@@ -25,6 +25,9 @@
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
+#   --public         reviewed public source; allow Boat overflow before queueing
+#   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
+#   --local-data     never send this job to Boat, even with --public
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -41,13 +44,16 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
     --android) mode=android; shift ;;
     --light) mode=light; shift ;;
     --phone) mode=phone; shift ;;
+    --public) public=1; shift ;;
+    --x86|--docker) public=1; prefer_boat=1; shift ;;
+    --local-data) local_data=1; shift ;;
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
@@ -69,6 +75,10 @@ done
 [ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
+if [ "$prefer_boat" = 1 ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
+if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
+  echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
+fi
 
 # Ship the whole repo, run from the same subdirectory the caller is in.
 if [ -z "$src" ]; then
@@ -121,6 +131,14 @@ while :; do
   rc=$?
   set -e
   wait 2>/dev/null || true
+  # Only reviewed public jobs may overflow to Boat. No allocated job is replayed.
+  if [ $rc -eq 75 ] && [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && ! grep -q '^fleet: job ' "$err"; then
+    set +e
+    "$FLEET" run --node boat "${args[@]:1}" 2> >(tee "$err" >&2)
+    rc=$?
+    set -e
+    wait 2>/dev/null || true
+  fi
   # Admission holds are retryable. Once a job ID was allocated, a 75 might
   # come from a partially executed workflow; never replay side effects blindly.
   [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break

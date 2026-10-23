@@ -21,11 +21,15 @@ import uuid
 
 BASE = "https://boat.dev/api/v1"
 TTL = 600
-MAX_ACTIVE = 3
+DAILY_SECONDS = 3 * 3600
 STATE = Path.home() / ".local/state/boat"
 
 
 class BoatError(Exception):
+    pass
+
+
+class AdmissionError(BoatError):
     pass
 
 
@@ -82,15 +86,15 @@ def check_capacity():
     if data["accessTier"] != "trial" or data["billingStatus"] != "trialing":
         raise BoatError("Trial-only wrapper: paid/expired account requires an explicit policy change")
     if not data["canStart"]:
-        raise BoatError("Boat cannot start; inspect limits (never change billing)")
-    if data["activeSandboxes"] >= min(MAX_ACTIVE, data["maxActiveSandboxes"]):
-        raise BoatError("Concurrency cap reached (3 locally; Boat trial permits only 2)")
-    # Leave at least 24 of the 25 trial compute hours untouched. Reserve a full
-    # TTL for every current VM plus this new one, even if all are small.
-    used = max(data["creditUsedSeconds"] or 0, data["last24hUsageSeconds"] or 0)
+        raise AdmissionError("Boat cannot start; inspect limits (never change billing)")
+    if data["activeSandboxes"] >= data["maxActiveSandboxes"]:
+        raise AdmissionError("Concurrency cap reached (provider limit)")
     reserved = (data["activeSandboxes"] + 1) * TTL
-    if used + (data["liveUsageSeconds"] or 0) + reserved > 3600:
-        raise BoatError("One-hour shared trial budget/reservation exhausted")
+    live = data["liveUsageSeconds"] or 0
+    if (data["last24hUsageSeconds"] or 0) + live + reserved > DAILY_SECONDS:
+        raise AdmissionError("Three-hour rolling-24h budget/reservation exhausted")
+    if (data["creditUsedSeconds"] or 0) + live + reserved > (data["trialComputeCapSeconds"] or 0):
+        raise AdmissionError("Total trial compute budget/reservation exhausted")
 
 
 def wait_ready(sid, deadline):
@@ -384,6 +388,9 @@ def main():
             reap()
             return 0
         return lease(args)
+    except AdmissionError as exc:
+        print("boat: " + str(exc), file=sys.stderr)
+        return 75
     except (BoatError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         print("boat: " + str(exc), file=sys.stderr)
         return 1

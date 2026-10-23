@@ -17,7 +17,7 @@ class BoatPolicyTest(unittest.TestCase):
     def limits(self, **overrides):
         data = dict(accessTier="trial", billingStatus="trialing", canStart=True,
                     activeSandboxes=0, maxActiveSandboxes=2, creditUsedSeconds=0,
-                    liveUsageSeconds=0, last24hUsageSeconds=0)
+                    liveUsageSeconds=0, last24hUsageSeconds=0, trialComputeCapSeconds=90000)
         data.update(overrides)
         return data
 
@@ -30,9 +30,23 @@ class BoatPolicyTest(unittest.TestCase):
 
     def test_trial_budget_reserves_live_leases(self):
         with patch.object(boat, "limits", return_value=self.limits(
-                activeSandboxes=1, creditUsedSeconds=2500)):
+                activeSandboxes=1, last24hUsageSeconds=9700)):
             with self.assertRaisesRegex(boat.BoatError, "budget"):
                 boat.check_capacity()
+
+    def test_total_trial_cap_is_independent_of_daily_budget(self):
+        with patch.object(boat, "limits", return_value=self.limits(creditUsedSeconds=89900)):
+            with self.assertRaisesRegex(boat.BoatError, "Total trial"):
+                boat.check_capacity()
+
+    def test_old_usage_does_not_consume_daily_budget(self):
+        with patch.object(boat, "limits", return_value=self.limits(creditUsedSeconds=50000)):
+            boat.check_capacity()
+
+    def test_provider_controls_concurrency(self):
+        with patch.object(boat, "limits", return_value=self.limits(
+                activeSandboxes=3, maxActiveSandboxes=4)):
+            boat.check_capacity()
 
     def test_paid_account_is_not_implicit_authorization(self):
         with patch.object(boat, "limits", return_value=self.limits(accessTier="standard")):

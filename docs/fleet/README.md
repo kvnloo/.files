@@ -57,6 +57,54 @@ fleet-build --light -- python3 -m pytest    # mbp or a phone, 512 MiB
   node; the job's scope is stopped at the end, so Gradle/Kotlin daemons never
   outlive it.
 
+### Boat: public x86 verification and overflow
+
+Boat is an ephemeral Ubuntu amd64 worker, not a tailnet machine. Use the same
+source, command and output interface:
+
+```sh
+fleet-build --node boat --light --src /tmp/reviewed-public-snapshot --fetch results.json --out /tmp/results -- python3 verify.py
+fleet-build --x86 --mem 4G --timeout 300 --src /tmp/public-repo -- bash ci/verify.sh
+fleet-build --docker --src /tmp/public-repo -- bash ci/docker-test.sh
+fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest discover
+```
+
+- Prefer Boat for x86 binaries and Docker-dependent jobs. `--x86` and `--docker`
+  select Boat unless a node is pinned. They assert that the source is public.
+  Docker is not a preinstalled capability claim. Install and check required
+  toolchains in the job command.
+- Use `--public` for reviewed public-source overflow. Normal routing tries the
+  MBP and eligible phones first. A pre-admission 75 then tries Boat before
+  sleeping. An allocated job never replays automatically, including exit 75.
+- Keep local datasets, private repositories, environment files, credentials,
+  GPU jobs and host-only toolchains off Boat. Use `--local-data` to disable
+  cloud overflow. Explicit `--node boat --local-data` fails before admission.
+  Review all source files and explicit `--input` files before upload.
+- `--src` must be a Git checkout. Tracked and unignored files form one tarball.
+  Environment files refuse transfer. The archive limit is 32 MiB compressed.
+  Keep vendor trees and build caches ignored. `--no-src` can run standalone
+  commands without an archive checkout. No host environment is forwarded.
+- Boat creates a lease, uploads the archive, runs the command, fetches each
+  requested output, and deletes the VM. Fetches reject archive traversal.
+  Outputs and receipts remain under `~/.local/state/fleet/runs/JOB/`.
+  `--keep` is forbidden. Failed jobs also delete their VM.
+- `--mem` and `--cpus` select a provider shape, not a guest process cgroup.
+  Requests up to 3 GiB and 2 CPUs use small (4 GB RAM, 2 vCPU).
+  Larger requests use default (8 GB RAM, 4 vCPU), with 7 GiB maximum requested
+  memory. The command timeout is capped at 450 seconds inside the 600-second
+  lease. Dependency installation and output retrieval also consume the lease.
+- The shared guard allows **3 compute hours per rolling 24 hours** and at
+  most **90,000 total trial seconds**. It reserves 600 seconds for every live
+  VM plus the new VM. Provider concurrency is **2**. Prioritize jobs that unblock
+  other agents. Do not bypass the guard, create directly, or enable paid usage.
+- On provider/budget hold, `--wait` retries outside admission. Use `--wait 0`
+  inside MBP quiet or turnstile locks. Release locks before any retry.
+  Groot never becomes the build fallback.
+
+The [Boat operations guide](BOAT.md) describes the reaper and encrypted-secret
+mechanism. The [scoped-key proposal](BOAT-SECRETS-PROPOSAL.md) requires Kevin's
+approval. This integration sends no worker credentials.
+
 ### `fleet run`
 
 ```sh

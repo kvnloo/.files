@@ -69,10 +69,10 @@ omp-boat reap               # delete omp-* resources older than 600 seconds
 
 Options precede the job name: `run --type default job-name -- COMMAND ...`.
 Names always get `omp-`; creates are serialized through a host-user lock and
-preflight checks count **all** active sandboxes, not just ours. Hard wrapper cap
-is three, reduced to Boat's two during trial. The common host lock coordinates
-agents on Groot; it is not a distributed account lock. Do not independently
-create from other hosts/keys. Provider-side trial enforcement still caps at two.
+preflight checks count **all** active sandboxes, not just ours. The provider
+sets concurrency, currently two VMs. The common host lock coordinates agents
+on Groot. It is not a distributed account lock. Do not create independently
+from other hosts or keys.
 
 Each lease has a 600-second provider auto-stop, readiness deadline 120 seconds,
 remote ordinary command timeout at most 500 seconds, and deletion in `finally`
@@ -81,11 +81,11 @@ systemd runtime cap. TTL stops billing if the host is killed; it does not delete
 the disk. The periodic reaper deletes it, including automatic snapshots.
 A failed deletion is reported as an error, not silently accepted.
 
-The wrapper is deliberately **trial-only** and reserves conservatively against a
-shared one-hour compute budget, leaving approximately 24 of 25 hours untouched.
-It reads account usage before every create, reserves a full lease for each
-current VM, and refuses paid/expired access. It never enables paid usage. Do not
-raise these limits without operator approval.
+The wrapper is deliberately **trial-only**. The approved guard is three compute
+hours per rolling 24 hours, plus the provider's 90,000-second total trial cap.
+Before every create, it reserves 600 seconds for each live VM and the new VM.
+It includes reported live usage conservatively in both checks. It refuses
+paid or expired access and never changes billing.
 
 ## Secret jobs: encrypted delivery, default deny
 
