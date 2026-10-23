@@ -209,3 +209,31 @@ def test_plan_cli_preserves_existing_checks_and_separate_health(monkeypatch, tmp
     assert result["status"] == "MATCH"
     assert result["z0_bindings"]["status"] == "UNKNOWN"
     assert not result["z0_bindings"]["healthy"]
+
+
+def test_disabled_desired_binding_cannot_be_reported_healthy(monkeypatch, fleet, manifest):
+    """A disabled server is not a MATCH even if the doctor header is inconsistent."""
+    monkeypatch.setattr(plan.shutil, "which", lambda _: "/usr/bin/z0")
+    report = {
+        "host": "groot", "status": "MATCH",
+        "configs": [{
+            "harness": "hermes", "profile": "clean", "status": "MATCH",
+            "desired": ["tencentdb-memory"], "bound": [],
+            "findings": [{
+                "kind": "missing-desired-component", "status": "DRIFT",
+                "component": "tencentdb-memory", "reason": "disabled",
+            }],
+        }],
+        "findings": [],
+    }
+    result = plan.z0_binding_health(
+        fleet, manifest, "groot", local_hostname="0",
+        runner=lambda argv, **opts: subprocess.CompletedProcess(
+            argv, 0, json.dumps(report), ""
+        ),
+    )
+    assert result["status"] == "DRIFT"
+    assert result["available"] is True and result["healthy"] is False
+    assert result["configs"][0]["findings"] == [{
+        "kind": "missing-desired-component", "component": "tencentdb-memory"
+    }]
