@@ -72,14 +72,20 @@ def callback(manifest_path):
     sys.stderr.write(result.get("stderr", ""))
     rc = result.get("exitCode")
     rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
+    Path(data["receipt"]).write_text(json.dumps({"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc}) + "\n")
     for name in data["fetch"]:
         relative(name)
         transfer = "tar -C /home/user/fleet-job -czf - -- " + shlex.quote(name) + " | base64 -w0"
-        encoded = boat.remote(sid, "bash -o pipefail -c " + shlex.quote(transfer))
+        try:
+            encoded = boat.remote(sid, "bash -o pipefail -c " + shlex.quote(transfer))
+        except boat.BoatError as exc:
+            print(f"fleet: fetch failed for {name}: {exc}; command exit {rc}", file=sys.stderr)
+            if rc == 0:
+                raise
+            continue
         with tarfile.open(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True)), mode="r:gz") as tar:
             tar.extractall(data["dest"], filter="data")
         print("fleet: fetched " + name + " -> " + data["dest"], file=sys.stderr)
-    Path(data["receipt"]).write_text(json.dumps({"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc}) + "\n")
     return rc
 
 

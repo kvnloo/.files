@@ -58,7 +58,7 @@ class BoatTransferTests(unittest.TestCase):
         with tarfile.open(self.archive) as tar:
             self.assertEqual(tar.getnames(), [])
 
-    def callback(self, output_name="src/result.txt"):
+    def callback(self, output_name="src/result.txt", job_rc=17, fetch_error=False):
         adapter.pack_source(self.src, self.archive, [])
         dest = self.root / "outputs"
         dest.mkdir()
@@ -76,8 +76,10 @@ class BoatTransferTests(unittest.TestCase):
                 with tarfile.open(fileobj=io.BytesIO(base64.b64decode(body["content"]))) as tar:
                     self.assertEqual(tar.extractfile("src/public.py").read(), b"print('public')\n")
                 return {}
-            return {"exitCode": 17, "stdout": "job output\n", "stderr": ""}
+            return {"exitCode": job_rc, "stdout": "job output\n", "stderr": ""}
         def remote(sid, command):
+            if fetch_error and "base64" in command:
+                raise adapter.boat.BoatError("Missing requested artifact")
             return base64.b64encode(bundle.getvalue()).decode() if "base64" in command else ""
         with patch.dict(os.environ, BOAT_SANDBOX_ID="bx_23456789"), \
                 patch.object(adapter.boat, "api", side_effect=api), \
@@ -90,6 +92,16 @@ class BoatTransferTests(unittest.TestCase):
         self.assertEqual(rc, 17)
         self.assertEqual((dest / "src/result.txt").read_text(), "result")
         self.assertEqual(json.loads(receipt.read_text())["exit_code"], 17)
+
+    def test_failed_job_missing_output_preserves_command_exit(self):
+        rc, dest, receipt = self.callback(fetch_error=True)
+        self.assertEqual(rc, 17)
+        self.assertEqual(json.loads(receipt.read_text())["exit_code"], 17)
+        self.assertFalse((dest / "src/result.txt").exists())
+
+    def test_successful_job_missing_output_is_still_an_error(self):
+        with self.assertRaisesRegex(adapter.boat.BoatError, "Missing requested artifact"):
+            self.callback(job_rc=0, fetch_error=True)
 
     def test_fetched_archive_cannot_escape_destination(self):
         with self.assertRaises(tarfile.FilterError):

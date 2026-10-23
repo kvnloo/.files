@@ -206,8 +206,8 @@ price, covered by the trial (no payment), approximately **0.217%** of the
 iterations and deletion overhead; per-VM figures read before deletion are not a
 final bill. Receipt: `/tmp/omp-boat-smoke-receipt.json`; screenshot:
 `/tmp/omp-boat-desktop.png`. No desktop URLs or credentials are in either file.
-Local wrapper policy regressions also passed:
-`python3 -m unittest discover -s tests -p test_boat.py -v` (8 tests).
+The original setup run passed eight local policy tests. Current policy coverage is:
+`python3 -m unittest discover -s tests -p test_boat.py -v` (11 tests).
 They exercise default-deny keys, trial/concurrency/budget refusal, reaper scope,
 snapshotless create payloads, failed-command exit status and unconditional deletion.
 
@@ -215,6 +215,91 @@ snapshotless create payloads, failed-command exit status and unconditional delet
 omp-boat run --dummy-secret-test canary -- python3 -c \
  'import json,os,pathlib; v=json.loads(pathlib.Path("{secret_file}").read_text())["BOAT_SMOKE_DUMMY"]; assert all(v not in x for x in os.environ.values()); assert v.startswith("omp-dummy-")'
 ```
+
+## Fleet integration qualification (2026-10-23)
+
+`~/.local/bin/fleet-build` now points to the compiled and tested scratch worktree
+at `/workspace/boat-fleet`. The entrypoint and `omp-boat` symlinks were replaced
+atomically. The existing phone and MBP admission policies remain unchanged.
+The reaper uses the updated wrapper through its existing installed entrypoint.
+
+Three jobs were submitted together through `fleet-build --node boat`.
+Each uploaded a reviewed Git-source tarball, ran real tests, fetched `result.txt`,
+returned exit 0 and completed its deletion operation. Provider concurrency held
+at two. The third submission returned pre-admission 75, waited 60 seconds, and
+then ran without replaying an allocated job.
+
+| Suite | Tests | Test runtime | Total invocation wall | Fleet job | Deleted VM |
+| --- | ---: | ---: | ---: | --- | --- |
+| CUA release-version validation | 19 | 0.002 s | 11.420 s | `20261023-175619-cb9a2675` | `bx_8w9cdkyh` |
+| Real phone lane wrapper regression | 8 | 20.621 s | 32.377 s | `20261023-175619-01c2d1ef` | `bx_z6wjx7f4` |
+| Factory z0evals memory replay | 11 | 1.217 s | 78.978 s, including queue | `20261023-175723-0b9a4e8a` | `bx_qtpwyrta` |
+
+Boat reported `x86_64`, Python 3.12.3. The factory replay source is pinned to
+[`16b0b133df865d46b2b1a789f68936c189d88f41`](https://github.com/kvnloo/z0evals/commit/16b0b133df865d46b2b1a789f68936c189d88f41).
+It exercises synthetic, privacy-safe replay contracts. It does not prove live
+memory retrieval, provider inference or a production learning loop.
+The CUA snapshot came from local revision `5f653d5e48a143828621303526850115486fc5e4`.
+
+All payloads printed SHA-256 before testing:
+
+| Source file | SHA-256 |
+| --- | --- |
+| CUA `get_pyproject_version.py` | `6105d27f52e96a3f2db9161e1bb4753e6b14874d08120047e655d0b9ab35ad70` |
+| CUA `test_get_pyproject_version.py` | `1b72a894341c148b04f307037b117171dbc401acd40e6aecf3d9af646fb11a4f` |
+| Fleet `fleet-polite-run` | `d44ad6da0a61a4b78e3fab95ffc109a99d74df83b2f9af8c81f2859594b4aaa9` |
+| Fleet `test_fleet_phone_lane.py` | `28140676e82c236c7e3e06a55b9fb183c05b36324c56b905405a87ecf2249427` |
+| z0evals `memory_query_replay.py` | `7bd8ac0dcd1e5aa9e95f567145c72211f0211f6217aafb52bc5625ef98f6eec1` |
+| z0evals `test_memory_query_replay.py` | `e8741484a7a34bdae28c6472cd7a2c762c9ef7566e371be523d32a155e07a0c9` |
+
+### Comparison with existing workers
+
+New MBP runs used the same source hashes and commands, requested 512 MiB and
+one CPU, and used `--wait 0` inside the canonical shared quiet lock.
+Both passed and fetched their outputs. MBP reported Python 3.14.7.
+
+| Suite | Boat wall | MBP wall | MBP test runtime | MBP job |
+| --- | ---: | ---: | ---: | --- |
+| CUA 19 tests | 11.420 s | 2.510 s | 0.009 s | `20261023-175740-1d9d` |
+| z0evals 11 tests | 78.978 s including 60 s queue | 6.923 s | 4.548 s | `20261023-175740-ae91` |
+
+New S25 comparisons did not execute. Each exhausted eight pre-admission
+attempts because root free space was 4.7–4.9 GiB, below its 5 GiB floor.
+Observed waits were 189.593 s for z0evals and 185.670 s for CUA. Both exited 75
+without job IDs. No disk floor was weakened and no user files were removed.
+These are admission waits, not test runtime measurements.
+
+The earlier phone qualification in [README.md](README.md) used the exact same
+two fleet source hashes. Its eight-test invocation walls were S25 **33.124 s**,
+S22 **55.319 s**, and MBP **87.870 s**, including its external lock wait.
+Boat's matching suite took **32.377 s**. The corresponding test runtimes were
+25.704 s, 45.526 s, 25.384 s and 20.621 s respectively.
+The suite contains wait-based tests. Python versions and CPU allocations differ.
+These figures compare observed latency, not normalized CPU performance.
+
+### Budget and local checks
+
+The account moved from **195 to 210 provider-metered seconds** during the
+three Boat jobs: **15 seconds added**, including deletion accounting.
+At that receipt, active VMs and live usage were both zero. Total usage was
+**0.233% of 90,000 seconds**, leaving **89,790 seconds** of the trial.
+Rolling-24h usage was 210 seconds, leaving 10,590 before new lease reservations.
+List-price equivalent was $0.00210 total, $0.00015 incremental, trial-covered.
+This is a qualification snapshot, not the account's future usage after other agents run.
+
+Compilation and Bash syntax checks passed. Executed behavioral coverage totals
+42 tests: Boat policy 11, Boat transfer/routing 16, phone lane 8, phone policy 7.
+The transfer/routing cases include source and output traversal, capacity races,
+private-data routing, original failed-command status with missing artifacts,
+and successful-command failure when a requested artifact cannot be fetched.
+The artifact diagnostic correction was tested in an isolated scratch copy
+and installed atomically. It did not require repeating the successful VM suites.
+
+Raw receipts: `/tmp/boat-fleet-evidence/{boat-results,all-results}.json`.
+Per-job logs and fetched outputs remain in that directory and under
+`~/.local/state/fleet/runs/`. The all-results receipt records the two S25 holds
+as failures. It must not be described as seven successful jobs.
+Usage and budget rules were broadcast to all 21 available peer agents.
 
 ## Periodic reaper installation
 
