@@ -14,9 +14,14 @@ classifier = importlib.machinery.SourceFileLoader('agent_classifier', str(ROOT/'
 class Admission(unittest.TestCase):
     def setUp(self):
         self.n = fleet.registry()[1]['mbp']
-        self.args = types.SimpleNamespace(node='mbp', cls=None, arch=None, tolerate=[], cmd=['true'], mem='1G')
+        self.args = types.SimpleNamespace(node='mbp', cls=None, arch=None, tolerate=[],
+                                          cmd=['true'], mem='1G', git=False, no_src=True, src=None)
+        state = tempfile.TemporaryDirectory()
+        self.addCleanup(state.cleanup)
+        self.enterContext(patch.object(fleet, 'STATE', pathlib.Path(state.name)))
         self.kn = {'mbp': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
-        self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8, 'max_temp_c': 99, 'power': {}}
+        self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8,
+                  'max_temp_c': self.n['health']['max_temp_c'] + 1, 'power': {}}
 
     def launch_rejected(self, probe, state):
         with tempfile.TemporaryDirectory() as td, \
