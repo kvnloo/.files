@@ -2,9 +2,9 @@
 """Fleet's public-source Boat adapter. The omp-boat lease owns deletion and budgets."""
 import argparse
 import base64
+import hashlib
 import importlib.machinery
 import importlib.util
-import io
 import json
 import os
 import math
@@ -81,6 +81,59 @@ def upload_source(prefix, archive):
         # urllib errors can contain the signed URL. Keep it out of job logs.
         raise boat.BoatError("Signed source upload failed; URL withheld") from None
 
+def fetch_output(sid, name, destination):
+    """Download an on-disk archive, never binary data through command stdout."""
+    relative(name)
+    archive = "/home/user/fleet-output-" + uuid.uuid4().hex + ".tar.gz"
+    metadata_code = (
+        "import hashlib,json,os,sys; p=sys.argv[1]; h=hashlib.sha256(); "
+        "f=open(p,'rb'); "
+        "[h.update(chunk) for chunk in iter(lambda:f.read(1048576),b'')]; "
+        "print(json.dumps({'size':os.path.getsize(p),'sha256':h.hexdigest()}))"
+    )
+    command = "tar -C /home/user/fleet-job -czf " + shlex.quote(archive) + " -- " + shlex.quote(name)
+    command += " && " + shlex.join(["python3", "-c", metadata_code, archive])
+    metadata = json.loads(boat.remote(sid, command))
+    size, digest = metadata.get("size"), metadata.get("sha256")
+    if not isinstance(size, int) or size < 0 or not isinstance(digest, str) or len(digest) != 64:
+        raise boat.BoatError("Invalid artifact size/checksum metadata")
+    prefix = "/sandboxes/" + sid
+    with tempfile.TemporaryFile() as downloaded:
+        actual = hashlib.sha256()
+        count = 0
+        if size <= 5 * 1024 * 1024:
+            response = boat.api(prefix + "/files?" + urllib.parse.urlencode({"path": archive, "encoding": "base64"}))
+            content = base64.b64decode(response.get("content", ""), validate=True)
+            downloaded.write(content)
+            actual.update(content)
+            count = len(content)
+            transport = "file-api"
+        else:
+            signed = boat.api(prefix + "/files/download-url", "POST", {"path": archive, "ttlSeconds": 300})
+            url = signed.get("url", "")
+            if signed.get("method") != "GET" or urllib.parse.urlsplit(url).scheme != "https":
+                raise boat.BoatError("Invalid signed artifact download response")
+            request = urllib.request.Request(url, method="GET")
+            try:
+                with urllib.request.urlopen(request, timeout=90) as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        downloaded.write(chunk)
+                        actual.update(chunk)
+                        count += len(chunk)
+                        if count > size:
+                            raise boat.BoatError("Artifact exceeded its reported size")
+            except (urllib.error.URLError, OSError, ValueError):
+                raise boat.BoatError("Signed artifact download failed; URL withheld") from None
+            transport = "signed-download"
+        if count != size or actual.hexdigest() != digest:
+            raise boat.BoatError("Artifact SHA256/size mismatch; refusing extraction")
+        downloaded.seek(0)
+        with tarfile.open(fileobj=downloaded, mode="r:gz") as tar:
+            tar.extractall(destination, filter="data")
+    boat.remote(sid, "rm -- " + shlex.quote(archive))
+    return {"path": name, "archive_bytes": size, "archive_sha256": digest, "transport": transport}
+
+
 
 def callback(manifest_path):
     data = json.loads(Path(manifest_path).read_text())
@@ -97,19 +150,18 @@ def callback(manifest_path):
     sys.stderr.write(result.get("stderr", ""))
     rc = result.get("exitCode")
     rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
-    Path(data["receipt"]).write_text(json.dumps({"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc}) + "\n")
+    receipt = {"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc, "artifacts": []}
+    Path(data["receipt"]).write_text(json.dumps(receipt) + "\n")
     for name in data["fetch"]:
-        relative(name)
-        transfer = "tar -C /home/user/fleet-job -czf - -- " + shlex.quote(name) + " | base64 -w0"
         try:
-            encoded = boat.remote(sid, "bash -o pipefail -c " + shlex.quote(transfer))
+            artifact = fetch_output(sid, name, data["dest"])
         except boat.BoatError as exc:
             print(f"fleet: fetch failed for {name}: {exc}; command exit {rc}", file=sys.stderr)
             if rc == 0:
                 raise
             continue
-        with tarfile.open(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True)), mode="r:gz") as tar:
-            tar.extractall(data["dest"], filter="data")
+        receipt["artifacts"].append(artifact)
+        Path(data["receipt"]).write_text(json.dumps(receipt) + "\n")
         print("fleet: fetched " + name + " -> " + data["dest"], file=sys.stderr)
     return rc
 
