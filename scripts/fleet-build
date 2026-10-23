@@ -82,9 +82,10 @@ state=${FLEET_STATE:-$HOME/.local/state/fleet}
 mkdir -p "$state/runs"
 python3 -c 'import json,sys,time; print(json.dumps({"ts": int(time.time()), "law": "O1", "class": sys.argv[1], "node": sys.argv[2] or "auto", "mode": sys.argv[3], "cmd": " ".join(sys.argv[4:])[:300]}))' \
   "$cls" "$node" "$o1" "$@" >> "$state/runs/o1-placements.jsonl" 2>/dev/null || true
-if [ "$node" = groot ] && [ "$o1" != off ]; then
-  echo "fleet-build: O1 refuses --node groot for a $cls job: it runs on a worker lane (mbp, phones) and waits for room. Z0_GUARD_O1=off disables this check." >&2
-  [ "$o1" = enforce ] && exit 2
+if [ "$node" = groot ]; then
+  # The host-lane invariant is unconditional; O1 reporting cannot grant access.
+  echo "fleet-build: Refuse[GROOT_FORBIDDEN]: groot is not a fleet host lane; use an eligible remote worker" >&2
+  exit 2
 fi
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
@@ -138,15 +139,15 @@ while :; do
   rc=$?
   set -e
   wait 2>/dev/null || true
-  # 75 before the job started = no room; retry. A job that ran and drained also says 75,
-  # and retrying it from scratch is the right thing then too.
-  [ $rc -eq 75 ] && [ "$(date +%s)" -lt "$deadline" ] || break
-  echo "fleet-build: no room yet; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
+  # Retry only typed capacity refusals. A permanent qualification error, a
+  # missing requested remote and a job's own exit 75 must not be retried.
+  [ $rc -eq 75 ] && grep -q 'Refuse\[NO_ROOM\]' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
+  echo "fleet-build: remote has no room; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
   sleep 60
 done
 jid=$(sed -n 's/^fleet: job \([0-9a-f-]*\) -> .*/\1/p' "$err" | head -1)
 if [ $rc -eq 75 ]; then
-  echo "fleet-build: no worker has room now (exit 75). Retry later or lower --mem; do not queue it on groot." >&2
+  echo "fleet-build: admission refused (exit 75; typed Refuse reason above). Do not queue it on groot." >&2
 fi
 if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
   state=${FLEET_STATE:-$HOME/.local/state/fleet}

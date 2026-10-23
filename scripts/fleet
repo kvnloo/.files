@@ -36,6 +36,9 @@ from pathlib import Path
 
 import yaml
 
+from fleet_admission import (Admit, Prepare, Refuse, Request, Target, Transfer,
+                             decide, reason_text)
+
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
 STATE = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
@@ -411,6 +414,14 @@ def eligible(n, args, state):
     return None
 
 
+def admission_refuse(request, detail="", code=75):
+    """Turn a typed pure refusal into a nonempty shell-visible reason."""
+    verdict = decide(request)
+    if not isinstance(verdict, Refuse):
+        raise AssertionError("refusal requested for an admissible state")
+    die(reason_text(verdict, detail), code)
+
+
 def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
@@ -419,37 +430,54 @@ def cmd_run(args):
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
         if args.node not in nodes:
-            die(f"unknown node {args.node}")
-        cands = [nodes[args.node]]
-        why = eligible(cands[0], args, {})
-        if why and not why.startswith("taint"):
-            die(f"{args.node}: {why}")
+            admission_refuse(Request(Target.MISSING, False, False, False, Transfer.PENDING),
+                             f"unknown requested node {args.node}")
+        pinned = nodes[args.node]
+        target = Target.GROOT if pinned["name"] == "groot" or pinned["role"] != "worker" else Target.REMOTE
+        why = eligible(pinned, args, state)
+        if why:
+            admission_refuse(Request(target, False, False, False, Transfer.PENDING),
+                             f"{args.node}: {why}")
+        cands = [pinned]
     else:
         cands, skipped = [], []
         for n in nodes.values():
             why = eligible(n, args, state)
             (skipped.append(f"{n['name']}({why})") if why else cands.append(n))
         if not cands:
-            die("no eligible node: " + ", ".join(skipped), 75)
+            admission_refuse(Request(Target.REMOTE, False, False, False, Transfer.PENDING),
+                             "no eligible node: " + ", ".join(skipped))
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in cands], ex.map(probe, cands)))
     best, notes = None, []
+    available = False
     for n in cands:
         p = probes[n["name"]]
         need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
-        if "error" in p:
-            notes.append(f"{n['name']}: {p['error']}"); continue
+        if not isinstance(p, dict) or "error" in p:
+            notes.append(f"{n['name']}: {p.get('error', 'invalid probe') if isinstance(p, dict) else 'invalid probe'}")
+            continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
-        if p["mem_available_mb"] < need:
-            notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
-        score = p["load1"] / max(p["ncpu"], 1) + (1 if n["kind"] == "phone" else 0)
+        mem_available, load, ncpu = (p.get("mem_available_mb"), p.get("load1"), p.get("ncpu"))
+        if any(isinstance(x, bool) or not isinstance(x, (int, float)) or x < 0
+               for x in (mem_available, load, ncpu)) or ncpu == 0:
+            notes.append(f"{n['name']}: incomplete or invalid capacity probe"); continue
+        available = True
+        if mem_available < need:
+            notes.append(f"{n['name']}: {mem_available}MiB available < floor+job {need}MiB"); continue
+        score = load / ncpu + (1 if n["kind"] == "phone" else 0)
         if best is None or score < best[0]:
             best = (score, n, p)
     if not best:
-        die("no node has room now: " + "; ".join(notes), 75)
+        admission_refuse(Request(Target.REMOTE, True, available, False, Transfer.PENDING),
+                         "; ".join(notes) or "no worker capacity reported")
     _, n, p = best
+    # Prepare is NOT an execution grant: source must be transferred first.
+    pre = decide(Request(Target.REMOTE, True, True, True, Transfer.PENDING))
+    if not isinstance(pre, Prepare):
+        raise AssertionError("unexpected fleet admission before source transfer")
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
@@ -459,23 +487,47 @@ def cmd_run(args):
     print(f"fleet: job {jid} -> {n['name']} (load {p['load1']}/{p['ncpu']} cpu, "
           f"{p['mem_available_mb']}MiB available); log {log}", file=sys.stderr)
     ssh = ssh_cmd(n)
-    subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
+    try:
+        subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        # Operational SSH setup error, not a 75 admission retry.
+        die(f"remote preparation failed on {n['name']}: {type(exc).__name__}", 1)
+    transfer = Transfer.NOT_REQUIRED if args.no_src else Transfer.PENDING
     if not args.no_src:
         src = Path(args.src or os.getcwd()).resolve()
-        if (src / ".git").exists():
-            files = subprocess.run(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"],
-                                   capture_output=True, check=True).stdout
-            tar = subprocess.Popen(["tar", "-C", str(src), "--null", "-T", "-", "-czf", "-"],
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        tar = send = None
+        try:
+            files = None
+            if (src / ".git").exists():
+                files = subprocess.run(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"],
+                                       capture_output=True, check=True).stdout
+                tar = subprocess.Popen(["tar", "-C", str(src), "--null", "-T", "-", "-czf", "-"],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            else:
+                tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
             send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
-            tar.stdin.write(files); tar.stdin.close(); tar.stdout.close()
-            send.wait(); tar.wait()
-        else:
-            tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
-            send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
-            tar.stdout.close(); send.wait(); tar.wait()
-        if send.returncode:
-            die("source transfer failed")
+            tar.stdout.close()
+            if files is not None:
+                try:
+                    tar.stdin.write(files)
+                finally:
+                    tar.stdin.close()
+            send_rc = send.wait()
+            tar_rc = tar.wait()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            for child in (send, tar):
+                if child is not None and child.poll() is None:
+                    child.kill()
+                    child.wait()
+            admission_refuse(Request(Target.REMOTE, True, True, True, Transfer.FAILED),
+                             f"node {n['name']}: {type(exc).__name__}", code=1)
+        if tar_rc != 0 or send_rc != 0:
+            admission_refuse(Request(Target.REMOTE, True, True, True, Transfer.FAILED),
+                             f"node {n['name']}: tar exit={tar_rc}, extract exit={send_rc}", code=1)
+        transfer = Transfer.COMPLETE
+    final = decide(Request(Target.REMOTE, True, True, True, transfer))
+    if not isinstance(final, Admit):
+        raise AssertionError("fleet execution without remote source admission")
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
     mem = mb(args.mem or n["lane"]["default_mem"])
     floor = int(n["lane"]["mem_floor_mb"])
