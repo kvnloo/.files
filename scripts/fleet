@@ -494,9 +494,11 @@ def cmd_run(args):
         # outlive the controller's probe. Missing thermal data holds, never runs.
         gate = ("import json,subprocess,sys,math; "
                 "p=json.loads(subprocess.check_output(['python3','/usr/local/bin/fleet-node-probe'])); "
-                "t=p.get('max_temp_c'); "
-                f"sys.exit(0 if isinstance(t,(int,float)) and not isinstance(t,bool) and math.isfinite(t) and 0<t<={float(n['health']['max_temp_c'])} "
-                f"and not p.get('maintenance') and p.get('mem_available_mb',0)>={floor+mem} else 75)")
+                "t=p.get('max_temp_c'); m=p.get('mem_available_mb',0); "
+                f"ok=isinstance(t,(int,float)) and not isinstance(t,bool) and math.isfinite(t) and 0<t<={float(n['health']['max_temp_c'])}; "
+                f"why=('temperature %sC > {float(n['health']['max_temp_c'])}C' % t if not ok else 'maintenance' if p.get('maintenance') "
+                f"else 'only %sMiB available' % m if m<{floor + mem} else ''); "
+                "why and print('fleet: worker gate held: '+why, file=sys.stderr); sys.exit(75 if why else 0)")
         inner = (f"python3 -c {shlex.quote(gate)} || exit 75; "
                  f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
                  f"if [ $avail -lt {floor + mem} ]; then echo \"fleet: only ${{avail}}MiB available\" >&2; exit 75; fi; "
