@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Trusted MBP host-toolchain jobs, admitted and bounded by Kubernetes/Kueue."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import shutil
+import shlex
+import signal
+import subprocess
+import sys
+import time
+import uuid
+
+
+def checked(argv, **kwargs):
+    return subprocess.run(argv, check=True, **kwargs)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--src', required=True)
+    parser.add_argument('--node')
+    parser.add_argument('--class', dest='job_class')
+    parser.add_argument('--mem', default='3G')
+    parser.add_argument('--cpus', default='2')
+    parser.add_argument('--timeout', type=int, default=3600)
+    parser.add_argument('--wait', type=int, default=1800)
+    parser.add_argument('--keep', action='store_true')
+    parser.add_argument('--fetch', action='append', default=[])
+    parser.add_argument('--out')
+    parser.add_argument('--input', action='append', default=[])
+    parser.add_argument('--tolerate', action='append')
+    parser.add_argument('cmd', nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.cmd[:1] == ['--']:
+        args.cmd.pop(0)
+    if not args.cmd or args.timeout <= 0 or args.wait < -1:
+        parser.error('command, positive --timeout, and --wait >= -1 required')
+    # Match fleet's binary memory units, not Kubernetes decimal G/M quantities.
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)([KMGT]?)I?B?', args.mem.upper())
+    if not match:
+        parser.error('invalid --mem')
+    memory = int(float(match[1]) * {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4}[match[2]])
+    if memory <= 0 or not re.fullmatch(r'\d+(?:\.\d+)?', args.cpus) or float(args.cpus) <= 0:
+        parser.error('positive memory and CPUs required')
+    def relative(value):
+        path = Path(value)
+        if path.is_absolute() or '..' in path.parts or not path.parts:
+            parser.error(f'path must remain within source: {value!r}')
+        return path
+    for value in args.fetch:
+        relative(value)
+    inputs = []
+    for value in args.input:
+        source, sep, dest = value.rpartition(':')
+        if not sep or not Path(source).is_file():
+            parser.error(f'invalid input: {value!r}')
+        inputs.append((source, relative(dest)))
+
+    name = 'fleet-mbp-' + uuid.uuid4().hex[:16]
+    fleet = runpy.run_path(str(Path(__file__).resolve().with_name('fleet')))
+    node = fleet['registry']()[1]['mbp']
+    ssh = fleet['ssh_cmd'](node)
+    def remote(script):
+        # The login shell can be fish with functions shadowing rm. Always run
+        # transport and cleanup in a clean, non-login Bash command.
+        return ssh + ['bash -c ' + shlex.quote(script)]
+    # Preserve the existing host-lane identity and warm HOME caches. This is
+    # the owner's trusted host-toolchain lane, not an untrusted-code sandbox.
+    info = checked(remote('printf "%s\\n" "$HOME"; id -u; id -g'), capture_output=True, text=True).stdout.splitlines()
+    home, uid, gid = info[-3:]
+    uid, gid = int(uid), int(gid)
+    if uid == 0:
+        parser.error('MBP SSH account must not be root')
+    stage = f'{home}/.local/state/fleet/kueue/{name}'
+    qstage = shlex.quote(stage)
+    kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml'), '-n', 'fleet-mbp']
+    queue = json.loads(checked(kube + ['get', 'clusterqueue', 'lanes', '-o', 'json'], capture_output=True).stdout)
+    quotas = {r['name']: r['nominalQuota'] for group in queue['spec']['resourceGroups']
+              for flavor in group['flavors'] if flavor['name'] == 'node-mbp' for r in flavor['resources']}
+    def quantity(value):
+        match = re.fullmatch(r'(\d+(?:\.\d+)?)([KMGT]i|[kMGT]|m)?', str(value))
+        if not match:
+            raise RuntimeError(f'unsupported lane quota quantity: {value}')
+        return float(match[1]) * {'': 1, 'm': .001, 'k': 1000, 'M': 1000**2,
+                                  'G': 1000**3, 'T': 1000**4, 'Ki': 1024,
+                                  'Mi': 1024**2, 'Gi': 1024**3, 'Ti': 1024**4}[match[2] or '']
+    if memory > quantity(quotas['memory']) or float(args.cpus) > quantity(quotas['cpu']):
+        print(f'fleet: request exceeds MBP lane quota {quotas}; lower --mem/--cpus (exit 75)', file=sys.stderr)
+        return 75
+    state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
+    runs = state / 'runs'
+    runs.mkdir(parents=True, exist_ok=True)
+    logpath = runs / f'{name}-mbp.log'
+    created = False
+    terminal = False
+    logs = None
+    rc = 1
+
+    def stop(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        checked(remote(f'mkdir -p {qstage}/src {qstage}/tmp && chmod 700 {qstage}'))
+        src = Path(args.src).resolve()
+        if (src / '.git').exists():
+            files = checked(['git', '-C', str(src), 'ls-files', '-co', '--exclude-standard', '-z'], capture_output=True).stdout
+            tar = subprocess.Popen(['tar', '-C', str(src), '--null', '-T', '-', '-czf', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
+            tar.stdout.close()
+            try:
+                tar.stdin.write(files)
+            except BrokenPipeError:
+                pass
+            tar.stdin.close()
+        else:
+            tar = subprocess.Popen(['tar', '-C', str(src), '-czf', '-', '.'], stdout=subprocess.PIPE)
+            sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
+            tar.stdout.close()
+        sender.wait()
+        tar.wait()
+        if sender.returncode or tar.returncode:
+            raise RuntimeError(f'source transfer failed: tar={tar.returncode}, receiver={sender.returncode}')
+        for source, dest in inputs:
+            with open(source, 'rb') as stream:
+                checked(remote(f'mkdir -p {qstage}/src/{shlex.quote(str(dest.parent))} && cat > {qstage}/src/{shlex.quote(str(dest))}'), stdin=stream)
+
+        mounts = [{'name': 'work', 'mountPath': '/work'}, {'name': 'home', 'mountPath': home}]
+        volumes = [{'name': 'work', 'hostPath': {'path': stage, 'type': 'Directory'}},
+                   {'name': 'home', 'hostPath': {'path': home, 'type': 'Directory'}}]
+        # Reuse the installed MBP toolchain without a second distro image.
+        # Toolchains are read-only; the host user's HOME retains warm caches.
+        for index, path in enumerate(['/usr', '/lib', '/lib64', '/opt', '/etc/fleet', '/etc/ssl']):
+            volume = f'toolchain-{index}'
+            volumes.append({'name': volume, 'hostPath': {'path': path, 'type': 'Directory'}})
+            mounts.append({'name': volume, 'mountPath': path, 'readOnly': True})
+        resources = {'cpu': args.cpus, 'memory': str(memory)}
+        manifest = {
+            'apiVersion': 'batch/v1', 'kind': 'Job',
+            'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes', 'app.kubernetes.io/managed-by': 'fleet-build'}},
+            'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout,
+                     'ttlSecondsAfterFinished': 86400, 'template': {'metadata': {'labels': {'fleet-job': name}}, 'spec': {
+                         'restartPolicy': 'Never', 'automountServiceAccountToken': False,
+                         'nodeSelector': {'kubernetes.io/hostname': 'mbp'},
+                         'securityContext': {'runAsUser': uid, 'runAsGroup': gid, 'runAsNonRoot': True},
+                         'containers': [{'name': 'build', 'image': 'busybox:1.37.0',
+                             'command': ['/usr/bin/bash', '-c', '[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; exec "$@"', 'fleet-kueue', *args.cmd],
+                             'workingDir': '/work/src',
+                             'env': [{'name': k, 'value': v} for k, v in {'HOME': home, 'TMPDIR': '/work/tmp', 'PATH': '/usr/local/bin:/usr/bin:/bin', 'FLEET_JOB_ID': name}.items()],
+                             'securityContext': {'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}},
+                             'resources': {'requests': resources, 'limits': resources}, 'volumeMounts': mounts}],
+                         'volumes': volumes}}}}
+        checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
+        created = True
+        print(f'fleet: job {name} -> mbp (Kueue lanes); log {logpath}', file=sys.stderr, flush=True)
+        # Zero preserves fleet's fail-fast contract; allow only a short
+        # controller reconciliation grace. Indefinite queueing is explicit.
+        admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
+        admitted = False
+        pod_name = None
+        with logpath.open('wb') as logfile:
+            while True:
+                job = json.loads(checked(kube + ['get', 'job', name, '-o', 'json'], capture_output=True).stdout)
+                if not job['spec'].get('suspend', False) and not admitted:
+                    admitted = True
+                    print(f'fleet: Kueue admitted {name}', file=sys.stderr, flush=True)
+                pods = json.loads(checked(kube + ['get', 'pods', '-l', f'job-name={name}', '-o', 'json'], capture_output=True).stdout)['items']
+                if pods:
+                    pod = pods[0]
+                    pod_name = pod['metadata']['name']
+                    statuses = pod.get('status', {}).get('containerStatuses', [])
+                    if logs is None and statuses and ('running' in statuses[0]['state'] or 'terminated' in statuses[0]['state']):
+                        logs = subprocess.Popen(kube + ['logs', '-f', pod_name, '-c', 'build'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        # A reader thread streams while the controller observes terminal status.
+                        import threading
+                        def relay():
+                            for line in logs.stdout:
+                                sys.stdout.buffer.write(line)
+                                sys.stdout.buffer.flush()
+                                logfile.write(line)
+                                logfile.flush()
+                        reader = threading.Thread(target=relay, daemon=True)
+                        reader.start()
+                    if statuses and 'terminated' in statuses[0]['state']:
+                        rc = statuses[0]['state']['terminated']['exitCode']
+                        terminal = True
+                        break
+                failed = next((c for c in job.get('status', {}).get('conditions', []) if c['type'] == 'Failed' and c['status'] == 'True'), None)
+                if failed:
+                    rc = 124 if failed['reason'] == 'DeadlineExceeded' else 1
+                    terminal = True
+                    break
+                if not admitted and admission_deadline and time.monotonic() >= admission_deadline:
+                    print(f'fleet: admission wait expired for {name}', file=sys.stderr)
+                    rc = 75
+                    break
+                time.sleep(2)
+            if logs is not None:
+                try:
+                    logs.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    logs.terminate()
+                    logs.wait()
+                reader.join(timeout=5)
+            logfile.write(f'\n# exit {rc}\n'.encode())
+        if terminal:
+            for value in args.fetch:
+                dest = runs / name
+                dest.mkdir(exist_ok=True)
+                tar = subprocess.Popen(remote(f'tar -C {qstage} -czf - {shlex.quote(value)}'), stdout=subprocess.PIPE)
+                receive = subprocess.Popen(['tar', '-xzf', '-', '-C', str(dest)], stdin=tar.stdout)
+                tar.stdout.close()
+                receive.wait()
+                tar.wait()
+                if receive.returncode or tar.returncode:
+                    raise RuntimeError(f'artifact fetch failed: {value}')
+                if args.out:
+                    output = Path(args.out)
+                    output.mkdir(parents=True, exist_ok=True)
+                    artifact = dest / value
+                    target = output / artifact.name
+                    if artifact.is_dir():
+                        shutil.copytree(artifact, target, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(artifact, target)
+        print(f'fleet: job {name} on mbp exited {rc}', file=sys.stderr)
+        return rc
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        if logs is not None and logs.poll() is None:
+            logs.terminate()
+            logs.wait()
+        # Cancellation always stops work before removing its disk source. Retain
+        # completed --keep jobs for inspectability; Kubernetes TTL bounds lifetime.
+        if created and (not args.keep or not terminal):
+            checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--timeout=60s'])
+        if not args.keep or not terminal:
+            checked(remote(f'rm -rf -- {qstage}'))
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (subprocess.CalledProcessError, RuntimeError, ValueError) as exc:
+        print(f'fleet-kueue: {exc}', file=sys.stderr)
+        sys.exit(1)

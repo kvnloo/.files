@@ -16,11 +16,11 @@
 #                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
 #                    its 1200 MiB floor); mbp still wins unless it is busier
 #   --phone          like --light but only on a phone (arm64)
-#   --node NAME      pin a node (avrea, mbp, s22, omarchy-phone, boat)
-#   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
-#   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
-#                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
-#                    queue: it waits for mbp, never falls back to groot.
+#   --node NAME      pin a node (avrea, mbp, k3s-mbp, s22, omarchy-phone, boat)
+#   --mem 4G --cpus 4 --timeout 3600   requests/limits (defaults per mode)
+#   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
+#                    Positive = bounded wait (default 1800); k3s-mbp -1 = indefinite.
+#                    Oversized Kueue requests exit 75; never fall back to groot.
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
@@ -137,12 +137,20 @@ esac
 exec "$@"'
 [ "$mode" = android ] || gradle_args=""
 args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
+use_kueue=0
+runner=("$FLEET"); run_args=("${args[@]}")
+if [ "$node" = k3s-mbp ]; then
+  use_kueue=1
+  runner=(python3 "$(dirname "$FLEET")/fleet-kueue" --wait "$wait_s")
+  [ -z "$out" ] || runner+=(--out "$out")
+  run_args=("${args[@]:1}")
+fi
 
 err=$(mktemp); trap 'rm -f "$err"' EXIT
 deadline=$(( $(date +%s) + wait_s ))
 while :; do
   set +e
-  "$FLEET" "${args[@]}" 2> >(tee "$err" >&2)
+  "${runner[@]}" "${run_args[@]}" 2> >(tee "$err" >&2)
   rc=$?
   set -e
   wait 2>/dev/null || true
@@ -156,7 +164,7 @@ while :; do
   fi
   # Admission holds are retryable. Once a job ID was allocated, a 75 might
   # come from a partially executed workflow; never replay side effects blindly.
-  [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
+  [ "$use_kueue" = 0 ] && [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
   echo "fleet-build: no room yet; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
   sleep 60
 done

@@ -1,12 +1,13 @@
 # Fleet: permanent workers over Tailscale
 
 groot (the desktop) is the controller and the k3s server. Other devices and
-Avrea take work in three lanes:
+Avrea take work through these lanes:
 
 | Lane | For | How | Isolation |
 | --- | --- | --- | --- |
-| **k3s** (`factory`, `lanes`, `z0` queues) | untrusted repo work, anything that fits a container | oss-factory `factory submit`, or a Job with `kueue.x-k8s.io/queue-name` | restricted Pod Security, `netpol-ready` gate, egress only to DNS + internet (docs/k3s/ONBOARDING.md) |
-| **host** (`fleet run`) | our own builds/tests that need the host toolchain (Gradle/Android, bun, cargo, make, ...) | `scripts/fleet-build -- <cmd>` (default routing) or `scripts/fleet run <node> -- <cmd>` | unprivileged `agentjob` user, capped systemd scope, no LAN/tailnet egress; phones: polite-run |
+| **k3s** (`factory`, `lanes`, `z0` queues) | container workloads, with restricted admission for untrusted namespaces | oss-factory `factory submit`, or a Job with `kueue.x-k8s.io/queue-name` | namespace-specific Pod Security and network policy (docs/k3s/ONBOARDING.md) |
+| **MBP Kueue opt-in** (`fleet-mbp` namespace, `lanes` queue) | trusted local builds while cache compatibility qualifies | `scripts/fleet-build --node k3s-mbp --mem 512M -- <cmd>` | non-root pod, explicit requests/limits, read-only host toolchains, writable agentjob HOME/cache |
+| **host** (`fleet run`) | default local builds, explicit `--node mbp`, and phone work | `scripts/fleet-build -- <cmd>` or `scripts/fleet run <node> -- <cmd>` | Linux: unprivileged `agentjob` and capped systemd scope; phones: polite-run |
 | **Avrea** (public exact-head CI) | public-source heavy installs, full suites, compiler gates, factory verification | `scripts/fleet-build --node avrea -- <cmd>` | ephemeral runner, public checkout only, no workflow secrets or persisted checkout credentials |
 
 The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
@@ -17,7 +18,7 @@ re-running a command with the same registry changes nothing.
 | Device | Role | State |
 | --- | --- | --- |
 | groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
-| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane; local-data and native-toolchain builds | hardened and verified; JDK 17/21, Android SDK (34/35/37.2, build-tools 34/35/37), Bun, Node, Python; NOOP debug APK built there 2026-10-20 |
+| mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | k3s worker; default host lane; opt-in Kueue | Kueue cache compatibility still qualifies; see [MBP Kueue](#mbp-kueue-local-builds) |
 | omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
 | galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only | ssh on 8022; explicit light/worker profiles below |
 | cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
@@ -43,19 +44,23 @@ fleet-build --light -- python3 -m pytest    # phones for light arm64-safe work
   `avrea-ubuntu-latest-4-vcpu` (16 GB); `-4-vcpu-8gb` saves minutes for
   CPU-bound work. Standard GitHub public runners remain the no-Avrea-budget
   baseline and fallback, not a reason to contend for MBP memory.
-- Local/private data and native-only toolchains -> MBP. Gradle/Android ->
-  capability `android-build` (mbp; 6 GiB, 4 CPUs, JDK 17, or `--jdk 21`).
-  Uncommitted local work stays on the host lane; Avrea never uploads it.
+- Local/private data -> MBP host backend by default and with `--node mbp`.
+  Kueue requires explicit `--node k3s-mbp` while cache compatibility qualifies.
+  Gradle/Android defaults remain 6 GiB, 4 CPUs and JDK 17, or `--jdk 21`.
+  Opt-in Kueue rejects requests above its total quota with exit 75 before staging.
+  Avrea never receives uncommitted local work.
 - Phones -> light arm64-safe work (`--light`), not full dependency installs or
   x86 jobs. Boat -> x86 overflow and Docker jobs within its trial allowance.
   Avrea ARM/macOS are available when architecture/native macOS is required,
   not the default: ARM reference-minute cost is 3x x86.
 - groot only for the GPU or a toolchain that exists only there, said explicitly.
-  No room (busy, hot, cordoned) -> `fleet-build` retries every 60 s for
-  `--wait` seconds (default 1800), then exits 75; never queue it on groot instead.
-- `fleet run` on Linux admits a job only when the lane slice's anonymous memory
-  leaves room for `--mem` (concurrent builds queue instead of OOM-killing each
-  other), and it stops the job's scope afterwards.
+  Host admission retries for `--wait` seconds (default 1800).
+  Host `--wait 0` disables retries. Never execute a held CPU build on groot.
+- Never hold `/tmp/mbp-turnstile.lock` or `/tmp/mbp-quiet.lock` during host
+  admission waits. Inside either lock, use `fleet-build --node mbp --wait 0`.
+  On admission exit 75, release locks, sleep outside them, then retry.
+- Host and opt-in Kueue admission do not share reservations.
+  Coordinate concurrent work rather than reserving the same capacity twice.
 - Capabilities (`capabilities:` in the registry) are what a host-lane job finds
   on the node; `fleet run --class X` matches classes or capabilities, and
   `fleet nodes` lists them. `scripts/fleet toolchain <node>` installs the node's
@@ -65,6 +70,63 @@ fleet-build --light -- python3 -m pytest    # phones for light arm64-safe work
   `--check` reports only. Gradle caches stay in `/home/agentjob/.gradle` on the
   node; the job's scope is stopped at the end, so Gradle/Kotlin daemons never
   outlive it.
+
+### MBP Kueue local builds
+
+```sh
+fleet-build --node k3s-mbp --mem 2G --cpus 2 --wait 600 --timeout 600 -- python3 -m unittest
+```
+
+This backend is opt-in only. Default jobs and `--node mbp` still use the host
+backend. Do not infer cache compatibility from simple queue/completion proofs.
+Do not wrap Kueue submissions in host turnstile or quiet flocks.
+Kueue owns this backend's admission queue.
+
+The backend submits a suspended Job in namespace `fleet-mbp`, labelled
+`kueue.x-k8s.io/queue-name=lanes`. Its LocalQueue points to ClusterQueue `lanes`.
+The MBP flavor supplies worker-only placement. CPU work never moves to groot.
+Both `--mem` and `--cpus` become requests and limits.
+
+`--wait 0` means no queue wait on every node. Kueue permits five seconds for
+controller admission, then deletes a still-pending Job and exits 75.
+Positive `--wait N` permits at most N seconds of admission waiting.
+Only `--node k3s-mbp --wait -1` waits indefinitely.
+`--timeout` sets the execution deadline after admission. A command exit,
+admission timeout, execution timeout and transport failure are different outcomes.
+The backend streams pod logs and returns the command's exit status when available.
+Keep the exact job ID when results are uncertain. Do not replay an admitted job blindly.
+
+The controller transfers source with tar through MBP's existing fleet-registry
+SSH command as `agentjob`. Remote commands use `bash -c`.
+Staging is `/home/agentjob/.local/state/fleet/kueue/<job>`.
+The pod mounts source at `/work/src` and runs as UID 1001 with `runAsNonRoot: true`.
+HOME is `/home/agentjob`, mounted read-write to preserve existing build caches.
+Trusted jobs can access that account's other files and caches.
+`/tmp` uses a per-job disk directory.
+The image is `busybox:1.37.0`. Host toolchains remain mounted read-only:
+`/usr`, `/lib`, `/lib64`, `/opt`, `/etc/fleet` and `/etc/ssl`.
+The pod has no service-account token, drops all capabilities, and disallows privilege escalation.
+Requested outputs return through the existing `--fetch`/`--out` interface.
+`--keep` retains staging.
+
+HostPath requires the dedicated namespace's `privileged` Pod Security admission.
+This label does not make the pod privileged. Existing `lanes` and `factory`
+namespaces remain restricted. Do not use `fleet-mbp` for unknown repositories.
+
+The declared `lanes` quota is **4 CPUs / 3011592192 bytes** (~2.805 GiB).
+The parent sample at `2026-10-24T00:45:10Z` reported 5159075840 available bytes.
+Subtract 2147483648 bytes (2 GiB), capped by allocatable, without whole-GiB rounding.
+See [the exact derivation](BUILDS.md). Re-sample before applying or increasing capacity.
+Both `lanes` LocalQueues share that quota, not separate per-namespace budgets.
+During migration, factory's MBP CPU and memory quotas are **zero**.
+This prevents factory's independent queue from overcommitting the same worker.
+Do not restore factory capacity without an explicit shared-capacity plan.
+Static Kueue quota does not track concurrent direct host work or changing free RAM.
+
+`.files` owns the namespace and queue declarations in `config/k3s`.
+Hermes executor and quackles manifests stay in `hermes-k8s-lab`.
+The parent migration removes kind only after the replacement workloads pass
+the real k3s readiness proof. Kind retirement remains pending.
 
 ### Boat: public x86 verification and overflow
 
@@ -82,9 +144,9 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
   select Boat unless a node is pinned. They assert that the source is public.
   Docker is not a preinstalled capability claim. Install and check required
   toolchains in the job command.
-- Use `--public` for reviewed public-source overflow. Normal routing tries the
-  MBP and eligible phones first. A pre-admission 75 then tries Boat before
-  sleeping. An allocated job never replays automatically, including exit 75.
+- Use `--public` for reviewed public-source overflow. Normal routing retains the
+  host backend and eligible phones. Only exit 75 before a Job ID exists permits
+  overflow to Boat. An allocated job never replays automatically, including exit 75.
 - Keep local datasets, private repositories, environment files, credentials,
   GPU jobs and host-only toolchains off Boat. Use `--local-data` to disable
   cloud overflow. Explicit `--node boat --local-data` fails before admission.
@@ -118,8 +180,9 @@ fleet-build --public --light --src /tmp/public-repo -- python3 -m unittest disco
   most **90,000 total trial seconds**. It reserves 600 seconds for every live
   VM plus the new VM. Provider concurrency is **2**. Prioritize jobs that unblock
   other agents. Do not bypass the guard, create directly, or enable paid usage.
-- On provider/budget hold, `--wait` retries outside admission. Use `--wait 0`
-  inside MBP quiet or turnstile locks. Release locks before any retry.
+- On provider/budget hold, `--wait` retries outside admission.
+  Keep host admission retries outside MBP quiet or turnstile locks.
+  `--wait 0` never means indefinite waiting. Only `--node k3s-mbp --wait -1` does.
   Groot never becomes the build fallback.
 
 The [Boat operations guide](BOAT.md) describes the reaper and encrypted-secret

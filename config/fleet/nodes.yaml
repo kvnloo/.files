@@ -55,9 +55,13 @@ nodes:
     ssh_port: 2222
     arch: amd64
     classes: [cpu-heavy, build, render]
-    # The default build node (docs/fleet/README.md "Default routing"): NOOP and
-    # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
-    # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
+    # Default builds and --node mbp retain the existing host backend.
+    # Kueue is opt-in only: --node k3s-mbp, namespace fleet-mbp,
+    # LocalQueue lanes -> ClusterQueue lanes. Its quotas live in
+    # config/k3s/kueue/queues.yaml, separate from this host-lane ceiling.
+    # Hermes executor/quackles manifests belong in hermes-k8s-lab, not .files.
+    # The parent migration retires kind only after the real k3s readiness proof.
+    # SDK in /opt/android-sdk; Gradle caches in /home/agentjob/.gradle.
     capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
     toolchains: [jdk17, jdk21, bun, android-sdk]
     lane:
