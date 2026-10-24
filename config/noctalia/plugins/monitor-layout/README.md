@@ -20,6 +20,13 @@ Monitor Layout is a Noctalia Shell plugin for visually arranging multiple monito
 4. Pick a resolution, scale, or transform for the selected output.
 5. Click **Apply** to send the layout to your compositor (Sway or Hyprland).
 
+The **Displays** section of Noctalia's Display Center also embeds the same
+drag preview. Drag a tile to stage its position, or use the X/Y fields for
+exact coordinates. **Reset** discards the draft; **Apply** changes the live
+layout. Dragging alone never moves your actual outputs. The preview uses
+logical monitor sizes, so rotated/scaled displays and negative coordinates
+remain proportional. Snap-to-grid uses this plugin's existing settings.
+
 ## Make It Permanent
 
 Applying from the panel changes your current session only. To persist your layout across restarts:

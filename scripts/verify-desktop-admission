@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Exercise the real API's placement gate, without running a container."""
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+
+root = Path(__file__).resolve().parents[1]
+env = {**os.environ, 'KUBECONFIG': str(Path.home()/'.kube/k3s.yaml')}
+base = {'apiVersion':'v1','kind':'Pod','metadata':{'name':'desktop-admission-dryrun','namespace':'z0'},'spec':{
+    'restartPolicy':'Never','automountServiceAccountToken':False,
+    'securityContext':{'runAsNonRoot':True,'runAsUser':65534,'seccompProfile':{'type':'RuntimeDefault'}},
+    'containers':[{'name':'probe','image':'busybox:1.37','command':['true'],
+        'securityContext':{'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},
+        'resources':{'requests':{'cpu':'1','memory':'128Mi'},'limits':{'cpu':'1','memory':'128Mi'}}}],
+    'nodeSelector':{'kubernetes.io/hostname':'groot'}}}
+cases=[]
+cases.append(('cpu-on-groot-denied',copy.deepcopy(base),False))
+p=copy.deepcopy(base);p['spec']['nodeSelector']={'kubernetes.io/hostname':'mbp','z0.dev/cpu-admit':'true'}
+cases.append(('cpu-on-mbp-accepted',p,True))
+p=copy.deepcopy(base);p['spec'].pop('nodeSelector');cases.append(('unpinned-cpu-denied',p,False))
+p=copy.deepcopy(base);p['spec']['containers'][0]['resources']['limits']['nvidia.com/gpu']='1'
+p['spec']['containers'][0]['resources']['requests']['nvidia.com/gpu']='1'
+cases.append(('allocated-gpu-groot-accepted',copy.deepcopy(p),True))
+p['spec']['containers'][0]['resources']['limits']['cpu']='8';cases.append(('gpu-does-not-bypass-cpu-limit',p,False))
+p=copy.deepcopy(base);p['spec']['containers'][0]['resources']={'limits':{'cpu':'200m','memory':'64Mi'}}
+cases.append(('bounded-gateway-preserved',p,True))
+p=copy.deepcopy(base);p['spec']['nodeName']='groot';p['spec']['nodeSelector']={'kubernetes.io/hostname':'mbp','z0.dev/cpu-admit':'true'}
+cases.append(('nodename-bypass-denied',p,False))
+results=[]
+for name,pod,allow in cases:
+    r=subprocess.run(['kubectl','create','--dry-run=server','-f','-','-o','name'],input=json.dumps(pod),text=True,capture_output=True,env=env)
+    ok=(r.returncode==0)==allow
+    results.append({'case':name,'pass':ok,'exit':r.returncode,'stdout':r.stdout.strip(),'stderr':r.stderr.strip()})
+    print(json.dumps(results[-1]),flush=True)
+if not all(r['pass'] for r in results):
+    raise SystemExit(1)
+print(f'PLACEMENT_API_OK {len(results)} cases (server dry-run only; no pod readiness claimed)')

@@ -1,0 +1,125 @@
+#!/bin/sh
+# fleet-phone-android-harden: stop Android from killing Omalauncher's Linux
+# guest (and the Tailscale app beside it) when the owner leaves the app, the
+# screen is off or the phone dozes. Reversible: every change is recorded with
+# its undo command before it is made.
+#
+#   fleet-phone-android-harden [-s SERIAL] status   show the current values
+#   fleet-phone-android-harden [-s SERIAL] apply    harden (idempotent)
+#   fleet-phone-android-harden [-s SERIAL] undo     run the recorded undo file
+#
+# Runs wherever adb reaches the phone: on groot (`-s 100.x.y.z:port`) or inside
+# the phone's own guest (its wireless-debugging link; -s optional). Only
+# `adb shell settings|device_config|cmd|am`: no installs, no UI, no reboot.
+#
+# Changes (per package dev.omalauncher and com.tailscale.ipn):
+#   - deviceidle user whitelist (= Settings > Battery > "Unrestricted", with the
+#     appop below): Doze and app standby never defer the app
+#   - appops RUN_ANY_IN_BACKGROUND / RUN_IN_BACKGROUND allow
+#   - app standby bucket `active` when it is lower (rare/restricted)
+# and phone-wide:
+#   - settings_enable_monitor_phantom_procs=false and max_phantom_processes
+#     2147483647: Android 12+ otherwise kills an app's child processes beyond 32
+#     ("phantom processes"); every PRoot guest process is one
+#
+# Undo file (first apply only, so it holds the ORIGINAL values):
+#   ~/.local/state/fleet/android-harden/<model>-<serial>.undo.sh
+set -eu
+SERIAL=""
+if [ "${1:-}" = -s ]; then SERIAL=$2; shift 2; fi
+ACTION=${1:-status}
+PKGS="dev.omalauncher com.tailscale.ipn"
+a() { if [ -n "$SERIAL" ]; then adb -s "$SERIAL" shell "$@"; else adb shell "$@"; fi; }
+q() { a "$@" 2>/dev/null | tr -d '\r'; }
+
+state=$HOME/.local/state/fleet/android-harden
+mkdir -p "$state"
+model=$(q getprop ro.product.model)
+hw=$(q getprop ro.serialno)
+[ -n "$model" ] || { echo "adb cannot reach the phone${SERIAL:+ $SERIAL}" >&2; exit 1; }
+undo=$state/$model-${hw:-unknown}.undo.sh
+log=$state/$model-${hw:-unknown}.log
+ADBCMD='$A'
+
+whitelisted() { q cmd deviceidle whitelist | grep -q ",$1,"; }
+op_mode() { # prints allow|ignore|deny|default for an appop
+    q cmd appops get "$1" "$2" | sed -n "s/^$2: \([a-z]*\).*/\1/p" | head -1 | grep . || echo default
+}
+bucket() { q am get-standby-bucket "$1"; }
+bucket_name() { case $1 in 10) echo active ;; 20) echo working_set ;; 30) echo frequent ;; 40) echo rare ;; 45) echo restricted ;; *) echo "" ;; esac; }
+phantom_mon() { q settings get global settings_enable_monitor_phantom_procs; }
+phantom_max() { q device_config get activity_manager max_phantom_processes; }
+
+status() {
+    echo "phone: $model ($hw)${SERIAL:+ via $SERIAL}"
+    for p in $PKGS; do
+        if ! q pm path "$p" | grep -q .; then echo "  $p: not installed"; continue; fi
+        echo "  $p: whitelist=$(whitelisted "$p" && echo yes || echo no)" \
+            "RUN_ANY_IN_BACKGROUND=$(op_mode "$p" RUN_ANY_IN_BACKGROUND)" \
+            "RUN_IN_BACKGROUND=$(op_mode "$p" RUN_IN_BACKGROUND) bucket=$(bucket "$p")"
+    done
+    fg=$(q dumpsys activity services dev.omalauncher | grep -c 'isForeground=true' || true)
+    echo "  omalauncher foreground service: $([ "${fg:-0}" -gt 0 ] && echo running || echo NOT running)"
+    echo "  phantom monitor=$(phantom_mon) max_phantom_processes=$(phantom_max)"
+    [ -s "$undo" ] && echo "  undo file: $undo"
+    return 0
+}
+
+# record "<undo command>" "<description>": appended once per change, before it is made.
+record() {
+    if [ ! -s "$undo" ]; then
+        # The wireless-debugging port changes; pass the current one as: ADB_SERIAL=ip:port sh <file>
+        printf '#!/bin/sh\n# Undo fleet-phone-android-harden on %s (%s): restores the original values.\n# Run: [ADB_SERIAL=ip:port] sh %s\nset -eux\nS=${ADB_SERIAL:-%s}\nA="adb ${S:+-s $S} shell"\n' \
+            "$model" "$hw" "$undo" "$SERIAL" >"$undo"
+    fi
+    grep -qxF "$1" "$undo" || printf '%s\n' "$1" >>"$undo"
+    printf '%s %s\n' "$(date '+%F %T')" "$2" >>"$log"
+    echo "  changed: $2"
+}
+
+apply() {
+    first=0; [ -s "$undo" ] || first=1
+    for p in $PKGS; do
+        q pm path "$p" | grep -q . || continue
+        if ! whitelisted "$p"; then
+            [ $first = 1 ] && record "$ADBCMD cmd deviceidle whitelist -$p" "deviceidle whitelist +$p"
+            a cmd deviceidle whitelist "+$p" >/dev/null
+        fi
+        for op in RUN_ANY_IN_BACKGROUND RUN_IN_BACKGROUND; do
+            m=$(op_mode "$p" "$op")
+            if [ "$m" != allow ]; then
+                [ $first = 1 ] && record "$ADBCMD cmd appops set $p $op $m" "appops $p $op $m -> allow"
+                a cmd appops set "$p" "$op" allow
+            fi
+        done
+        b=$(bucket "$p")
+        case $b in 20 | 30 | 40 | 45)
+            [ $first = 1 ] && record "$ADBCMD am set-standby-bucket $p $(bucket_name "$b")" "standby bucket $p $b -> active"
+            a am set-standby-bucket "$p" active ;;
+        esac
+    done
+    m=$(phantom_mon)
+    if [ "$m" != false ]; then
+        if [ "$m" = null ] || [ -z "$m" ]; then u="$ADBCMD settings delete global settings_enable_monitor_phantom_procs"
+        else u="$ADBCMD settings put global settings_enable_monitor_phantom_procs $m"; fi
+        [ $first = 1 ] && record "$u" "settings_enable_monitor_phantom_procs $m -> false"
+        a settings put global settings_enable_monitor_phantom_procs false
+    fi
+    m=$(phantom_max)
+    if [ "$m" != 2147483647 ]; then
+        if [ "$m" = null ] || [ -z "$m" ]; then u="$ADBCMD device_config delete activity_manager max_phantom_processes"
+        else u="$ADBCMD device_config put activity_manager max_phantom_processes $m"; fi
+        [ $first = 1 ] && record "$u" "max_phantom_processes $m -> 2147483647"
+        a device_config put activity_manager max_phantom_processes 2147483647
+    fi
+    status
+}
+
+case $ACTION in
+    status) status ;;
+    apply) apply ;;
+    undo)
+        [ -s "$undo" ] || { echo "no undo file at $undo" >&2; exit 1; }
+        ADB_SERIAL=$SERIAL sh "$undo" && mv "$undo" "$undo.done-$(date +%s)" && echo "undone; record kept as $undo.done-*" ;;
+    *) echo "usage: fleet-phone-android-harden [-s SERIAL] status|apply|undo" >&2; exit 2 ;;
+esac

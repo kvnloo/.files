@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Fleet's public-source Boat adapter. The omp-boat lease owns deletion and budgets."""
+import argparse
+import base64
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import math
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import uuid
+import urllib.error
+import urllib.parse
+import urllib.request
+
+ROOT = Path(__file__).resolve().parent.parent
+loader = importlib.machinery.SourceFileLoader("fleet_boat_policy", str(ROOT / "scripts/boat"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+boat = importlib.util.module_from_spec(spec)
+loader.exec_module(boat)
+
+
+def relative(value):
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise ValueError("Artifact paths must remain inside the job directory")
+    return path
+
+
+def pack_source(src, archive, inputs, no_src=False):
+    src = Path(src).resolve()
+    if no_src:
+        names = []
+    elif (src / ".git").exists():
+        names = subprocess.check_output(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"]).split(b"\0")
+        names = [os.fsdecode(name) for name in names if name]
+    else:
+        raise ValueError("Boat source must be a git checkout; review public files before shipping")
+    with tarfile.open(archive, "w:gz") as tar:
+        for name in dict.fromkeys(names):
+            path = relative(name)
+            # Never ship local environment files, even if accidentally tracked.
+            if any(part == ".env" or part.startswith(".env.") for part in path.parts):
+                raise ValueError("Boat source contains an environment file; use a reviewed public snapshot")
+            tar.add(src / path, arcname=str(Path("src") / path), recursive=False)
+        for item in inputs:
+            source, sep, destination = item.rpartition(":")
+            if not sep or not Path(source).is_file():
+                raise ValueError("Invalid --input FILE:RELATIVE_PATH")
+            tar.add(source, arcname=str(Path("src") / relative(destination)), recursive=False)
+    if Path(archive).stat().st_size > 32 * 1024 * 1024:
+        raise ValueError("Boat source archive exceeds 32 MiB; send a smaller reviewed snapshot")
+
+
+def upload_source(prefix, archive):
+    content = Path(archive).read_bytes()
+    destination = "/home/user/fleet-source.tar.gz"
+    if len(content) <= 5 * 1024 * 1024:
+        boat.api(prefix + "/files", "PUT", {"path": destination, "encoding": "base64",
+                                         "content": base64.b64encode(content).decode()})
+        return
+    upload = boat.api(prefix + "/files/upload-url", "POST",
+                      {"path": destination, "ttlSeconds": 300})
+    url = upload.get("url", "")
+    if upload.get("method") != "PUT" or urllib.parse.urlsplit(url).scheme != "https":
+        raise boat.BoatError("Invalid signed source upload response")
+    # The URL itself authorizes this one path. Never forward the Boat key.
+    request = urllib.request.Request(url, data=content, method="PUT",
+                                     headers={"Content-Type": "application/octet-stream"})
+    try:
+        with urllib.request.urlopen(request, timeout=90):
+            pass
+    except (urllib.error.URLError, OSError, ValueError):
+        # urllib errors can contain the signed URL. Keep it out of job logs.
+        raise boat.BoatError("Signed source upload failed; URL withheld") from None
+
+def fetch_output(sid, name, destination):
+    """Download an on-disk archive, never binary data through command stdout."""
+    relative(name)
+    archive = "/home/user/fleet-output-" + uuid.uuid4().hex + ".tar.gz"
+    metadata_code = (
+        "import hashlib,json,os,sys; p=sys.argv[1]; h=hashlib.sha256(); "
+        "f=open(p,'rb'); "
+        "[h.update(chunk) for chunk in iter(lambda:f.read(1048576),b'')]; "
+        "print(json.dumps({'size':os.path.getsize(p),'sha256':h.hexdigest()}))"
+    )
+    command = "tar -C /home/user/fleet-job -czf " + shlex.quote(archive) + " -- " + shlex.quote(name)
+    command += " && " + shlex.join(["python3", "-c", metadata_code, archive])
+    metadata = json.loads(boat.remote(sid, command))
+    size, digest = metadata.get("size"), metadata.get("sha256")
+    if not isinstance(size, int) or size < 0 or not isinstance(digest, str) or len(digest) != 64:
+        raise boat.BoatError("Invalid artifact size/checksum metadata")
+    prefix = "/sandboxes/" + sid
+    with tempfile.TemporaryFile() as downloaded:
+        actual = hashlib.sha256()
+        count = 0
+        if size <= 5 * 1024 * 1024:
+            response = boat.api(prefix + "/files?" + urllib.parse.urlencode({"path": archive, "encoding": "base64"}))
+            content = base64.b64decode(response.get("content", ""), validate=True)
+            downloaded.write(content)
+            actual.update(content)
+            count = len(content)
+            transport = "file-api"
+        else:
+            signed = boat.api(prefix + "/files/download-url", "POST", {"path": archive, "ttlSeconds": 300})
+            url = signed.get("url", "")
+            if signed.get("method") != "GET" or urllib.parse.urlsplit(url).scheme != "https":
+                raise boat.BoatError("Invalid signed artifact download response")
+            request = urllib.request.Request(url, method="GET")
+            try:
+                with urllib.request.urlopen(request, timeout=90) as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        downloaded.write(chunk)
+                        actual.update(chunk)
+                        count += len(chunk)
+                        if count > size:
+                            raise boat.BoatError("Artifact exceeded its reported size")
+            except (urllib.error.URLError, OSError, ValueError):
+                raise boat.BoatError("Signed artifact download failed; URL withheld") from None
+            transport = "signed-download"
+        if count != size or actual.hexdigest() != digest:
+            raise boat.BoatError("Artifact SHA256/size mismatch; refusing extraction")
+        downloaded.seek(0)
+        with tarfile.open(fileobj=downloaded, mode="r:gz") as tar:
+            tar.extractall(destination, filter="data")
+    boat.remote(sid, "rm -- " + shlex.quote(archive))
+    return {"path": name, "archive_bytes": size, "archive_sha256": digest, "transport": transport}
+
+
+
+
+def callback(manifest_path):
+    data = json.loads(Path(manifest_path).read_text())
+    sid = os.environ["BOAT_SANDBOX_ID"]
+    prefix = "/sandboxes/" + sid
+    upload_source(prefix, data["archive"])
+    boat.remote(sid, "mkdir -p /home/user/fleet-job/src && tar -xzf /home/user/fleet-source.tar.gz -C /home/user/fleet-job && rm /home/user/fleet-source.tar.gz")
+    # A fresh VM is the isolation/resource boundary. --mem/--cpus choose a
+    # provider shape, not a fictitious per-process cgroup on the guest.
+    command = "cd /home/user/fleet-job/src && timeout --kill-after=5 " + str(data["timeout"]) + " " + shlex.join(data["command"])
+    tick = time.monotonic()
+    result = boat.api(prefix + "/commands", "POST", {"command": command, "timeoutSeconds": min(data["timeout"] + 10, 500)})
+    sys.stdout.write(result.get("stdout", ""))
+    sys.stderr.write(result.get("stderr", ""))
+    rc = result.get("exitCode")
+    rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
+    receipt = {"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc, "artifacts": []}
+    Path(data["receipt"]).write_text(json.dumps(receipt) + "\n")
+    for name in data["fetch"]:
+        try:
+            artifact = fetch_output(sid, name, data["dest"])
+        except boat.BoatError as exc:
+            print(f"fleet: fetch failed for {name}: {exc}; command exit {rc}", file=sys.stderr)
+            if rc == 0:
+                raise
+            continue
+        receipt["artifacts"].append(artifact)
+        Path(data["receipt"]).write_text(json.dumps(receipt) + "\n")
+        print("fleet: fetched " + name + " -> " + data["dest"], file=sys.stderr)
+    return rc
+
+
+def run(args):
+    if args.keep:
+        raise ValueError("Boat leases always delete; --keep is not permitted")
+    memory = args.mem_mb
+    cpus = float(args.cpus or 0)
+    if memory <= 0 or memory > 7168 or not math.isfinite(cpus) or cpus < 0 or cpus > 4:
+        raise ValueError("Boat trial jobs require 1..7168 MiB and at most 4 CPUs")
+    machine = "small" if memory <= 3072 and cpus <= 2 else "default"
+    if args.timeout <= 0 or args.timeout > 450:
+        raise ValueError("Boat timeout must be 1..450 seconds within the 600-second lease")
+    for name in args.fetch or []:
+        relative(name)
+    # Capacity denial is pre-admission 75. omp-boat rechecks under its shared lock.
+    try:
+        boat.check_capacity()
+    except boat.BoatError as exc:
+        print("fleet: boat admission held: " + str(exc), file=sys.stderr)
+        return 75
+    state = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
+    jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+    runs = state / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    dest = runs / jid
+    dest.mkdir()
+    with tempfile.TemporaryDirectory(prefix="fleet-boat-") as temp:
+        archive = Path(temp) / "source.tar.gz"
+        pack_source(args.src or os.getcwd(), archive, args.input, args.no_src)
+        manifest = Path(temp) / "manifest.json"
+        manifest.write_text(json.dumps(dict(archive=str(archive), command=args.command, timeout=args.timeout,
+            fetch=args.fetch or [], dest=str(dest), receipt=str(dest / "boat-receipt.json"))))
+        log = runs / (jid + "-boat.log")
+        allocated = False
+        started = time.monotonic()
+        wrapper = os.environ.get("OMP_BOAT", str(ROOT / "scripts/boat"))
+        with log.open("wb") as stream:
+            proc = subprocess.Popen([sys.executable, wrapper, "create", "--type", machine, "fleet-" + jid,
+                "--", sys.executable, str(Path(__file__).resolve()), "--callback", str(manifest)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            try:
+                for line in proc.stdout:
+                    if not allocated:
+                        try:
+                            event = json.loads(line)
+                        except (ValueError, UnicodeDecodeError):
+                            event = {}
+                        if event.get("event") == "created":
+                            allocated = True
+                            print(f"fleet: job {jid} -> boat ({machine}, requested {memory}MiB); log {log}", file=sys.stderr)
+                    stream.write(line)
+                    sys.stdout.buffer.write(line)
+                    sys.stdout.flush()
+                rc = proc.wait()
+            finally:
+                if proc.poll() is None:
+                    proc.terminate()
+                    proc.wait(timeout=200)
+            stream.write(f"# exit {rc}; wall_seconds={time.monotonic() - started:.3f}\n".encode())
+        label = f"job {jid} on boat" if allocated else "boat pre-admission"
+        print(f"fleet: {label} exited {rc}; wall_seconds={time.monotonic() - started:.3f}", file=sys.stderr)
+        return rc
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--callback")
+    p.add_argument("--src")
+    p.add_argument("--no-src", action="store_true")
+    p.add_argument("--keep", action="store_true")
+    p.add_argument("--mem-mb", type=int, default=512)
+    p.add_argument("--cpus")
+    p.add_argument("--timeout", type=int, default=450)
+    p.add_argument("--fetch", action="append")
+    p.add_argument("--input", action="append", default=[])
+    p.add_argument("command", nargs=argparse.REMAINDER)
+    args = p.parse_args()
+    if args.command[:1] == ["--"]:
+        args.command.pop(0)
+    try:
+        return callback(args.callback) if args.callback else run(args)
+    except (ValueError, OSError, boat.BoatError, subprocess.SubprocessError, tarfile.TarError) as exc:
+        print("fleet: boat: " + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

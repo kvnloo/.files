@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -27,8 +28,10 @@ class Contracts(unittest.TestCase):
         self.watch.checkout_roots = []
         self.watch.checkout_discover = lambda roots: []
         self.watch.reaper_status = self.root / 'latest.json'
+        self.watch.refresh_checkout_count()
 
     def tearDown(self):
+        self.watch.stop.set()
         self.watch.store.db.close()
         self.temp.cleanup()
 
@@ -76,6 +79,7 @@ class Contracts(unittest.TestCase):
             'checkout_count': 0, 'timestamp': 'old', 'removed_count': 7,
             'bytes_freed': 123, 'errors': [{'stage': 'archive', 'error': 'archive failed'}]}))
         with patch.object(self.watch, 'checkout_discover', return_value=paths) as discover, patch.object(self.watch.store, 'notify') as notify:
+            self.watch.refresh_checkout_count()
             self.watch.checkout_invariants()
             notify.assert_called_once()
             discover.assert_called_once_with([self.root])
@@ -96,10 +100,12 @@ class Contracts(unittest.TestCase):
         path = self.root / 'checkout'
         path.mkdir()
         with patch.object(self.watch, 'checkout_discover', return_value=[path, path]) as discover, patch.object(self.watch, 'record') as record:
+            self.watch.refresh_checkout_count()
             self.watch.checkout_invariants()
             record.assert_not_called()
             self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 1)
             path.rmdir()
+            self.watch.refresh_checkout_count()
             self.watch.checkout_invariants()
             self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 0)
             self.assertEqual(discover.call_count, 2)
@@ -107,6 +113,7 @@ class Contracts(unittest.TestCase):
     def test_checkout_read_failure_is_unavailable_not_healthy(self):
         self.watch.checkout_roots = [self.root]
         with patch.object(self.watch, 'checkout_discover', side_effect=OSError('private error')), patch.object(self.watch, 'record') as record:
+            self.watch.refresh_checkout_count()
             self.watch.checkout_invariants()
         self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
         status = self.watch.store.get('worktree-reaper')
@@ -118,6 +125,148 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.watch.checkout_threshold, 200)
         with self.assertRaises(ValueError):
             sw.Watch(self.root / 'invalid', checkout_threshold=-1)
+
+    def test_checkout_cache_reports_staleness_and_preserves_last_count_on_failure(self):
+        self.watch.checkout_cache.update(checkout_count=9, refreshed_at=time.time() - 700)
+        with patch.object(self.watch, 'record') as record:
+            self.watch.checkout_invariants()
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['checkout_count'], 9)
+        self.assertEqual(status['count_status'], 'unavailable')
+        self.assertGreaterEqual(status['refresh_age_seconds'], 700)
+        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
+        with patch.object(self.watch, 'checkout_discover', side_effect=OSError('failed')):
+            self.watch.refresh_checkout_count()
+        self.assertEqual(self.watch.checkout_cache['checkout_count'], 9)
+        self.assertEqual(self.watch.checkout_cache['count_errors'], 1)
+
+    def test_slow_checkout_discovery_cannot_block_real_scans_or_watchdog(self):
+        entered, release, scanned, pinged = [threading.Event() for _ in range(4)]
+        scans, pings, discoveries = [], [], []
+        self.watch.checkout_cache.update(checkout_count=None, refreshed_at=None)
+        self.watch.last_scan = time.time()
+        def slow_discovery(roots):
+            discoveries.append(threading.current_thread().name)
+            entered.set()
+            if not release.wait(4):
+                raise TimeoutError('synthetic discovery deadline')
+            return [self.root]
+        original_scan = self.watch.scan
+        def scan():
+            original_scan()
+            scans.append(json.loads((self.watch.store.root / 'status.json').read_text()))
+            if len(scans) >= 5:
+                scanned.set()
+        def notify(value):
+            if value == 'WATCHDOG=1':
+                pings.append(value)
+                if len(pings) >= 5:
+                    pinged.set()
+        daemon = threading.Thread(target=self.watch.serve,
+                                  kwargs={'scan_interval': .01, 'watchdog_interval': .01})
+        with patch.object(self.watch, 'checkout_discover', slow_discovery), \
+                patch.object(self.watch, 'worker', lambda: self.watch.stop.wait()), \
+                patch.object(self.watch, 'scan', scan), \
+                patch.object(sw, 'properties', return_value={}), \
+                patch.object(self.watch, 'phone_caps_invariant'), \
+                patch.object(self.watch, 'journals'), \
+                patch.object(sw, 'notify_systemd', notify):
+            # Discovery can start even while state/model operations hold the Store.
+            with self.watch.store.lock:
+                daemon.start()
+                self.assertTrue(entered.wait(2))
+            try:
+                self.assertTrue(scanned.wait(2))
+                self.assertTrue(pinged.wait(2))
+                self.assertFalse(release.is_set())
+                self.assertEqual(discoveries, ['service-watch-checkouts'])
+                status = self.watch.store.get('worktree-reaper')
+                self.assertTrue(status['inflight'])
+                self.assertIsNone(status['checkout_count'])
+                self.assertEqual(status['count_status'], 'unavailable')
+            finally:
+                self.watch.stop.set()
+                release.set()
+                daemon.join(3)
+            self.assertFalse(daemon.is_alive())
+        self.assertEqual(self.watch.checkout_cache['checkout_count'], 1)
+        self.assertFalse(self.watch.checkout_cache['inflight'])
+
+    def test_phone_caps_invariant_red_green_and_unavailable(self):
+        invariant = {'kind': 'phone_caps', 'root': str(self.root)}
+        cases = [
+            (3, {'gate': 'O10', 'checked': ['fleet'], 'status': 'refused', 'findings': [{'rule': 'registry-phone-cap'}]}, ['phone_resource_caps']),
+            (0, {'gate': 'O10', 'checked': ['fleet'], 'status': 'ok', 'findings': []}, []),
+            (2, {}, ['invariant_unavailable']),
+            (0, {'gate': 'O10', 'checked': [], 'status': 'ok', 'findings': []}, ['invariant_unavailable']),
+            (3, {'gate': 'O10', 'checked': ['fleet'], 'status': 'refused', 'findings': [{'rule': 'scan-unavailable'}]}, ['invariant_unavailable']),
+        ]
+        for code, report, expected in cases:
+            result = subprocess.CompletedProcess([], code, json.dumps(report), '')
+            with patch.object(sw.subprocess, 'run', return_value=result) as run:
+                events = self.watch.invariant('user', 'fixture.service', invariant, {}, time.time())
+            self.assertEqual([e['code'] for e in events], expected)
+            self.assertEqual(run.call_args[0][0], ['z0-guard', 'phone-caps', '--root', str(self.root)])
+            self.assertEqual(run.call_args.kwargs['env']['Z0_GUARD_O10'], 'enforce')
+
+    def test_phone_caps_recurring_root_follows_installed_fleet(self):
+        with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
+            self.watch.phone_caps_invariant()
+        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
+        record.assert_called_once_with('user', 'service-watch.service', [])
+
+    def test_policy_age_ingest_stall_and_offload_violations(self):
+        now = time.time()
+        home = self.root / 'z0int'
+        (home / 'findings').mkdir(parents=True)
+        (home / 'policy').mkdir()
+        source = self.root / 'source.json'
+        source.write_text('changed source')
+        finding = {'id': 'latest', 'ts': now - 90000,
+                   'source': {'path': str(source), 'sha256': 'old-digest'}}
+        (home / 'findings/findings.jsonl').write_text(json.dumps(finding) + '\n')
+        (home / 'policy/decision-policy.json').write_text(json.dumps(
+            {'compiled_at': now - 8000, 'findings_head': 'older'}))
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': now, 'available': True,
+             'unavailable_reason': None, 'counts': {'o12_offload_obligation': 2}}))
+        with patch.object(self.watch.store, 'notify') as notify:
+            self.watch.policy_invariants(home, now)
+            notify.assert_called_once()
+        row = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual({e['code'] for e in row['window']['evidence']},
+                         {'policy_stale', 'findings_ingest_stall', 'offload_obligation'})
+        self.assertNotIn(str(source), json.dumps(row['window']))
+
+    def test_policy_unavailable_guard_is_explicit_in_digest(self):
+        home = self.root / 'z0int'
+        (home / 'policy').mkdir(parents=True)
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': time.time(), 'available': False,
+             'unavailable_reason': 'compiler unavailable', 'counts': {'o12_offload_obligation': 0}}))
+        self.watch.policy_invariants(home)
+        self.assertFalse(self.watch.store.get('policy-pipeline')['guard_available'])
+        self.assertIn('Guard: UNAVAILABLE', self.watch.store.digest().read_text())
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'invariant_unavailable')
+
+    def test_old_policy_without_new_findings_is_not_stale(self):
+        now = time.time()
+        home = self.root / 'z0int'
+        (home / 'findings').mkdir(parents=True)
+        (home / 'policy').mkdir()
+        source = self.root / 'source.json'
+        source.write_text('source')
+        finding = {'id': 'same', 'ts': now - 100,
+                   'source': {'path': str(source), 'sha256': sw.hashlib.sha256(source.read_bytes()).hexdigest()}}
+        (home / 'findings/findings.jsonl').write_text(json.dumps(finding) + '\n')
+        (home / 'policy/decision-policy.json').write_text(json.dumps(
+            {'compiled_at': now - 90000, 'findings_head': 'same'}))
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': now, 'available': True,
+             'unavailable_reason': None, 'counts': {'o12_offload_obligation': 0}}))
+        self.watch.policy_invariants(home, now)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 0)
 
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []
@@ -159,10 +308,10 @@ class Contracts(unittest.TestCase):
     def test_restarts_in_window_not_lifetime_and_no_remediation(self):
         self.watch.last_scan = time.time()
         self.watch.units = {('user', 'fixture.service'): {'health_invariant': {'kind': 'systemd'}}}
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2], [])
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 
@@ -261,6 +410,66 @@ class Contracts(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sw.post(sw.LOCAL_URL, {'raw': 'synthetic secret'})
             opener.assert_not_called()
+
+    def test_slow_model_cannot_block_scans_or_independent_watchdog(self):
+        entered = threading.Event()
+        release = threading.Event()
+        scanned = threading.Event()
+        pinged = threading.Event()
+        scans, pings, model_threads = [], [], []
+        decision = {'severity': 'warn', 'cause': 'synthetic error', 'fix': 'Inspect manually',
+                    'evidence': [0], 'confidence': .8}
+        self.watch.record('user', 'fixture.service', [sw.event('journal_error_rate', count=5)], ['synthetic error'])
+        def slow_model(url, body, timeout=40):
+            model_threads.append(threading.current_thread().name)
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError('synthetic model deadline')
+            if url == sw.LOCAL_URL:
+                return {'choices': [{'message': {'content': json.dumps(decision)}}]}
+            return {'ok': True, 'provider': 'groq', 'model': 'openai/gpt-oss-20b',
+                    'output': json.dumps(decision)}
+        def scan():
+            scans.append(time.monotonic())
+            if len(scans) >= 5:
+                scanned.set()
+        def notify(value):
+            if value == 'WATCHDOG=1':
+                pings.append(time.monotonic())
+                if len(pings) >= 5:
+                    pinged.set()
+        daemon = threading.Thread(target=self.watch.serve, kwargs={'scan_interval': .01, 'watchdog_interval': .01})
+        with patch.object(sw, 'post', slow_model), patch.object(self.watch, 'scan', scan), patch.object(sw, 'notify_systemd', notify):
+            daemon.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                # Even a held state lock must not suppress systemd watchdog pings.
+                with self.watch.store.lock:
+                    self.assertTrue(scanned.wait(2))
+                    self.assertTrue(pinged.wait(2))
+                self.assertFalse(release.is_set())
+                self.assertEqual(set(model_threads), {'service-watch-triage'})
+            finally:
+                self.watch.stop.set()
+                release.set()
+                daemon.join(3)
+            self.assertFalse(daemon.is_alive())
+
+    def test_stalled_journal_read_has_real_wall_deadline(self):
+        proc = subprocess.Popen([sys.executable, '-c',
+                                 'import json,time; print(json.dumps({"MESSAGE":"synthetic"}),flush=True); time.sleep(5)'],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        started = time.monotonic()
+        try:
+            lines = sw.journal_lines(proc, .3)
+            self.assertEqual(json.loads(next(lines)), {'MESSAGE': 'synthetic'})
+            with self.assertRaises(subprocess.TimeoutExpired):
+                list(lines)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            proc.kill()
+            proc.communicate()
+            proc.stdout.close()
 
     def test_post_refuses_redirects(self):
         captured = []

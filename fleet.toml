@@ -12,9 +12,17 @@ system_services = ["docker.service", "tailscaled.service", "tern-remote.service"
 system_timers = ["tern-remote-refresh.timer"]
 system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service", "service-watch.service"]
-user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
+
+# Declared but intentionally disabled until the decision-policy CLI is available.
+[hosts.desktop.policy_pipeline]
+service = "z0int-policy.service"
+timer = "z0int-policy.timer"
+enabled = false
+source = "/mnt/zer0models/z0-wt/decision-policy"
+
 
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]

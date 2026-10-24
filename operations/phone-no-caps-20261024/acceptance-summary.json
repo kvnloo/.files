@@ -1,0 +1,384 @@
+{
+  "timestamp_utc": "2026-10-24T20:57:24.247063+00:00",
+  "canonical_source": "/mnt/zer0models/worktrees/files-phone-no-agent-caps/scripts",
+  "installed_files": {
+    "polite-run": "c4b381d8b31dfbe9cd91e6a6fb666e8dd2dfa5fc2efc58e367b74073a07c850a",
+    "fleet-phone-worker": "70671412eab8824326e50ec4a4d7cfb3dced9dcc8e9594706cdce22a1272f4ce",
+    "fleet_phone.py": "3b943145f9c5d1e709241f11c6e1e4886a1cf2a9c4947e6a882fa4f90c27f902"
+  },
+  "backup_on_both_phones": "/root/.local/lib/fleet/backups/phone-no-caps-20261024T205239Z",
+  "additional_wrapper_backup_on_both_phones": "/root/.local/lib/fleet/backups/phone-no-caps-wrapper-20261024T205321Z",
+  "retired_policy_archive": "/root/.local/lib/fleet/backups/phone-no-caps-20261024T205239Z/phone-mode.json",
+  "worker_restarts": {
+    "s22": {
+      "before_pid": 11383,
+      "after_pid": 28037
+    },
+    "s25": {
+      "before_pid": 12096,
+      "after_pid": 19204
+    }
+  },
+  "proofs": {
+    "s22": {
+      "job_status": {
+        "attempt": 1,
+        "cancel": false,
+        "child": {
+          "boot": "d025f6f2-6070-4710-aa53-5f69f7ce8d6a",
+          "pid": 28851,
+          "start": "17626017"
+        },
+        "created": 1792875350.6416,
+        "digest": "7a3d2a0820ba39c100f8ed9a1eeafa51c1e65ea37872f426fd7db392fc001125",
+        "exit": 0,
+        "expires": 1792875950.6415935,
+        "finished": 1792875400.0080914,
+        "id": "no-caps-20261024t205239z",
+        "runner": {
+          "boot": "d025f6f2-6070-4710-aa53-5f69f7ce8d6a",
+          "pid": 28037,
+          "start": "17604731"
+        },
+        "state": "succeeded"
+      },
+      "summary": {
+        "actual_cpus_used": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "allocated_touched_bytes": 3221225472,
+        "allowed_cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "event": "summary",
+        "exit_status": 0,
+        "parent_proc_processor_observations": {
+          "28868": [
+            0
+          ],
+          "28869": [
+            1
+          ],
+          "28871": [
+            2
+          ],
+          "28872": [
+            3
+          ]
+        },
+        "passed": true,
+        "peak_aggregate_rss_kib": 3206228,
+        "peak_worker_rss_kib": 3194604,
+        "worker_exitcodes": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "worker_observations": [
+        {
+          "affinity": [
+            1
+          ],
+          "allocated_touched_bytes": 805306368,
+          "assigned_cpu": 1,
+          "event": "worker",
+          "peak_rss_kib": 798824,
+          "pid": 28869,
+          "proc_processors": [
+            1
+          ],
+          "sha256_rounds": 1969,
+          "system_cpu_seconds": 1.66011,
+          "user_cpu_seconds": 11.538306
+        },
+        {
+          "affinity": [
+            2
+          ],
+          "allocated_touched_bytes": 805306368,
+          "assigned_cpu": 2,
+          "event": "worker",
+          "peak_rss_kib": 798116,
+          "pid": 28871,
+          "proc_processors": [
+            2
+          ],
+          "sha256_rounds": 1676,
+          "system_cpu_seconds": 1.760288,
+          "user_cpu_seconds": 12.041038
+        },
+        {
+          "affinity": [
+            3
+          ],
+          "allocated_touched_bytes": 805306368,
+          "assigned_cpu": 3,
+          "event": "worker",
+          "peak_rss_kib": 798888,
+          "pid": 28872,
+          "proc_processors": [
+            3
+          ],
+          "sha256_rounds": 1741,
+          "system_cpu_seconds": 1.634001,
+          "user_cpu_seconds": 12.401823
+        },
+        {
+          "affinity": [
+            0
+          ],
+          "allocated_touched_bytes": 805306368,
+          "assigned_cpu": 0,
+          "event": "worker",
+          "peak_rss_kib": 799488,
+          "pid": 28868,
+          "proc_processors": [
+            0
+          ],
+          "sha256_rounds": 1230,
+          "system_cpu_seconds": 1.84146,
+          "user_cpu_seconds": 8.66747
+        }
+      ],
+      "peak_aggregate_rss_gib": 3.057697296142578,
+      "evidence_file": "s22-proof-output.txt"
+    },
+    "s25": {
+      "job_status": {
+        "attempt": 1,
+        "cancel": false,
+        "child": {
+          "boot": "c4719f5c-4da0-45d3-81d9-48d62e7f2ade",
+          "pid": 19625,
+          "start": "27535816"
+        },
+        "created": 1792875203.144726,
+        "digest": "000262cfc141c4b81038891493b5b7b9ac30c005eb9a36606961a39d074b9fb7",
+        "exit": 0,
+        "expires": 1792875803.1447248,
+        "finished": 1792875249.4152493,
+        "id": "no-caps-20261024t205239z",
+        "runner": {
+          "boot": "c4719f5c-4da0-45d3-81d9-48d62e7f2ade",
+          "pid": 19204,
+          "start": "27529773"
+        },
+        "state": "succeeded"
+      },
+      "summary": {
+        "actual_cpus_used": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "allocated_touched_bytes": 3221225472,
+        "allowed_cpus": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "event": "summary",
+        "exit_status": 0,
+        "parent_proc_processor_observations": {
+          "19634": [
+            0
+          ],
+          "19635": [
+            1
+          ],
+          "19637": [
+            2
+          ],
+          "19638": [
+            3
+          ],
+          "19639": [
+            4
+          ],
+          "19640": [
+            5
+          ],
+          "19641": [
+            6
+          ],
+          "19642": [
+            7
+          ]
+        },
+        "passed": true,
+        "peak_aggregate_rss_kib": 3274356,
+        "peak_worker_rss_kib": 3254644,
+        "worker_exitcodes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "worker_observations": [
+        {
+          "affinity": [
+            0
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 0,
+          "event": "worker",
+          "peak_rss_kib": 406892,
+          "pid": 19634,
+          "proc_processors": [
+            0
+          ],
+          "sha256_rounds": 29731,
+          "system_cpu_seconds": 0.25799,
+          "user_cpu_seconds": 13.314727
+        },
+        {
+          "affinity": [
+            1
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 1,
+          "event": "worker",
+          "peak_rss_kib": 406892,
+          "pid": 19635,
+          "proc_processors": [
+            1
+          ],
+          "sha256_rounds": 31601,
+          "system_cpu_seconds": 0.246685,
+          "user_cpu_seconds": 14.104982
+        },
+        {
+          "affinity": [
+            2
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 2,
+          "event": "worker",
+          "peak_rss_kib": 406892,
+          "pid": 19637,
+          "proc_processors": [
+            2
+          ],
+          "sha256_rounds": 31952,
+          "system_cpu_seconds": 0.22485999999999998,
+          "user_cpu_seconds": 14.28441
+        },
+        {
+          "affinity": [
+            3
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 3,
+          "event": "worker",
+          "peak_rss_kib": 406768,
+          "pid": 19638,
+          "proc_processors": [
+            3
+          ],
+          "sha256_rounds": 31279,
+          "system_cpu_seconds": 0.22014499999999998,
+          "user_cpu_seconds": 14.003644
+        },
+        {
+          "affinity": [
+            4
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 4,
+          "event": "worker",
+          "peak_rss_kib": 407152,
+          "pid": 19639,
+          "proc_processors": [
+            4
+          ],
+          "sha256_rounds": 32343,
+          "system_cpu_seconds": 0.137591,
+          "user_cpu_seconds": 14.496263
+        },
+        {
+          "affinity": [
+            5
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 5,
+          "event": "worker",
+          "peak_rss_kib": 406768,
+          "pid": 19640,
+          "proc_processors": [
+            5
+          ],
+          "sha256_rounds": 31859,
+          "system_cpu_seconds": 0.2359,
+          "user_cpu_seconds": 14.259752
+        },
+        {
+          "affinity": [
+            6
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 6,
+          "event": "worker",
+          "peak_rss_kib": 406768,
+          "pid": 19641,
+          "proc_processors": [
+            6
+          ],
+          "sha256_rounds": 39333,
+          "system_cpu_seconds": 0.158486,
+          "user_cpu_seconds": 14.855801
+        },
+        {
+          "affinity": [
+            7
+          ],
+          "allocated_touched_bytes": 402653184,
+          "assigned_cpu": 7,
+          "event": "worker",
+          "peak_rss_kib": 406896,
+          "pid": 19642,
+          "proc_processors": [
+            7
+          ],
+          "sha256_rounds": 39418,
+          "system_cpu_seconds": 0.165964,
+          "user_cpu_seconds": 14.879062
+        }
+      ],
+      "peak_aggregate_rss_gib": 3.122669219970703,
+      "evidence_file": "s25-proof-output.txt"
+    }
+  },
+  "execution_contract": "Existing durable fleet-phone-worker public submit API -> deployed polite-run --timeout 180 -> env isolated job HOME -> shared workload flock -> /usr/bin/python3 phone_resource_proof.py. No memory/CPU/battery/thermal admission gate; owner pause/call hooks retained.",
+  "memory_measurement": "Exactly 3221225472 bytes of private anonymous mmap, allocated after fork; write one byte to every page. Peak concurrent RSS is summed /proc/<pid>/stat RSS for children plus parent at 50ms intervals; per-worker ru_maxrss also printed. CPU work is zero-copy memoryview SHA256 for 15 seconds after all mappings touched.",
+  "cpu_measurement": "One process per sched_getaffinity-allowed CPU, pinned to that CPU only for measurement. Both child and parent sample actual /proc/<pid>/stat processor field. S22 kernel Android cpuset /moderate constrains guest to0-3 despite0-7 online; attempting full online affinity retained0-3. S25 allowed and actual0-7.",
+  "unchanged": [
+    "Phone UI/settings/auth",
+    "Android cpuset and power/thermal controls",
+    "sshd/tailscaled/Tern transport services",
+    "Owner pause/call/no-autostart hooks",
+    "Unrelated benchmark payloads/models"
+  ]
+}

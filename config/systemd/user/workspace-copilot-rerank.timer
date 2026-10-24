@@ -1,0 +1,12 @@
+[Unit]
+Description=Retrain the next-action re-ranker daily
+
+[Timer]
+OnBootSec=10min
+OnCalendar=*-*-* 04:30
+RandomizedDelaySec=20min
+Persistent=true
+Unit=workspace-copilot-rerank.service
+
+[Install]
+WantedBy=timers.target

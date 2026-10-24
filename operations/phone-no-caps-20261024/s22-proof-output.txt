@@ -1,0 +1,12 @@
+{"attempt": 1, "cancel": false, "child": {"boot": "d025f6f2-6070-4710-aa53-5f69f7ce8d6a", "pid": 28851, "start": "17626017"}, "created": 1792875350.6416, "digest": "7a3d2a0820ba39c100f8ed9a1eeafa51c1e65ea37872f426fd7db392fc001125", "exit": 0, "expires": 1792875950.6415935, "finished": 1792875400.0080914, "id": "no-caps-20261024t205239z", "runner": {"boot": "d025f6f2-6070-4710-aa53-5f69f7ce8d6a", "pid": 28037, "start": "17604731"}, "state": "succeeded"}
+[polite-run 15:56:18] owner permits jobs
+{"event": "start", "time": 1792875379.3193953, "allowed_cpus": [0, 1, 2, 3], "total_bytes": 3221225472, "cpu_seconds": 15, "job_id": "no-caps-20261024t205239z", "python": "3.14.8 (main, Oct 10 2026, 14:55:18) [GCC 16.1.1 20260430]", "kernel": "5.10.236-android12-9-31998796-abS906U1UES9GZB4"}
+{"bytes": 805306368, "cpu": 1, "event": "ready", "pid": 28869}
+{"bytes": 805306368, "cpu": 2, "event": "ready", "pid": 28871}
+{"bytes": 805306368, "cpu": 3, "event": "ready", "pid": 28872}
+{"bytes": 805306368, "cpu": 0, "event": "ready", "pid": 28868}
+{"affinity": [1], "allocated_touched_bytes": 805306368, "assigned_cpu": 1, "event": "worker", "peak_rss_kib": 798824, "pid": 28869, "proc_processors": [1], "sha256_rounds": 1969, "system_cpu_seconds": 1.66011, "user_cpu_seconds": 11.538306}
+{"affinity": [2], "allocated_touched_bytes": 805306368, "assigned_cpu": 2, "event": "worker", "peak_rss_kib": 798116, "pid": 28871, "proc_processors": [2], "sha256_rounds": 1676, "system_cpu_seconds": 1.760288, "user_cpu_seconds": 12.041038}
+{"affinity": [3], "allocated_touched_bytes": 805306368, "assigned_cpu": 3, "event": "worker", "peak_rss_kib": 798888, "pid": 28872, "proc_processors": [3], "sha256_rounds": 1741, "system_cpu_seconds": 1.634001, "user_cpu_seconds": 12.401823}
+{"affinity": [0], "allocated_touched_bytes": 805306368, "assigned_cpu": 0, "event": "worker", "peak_rss_kib": 799488, "pid": 28868, "proc_processors": [0], "sha256_rounds": 1230, "system_cpu_seconds": 1.84146, "user_cpu_seconds": 8.66747}
+{"actual_cpus_used": [0, 1, 2, 3], "allocated_touched_bytes": 3221225472, "allowed_cpus": [0, 1, 2, 3], "event": "summary", "exit_status": 0, "parent_proc_processor_observations": {"28868": [0], "28869": [1], "28871": [2], "28872": [3]}, "passed": true, "peak_aggregate_rss_kib": 3206228, "peak_worker_rss_kib": 3194604, "worker_exitcodes": [0, 0, 0, 0]}

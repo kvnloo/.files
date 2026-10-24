@@ -1,0 +1,5 @@
+#!/bin/sh
+# O10 applies before a phone cap can enter a commit.
+set -eu
+hook_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+exec "$hook_root/scripts/check-phone-caps"

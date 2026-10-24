@@ -86,6 +86,16 @@ First-start journal lookback is two minutes; `service-watch seed` streams the
 last seven days (bounded to three minutes per journal) and historical tick
 receipts, recording partial/unavailable coverage explicitly.
 
+The recurring `phone_caps` deterministic invariant calls
+`z0-guard phone-caps --root ROOT` in enforce mode. ROOT follows the resolved
+installed `fleet` executable's checkout (or the watcher checkout if absent).
+Inventory `health_invariant: {"kind": "phone_caps", "root": "/path/to/files"}`
+can select an explicit checkout. Resource-cap findings produce the severe
+finite code `phone_resource_caps`; a missing scanner, invalid response or
+unreadable policy source produces `invariant_unavailable`, not a clean pass.
+Only the finding count crosses the model projection; paths/source text stay
+local. This check does not change limits, pause jobs or remediate anything.
+
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
@@ -128,8 +138,33 @@ is not claimed. Desktop-only: no verified phone path is assumed.
 are `service-watch/digests/YYYY-MM-DD.md`; `triage.jsonl` contains deterministic
 and final model decisions, redacted windows and per-tier measurements suitable
 for shadow learning. Units use Nice=15, MemoryMax=256M and CPUQuota=15%; the
-independent heartbeat timer plus systemd watchdog detect watcher failures/hangs.
+independent heartbeat timer checks completed-scan freshness. A separate ten-second
+systemd watchdog thread takes no database/model lock: a slow scan or model cannot
+starve the process liveness signal. Model calls remain on the dedicated triage
+worker (HTTP 40-second, subscription 55-second deadlines); journal snapshots use
+selector-based wall deadlines even when the child emits no newline.
 The watcher never compiles or runs test suites on groot.
+
+The live binary and all deployment links are owned by the unified `deploy/live`
+checkout at `/mnt/zer0models/worktrees/files-live`, not any task worktree.
+`fleet`, `z0-guard`, `service-watch`, `worktree-reaper` and their units must resolve
+there together. O10 receives the checkout root containing the installed fleet
+script, so admission and the invariant inspect the same scripts and registry. When
+these PRs merge into `dev`, the operator replaces this deployment with
+`/workspace/.files` and switches all these links together.
+
+`z0int-policy.timer` declares a fifteen-minute ingest/compile cadence from
+`/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled** until
+the operator confirms that CLI is deployed. The service executes ingest then
+compile only on success, with a five-minute wall limit and bounded resources.
+ServiceWatch checks contract-v1 policy files once per discovery cycle: policy
+age over two hours only while new findings exist; source digest changes without
+ingest for 24 hours; and positive `counts.o12_offload_obligation` in a fresh
+`z0.policy_guard.v1` report. `available=false`, missing/malformed evidence or
+oversized source artifacts are explicitly UNAVAILABLE, never zero violations.
+Source hashing is cached by inode/mtime/size and bounded to 8 MiB per source;
+the recent findings sample is bounded to 1000 rows/2 MiB. Only finite codes and
+numeric counts enter triage; source paths and guard explanations stay local.
 
 Behavioral and captured-request privacy checks:
 
@@ -165,7 +200,14 @@ are not checkouts and do not contribute to the watcher threshold.
 The manifest and latest machine-readable counts are stored under
 `/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper/`.
 The service watcher consumes `latest.json` for its worktree invariant.
-Each watcher scan counts live Git worktree registrations. Its
+A dedicated single-flight worker inventories actual checkouts using the reaper's
+shared discovery function, then waits five minutes before refreshing again.
+Discovery never holds the Store lock or blocks scans, model triage, or watchdog
+pings. Each scan consumes its in-memory snapshot: digest and `status.json` expose
+count refresh age, refresh-in-flight state, and explicit unavailable status before
+the first result, after an error, or when the last result is over ten minutes old.
+Failures preserve the last observed count rather than inventing zero checkouts.
+Its
 `--checkout-threshold` defaults to 200; repeatable `--checkout-root` overrides
 the shared default roots, and `--reaper-status` overrides the latest-record path.
 The invariant digest includes the latest cleanup counts, removals, and errors.

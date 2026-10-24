@@ -1,0 +1,1 @@
+{"checked": ["/tmp/o10-phone-caps-acceptance/fleet-build"], "findings": [{"detail": "phone-capable mode supplies a resource default", "line": 3, "path": "/tmp/o10-phone-caps-acceptance/fleet-build", "rule": "shell-resource-default"}], "gate": "O10", "mode": "enforce", "root": "/tmp/o10-phone-caps-acceptance", "status": "refused"}

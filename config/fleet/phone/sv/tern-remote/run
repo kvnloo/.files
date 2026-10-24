@@ -1,0 +1,20 @@
+#!/usr/bin/busybox sh
+# `tern remote serve` in the foreground. Keeps the pidfile and service.log that
+# tern-remote-start, fleet-node-probe and `tern remote trust` already read.
+. ../lib.sh
+state=$HOME/.local/state/tern-remote
+mkdir -p "$state"
+p=$(cat "$state/pid" 2>/dev/null)
+if pid_alive "$p" && tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q ' remote serve --user '; then
+    adopt "$p" tern-remote
+fi
+bin=$(tern_binary)
+[ -n "$bin" ] || { echo "no Tern binary found"; exit 1; }
+# Peer-credential shim for sockets across separate PRoot launches (S25; harmless elsewhere).
+for f in "$(dirname "$bin")/proot-peercred.so" "$HOME/.local/lib/proot-peercred.so"; do
+    [ -r "$f" ] && { LD_PRELOAD="$f${LD_PRELOAD:+:$LD_PRELOAD}"; export LD_PRELOAD; break; }
+done
+echo $$ >"$state/pid" # exec keeps the pid
+exec >"$state/service.log" 2>&1
+# --no-iroh: iroh's relay setup stalls under PRoot; direct tailnet UDP works.
+exec "$bin" remote serve --user --state-dir "$HOME/.config/tern" --no-iroh

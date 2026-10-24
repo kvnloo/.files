@@ -1,5 +1,7 @@
 # Enable Powerlevel10k instant prompt (must stay at top before any console output)
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+# Agent/background shells get zsh -i without a terminal: skip prompt, line editor and plugins.
+if [[ -t 0 && -t 1 ]]; then ZSH_TTY=1; else ZSH_TTY=0; fi
+if (( ZSH_TTY )) && [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
@@ -54,13 +56,13 @@ ZSHRC_DIR="${${:-$HOME/.zshrc}:A:h}"
 
 # Source modular configuration files in dependency order
 source "$ZSHRC_DIR/env.zsh"             # 1. Environment variables & PATH
-source "$ZSHRC_DIR/oh-my-zsh.zsh"       # 2. Oh-My-Zsh framework
-source "$ZSHRC_DIR/shell-behavior.zsh"  # 3. Shell behavior & prompt
-source "$ZSHRC_DIR/keybindings.zsh"     # 4. Key mappings
+(( ZSH_TTY )) && source "$ZSHRC_DIR/oh-my-zsh.zsh"       # 2. Oh-My-Zsh framework
+(( ZSH_TTY )) && source "$ZSHRC_DIR/shell-behavior.zsh"  # 3. Shell behavior & prompt
+(( ZSH_TTY )) && source "$ZSHRC_DIR/keybindings.zsh"     # 4. Key mappings
 source "$ZSHRC_DIR/aliases.zsh"         # 5. Command aliases
 source "$ZSHRC_DIR/functions.zsh"       # 6. Custom functions
-source "$ZSHRC_DIR/external.zsh"        # 7. External tool integrations
-source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
+(( ZSH_TTY )) && source "$ZSHRC_DIR/external.zsh"        # 7. External tool integrations
+(( ZSH_TTY )) && source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 
 # ==============================================================================
 # LOCAL OVERRIDES (OPTIONAL)
@@ -70,7 +72,7 @@ source "$ZSHRC_DIR/startup.zsh"         # 8. Startup programs (last)
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+(( ZSH_TTY )) && [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 
 [ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
 
