@@ -80,6 +80,23 @@ class PhonePolicyTests(unittest.TestCase):
             power={"on_ac": False, "batteries": [{"pct": 39, "status": "Discharging"}]}), {}, {}, {})
         self.assertTrue(any("battery" in reason for reason in reasons), reasons)
 
+    def test_phone_health_command_consumes_resource_neutral_registry_defaults(self):
+        for name in ("omarchy-phone", "galaxy-s22plus"):
+            with self.subTest(node=name), tempfile.TemporaryDirectory(prefix="fleet-health-") as tmp:
+                state = Path(tmp)
+                with patch.object(fleet, "STATE", state), \
+                     patch.object(fleet, "probe", side_effect=lambda node: self.probe()), \
+                     patch.object(fleet, "k8s_nodes", return_value={}), \
+                     patch.object(fleet, "tailnet_online", return_value={}), \
+                     patch.object(fleet, "tern_doctor", return_value="ok"), \
+                     patch.object(fleet, "android_state", return_value={}), \
+                     patch.object(fleet.phone_controller, "reconcile", return_value={"phase": "ready"}):
+                    self.assertEqual(fleet.cmd_health(SimpleNamespace(node=name, set=[], strikes=None)), 0)
+                record = json.loads((state / "health" / f"{name}.json").read_text())
+                self.assertTrue(record["healthy"])
+                self.assertFalse(record["paused"])
+                self.assertEqual(record["reasons"], [])
+
     def test_retired_phone_mode_command_is_not_a_public_interface(self):
         import subprocess
         import sys
