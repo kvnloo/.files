@@ -154,6 +154,10 @@ The three z0int live services receive `Z0INT_LIVE_HOME=%h/.z0int` through
 without restarting the router. The guard installer archives the committed
 backend `src` from `Z0INT_BACKEND_REPO` (default `bend-policy-laws`) into the
 release and records `backend-head`; runtime does not depend on that worktree.
+O10 Git hooks are installed by `scripts/setup-phone-caps-hooks.sh` into
+`~/.local/lib/files-hooks/<content-sha256>/`; both checks derive the committing
+repository with `git rev-parse --show-toplevel`, never from the hook location
+or a temporary extraction tree.
 O10 receives the actual checkout root and scans its scripts and registry.
 When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
 switch the links together and build the guard release from that canonical tree.
