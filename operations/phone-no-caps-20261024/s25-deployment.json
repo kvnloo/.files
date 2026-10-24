@@ -1,0 +1,16 @@
+{
+  "phone": "s25",
+  "timestamp": "20261024T205239Z",
+  "backup": "/root/.local/lib/fleet/backups/phone-no-caps-20261024T205239Z",
+  "before": "{\"capabilities\": {\"adapter\": \"proot-host-lane\", \"android_root\": false, \"cgroups\": false, \"durable_stop\": true, \"execution\": \"trusted-owner-code-only\", \"hard_memory_limit\": false, \"kubelet\": false, \"kubernetes_member\": false, \"network_isolation\": false, \"security_isolation\": false}, \"executor_live\": true, \"jobs\": []}\nrun: /root/.local/share/fleet/sv/fleet-worker: (pid 12096) 1168s; run: log: (pid 12093) 1168s\n",
+  "install": "backup=/root/.local/lib/fleet/backups/phone-no-caps-20261024T205239Z\n",
+  "after": "ok: run: /root/.local/share/fleet/sv/fleet-worker: (pid 19204) 0s\nrun: /root/.local/share/fleet/sv/fleet-worker: (pid 19204) 0s; run: log: (pid 12093) 1172s\nc4b381d8b31dfbe9cd91e6a6fb666e8dd2dfa5fc2efc58e367b74073a07c850a  /root/.local/lib/fleet/polite-run\n70671412eab8824326e50ec4a4d7cfb3dced9dcc8e9594706cdce22a1272f4ce  /root/.local/lib/fleet/fleet-phone-worker\n3b943145f9c5d1e709241f11c6e1e4886a1cf2a9c4947e6a882fa4f90c27f902  /root/.local/lib/fleet/fleet_phone.py\n{\"capabilities\": {\"adapter\": \"proot-host-lane\", \"android_root\": false, \"cgroups\": false, \"durable_stop\": true, \"execution\": \"trusted-owner-code-only\", \"hard_memory_limit\": false, \"kubelet\": false, \"kubernetes_member\": false, \"network_isolation\": false, \"security_isolation\": false}, \"executor_live\": true, \"jobs\": []}\n",
+  "stderr": "[polite-run 15:52:52] owner permits jobs\n",
+  "exit_status": 0,
+  "canonical_sha256": {
+    "polite-run": "c4b381d8b31dfbe9cd91e6a6fb666e8dd2dfa5fc2efc58e367b74073a07c850a",
+    "fleet-phone-worker": "70671412eab8824326e50ec4a4d7cfb3dced9dcc8e9594706cdce22a1272f4ce",
+    "fleet_phone.py": "3b943145f9c5d1e709241f11c6e1e4886a1cf2a9c4947e6a882fa4f90c27f902"
+  },
+  "proof_sha256": "48d4638377bd8aa1ff87969f5ebb92b3dd21eeda5df95f87518558c566e98d3d"
+}

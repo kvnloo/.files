@@ -1,0 +1,16 @@
+Observed through authenticated ssh://s22 reads during proof:
+/proc/28037/cgroup:
+5:freezer:/
+4:cpuset:/moderate
+3:cpuacct:/
+2:cpu:/background
+1:blkio:/background
+0::/apps/uid_10339/pid_11161
+
+/proc/28037/status:
+Cpus_allowed: 0f
+Cpus_allowed_list: 0-3
+
+/sys/devices/system/cpu/online: 0-7
+Requested sched_setaffinity(executor pid28037, {0,1,2,3,4,5,6,7}) returned success; effective sched_getaffinity remained {0,1,2,3}. See s22-executor-affinity-removal.json.
+Kernel Android cpuset intersects requested affinity; no Android cpuset/UI/settings modifications made. Proof uses all four currently kernel-allowed CPUs, not all eight online CPUs.

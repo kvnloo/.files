@@ -1,0 +1,25 @@
+# Read-only identity for remote clients (phone, mbp). Mint a short-lived token:
+#   kubectl -n kube-system create token fleet-viewer --duration=24h
+# and keep the resulting kubeconfig outside Git. Never hand out the admin kubeconfig.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fleet-viewer
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fleet-viewer
+rules:
+  - apiGroups: ["", "batch", "apps"]
+    resources: [nodes, pods, pods/log, jobs, cronjobs, deployments, daemonsets, namespaces, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fleet-viewer
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: fleet-viewer}
+subjects:
+  - {kind: ServiceAccount, name: fleet-viewer, namespace: kube-system}

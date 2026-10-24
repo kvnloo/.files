@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Route user coding-agent trees out of the compositor cgroup."""
+import json, os, pathlib, subprocess, sys
+
+def snapshot():
+    data = {}
+    for p in pathlib.Path('/proc').iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            if p.stat().st_uid != os.getuid():
+                continue
+            status = dict(line.split(':', 1) for line in (p/'status').read_text().splitlines() if ':' in line)
+            name = (p/'comm').read_text().strip()
+            args = (p/'cmdline').read_bytes().split(b'\0')
+            # comm alone is not ownership: a renamed browser/compositor must not
+            # turn into an agent root. Match the executable or a known CLI entry.
+            exe = pathlib.Path(os.readlink(p/'exe')).name
+            entry = pathlib.PurePath(args[0].decode(errors='replace')).name if args else ''
+            controls = {'hermes', 'claude', 'omp', 'codex', 'pi'}
+            known_cli = (name in controls and (exe == name or entry == name or
+                (name == 'hermes' and any(b'from hermes_cli.main import main' in a for a in args)) or
+                (name == 'claude' and any(b'@anthropic-ai/claude-code/' in a for a in args)) or
+                (name in {'omp', 'pi'} and any(b'/pi-coding-agent/' in a or b'/oh-my-pi/' in a for a in args))))
+            if known_cli:
+                name = 'agent-control'
+            if name == 'blender' and b'--background' in args:
+                name = 'agent-batch'
+            if name in {'python', 'python3'} and any(pathlib.PurePath(a.decode(errors='replace')).name in {'train_sft.py', 'build_index.py'} for a in args[1:]):
+                name = 'agent-batch'
+            data[int(p.name)] = (int(status['PPid']), name, (p/'cgroup').read_text().strip())
+        except (OSError, ValueError, KeyError):
+            continue
+    return data
+
+def select(data):
+    roots = {pid for pid, (_, name, _) in data.items() if name in {'agent-control', 'agent-batch'}}
+    chosen = set(roots)
+    while True:
+        more = {pid for pid, (parent, name, _) in data.items() if parent in chosen and name not in DESKTOP}
+        if more <= chosen:
+            break
+        chosen |= more
+    # Never touch other managers, system services or the compositor itself.
+    prefix = '/user.slice/user-%d.slice/user@%d.service/' % (os.getuid(), os.getuid())
+    # Hermes control processes (gateway, dashboard, interactive CLI) stay out of the
+    # killable scope: systemd-oomd kills a whole cgroup, and one runaway tool must not
+    # take the agent that owns it down too. Their children are still routed.
+    return sorted(pid for pid in chosen if prefix in data[pid][2] and '/agent.slice/' not in data[pid][2]
+                  and data[pid][1] not in PROTECTED)
+
+PROTECTED = {'agent-control'}
+DESKTOP = {'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell', 'systemd', 'dbus-broker',
+           'chromium', 'chrome', 'firefox', 'brave', 'brave-browser', 'zen', 'zen-bin', 'librewolf',
+           'pipewire', 'pipewire-pulse', 'wireplumber', 'pulseaudio',
+           'Xwayland', 'hypridle', 'qs', 'Discord', 'tern',
+           'kitty', 'alacritty', 'wezterm-gui', 'foot', 'gnome-terminal-', 'konsole'}
+CORE_SCOPE = 'hermes-core.scope'
+
+def _bus(*args):
+    return subprocess.run(['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                           'org.freedesktop.systemd1.Manager', *args], capture_output=True, text=True, timeout=15)
+
+def rescue(data):
+    """Move protected processes that an older version routed into the agent scope back out."""
+    stuck = [pid for pid, (_, name, cg) in data.items() if name in PROTECTED and '/agent.slice/' in cg]
+    if not stuck:
+        return []
+    owners = {}
+    out = subprocess.run(['systemctl', '--user', 'show', '--state=active', '--type=service', '-p', 'Id,MainPID', '*'],
+                         capture_output=True, text=True, timeout=15).stdout
+    for block in out.strip().split('\n\n'):
+        kv = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+        if kv.get('MainPID', '0') != '0':
+            owners[int(kv['MainPID'])] = kv['Id']
+    loose = []
+    for pid in stuck:
+        unit = owners.get(pid)
+        if unit and _bus('AttachProcessesToUnit', 'ssau', unit, '', '1', str(pid)).returncode == 0:
+            continue
+        loose.append(pid)
+    if loose:
+        if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', CORE_SCOPE]).returncode:
+            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '3',
+                 'Description', 's', 'Hermes control processes (kept out of agent-workloads)',
+                 'Slice', 's', 'app.slice', 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
+        else:
+            _bus('AttachProcessesToUnit', 'ssau', CORE_SCOPE, '', str(len(loose)), *map(str, loose))
+    return stuck
+
+def main():
+    data = snapshot()
+    pids = select(data)
+    if '--dry-run' in sys.argv:
+        print(json.dumps({'eligible': pids, 'count': len(pids)}))
+        return
+    rescued = rescue(data)
+    if rescued:
+        print(json.dumps({'rescued': rescued}))
+    if not pids:
+        return
+    unit = 'agent-workloads-v2.scope'
+    check = subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit])
+    if check.returncode:
+        args = ['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                'org.freedesktop.systemd1.Manager', 'StartTransientUnit', 'ssa(sv)a(sa(sv))',
+                unit, 'fail', '4', 'Description', 's', 'Isolated coding-agent workloads',
+                'Slice', 's', 'agent.slice', 'Delegate', 'b', 'true', 'PIDs', 'au', str(len(pids)), *map(str,pids), '0']
+        subprocess.run(args, check=True, timeout=15)
+    else:
+        subprocess.run(['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                        'org.freedesktop.systemd1.Manager', 'AttachProcessesToUnit', 'ssau',
+                        unit, '', str(len(pids)), *map(str,pids)], check=True, timeout=15)
+    for pid in pids:
+        try:
+            os.setpriority(os.PRIO_PROCESS, pid, 10)
+        except (ProcessLookupError, PermissionError):
+            pass
+    print(json.dumps({'routed': pids, 'unit': unit, 'nice': 10}))
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,7 @@
+{
+  "backup": "/root/.local/lib/fleet/backups/phone-no-caps-wrapper-20261024T205321Z",
+  "sha256": "c4b381d8b31dfbe9cd91e6a6fb666e8dd2dfa5fc2efc58e367b74073a07c850a",
+  "installed": "c4b381d8b31dfbe9cd91e6a6fb666e8dd2dfa5fc2efc58e367b74073a07c850a  /root/.local/lib/fleet/polite-run\n",
+  "exit_status": 0,
+  "worker_restart_needed": false
+}

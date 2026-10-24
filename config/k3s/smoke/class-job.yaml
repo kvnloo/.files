@@ -1,0 +1,59 @@
+# Job classes: a queued factory Job that asks for a class lands on a node of that
+# class. Kueue matches the nodeSelector against the per-node flavors' class labels.
+#   kubectl create -f config/k3s/smoke/class-job.yaml                       # build -> mbp
+#   sed 's/class-build/class-render/' config/k3s/smoke/class-job.yaml | kubectl create -f -   # CPU render -> mbp; GPU allocation is separate
+# Prints CLASS_OK node=<node>.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-class-
+  namespace: factory
+  labels:
+    kueue.x-k8s.io/queue-name: factory
+spec:
+  suspend: true
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        z0.dev/class-build: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: probe
+        image: busybox:1.37
+        command: [sh, -c, 'echo "CLASS_OK node=$NODE_NAME"']
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        resources:
+          requests: {cpu: 50m, memory: 32Mi}
+          limits: {cpu: 200m, memory: 64Mi}
+      initContainers:
+      - name: netpol-ready
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        resources:
+          requests: {cpu: 10m, memory: 16Mi}
+          limits: {cpu: 100m, memory: 32Mi}

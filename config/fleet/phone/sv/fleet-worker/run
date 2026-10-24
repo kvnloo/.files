@@ -1,0 +1,5 @@
+#!/usr/bin/busybox sh
+# Same existing runsv tree; never starts or adopts tailscale/sshd/Tern daemons.
+exec 9>&- 8>&-
+umask 077
+exec /usr/bin/setpriv --pdeathsig TERM -- /usr/bin/python3 "$HOME/.local/lib/fleet/fleet-phone-worker" serve
