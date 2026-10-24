@@ -331,11 +331,20 @@ class Watch:
                 service = invariant.get('service', unit.removesuffix('.timer') + '.service')
                 detail = properties(scope, [service]).get(service, {})
                 mono = int(detail.get('ExecMainExitTimestampMonotonic', '0') or 0) / 1000000
-                if detail.get('Result') not in ('success', ''):
+                success_key = 'timer-success:' + scope + ':' + service
+                if detail.get('Result') == invariant.get('expected_result', 'success') and detail.get('ActiveState') == 'inactive' and mono:
+                    # Save a wall-clock success time so failures and reboots cannot
+                    # make an old timer receipt appear fresh.
+                    self.store.set(success_key, now - max(0, time.monotonic() - mono))
+                elif detail.get('Result') not in ('success', ''):
                     events.append(event('timer_failed'))
-                age = time.monotonic() - mono if mono else float(invariant['max_age_seconds']) + 1
-                if age > invariant['max_age_seconds']:
-                    events.append(event('timer_stale', age=age, threshold=invariant['max_age_seconds']))
+                successful_at = self.store.get(success_key)
+                if successful_at is None:
+                    events.append(event('invariant_unavailable'))
+                else:
+                    age = now - successful_at
+                    if age > invariant['max_age_seconds']:
+                        events.append(event('timer_stale', age=age, threshold=invariant['max_age_seconds']))
             else:
                 events.append(event('invariant_unavailable'))
         except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):

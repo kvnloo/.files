@@ -111,9 +111,25 @@ class Contracts(unittest.TestCase):
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 
     def test_timer_failure_and_age(self):
+        self.watch.store.set('timer-success:user:fixture.service', time.time() - 1000)
         with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'exit-code', 'ExecMainExitTimestampMonotonic': str(int((time.monotonic() - 1000) * 1000000))}}):
             events = self.watch.invariant('user', 'fixture.timer', {'kind': 'timer', 'max_age_seconds': 600}, {}, time.time())
         self.assertEqual([e['code'] for e in events], ['timer_failed', 'timer_stale'])
+
+    def test_failed_timer_attempt_does_not_refresh_success_age(self):
+        invariant = {'kind': 'timer', 'max_age_seconds': 600}
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'success', 'ActiveState': 'inactive', 'ExecMainExitTimestampMonotonic': str(int((time.monotonic() - 1000) * 1000000))}}):
+            self.watch.invariant('user', 'fixture.timer', invariant, {}, time.time())
+        successful_at = self.watch.store.get('timer-success:user:fixture.service')
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'exit-code', 'ActiveState': 'failed', 'ExecMainExitTimestampMonotonic': str(int(time.monotonic() * 1000000))}}):
+            events = self.watch.invariant('user', 'fixture.timer', invariant, {}, time.time())
+        self.assertEqual(self.watch.store.get('timer-success:user:fixture.service'), successful_at)
+        self.assertEqual([e['code'] for e in events], ['timer_failed', 'timer_stale'])
+
+    def test_unknown_timer_success_is_unavailable_not_invented_age(self):
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'exit-code', 'ExecMainExitTimestampMonotonic': str(int(time.monotonic() * 1000000))}}):
+            events = self.watch.invariant('user', 'fixture.timer', {'kind': 'timer', 'max_age_seconds': 600}, {}, time.time())
+        self.assertEqual([e['code'] for e in events], ['timer_failed', 'invariant_unavailable'])
 
     def test_real_http_request_bodies_and_local_summary_never_leave(self):
         secret = 'sk-test-secret-0123456789 Bearer eyJwt.private.token Cookie=SECRET kevin@example.com 10.2.3.4 https://a.test/?token=foo /home/kvn/private 123 Main Street Chicago 41.88,-87.63 serial-R5CY93G2WNH'

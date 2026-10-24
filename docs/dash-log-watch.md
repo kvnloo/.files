@@ -73,7 +73,10 @@ hook; no service is stopped, reset-failed, restarted or repaired by this watcher
 
 Every 15 seconds the deterministic lane checks failed state, restart deltas over
 five minutes (three restarts), journal error windows (at least five errors and
-25%), timer last-run age/result, file freshness, receipt error share and growth.
+25%), timer last-success age/result, file freshness, receipt error share and growth.
+Successful inactive timer-service exits checkpoint a wall-clock success time;
+new failed attempts cannot refresh it. A missing success checkpoint is explicitly
+unavailable, not an invented stale age or a healthy result.
 The built-in loop check uses actual `rows_added.shadow_decisions` in tick receipts:
 three consecutive zero ticks, not a misleading success log line. Cognition-shadow
 checks include `shadow[].error`/`parse_error`; an error-dominated file over 32MiB or
