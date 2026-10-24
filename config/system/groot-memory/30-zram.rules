@@ -1,0 +1,4 @@
+# Overrides /usr/lib/udev/rules.d/30-zram.rules, which reset vm.swappiness to 150
+# whenever zram0 initialised, silently undoing sysctl.d. Same zswap handling.
+ACTION=="change", KERNEL=="zram0", ATTR{initstate}=="1", SYSCTL{vm.swappiness}="180", \
+    RUN+="/bin/sh -c 'echo N > /sys/module/zswap/parameters/enabled'"
