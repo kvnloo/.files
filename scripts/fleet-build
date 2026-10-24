@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# fleet-build: the default way for agents to run a build or test suite OFF groot.
-# It wraps `scripts/fleet run` with the owner's routing rule (docs/fleet/README.md,
-# "Default routing"): builds go to the MBP, light arm64-safe work may go to the
-# phones, and nothing queues on groot behind heavy.lock.
+# fleet-build: run verification OFF groot. Public committed heavy work prefers
+# --node avrea; local-data/native jobs use the host fleet. Routing policy:
+# docs/fleet/README.md, "Default routing".
 #
 #   fleet-build [opts] [--] CMD...        run from anywhere inside the repo
 #
@@ -15,14 +14,19 @@
 #                    OOM-killed in a 6 GiB scope). --gradle-args '' keeps the repo's own.
 #   --light          lint / pure-Python tests / scans / git work: phones allowed
 #   --phone          arm64 phone jobs, without an implicit resource budget
-#   --node NAME      pin a node (mbp, s22, omarchy-phone)
-#   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
-#   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
-#                    60 s for up to SECS (default 1800; 0 = fail at once). This is the
-#                    queue: it waits for mbp, never falls back to groot.
+#   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
+#   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
+#   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
+#                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
+#                    Oversized Kueue requests exit 75; never fall back to groot.
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
+#   --public         reviewed public source; allow Boat overflow before queueing
+#   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
+#   --local-data     never send this job to Boat, even with --public
+#   --repo OWNER/REPO --sha SHA  Avrea: public exact head (otherwise clean local origin/HEAD)
+#   --runner LABEL --matrix FILE --parallel N --snapshot FILE  Avrea options
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -39,16 +43,20 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); keep=0; wait_s=1800
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
     --android) mode=android; shift ;;
     --light) mode=light; shift ;;
     --phone) mode=phone; shift ;;
+    --public) public=1; shift ;;
+    --x86|--docker) public=1; prefer_boat=1; shift ;;
+    --local-data) local_data=1; shift ;;
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
+    --repo|--sha|--runner|--matrix|--parallel|--snapshot) avrea_opts+=("$1" "$2"); shift 2 ;;
     --mem) mem=$2; shift 2 ;;
     --cpus) cpus=$2; shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;
@@ -64,9 +72,26 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+if [ "$node" = avrea ]; then
+  [ "$local_data" = 0 ] || { echo "fleet-build: --local-data cannot use Avrea" >&2; exit 2; }
+  [ ${#inputs[@]} -eq 0 ] && [ "$keep" = 0 ] && [ -z "$jdk" ] && [ "$mode" = build ] && [ -z "$mem" ] && [ -z "$cpus" ] || {
+    echo "fleet-build: Avrea uses public exact commits and --runner; local input/keep/JDK/mode/resource flags are host-only." >&2; exit 2;
+  }
+  [ -z "$src" ] || avrea_opts+=(--src "$src")
+  [ -z "$out" ] || avrea_opts+=(--out "$out")
+  [ -z "$timeout" ] || avrea_opts+=(--timeout "$timeout")
+  avrea_opts+=(--wait "$wait_s")
+  for f in "${fetch[@]}"; do avrea_opts+=(--fetch "$f"); done
+  exec "$(dirname "$FLEET")/fleet-avrea" "${avrea_opts[@]}" -- "$@"
+fi
+[ ${#avrea_opts[@]} -eq 0 ] || { echo "fleet-build: Avrea-only flags require --node avrea" >&2; exit 2; }
 [ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
+if [ "$prefer_boat" = 1 ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
+if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
+  echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
+fi
 
 # Ship the whole repo, run from the same subdirectory the caller is in.
 if [ -z "$src" ]; then
@@ -110,18 +135,35 @@ esac
 exec "$@"'
 [ "$mode" = android ] || gradle_args=""
 args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
+use_kueue=0
+runner=("$FLEET"); run_args=("${args[@]}")
+if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -z "$node" ] && [ "$mode" != phone ]; }; then
+  use_kueue=1
+  runner=(python3 "$(dirname "$FLEET")/fleet-kueue" --wait "$wait_s")
+  [ "$node" != mbp-host ] || runner+=(--host)
+  [ -z "$out" ] || runner+=(--out "$out")
+  run_args=("${args[@]:1}")
+fi
 
 err=$(mktemp); trap 'rm -f "$err"' EXIT
 deadline=$(( $(date +%s) + wait_s ))
 while :; do
   set +e
-  "$FLEET" "${args[@]}" 2> >(tee "$err" >&2)
+  "${runner[@]}" "${run_args[@]}" 2> >(tee "$err" >&2)
   rc=$?
   set -e
   wait 2>/dev/null || true
+  # Only reviewed public jobs may overflow to Boat. No allocated job is replayed.
+  if [ $rc -eq 75 ] && [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && ! grep -q '^fleet: job ' "$err"; then
+    set +e
+    "$FLEET" run --node boat "${args[@]:1}" 2> >(tee "$err" >&2)
+    rc=$?
+    set -e
+    wait 2>/dev/null || true
+  fi
   # Admission holds are retryable. Once a job ID was allocated, a 75 might
   # come from a partially executed workflow; never replay side effects blindly.
-  [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
+  [ "$use_kueue" = 0 ] && [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break
   echo "fleet-build: no room yet; retrying in 60 s (until $(date -d @$deadline +%H:%M))" >&2
   sleep 60
 done

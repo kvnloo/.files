@@ -7,16 +7,16 @@
 # classes:   job classes this node accepts. scripts/fleet labels writes them as node
 #            labels z0.dev/class-<name>=true|false (every class, every node) and
 #            config/k3s/kueue/queues.yaml copies them into the node's flavor.
-# capabilities: host toolchains a `fleet run` job finds on the node (not k3s pods).
+# capabilities: installed node toolchains; MBP Kueue mounts these from the host.
 #            `fleet run --class X` matches classes or capabilities, so
 #            `--class android-build` lands on a node that can run ./gradlew assemble*.
 #            `fleet labels` mirrors them as node labels z0.dev/cap-<name>=true|false.
 # toolchains: what `fleet toolchain <node>` (and `fleet enroll`) installs there with
 #            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk.
 # health:    thresholds for `fleet health`; on_unhealthy: cordon | report
-# lane:      limits for host jobs (`fleet run`): the agentjob user slice is capped at
-#            mem_max/cpu_quota; a job only starts when MemAvailable >= mem_floor_mb
-#            plus the job's own --mem.
+# lane:      native host limits: the agentjob slice is capped at mem_max/cpu_quota.
+#            Direct `fleet run` MBP work delegates to Kueue, even after auto-selection.
+#            mbp-host additionally holds a Kueue reservation for its entire lifetime.
 # aliases:   other names scripts/fleet accepts for the node (`fleet run s22 ...`).
 defaults:
   health:
@@ -36,15 +36,32 @@ defaults:
 classes: [cpu-heavy, build, render]
 
 nodes:
+  boat:
+    role: worker
+    kind: boat
+    arch: amd64
+    classes: [build, cpu-heavy]
+    capabilities: [python, git, x86]
+    taints: [cloud]         # Explicit --node boat or fleet-build --public overflow only.
+    health:
+      on_unhealthy: report
+    lane:
+      default_mem: 512M
+      mem_max: 7G
+      mem_floor_mb: 0
   mbp:
     role: worker
     tailnet_ip: 100.78.215.21
     ssh_port: 2222
     arch: amd64
     classes: [cpu-heavy, build, render]
-    # The default build node (docs/fleet/README.md "Default routing"): NOOP and
-    # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
-    # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
+    # Default builds and --node mbp use Kueue in namespace fleet-mbp:
+    # LocalQueue lanes -> ClusterQueue lanes, config/k3s/kueue/queues.yaml.
+    # Explicit --node mbp-host requires a Kueue reservation for its full lifetime.
+    # This host-lane ceiling is not a separate admission budget.
+    # Hermes executor/quackles manifests belong in hermes-k8s-lab, not .files.
+    # The parent migration retires kind only after the real k3s readiness proof.
+    # SDK in /opt/android-sdk; Gradle caches in /home/agentjob/.gradle.
     capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
     toolchains: [jdk17, jdk21, bun, android-sdk]
     lane:
