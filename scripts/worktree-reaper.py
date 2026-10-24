@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import shlex
 import time
 
 ROOTS = ['/mnt/zer0models/z0-wt', '/mnt/zer0models/worktrees', '/mnt/zer0models/hermes-wt', '/home/kvn/tmp', '/home/kvn/workspace', '/mnt/zer0models/github']
@@ -28,6 +29,7 @@ SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cach
 OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', '.cache', 'test-output', 'test-outputs', 'test-results', 'wiring', '_check', 'bytes_N', 'bytes_R', 'tmp'}
 PATH_PATTERN = re.compile(r'(?:/mnt/zer0models|/home/kvn|/workspace)(?:/[^\s\x00\"\'`;<>|(){}\[\],:=]*)?')
 HOOK_REFERENCES = {}
+BASE_BUNDLES = {}
 # The deployment owner keeps both sides of the active backend stack until its
 # normal PR merge/cutover; transient process activity is not ownership evidence.
 ACTIVE_GUARD_SOURCES = {
@@ -314,6 +316,14 @@ def archive_name(row):
     return f'archive/wt-{name}-{dt.datetime.now(dt.timezone.utc):%Y%m%d}-{suffix}'
 
 
+def verified_bundle(path, destination, revisions):
+    git(path, 'bundle', 'create', str(destination), *revisions, timeout=600)
+    git(path, 'bundle', 'verify', str(destination), timeout=120)
+    with destination.open('rb') as bundle_file:
+        digest = hashlib.file_digest(bundle_file, 'sha256').hexdigest()
+    return {'path': str(destination), 'bytes': destination.stat().st_size, 'sha256': digest}
+
+
 def preserve(row, out, archive):
     path = row['path']
     branch = archive_name(row)
@@ -352,7 +362,7 @@ def preserve(row, out, archive):
     git(path, 'update-ref', ref, commit)
     record = {'path': path, 'archive_branch': branch, 'archive_commit': commit, 'staged_commit': staged_commit, 'remote': row['remote'], 'bundle': None, 'push_ok': False}
     emit(out, 'archive_ref_created', **record)
-    if row['remote']:
+    if row['remote'] and row['class'] == 'WIP':
         p = git(path, 'push', '--no-follow-tags', 'origin', f'{ref}:{ref}', timeout=120, check=False)
         record['push_ok'] = p.returncode == 0
         if record['push_ok']:
@@ -360,26 +370,43 @@ def preserve(row, out, archive):
             record['push_ok'] = bool(remote_head and remote_head[0] == commit)
         if p.returncode:
             record['push_error'] = p.stderr.decode(errors='replace')[-1500:]
-    # All plain clones receive a full bundle, including other local branches and
-    # stashes. Worktree bundles are incremental to remote refs where possible.
-    if row['plain_clone'] or not record['push_ok']:
-        bundle = archive / (branch.replace('/', '--') + '.bundle')
-        if row['plain_clone']:
-            args = ['bundle', 'create', str(bundle), '--all']
-        else:
-            args = ['bundle', 'create', str(bundle), ref]
-        git(path, *args, timeout=600)
-        git(path, 'bundle', 'verify', str(bundle), timeout=120)
-        record['bundle'] = str(bundle)
-        record['bundle_bytes'] = bundle.stat().st_size
-        with bundle.open('rb') as bundle_file:
-            record['bundle_sha256'] = hashlib.file_digest(bundle_file, 'sha256').hexdigest()
-    if not record['push_ok'] and not record['bundle']:
-        raise RuntimeError('Preservation did not reach durable remote or bundle storage')
-    if record['bundle']:
-        record['restore_command'] = f"git clone {__import__('shlex').quote(record['bundle'])} {__import__('shlex').quote(path)} && git -C {__import__('shlex').quote(path)} checkout {__import__('shlex').quote(branch)}"
+    # Every removal, including SAFE worktrees, needs a verified local bundle.
+    # Share one immutable full base per object store; later WIP snapshots need
+    # only their delta, not another copy of the repository's entire history.
+    new_bytes = 0
+    base = None
+    if row['plain_clone']:
+        destination = archive / (branch.replace('/', '--') + f'-{time.time_ns()}.bundle')
+        bundle = verified_bundle(path, destination, ['--all'])
+        new_bytes += bundle['bytes']
     else:
-        record['restore_command'] = f"git clone {__import__('shlex').quote(row['remote'])} {__import__('shlex').quote(path)} && git -C {__import__('shlex').quote(path)} checkout {__import__('shlex').quote(branch)}"
+        base = BASE_BUNDLES.get(row['parent_repo'])
+        if base is None:
+            key = hashlib.sha256(row['parent_repo'].encode()).hexdigest()[:16]
+            destination = archive / f'repo-{key}-{time.time_ns()}.base.bundle'
+            base = verified_bundle(path, destination, ['--all'])
+            base['heads'] = [line.split()[0] for line in text(path, 'bundle', 'list-heads', str(destination)).splitlines()]
+            BASE_BUNDLES[row['parent_repo']] = base
+            new_bytes += base['bytes']
+        missing = text(path, 'rev-list', '--max-count=1', ref, '--not', *base['heads'])
+        if missing:
+            destination = archive / (branch.replace('/', '--') + f'-{time.time_ns()}.bundle')
+            bundle = verified_bundle(path, destination, [ref, '--not', *base['heads']])
+            new_bytes += bundle['bytes']
+        else:
+            bundle = base
+            git(path, 'bundle', 'verify', base['path'], timeout=120)
+    record.update(bundle=bundle['path'], bundle_sha256=bundle['sha256'],
+                  bundle_file_bytes=bundle['bytes'], bundle_bytes=new_bytes,
+                  base_bundle=base['path'] if base and bundle is not base else None)
+    qpath = shlex.quote(path)
+    source = record['base_bundle'] or record['bundle']
+    restore = f'git clone {shlex.quote(source)} {qpath}'
+    if record['base_bundle']:
+        delta_source = shlex.quote(record['bundle'])
+        restore += f' && git -C {qpath} fetch {delta_source} {shlex.quote(ref)}'
+    restore += f' && git -C {qpath} checkout -B {shlex.quote(branch)} {shlex.quote(commit)}'
+    record['restore_command'] = restore
     emit(out, 'archived', **record)
     return record
 
@@ -423,6 +450,10 @@ def main():
     args = parser.parse_args()
     os.nice(15)
     args.output.mkdir(parents=True, exist_ok=True)
+    if (args.apply or args.daily) and (args.output / 'PAUSED').exists():
+        paused = emit(args.output, 'removals_paused', reason='operator PAUSED marker')
+        print(json.dumps(paused), flush=True)
+        return 0
     args.archive.mkdir(parents=True, exist_ok=True)
     lock = (args.archive / '.reaper.lock').open('a')
     try:
@@ -478,6 +509,9 @@ def main():
         lock.close()
         return 1
     for row in sorted(rows, key=lambda r: (r['plain_clone'], -len(r['path']))):
+        if mutating and (args.output / 'PAUSED').exists():
+            emit(args.output, 'removals_paused', reason='operator PAUSED marker at item boundary')
+            break
         if not mutating or row['class'] == 'LIVE':
             continue
         if args.daily and row['mtime_age_days'] < (3 if row['class']=='SAFE' else 14):
@@ -497,11 +531,9 @@ def main():
                 actions.append(emit(args.output, 'kept_newly_live', path=row['path'], reasons=reasons))
                 continue
             size = int(command(['nice', '-n', '19', 'ionice', '-c', '3', 'du', '-s', '-B1', '--', row['path']], timeout=300).stdout.split()[0])
-            # Even a clean plain clone can contain non-HEAD branches or stashes.
-            # Bundling it is mandatory before deleting its private object store.
-            if row['class'] == 'WIP' or row['plain_clone']:
-                archive = preserve(row, args.output, args.archive)
-                actions.append({'event': 'archived', **archive})
+            # A durable verified archive receipt always precedes removal.
+            archive = preserve(row, args.output, args.archive)
+            actions.append({'event': 'archived', **archive})
             fresh, issues = references()
             reasons = live_reasons(row['path'], fresh)
             if issues or reasons:

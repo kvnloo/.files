@@ -133,6 +133,35 @@ class ReaperBehavior(unittest.TestCase):
         self.git(self.repo, 'clone', '--mirror', record['bundle'], str(restored))
         self.assertEqual(self.git(restored, 'show', 'refs/heads/hidden:hidden.txt'), 'valuable')
 
+    def test_shared_base_and_wip_delta_restore_from_emitted_command(self):
+        import shlex
+        first = self.root / 'linked-a'
+        second = self.root / 'linked-b'
+        self.git(self.repo, 'worktree', 'add', '-b', 'a', str(first))
+        self.git(self.repo, 'worktree', 'add', '-b', 'b', str(second))
+        self.age(first)
+        first_row = reaper.inspect(str(first), [str(self.root)], {}, time.time())
+        base_record = reaper.preserve(first_row, self.out, self.archive)
+        (second / 'file.txt').write_text('delta working tree\\n')
+        self.age(second)
+        second_row = reaper.inspect(str(second), [str(self.root)], {}, time.time())
+        delta_record = reaper.preserve(second_row, self.out, self.archive)
+        self.assertEqual(delta_record['base_bundle'], base_record['bundle'])
+        self.assertNotEqual(delta_record['bundle'], base_record['bundle'])
+        restored = self.base / 'restored-delta'
+        restore_command = delta_record['restore_command'].replace(shlex.quote(str(second)), shlex.quote(str(restored)))
+        subprocess.run(['bash', '-c', restore_command], text=True, capture_output=True, check=True)
+        self.assertEqual((restored / 'file.txt').read_text(), 'delta working tree\\n')
+
+    def test_operator_pause_prevents_inventory_and_removal(self):
+        (self.out / 'PAUSED').write_text('operator pause\\n')
+        argv = ['worktree-reaper', '--apply', '--root', str(self.root), '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), patch.object(reaper.os, 'nice'), patch.object(reaper, 'discover') as discover:
+            self.assertEqual(reaper.main(), 0)
+        discover.assert_not_called()
+        self.assertTrue(self.repo.is_dir())
+        self.assertEqual(list(self.archive.glob('*.bundle')), [])
+
     def test_apply_removes_old_standalone_after_bundle(self):
         self.age(self.repo)
         argv = ['worktree-reaper', '--apply', '--root', str(self.root), '--output', str(self.out), '--archive', str(self.archive)]
