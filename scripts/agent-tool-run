@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Fail-closed local agent entry; existing systemd scope + fleet placement policy."""
+import os
+from pathlib import Path
+import shlex
+import socket
+import subprocess
+import sys
+import uuid
+
+
+def blocked(argv):
+    # Reuse the maintained supervisor's command parser: quoted mentions, remote
+    # commands and fleet-build are not mistaken for local builds.
+    src = Path('/mnt/zer0models/worktrees/z0-supervisor-bounded-replay/src')
+    sys.path.insert(0, str(src))
+    from z0int.fsm.supervise import local_heavy, local_commands
+    if len(argv) >= 3 and Path(argv[0]).name in {'bash', 'zsh', 'sh'} and '-c' in argv[:3]:
+        command = argv[argv.index('-c')+1]
+    else:
+        command = shlex.join(argv)
+    for tokens in local_commands(command):
+        exe = Path(tokens[0]).name
+        if exe in {'pytest','pytest3'} or (exe.startswith('python') and '-m' in tokens and any(x in tokens for x in {'pytest','unittest'})):
+            return 'CPU test suites belong on fleet workers'
+        if exe == 'ffmpeg':
+            gpu = any(tokens[i] in {'-c:v', '-codec:v'} and tokens[i+1] in {'h264_nvenc','hevc_nvenc','av1_nvenc'}
+                      for i in range(len(tokens)-1))
+            if not gpu:
+                return 'CPU ffmpeg belongs on fleet workers'
+        if exe == 'blender' and '--cycles-device' in tokens and '--' in tokens:
+            i = tokens.index('--cycles-device')
+            if i+1 < len(tokens) and tokens[i+1] in {'CUDA','OPTIX','HIP','ONEAPI','METAL'}:
+                continue  # Explicit native Cycles device, still inside CPU/I/O limits.
+        if local_heavy(shlex.join(tokens)):
+            return 'CPU build/test/render command belongs on fleet workers'
+    return None
+
+
+def main():
+    argv = sys.argv[1:]
+    if argv[:1] == ['--']:
+        argv = argv[1:]
+    if not argv:
+        raise SystemExit('agent-tool-run: command required')
+    if socket.gethostname().split('.')[0] != 'groot':
+        os.execvp(argv[0], argv)
+    try:
+        reason = blocked(argv)
+    except (OSError, ImportError, SyntaxError) as exc:
+        print('AGENT_WORK_HELD: admission parser unavailable: '+str(exc),file=sys.stderr)
+        raise SystemExit(75)
+    if reason:
+        print(f'AGENT_WORK_HELD: {reason}; use fleet-build; exit 75, no groot fallback', file=sys.stderr)
+        raise SystemExit(75)
+    from z0int.fsm.supervise import local_commands
+    text = argv[argv.index('-c')+1] if '-c' in argv[:3] else shlex.join(argv)
+    commands = local_commands(text)
+    interactive = (len(commands) == 1 and Path(commands[0][0]).name in
+        {'hermes','tern','firefox','chromium','google-chrome','brave','brave-browser','zen','librewolf',
+         'kitty','alacritty','foot','wezterm'})
+    if interactive:
+        # Only a single explicit interactive program: never exempt an entire
+        # compound shell merely because one argument mentions a browser/CLI.
+        command = ['systemd-run','--user','--scope','--quiet','--collect',
+                   '--unit=agent-interactive-'+uuid.uuid4().hex,'--slice=app.slice','--',*argv]
+        raise SystemExit(subprocess.run(command).returncode)
+    # Even nested/unknown commands enter the budget before executing. The native
+    # wrapper never moves the gateway, desktop, or an ancestor process tree.
+    cg = Path('/proc/self/cgroup').read_text()
+    if '/agent.slice/' in cg:
+        os.execvp(argv[0], argv)
+    unit = 'hermes-worker-local-'+uuid.uuid4().hex
+    command = ['systemd-run','--user','--scope','--quiet','--collect','--unit='+unit,
+               '--property=Slice=agent.slice','--property=CPUQuota=100%',
+               '--property=IOWeight=1','--property=MemoryMax=4G',
+               '--property=MemorySwapMax=512M','--',*argv]
+    # A failed bus/scope is an admission hold, NEVER a direct-exec fallback.
+    try:
+        result = subprocess.run(command)
+    except OSError as exc:
+        print('AGENT_WORK_HELD: cannot enter native scope: '+str(exc),file=sys.stderr)
+        raise SystemExit(75)
+    raise SystemExit(result.returncode)
+
+if __name__ == '__main__':
+    main()

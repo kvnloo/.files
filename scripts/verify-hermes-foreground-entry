@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Exercise the exact patched foreground method in isolation, not the live gateway."""
+import ast
+import contextlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+source=Path('/mnt/zer0models/worktrees/hermes-foreground-resource-admission/tools/environments/local.py')
+tree=ast.parse(source.read_text())
+node=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='_run_bash')
+module=ast.Module(body=[node],type_ignores=[])
+# Environment discovery is injected; the actual method body, Popen, wrapper,
+# native systemd manager, child process and kernel cgroup files are real.
+ns={'subprocess':subprocess,'Path':Path,'sys':sys,'os':os,'contextlib':contextlib,
+    '_find_bash':lambda:'/usr/bin/bash','_make_run_env':lambda e:dict(os.environ)|e,
+    '_IS_WINDOWS':False}
+sys.path.insert(0,'/workspace/hermes-home/hermes-agent')
+exec(compile(module,str(source),'exec'),ns)
+Harness=type('Harness',(),{'_run_bash':ns['_run_bash'],'_recover_cwd':lambda self:None})
+h=Harness();h.cwd='/mnt/zer0models';h.env={}
+command="python3 -c 'import pathlib,json; c=pathlib.Path(\"/proc/self/cgroup\").read_text().strip(); p=pathlib.Path(\"/sys/fs/cgroup\")/c.split(\"::\")[-1].lstrip(\"/\"); print(json.dumps({\"cgroup\":c,\"cpu.max\":(p/\"cpu.max\").read_text().strip(),\"memory.max\":(p/\"memory.max\").read_text().strip()}))'"
+p=h._run_bash(command);out,_=p.communicate(timeout=15)
+assert p.returncode==0,out
+d=json.loads(out.strip().splitlines()[-1]);assert '/agent.slice/' in d['cgroup'],d
+assert d['cpu.max']=='100000 100000',d
+p=h._run_bash('cargo build');held,_=p.communicate(timeout=15)
+assert p.returncode==75,(p.returncode,held)
+result={'method_source':str(source),'placement':d,'cpu_build_exit':p.returncode,'cpu_build_output':held.strip(),
+        'scope':'isolated exact method; environment resolvers injected; live gateway activation still requires parent restart'}
+root=Path('/mnt/zer0models/workspace/zer0/data/operations/desktop-lag/20261022')
+(root/'foreground-method-integration.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps(result,indent=2))

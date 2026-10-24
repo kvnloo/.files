@@ -1,0 +1,78 @@
+# Agent path: a CPU Job lands on an agent node (not the server), resolves cluster
+# DNS served from the server across the tailnet (flannel VXLAN), reaches the
+# public internet, and its logs come back through the agent's kubelet.
+# Prints AGENT_SMOKE_OK.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-agent-
+  namespace: factory
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector:
+        z0.dev/role: agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: probe
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - 'echo "node=$NODE_NAME"
+
+          nslookup kubernetes.default.svc.cluster.local >/dev/null 2>&1 || { echo "cluster DNS failed"; exit 1; }
+
+          nslookup example.com >/dev/null 2>&1 || { echo "public DNS failed"; exit 1; }
+
+          nc -z -w 5 1.1.1.1 443 || { echo "internet failed"; exit 1; }
+
+          echo AGENT_SMOKE_OK
+
+          '
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
+      initContainers:
+      - name: netpol-ready
+        image: busybox:1.37
+        command:
+        - sh
+        - -c
+        args:
+        - i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 32Mi

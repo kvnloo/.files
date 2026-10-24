@@ -1,0 +1,8 @@
+#!/usr/bin/busybox sh
+# svlogd: event-driven log with rotation (2 x 256 KiB), one directory per service.
+exec 9>&- 8>&-
+s=$(basename "$(dirname "$PWD")")
+d=/root/.local/state/fleet/log/$s
+mkdir -p "$d"
+printf 's262144\nn2\n' >"$d/config"
+exec /usr/bin/busybox svlogd -tt "$d"

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# fleet-polite-run: run one host-lane job on a phone's Linux guest (Omalauncher
+# PRoot) without hurting the phone. Installed as ~/.local/lib/fleet/polite-run by
+# scripts/fleet-phone-setup.sh; `scripts/fleet run` calls it over ssh.
+#
+#   polite-run [--mem-mb 1024] [--cpus 0-3] [--timeout 3600] [--floor-mb 1200] -- cmd...
+#
+# Gate (checked before start and every 30 s): no ~/.config/fleet/pause file,
+# battery >= 50 % or charging,
+# battery <= 40 C, Android thermal status <= 1 (light), MemAvailable >= floor.
+# Battery and thermal come from read-only `adb shell dumpsys` (the guest cannot
+# read /sys/class/power_supply); if they are unreadable the gate fails closed.
+# PRoot traces every process, so SIGSTOP does not pause a job: a failing gate
+# drains it instead (TERM, then KILL) and exits 75 so the caller can retry later.
+# The job runs under nice 19, ionice idle and taskset (half the cores), and is
+# drained when sampled process-group RSS passes --mem-mb or the phone drops under
+# 800 MiB available. Android apps and settings are never touched.
+# Best-effort observation/admission, NOT a cgroup hard cap or security isolation.
+set -u
+MEM_MB=1024; CPUS=0-3; TIMEOUT=3600; FLOOR_MB=1200; HARD_FLOOR_MB=800
+MIN_BATT=50; MAX_BATT_C=40; MAX_THERMAL=1; GATE_EVERY=30; STRIKES=2
+while [ $# -gt 0 ]; do
+  case $1 in
+    --mem-mb) MEM_MB=$2; shift 2 ;;
+    --cpus) CPUS=$2; shift 2 ;;
+    --timeout) TIMEOUT=$2; shift 2 ;;
+    --floor-mb) FLOOR_MB=$2; shift 2 ;;
+    --gate-only) GATE_ONLY=1; shift ;;
+    --) shift; break ;;
+    *) echo "polite-run: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+log() { echo "[polite-run $(date +%H:%M:%S)] $*" >&2; }
+case $(uname -r) in *android*) ;; *) log "unsupported: phone adapter requires Android PRoot"; exit 78 ;; esac
+memavail() { awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo; }
+
+serial() {
+  local f=$HOME/.config/fleet/adb-serial
+  if [ -s "$f" ]; then cat "$f"; else adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1; exit}'; fi
+}
+
+# Prints a reason and returns 1 when the phone should not run work now.
+gate() {
+  local s b level status plugged temp thermal avail
+  # Owner switch: `touch ~/.config/fleet/pause` stops phone work (running jobs drain).
+  [ ! -e "$HOME/.config/fleet/pause" ] || { echo "paused by ~/.config/fleet/pause"; return 1; }
+  avail=$(memavail)
+  [ "$avail" -ge "$FLOOR_MB" ] || { echo "memory ${avail}MiB < ${FLOOR_MB}MiB"; return 1; }
+  s=$(serial); [ -n "$s" ] || { echo "battery unreadable (no adb device)"; return 1; }
+  b=$(timeout 15 adb -s "$s" shell dumpsys battery 2>/dev/null) || { echo "battery unreadable"; return 1; }
+  level=$(awk -F': ' '/^  level:/{print $2}' <<<"$b")
+  status=$(awk -F': ' '/^  status:/{print $2}' <<<"$b")
+  temp=$(awk -F': ' '/^  temperature:/{print $2}' <<<"$b")
+  plugged=$(grep -cE '^  (AC|USB|Wireless|Dock) powered: true' <<<"$b")
+  [ -n "$level" ] && [ -n "$temp" ] || { echo "battery unreadable"; return 1; }
+  if [ "$level" -lt "$MIN_BATT" ] && [ "$plugged" -eq 0 ] && [ "$status" != 2 ]; then
+    echo "battery ${level}% and not charging"; return 1
+  fi
+  [ "$temp" -le $((MAX_BATT_C * 10)) ] || { echo "battery $((temp / 10))C > ${MAX_BATT_C}C"; return 1; }
+  thermal=$(timeout 15 adb -s "$s" shell dumpsys thermalservice 2>/dev/null | awk -F': ' '/^Thermal Status:/{print $2; exit}')
+  [ -n "$thermal" ] || { echo "thermal status unreadable"; return 1; }
+  [ "$thermal" -le "$MAX_THERMAL" ] || { echo "thermal status $thermal > $MAX_THERMAL"; return 1; }
+  echo "ok: battery ${level}% plugged=$plugged temp $((temp / 10))C thermal $thermal mem ${avail}MiB"
+}
+
+reason=$(gate); rc=$?
+log "$reason"
+[ -n "${GATE_ONLY:-}" ] && exit $rc
+[ $rc -eq 0 ] || exit 75
+[ $# -gt 0 ] || { echo "polite-run: no command" >&2; exit 2; }
+
+# setsid gives the job its own process group so it can be drained as a whole.
+setsid nice -n 19 ionice -c3 taskset -c "$CPUS" "$@" &
+pid=$!
+start=$(date +%s); last_gate=$start; bad=0; why=""
+drain() {
+  why=$1; log "draining job: $why"
+  kill -TERM -"$pid" 2>/dev/null; sleep 10; kill -KILL -"$pid" 2>/dev/null
+}
+trap 'drain "executor stop/cancel/lease expiry"; wait "$pid" 2>/dev/null; exit 75' TERM INT HUP
+while kill -0 "$pid" 2>/dev/null; do
+  sleep 5
+  now=$(date +%s)
+  rss=$(ps -o rss= -g "$pid" 2>/dev/null | awk '{s+=$1} END{print int(s/1024)}')
+  if [ "${rss:-0}" -gt "$MEM_MB" ]; then drain "rss ${rss}MiB > ${MEM_MB}MiB"; break; fi
+  if [ "$(memavail)" -lt "$HARD_FLOOR_MB" ]; then drain "phone under ${HARD_FLOOR_MB}MiB available"; break; fi
+  if [ $((now - start)) -gt "$TIMEOUT" ]; then drain "timeout ${TIMEOUT}s"; break; fi
+  if [ $((now - last_gate)) -ge "$GATE_EVERY" ]; then
+    last_gate=$now
+    if reason=$(gate); then bad=0; else bad=$((bad + 1)); log "gate failed ($bad/$STRIKES): $reason"; fi
+    if [ "$bad" -ge "$STRIKES" ]; then drain "$reason"; break; fi
+  fi
+done
+wait "$pid"; rc=$?
+case $why in
+  "") exit $rc ;;
+  timeout*) log "job stopped: $why"; exit 124 ;;
+  rss*) log "job killed: $why"; exit 137 ;;
+  *) log "job drained: $why"; exit 75 ;;
+esac
