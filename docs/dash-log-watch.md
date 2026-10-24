@@ -204,6 +204,9 @@ additional state without duplicating the complete history. The manifest's
 `restore_command` records both base and delta restoration when needed. A base
 clone remains when needed by LIVE linked worktrees. Archive errors prevent the
 affected removal and remain visible in the operational records.
+Absorbed submodules use a `.git` file without being linked worktrees. The reaper
+preserves their Git state in a verified bundle before removing their directory.
+It retains any common object store that still serves another linked checkout.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.

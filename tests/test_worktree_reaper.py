@@ -1,5 +1,6 @@
 """Behavioral coverage for preservation and the shared reaper classifier."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -170,6 +171,30 @@ class ReaperBehavior(unittest.TestCase):
         self.assertFalse(self.repo.exists())
         self.assertEqual(len(list(self.archive.glob('*.bundle'))), 1)
         self.assertTrue((self.out / 'REPORT.md').is_file())
+
+    def test_apply_archives_absorbed_submodule_before_removing_directory(self):
+        source = self.base / 'submodule-source'
+        self.git(self.repo, 'clone', str(self.repo), str(source))
+        self.git(self.repo, '-c', 'protocol.file.allow=always', 'submodule',
+                 'add', str(source), 'dependency')
+        child = self.repo / 'dependency'
+        self.age(child)
+        argv = ['worktree-reaper', '--apply', '--root', str(child),
+                '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(reaper, 'references', return_value=({}, [])), \
+                patch.object(reaper.os, 'nice'):
+            self.assertEqual(reaper.main(), 0)
+        self.assertFalse(child.exists())
+        self.assertTrue(self.repo.exists())
+        rows = [json.loads(line) for line in (self.out / 'manifest.jsonl').read_text().splitlines()]
+        archived = next(row for row in rows if row['event'] == 'archived')
+        self.assertLess(next(i for i, row in enumerate(rows) if row['event'] == 'archived'),
+                        next(i for i, row in enumerate(rows) if row['event'] == 'removed'))
+        restored = self.base / 'restored-submodule'
+        self.git(self.repo, 'clone', archived['bundle'], str(restored))
+        self.git(restored, 'checkout', archived['archive_branch'])
+        self.assertEqual((restored / 'file.txt').read_text(), 'original\n')
 
 
 if __name__ == '__main__':

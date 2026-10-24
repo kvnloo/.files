@@ -545,7 +545,10 @@ def main():
             if newest_mtime(row['path'], time.time()-DAY) > time.time()-DAY:
                 raise RuntimeError('Working files changed during archival')
             emit(args.output, 'remove_intent', path=row['path'], size_bytes=size, parent_repo=row['parent_repo'], remote=row['remote'], branch=row['branch'])
-            if row['plain_clone']:
+            # Absorbed submodules also use a .git file, but are not linked
+            # worktrees. Their Git directory is their common object store.
+            gitdir = text(row['path'], 'rev-parse', '--absolute-git-dir')
+            if row['plain_clone'] or os.path.realpath(gitdir) == row['parent_repo']:
                 linked = text(row['path'], 'worktree', 'list', '--porcelain').splitlines()
                 others = [l[9:] for l in linked if l.startswith('worktree ') and os.path.realpath(l[9:]) != row['path'] and os.path.exists(l[9:])]
                 if others:
