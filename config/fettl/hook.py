@@ -40,8 +40,11 @@ def shadow_log(stdout: bytes = b"", stderr: bytes = b"", code: int = 0) -> None:
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     raw = stdout.decode("utf-8", errors="replace")
     findings = []
+    scan_errors = {}
     try:
         parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            scan_errors = {key: parsed[key] for key in ("check_errors", "errors", "skipped_crates") if parsed.get(key)}
         findings = parsed if isinstance(parsed, list) else parsed.get("findings", parsed.get("violations", []))
         if isinstance(parsed, dict) and "results" in parsed:
             findings = [{**violation, "rule": result["id"]}
@@ -53,6 +56,7 @@ def shadow_log(stdout: bytes = b"", stderr: bytes = b"", code: int = 0) -> None:
            "cwd": EVENT.get("cwd", str(Path.cwd())), "scan_id": f"{os.getpid()}-{STARTED}",
            "file": EVENT.get("tool_input", {}).get("file_path") or EVENT.get("tool_input", {}).get("path"),
            "rule": None, "message": raw, "latency_ms": round((time.monotonic() - STARTED) * 1000, 3),
+           "scan_errors": scan_errors,
            "exit_code": code, "diagnostic": stderr.decode("utf-8", errors="replace")}
     with (directory / f"{name}.jsonl").open("a") as log:
         fcntl.flock(log, fcntl.LOCK_EX)
@@ -251,13 +255,13 @@ def main() -> int:
         for directory in hermes_directories(payload):
             canonical = {**payload, "cwd": str(directory)}
             code, stdout, stderr = run_scanner(["hook", "hermes", "post-tool-call"], json.dumps(canonical).encode(), directory)
-            if not shadow_mode():
-                sys.stderr.buffer.write(stderr)
-            if code not in {0, 1}:
-                raise ValueError(f"Fettl Hermes hook failed with exit {code}")
             if shadow_mode():
                 shadow_log(stdout, stderr, code)
-            response = json.loads(stdout) if stdout.strip() and not shadow_mode() else {}
+                continue
+            sys.stderr.buffer.write(stderr)
+            if code not in {0, 1}:
+                raise ValueError(f"Fettl Hermes hook failed with exit {code}")
+            response = json.loads(stdout) if stdout.strip() else {}
             if response:
                 responses.append(response)
         # Post-tool observers cannot prevent an already completed mutation.
