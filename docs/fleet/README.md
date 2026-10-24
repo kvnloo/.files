@@ -18,6 +18,38 @@ Avrea take work through these lanes:
 The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
 re-running a command with the same registry changes nothing.
 
+## Kueue workload priority
+
+`fleet-build --class test|build|bench` sets the Kueue workload priority label,
+not the fleet hardware capability class. Priorities are 1000, 100 and 10.
+Without an override, commands containing pytest select test; requests consuming
+the entire live CPU quota select bench; other commands select build. Pytest
+takes precedence over the all-CPU rule. Receipts in
+`~/.local/state/fleet/runs/<job>.json` record the selected class.
+
+### What Kueue does vs what we configure
+
+Kueue already orders waiting workloads by priority and handles eviction,
+quota release and readmission. We configure WorkloadPriorityClasses and
+`lanes.spec.preemption.withinClusterQueue: LowerPriority` in
+`config/k3s/kueue/queues.yaml`. There is no custom scheduler or runtime LLM
+decision. BestEffortFIFO still lets fitting jobs advance within a priority.
+CPU and memory quotas are unchanged.
+
+Benchmarks must opt in with `--checkpoint-safe`. This is a caller contract,
+not automatic checkpointing: write completed units atomically beneath the
+persistent working directory, and resume them when the command starts again.
+Do not append partial measurements to completed results. Kueue may terminate
+the pod at any point; do not rely solely on a SIGTERM handler. The source stage
+survives eviction and the submitter reconnects to the replacement pod.
+Unmodified, non-resumable benchmarks are rejected instead of silently losing
+progress or pretending that Kubernetes checkpoints arbitrary processes.
+Use explicit `--class build` for all-CPU builds, not to disguise benchmarks.
+Host-scope build/bench execution is rejected: a reservation pod cannot safely
+stop an independently running host process during Kueue eviction.
+Existing jobs retain their original priority; do not relabel running legacy
+benchmarks that have not met the checkpoint contract.
+
 ## Devices (2026-10-20)
 
 | Device | Role | State |

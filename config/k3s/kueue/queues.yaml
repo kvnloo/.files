@@ -79,6 +79,24 @@ spec:
 
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata: {name: test}
+value: 1000
+description: Short tests ahead of builds and restart-safe benchmarks.
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata: {name: build}
+value: 100
+description: Builds ahead of restart-safe benchmarks.
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata: {name: bench}
+value: 10
+description: Checkpoint-safe benchmarks using idle lane capacity.
+---
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
 metadata:
   name: lanes
@@ -89,6 +107,8 @@ spec:
         operator: In
         values: [lanes, fleet-mbp]
   queueingStrategy: BestEffortFIFO
+  preemption:
+    withinClusterQueue: LowerPriority
   resourceGroups:
     - coveredResources: [cpu, memory]
       flavors:

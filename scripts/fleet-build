@@ -18,6 +18,8 @@
 #   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
 #                    s25|s22 = guest Python venv; phones = healthiest reachable guest.
 #   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
+#   --class test|build|bench  Kueue priority; pytest defaults test, all-CPU defaults bench
+#   --checkpoint-safe        certify bench resumes atomic checkpoints after preemption
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
 #                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
 #                    Oversized Kueue requests exit 75; never fall back to groot.
@@ -47,6 +49,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 
 mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0; guest=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
+priority_class=""; checkpoint_safe=0
 while [ $# -gt 0 ]; do
   case $1 in
     --android) mode=android; shift ;;
@@ -59,6 +62,10 @@ while [ $# -gt 0 ]; do
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
+    --class)
+      case $2 in test|build|bench) priority_class=$2 ;; *) echo "fleet-build: --class must be test, build or bench" >&2; exit 2 ;; esac
+      shift 2 ;;
+    --checkpoint-safe) checkpoint_safe=1; shift ;;
     --repo|--sha|--runner|--matrix|--parallel|--snapshot|--max-api-requests) avrea_opts+=("$1" "$2"); shift 2 ;;
     --mem) mem=$2; shift 2 ;;
     --cpus) cpus=$2; shift 2 ;;
@@ -161,6 +168,8 @@ runner=("$FLEET"); run_args=("${args[@]}")
 if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -z "$node" ] && [ "$mode" != phone ]; }; then
   use_kueue=1
   runner=(python3 "$(dirname "$FLEET")/fleet-kueue" --wait "$wait_s")
+  [ -z "$priority_class" ] || runner+=(--priority-class "$priority_class")
+  [ "$checkpoint_safe" = 0 ] || runner+=(--checkpoint-safe)
   [ "$node" != mbp-host ] || runner+=(--host)
   [ -z "$out" ] || runner+=(--out "$out")
   run_args=("${args[@]:1}")
