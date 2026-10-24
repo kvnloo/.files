@@ -1,0 +1,29 @@
+[Unit]
+Description=Dash foreground-gated report-only Luna log watcher
+ConditionPathExists=%h/.config/dash-log-watch/config.json
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/dash-log-watch run
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=10
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=%h/.local/state/dash-log-watch %h/.local/state/z0live %h/.hermes/profiles/clean
+Environment=PATH=/home/kvn/.local/bin:/home/kvn/android/sdk/platform-tools:/usr/local/bin:/usr/bin:/bin
+Environment=HERMES_HOME=%h/.hermes/profiles/clean
+Environment=TMPDIR=%h/.hermes/profiles/clean/cache/scratch
+WorkingDirectory=%h
+MemoryHigh=384M
+MemoryMax=768M
+CPUQuota=25%
+TasksMax=64
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

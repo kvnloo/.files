@@ -1,0 +1,17 @@
+[Unit]
+Description=Report system service failure of %i to the desktop owner
+OnFailure=
+
+[Service]
+Type=oneshot
+User=kvn
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ExecStart=/home/kvn/.local/bin/service-watch failure %i --scope system
+UMask=0077
+Nice=15
+MemoryMax=96M
+CPUQuota=10%
+TasksMax=16
+NoNewPrivileges=true
+TimeoutStartSec=20
