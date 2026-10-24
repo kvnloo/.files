@@ -51,12 +51,14 @@ def job(job_id=1, **changes):
 
 class API(budget.GitHub):
     def __init__(self, routes=None):
+        super().__init__()
         self.calls = []
         self.routes = {f"/repos/{REPO}": {"full_name": REPO, "private": False},
             f"/repos/{REPO}/actions/runs?per_page=100&page=1": {"total_count": 0, "workflow_runs": []}}
         self.routes.update(routes or {})
 
     def get(self, endpoint):
+        self.requests += 1
         self.calls.append(endpoint)
         # Keep fixture keys readable while asserting a cutoff exists on run lists.
         if "?created=" in endpoint:

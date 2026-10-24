@@ -27,7 +27,7 @@
 #   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
 #   --local-data     never send this job to Boat, even with --public
 #   --repo OWNER/REPO --sha SHA  Avrea: public exact head (otherwise clean local origin/HEAD)
-#   --runner LABEL --matrix FILE --parallel N --snapshot FILE  Avrea options
+#   --runner LABEL --matrix FILE --parallel N --snapshot FILE --max-api-requests N
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -58,7 +58,7 @@ while [ $# -gt 0 ]; do
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
-    --repo|--sha|--runner|--matrix|--parallel|--snapshot) avrea_opts+=("$1" "$2"); shift 2 ;;
+    --repo|--sha|--runner|--matrix|--parallel|--snapshot|--max-api-requests) avrea_opts+=("$1" "$2"); shift 2 ;;
     --mem) mem=$2; shift 2 ;;
     --cpus) cpus=$2; shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;

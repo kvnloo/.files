@@ -301,6 +301,13 @@ operator input; it is not self-reported by target code.
   settles them. Refresh the baseline after unrelated metered usage. This is
   an admission guard, not a hard all-account billing ceiling.
 
+The request ceiling is 2,000 API calls per full scan, not a repository/run limit.
+Use `--max-api-requests N` through `fleet-build --node avrea` for a larger scan.
+Successful decisions report `api_requests` and `max_api_requests`. Exhaustion or
+incomplete pagination still fails closed. All configured repositories, attempts
+and explicit run IDs remain in scope. An operator can record remaining credit
+as `allowance_minutes` with `used_minutes: 0` at the screenshot capture time.
+
 Caching is colocated: `actions/cache@v4+` and language setup caches work
 without migration; package registries and supported build tools are proxied.
 Regular cache quota25GB/repo, LRU eviction, unused entries eligible after7days.
