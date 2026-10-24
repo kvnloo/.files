@@ -91,6 +91,7 @@ nodes:
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
       min_disk_free_gb: 5
+      strikes: 2
       on_unhealthy: pause
     lane: {}
   galaxy-s22plus:
@@ -113,6 +114,7 @@ nodes:
       revive: false
     health:
       min_disk_free_gb: 5
+      strikes: 2
       on_unhealthy: pause
     lane: {}
   groot:
