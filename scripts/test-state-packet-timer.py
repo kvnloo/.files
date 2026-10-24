@@ -3,6 +3,7 @@
 import configparser
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -18,7 +19,18 @@ class PacketTimerTests(unittest.TestCase):
             units.mkdir(parents=True)
             prior = units / 'z0-state-packet.service'
             prior.write_text('prior content\n')
-            subprocess.run(['bash', str(ROOT / 'scripts/install-state-packet-timer.sh')],
+            repo = home / 'repo'
+            for relative in ('scripts/install-state-packet-timer.sh',
+                             'config/systemd/user/z0-state-packet.service',
+                             'config/systemd/user/z0-state-packet.timer'):
+                target = repo / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / relative, target)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                            'commit', '-qm', 'fixture'], check=True)
+            subprocess.run(['bash', str(repo / 'scripts/install-state-packet-timer.sh')],
                 env={**os.environ, 'HOME': str(home)}, check=True)
             self.assertTrue(prior.is_symlink())
             self.assertTrue(str(prior.resolve()).startswith(str(home / '.local/lib/z0-state-packet-units')))
