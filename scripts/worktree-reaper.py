@@ -369,12 +369,14 @@ def report(out, rows, actions, before, after, errors, mode):
     archives = [a for a in actions if a['event'] == 'archived']
     archive_bytes = sum(a.get('bundle_bytes', 0) for a in archives)
     summary = {'timestamp': dt.datetime.now(dt.timezone.utc).isoformat(), 'mode': mode, 'checkout_count': sum(after.values()), 'before_counts': before, 'after_counts': after, 'live_count': sum(r['class']=='LIVE' for r in rows), 'safe_count': sum(r['class']=='SAFE' for r in rows), 'wip_count': sum(r['class']=='WIP' for r in rows), 'removed_count': sum(a['event']=='removed' for a in actions), 'bytes_freed': freed, 'archive_bytes': archive_bytes, 'net_estimated_bytes_freed': freed-archive_bytes, 'errors': errors}
+    summary['bytes_freed_by_root'] = {root: sum(a.get('size_bytes', 0) for a in actions if a['event'] == 'removed' and (a['path'] == os.path.realpath(root) or a['path'].startswith(os.path.realpath(root) + '/'))) for root in before}
     tmp = out / 'latest.json.tmp'
     tmp.write_text(json.dumps(summary, indent=2) + '\n')
     tmp.replace(out / 'latest.json')
-    lines = ['# Worktree reaper', '', f"Run: {summary['timestamp']} ({mode})", '', '| Root | Before | After |', '|---|---:|---:|']
+    lines = ['# Worktree reaper', '', f"Run: {summary['timestamp']} ({mode})", '', '| Root | Before | After | Allocated bytes removed |', '|---|---:|---:|---:|']
     for root, count in before.items():
-        lines.append(f'| `{root}` | {count} | {after.get(root, 0)} |')
+        removed_bytes = summary['bytes_freed_by_root'][root]
+        lines.append(f'| `{root}` | {count} | {after.get(root, 0)} | {removed_bytes:,} |')
     lines += ['', f"Removed: {summary['removed_count']}. Allocated checkout bytes removed: {freed:,}. Bundle bytes: {archive_bytes:,}. Estimated net freed: {freed-archive_bytes:,} bytes.", '', 'Allocated bytes use sequential niced/ioniced `du -s -B1` on removal candidates only. Shared Git objects and filesystem compression can make physical free-space change differ. All original inventory and every action are in `manifest.jsonl`.', '', '## Kept LIVE checkouts', '']
     for row in rows:
         if os.path.exists(row['path']) and row['class'] == 'LIVE':
