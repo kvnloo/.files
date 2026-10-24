@@ -87,7 +87,7 @@ class Contracts(unittest.TestCase):
     def test_phone_caps_recurring_root_follows_installed_fleet(self):
         with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
             self.watch.phone_caps_invariant()
-        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root / 'scripts')})
+        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
         record.assert_called_once_with('user', 'service-watch.service', [])
 
     def test_live_checkout_count_overrides_stale_daily_snapshot_and_notifies(self):
@@ -142,6 +142,58 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.watch.checkout_threshold, 200)
         with self.assertRaises(ValueError):
             sw.Watch(self.root / 'invalid', checkout_threshold=-1)
+    def test_policy_age_ingest_stall_and_offload_violations(self):
+        now = time.time()
+        home = self.root / 'z0int'
+        (home / 'findings').mkdir(parents=True)
+        (home / 'policy').mkdir()
+        source = self.root / 'source.json'
+        source.write_text('changed source')
+        finding = {'id': 'latest', 'ts': now - 90000,
+                   'source': {'path': str(source), 'sha256': 'old-digest'}}
+        (home / 'findings/findings.jsonl').write_text(json.dumps(finding) + '\n')
+        (home / 'policy/decision-policy.json').write_text(json.dumps(
+            {'compiled_at': now - 8000, 'findings_head': 'older'}))
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': now, 'available': True,
+             'unavailable_reason': None, 'counts': {'o12_offload_obligation': 2}}))
+        with patch.object(self.watch.store, 'notify') as notify:
+            self.watch.policy_invariants(home, now)
+            notify.assert_called_once()
+        row = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual({e['code'] for e in row['window']['evidence']},
+                         {'policy_stale', 'findings_ingest_stall', 'offload_obligation'})
+        self.assertNotIn(str(source), json.dumps(row['window']))
+
+    def test_policy_unavailable_guard_is_explicit_in_digest(self):
+        home = self.root / 'z0int'
+        (home / 'policy').mkdir(parents=True)
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': time.time(), 'available': False,
+             'unavailable_reason': 'compiler unavailable', 'counts': {'o12_offload_obligation': 0}}))
+        self.watch.policy_invariants(home)
+        self.assertFalse(self.watch.store.get('policy-pipeline')['guard_available'])
+        self.assertIn('Guard: UNAVAILABLE', self.watch.store.digest().read_text())
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'invariant_unavailable')
+
+    def test_old_policy_without_new_findings_is_not_stale(self):
+        now = time.time()
+        home = self.root / 'z0int'
+        (home / 'findings').mkdir(parents=True)
+        (home / 'policy').mkdir()
+        source = self.root / 'source.json'
+        source.write_text('source')
+        finding = {'id': 'same', 'ts': now - 100,
+                   'source': {'path': str(source), 'sha256': sw.hashlib.sha256(source.read_bytes()).hexdigest()}}
+        (home / 'findings/findings.jsonl').write_text(json.dumps(finding) + '\n')
+        (home / 'policy/decision-policy.json').write_text(json.dumps(
+            {'compiled_at': now - 90000, 'findings_head': 'same'}))
+        (home / 'policy/guard-report.json').write_text(json.dumps(
+            {'schema': 'z0.policy_guard.v1', 'ts': now, 'available': True,
+             'unavailable_reason': None, 'counts': {'o12_offload_obligation': 0}}))
+        self.watch.policy_invariants(home, now)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 0)
 
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []

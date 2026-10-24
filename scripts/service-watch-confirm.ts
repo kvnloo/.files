@@ -10,6 +10,7 @@ const strings: Record<string, true> = {
   silent_noop: true, invariant_unavailable: true, unexpected_state: true, heartbeat_stale: true,
   phone_resource_caps: true,
   checkout_count_exceeded: true,
+  policy_stale: true, offload_obligation: true, findings_ingest_stall: true,
   js_type_error: true, js_reference_error: true, js_syntax_error: true, module_resolution: true,
   connection_refused: true, connection_reset: true, timeout: true, out_of_memory: true,
   uncaught_exception: true, native_fatal: true, bridge_failure: true,

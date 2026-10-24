@@ -148,10 +148,23 @@ The watcher never compiles or runs test suites on groot.
 The live binary and all deployment links are owned by the unified `deploy/live`
 checkout at `/mnt/zer0models/worktrees/files-live`, not any task worktree.
 `fleet`, `z0-guard`, `service-watch`, `worktree-reaper` and their units must resolve
-there together. O10 receives the installed fleet script's parent directory as its
-explicit root, so admission and the invariant inspect the same scripts. When
+there together. O10 receives the checkout root containing the installed fleet
+script, so admission and the invariant inspect the same scripts and registry. When
 these PRs merge into `dev`, the operator replaces this deployment with
 `/workspace/.files` and switches all these links together.
+
+`z0int-policy.timer` declares a fifteen-minute ingest/compile cadence from
+`/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled** until
+the operator confirms that CLI is deployed. The service executes ingest then
+compile only on success, with a five-minute wall limit and bounded resources.
+ServiceWatch checks contract-v1 policy files once per discovery cycle: policy
+age over two hours only while new findings exist; source digest changes without
+ingest for 24 hours; and positive `counts.o12_offload_obligation` in a fresh
+`z0.policy_guard.v1` report. `available=false`, missing/malformed evidence or
+oversized source artifacts are explicitly UNAVAILABLE, never zero violations.
+Source hashing is cached by inode/mtime/size and bounded to 8 MiB per source;
+the recent findings sample is bounded to 1000 rows/2 MiB. Only finite codes and
+numeric counts enter triage; source paths and guard explanations stay local.
 
 Behavioral and captured-request privacy checks:
 
