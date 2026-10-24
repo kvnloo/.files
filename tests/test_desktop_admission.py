@@ -16,14 +16,19 @@ classifier = importlib.machinery.SourceFileLoader('agent_classifier', str(ROOT/'
 
 class Admission(unittest.TestCase):
     def setUp(self):
-        self.n = fleet.registry()[1]['mbp']
-        self.args = types.SimpleNamespace(node='mbp', cls=None, arch=None, tolerate=[], cmd=['true'], mem='1G')
-        self.kn = {'mbp': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
+        # Exercise the direct Linux admission seam. MBP itself now dispatches
+        # through Kueue; it must not be used as a fixture for a retired host lane.
+        self.n = dict(fleet.registry()[1]['mbp'], name='admission-worker')
+        self.args = types.SimpleNamespace(
+            node='admission-worker', cls=None, arch=None, tolerate=[], cmd=['true'],
+            mem='1G', cpus='1', timeout=60, src=str(ROOT), no_src=True,
+            keep=False, fetch=[], input=[], guest=False)
+        self.kn = {'admission-worker': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
         self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8, 'max_temp_c': 99, 'power': {}}
 
     def launch_rejected(self, probe, state):
         with tempfile.TemporaryDirectory() as td, \
-             patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+             patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'k8s_nodes', return_value=self.kn), \
              patch.object(fleet, 'probe', return_value=probe), \
              patch.object(fleet, 'STATE', pathlib.Path(td)), \
@@ -47,7 +52,7 @@ class Admission(unittest.TestCase):
 
     def test_explicit_paused_node_is_temporary_failure(self):
         self.n['lane_enabled'] = True
-        with patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+        with patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'eligible', return_value='paused by fleet health'):
             with self.assertRaises(SystemExit) as e:
                 fleet.cmd_run(self.args)
@@ -56,13 +61,27 @@ class Admission(unittest.TestCase):
     def test_healthy_remote_reaches_dispatch(self):
         self.p['max_temp_c'] = 80
         with tempfile.TemporaryDirectory() as td, \
-             patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+             patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'k8s_nodes', return_value=self.kn), \
              patch.object(fleet, 'probe', return_value=self.p), \
              patch.object(fleet, 'STATE', pathlib.Path(td)), \
              patch.object(fleet.subprocess, 'run', side_effect=RuntimeError('DISPATCH_MBP_ONLY')):
             with self.assertRaisesRegex(RuntimeError, 'DISPATCH_MBP_ONLY'):
                 fleet.cmd_run(self.args)
+
+    def test_explicit_mbp_uses_shared_queue_and_propagates_hold(self):
+        self.args.node = 'mbp'
+        with patch.object(fleet, 'probe', side_effect=AssertionError('retired MBP host path')), \
+             patch.object(fleet.subprocess, 'run',
+                          return_value=types.SimpleNamespace(returncode=75)) as dispatch:
+            self.assertEqual(fleet.cmd_run(self.args), 75)
+        argv = dispatch.call_args.args[0]
+        self.assertEqual(argv[:2], [sys.executable, str(ROOT/'scripts/fleet-kueue')])
+        self.assertEqual(argv[argv.index('--src')+1], str(ROOT))
+        self.assertEqual(argv[argv.index('--mem')+1], '1G')
+        self.assertEqual(argv[argv.index('--cpus')+1], '1')
+        self.assertEqual(argv[-2:], ['--', 'true'])
+        dispatch.assert_called_once()
 
     def test_core_cli_browser_compositor_audio_preserved(self):
         cg = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/interactive.scope'

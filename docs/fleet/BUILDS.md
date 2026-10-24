@@ -33,6 +33,10 @@ Explicit phone, Boat and Avrea routes retain their own backends.
 The MBP backends preserve the caller's relative directory and never select groot.
 Direct `scripts/fleet run --node mbp` and automatically selected MBP work also
 delegate to Kueue. They do not bypass shared admission.
+The desktop-admission regressions use a separate Linux-worker fixture for the
+direct host thermal, offline and pause gates. MBP routing is checked separately:
+it must invoke `fleet-kueue`, forward the complete CLI workload options and
+propagate admission holds without a direct host or groot fallback.
 Use `mbp-host` only for exceptional native-host requirements.
 
 ```sh
