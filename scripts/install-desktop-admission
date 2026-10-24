@@ -21,6 +21,7 @@ targets = {
     Path.home()/'.config/systemd/user/agent.slice.d/50-interactive-budget.conf': repo/'config/systemd/user/agent.slice.d/50-interactive-budget.conf',
     Path.home()/'.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': repo/'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
     Path.home()/'.local/bin/agent-launch': repo/'scripts/agent-launch',
+    Path.home()/'.config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf': repo/'config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf',
     Path.home()/'.local/bin/groot-admit': repo/'scripts/groot-admit',
     Path.home()/'.config/zsh/agent-scopes.zsh': repo/'config/zsh/agent-scopes.zsh',
     Path.home()/'.config/systemd/user/fleet-health.service.d/50-admission-owner.conf': repo/'config/systemd/user/fleet-health.service.d/50-admission-owner.conf',
