@@ -29,16 +29,21 @@ Read-only/offline enforcement
   read-only root and source mounts, private /proc and /dev, and hidden host
   /run and /tmp sockets. Only ~/.cache/fettl-hooks is writable. There is no
   unsandboxed fallback. The PID namespace tears down supervisor descendants.
-- Scanners run on one CPU at nice 19 / ionice idle, with 1 GiB address space,
-  15 CPU seconds and 20 wall seconds. One hook scanner runs at a time; a busy
-  scanner reports that the new event was unchecked instead of queueing work.
+- Scanners run in a systemd user scope with MemoryMax=1G, on one CPU at
+  nice 19 / ionice idle, with 1 GiB address space, 15 CPU seconds and 20 wall
+  seconds. One scanner runs at a time; busy events log as unchecked.
 - Repository stores and the canonical supervisor journal are initialized under
   ~/.cache/fettl-hooks, never in source worktrees. No baseline/config is written
-  into a scanned repository. OMP output uses metadata_only privacy mode.
-  OMP explicitly scans the full repository after mutations, so unstaged edits
-  are not missed when a repository has a staged-change baseline configured.
-- Native Claude stdin/stdout and exit status are preserved. Errors are visible;
-  there is no success-shaped fallback. Hook environments omit API credentials.
+  into a scanned repository. Shadow scans use local_only privacy mode to
+  retain rule, file and message in private local JSONL; no egress is possible.
+  Full scans include unstaged edits. JSON capture is bounded to 8 MiB.
+- mode.json is the single shared switch: {"mode":"shadow"} by default.
+  Hooks reread it for every response. Missing/invalid config fails silent.
+  Shadow writes ~/.local/state/fettl-shadow/<agent>.jsonl, returns no output,
+  and exits zero even on scanner errors. No enforcement is enabled.
+  {"mode":"enforce"} restores native responses; only Kevin may authorize it.
+  Claude PreToolUse previously preserved native blocking responses/exit codes.
+  Hook environments omit API credentials.
 
 Hermes compatibility and activation
 Fettl 0.19.78 emits a YAML hooks LIST with when.tools, but the installed Hermes
@@ -58,11 +63,12 @@ recorded registration without restarting the gateway. No Fettl Python plugin
 or Hermes core code is changed. Generic Hermes plugin discovery is cached but
 supports an explicit force rescan; no rescan/reload is performed here.
 
-OMP newly discovered modules require a new session/restart to import; installing
-this file does not inject it into an already-running session. tool_result returns
-supported additionalContext without rewriting the original tool result or asking
-an agent to run fixes. Claude handlers were exercised with synthetic native
-payloads; a live Claude session's refresh behavior is not assumed.
+OMP extension source changes require a fresh session/reload to replace an
+already imported handler. Existing handlers may continue adding their old
+constant banner even when the bridge returns empty output; restart/reload
+that OMP session to remove it. New handlers silently skip internal URI writes
+and paths outside a git worktree. Shadow returns no additionalContext.
+No Hermes gateway restart is required: its bridge reads mode on each call.
 
 Native status limitation
 Fettl's Claude installer additionally generates UserPromptSubmit. The requested

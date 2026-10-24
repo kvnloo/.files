@@ -11,6 +11,8 @@ import resource
 import signal
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 
 HERE = Path(__file__).resolve().parent
 POLICY = json.loads((HERE / "hooks.json").read_text())
@@ -18,6 +20,57 @@ HOME = Path.home()
 CACHE = Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "fettl-hooks"
 STATE = HOME / ".config/fettl/hooks-state.json"
 MAX_INPUT = 1024 * 1024
+MODE_FILE = HERE / "mode.json"
+STARTED = time.monotonic()
+EVENT: dict = {}
+
+
+def shadow_mode() -> bool:
+    try:
+        return json.loads(MODE_FILE.read_text()).get("mode") != "enforce"
+    except (OSError, ValueError):
+        return True
+
+
+def shadow_log(stdout: bytes = b"", stderr: bytes = b"", code: int = 0) -> None:
+    agent = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+    profile = os.environ.get("HERMES_HOME", "")
+    name = agent + ("-" + (Path(profile).name if "/profiles/" in profile else "root") if agent == "hermes" else "")
+    directory = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "fettl-shadow"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    raw = stdout.decode("utf-8", errors="replace")
+    findings = []
+    try:
+        parsed = json.loads(raw)
+        findings = parsed if isinstance(parsed, list) else parsed.get("findings", parsed.get("violations", []))
+        if isinstance(parsed, dict) and "results" in parsed:
+            findings = [{**violation, "rule": result["id"]}
+                        for result in parsed["results"] for violation in result.get("violations", [])]
+    except (ValueError, AttributeError):
+        pass
+    row = {"time": datetime.now(timezone.utc).isoformat(), "agent": name,
+           "event": sys.argv[2] if len(sys.argv) > 2 else "post-tool",
+           "file": EVENT.get("tool_input", {}).get("file_path") or EVENT.get("tool_input", {}).get("path"),
+           "rule": None, "message": raw, "latency_ms": round((time.monotonic() - STARTED) * 1000, 3),
+           "exit_code": code, "diagnostic": stderr.decode("utf-8", errors="replace")}
+    with (directory / f"{name}.jsonl").open("a") as log:
+        fcntl.flock(log, fcntl.LOCK_EX)
+        if findings:
+            for finding in findings:
+                log.write(json.dumps({**row, "file": finding.get("file", finding.get("path", row["file"])),
+                                      "rule": finding.get("rule", finding.get("rule_id")),
+                                      "message": finding.get("message", ""), "finding": finding}) + "\n")
+        else:
+            log.write(json.dumps({**row, "kind": "scan"}) + "\n")
+
+
+def emit(code: int, stdout: bytes, stderr: bytes) -> int:
+    if shadow_mode():
+        shadow_log(stdout, stderr, code)
+        return 0
+    sys.stdout.buffer.write(stdout)
+    sys.stderr.buffer.write(stderr)
+    return code
 
 
 def limits() -> None:
@@ -38,6 +91,7 @@ def read_input() -> dict:
     value = json.loads(raw)
     if not isinstance(value, dict):
         raise ValueError("hook payload must be an object")
+    EVENT.update(value)
     return value
 
 
@@ -51,6 +105,9 @@ def required_text(value: dict, key: str) -> str:
 def run_scanner(args: list[str], payload: bytes | None, cwd: Path) -> tuple[int, bytes, bytes]:
     state = json.loads(STATE.read_text())
     binary = state["executable"]
+    if shadow_mode():
+        args = ["check", "--full", "--format", "json", "--privacy-mode", "local_only"]
+        payload = None
     scanner = [state["ionice"], "-c", "3", binary]
     repository = subprocess.run(
         ["/usr/bin/git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
@@ -71,16 +128,21 @@ def run_scanner(args: list[str], payload: bytes | None, cwd: Path) -> tuple[int,
             "HOME": str(HOME), "USER": os.environ.get("USER", ""),
             "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
             "XDG_CACHE_HOME": str(CACHE / "runtime"),
-            "XDG_RUNTIME_DIR": str(CACHE / "run"), "TMPDIR": str(CACHE / "tmp"),
+            "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", "TMPDIR": str(CACHE / "tmp"),
+            "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{os.getuid()}/bus",
         }
         # Only cache is writable. Hide host sockets in /run and /tmp and give the
         # scanner a private network/PID namespace. Never fall back without bwrap.
         sandbox = [
+            "/usr/bin/systemd-run", "--user", "--scope", "--quiet", "-p", "MemoryMax=1G",
+            "/usr/bin/nice", "-n19", "/usr/bin/ionice", "-c3",
             state["bwrap"], "--die-with-parent", "--new-session", "--unshare-net",
             "--unshare-pid", "--unshare-ipc", "--ro-bind", "/", "/",
             "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp",
             "--ro-bind", str(root), str(root), "--bind", str(CACHE), str(CACHE),
             "--chdir", str(cwd),
+            "--setenv", "XDG_RUNTIME_DIR", str(CACHE / "run"),
+            "--unsetenv", "DBUS_SESSION_BUS_ADDRESS",
         ]
         # Initialization and checking share the same per-repository external store.
         if not (store / "store.redb").exists():
@@ -103,7 +165,7 @@ def run_scanner(args: list[str], payload: bytes | None, cwd: Path) -> tuple[int,
                 os.killpg(proc.pid, signal.SIGKILL)
                 proc.communicate()
                 raise ValueError("Fettl hook exceeded its wall-time limit") from None
-            cap = POLICY["output_bytes"]
+            cap = 8 * 1024 * 1024 if shadow_mode() else POLICY["output_bytes"]
             out.seek(0)
             stdout = out.read(cap + 1)
             err.seek(0)
@@ -180,10 +242,7 @@ def main() -> int:
     if len(mode) == 2 and mode[0] == "claude" and mode[1] in {"pre-tool", "post-tool", "stop"}:
         raw = read_input()
         code, stdout, stderr = run_scanner(["hook", "claude", mode[1]], json.dumps(raw).encode(), Path(raw.get("cwd") or os.getcwd()).resolve())
-        # Native Claude response/exit status is preserved byte-for-byte.
-        sys.stdout.buffer.write(stdout)
-        sys.stderr.buffer.write(stderr)
-        return code
+        return emit(code, stdout, stderr)
     if mode == ["hermes"]:
         event = read_input()
         payload = hermes_payload(event)
@@ -191,10 +250,13 @@ def main() -> int:
         for directory in hermes_directories(payload):
             canonical = {**payload, "cwd": str(directory)}
             code, stdout, stderr = run_scanner(["hook", "hermes", "post-tool-call"], json.dumps(canonical).encode(), directory)
-            sys.stderr.buffer.write(stderr)
+            if not shadow_mode():
+                sys.stderr.buffer.write(stderr)
             if code not in {0, 1}:
                 raise ValueError(f"Fettl Hermes hook failed with exit {code}")
-            response = json.loads(stdout) if stdout.strip() else {}
+            if shadow_mode():
+                shadow_log(stdout, stderr, code)
+            response = json.loads(stdout) if stdout.strip() and not shadow_mode() else {}
             if response:
                 responses.append(response)
         # Post-tool observers cannot prevent an already completed mutation.
@@ -206,15 +268,19 @@ def main() -> int:
             ["check", "--full", "--format", "text", "--display", "summary", "--privacy-mode", POLICY["privacy_mode"]],
             None, Path.cwd().resolve(),
         )
-        sys.stdout.buffer.write(stdout)
-        sys.stderr.buffer.write(stderr)
-        return code
+        return emit(code, stdout, stderr)
     raise ValueError("only claude pre-tool/post-tool/stop, hermes, or omp checks are permitted")
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+    except Exception as exc:
+        if shadow_mode():
+            try:
+                shadow_log(stderr=str(exc).encode(), code=3)
+            except Exception:
+                pass
+            raise SystemExit(0)
         print(f"Fettl hook not completed: {exc}", file=sys.stderr)
         raise SystemExit(3)

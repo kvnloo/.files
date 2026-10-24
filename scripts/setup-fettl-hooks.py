@@ -142,7 +142,7 @@ def install(report_path: Path | None, explicit_homes: list[Path]) -> None:
         native["claude"] = json.loads((staged / ".claude/settings.json").read_text())
         native["hermes"] = yaml.safe_load((staged / ".hermes/config.yaml").read_text())
     runtime = CONFIG / "hook.py"
-    for name in ("hook.py", "hooks.json"):
+    for name in ("hook.py", "hooks.json", "mode.json"):
         link(SOURCE / name, CONFIG / name)
     state = {"schema_version": 1, "executable": str(binary.resolve()), "sha256": digest,
              "version": version, **dependencies, "native": native}

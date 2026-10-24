@@ -1,8 +1,9 @@
 // Local, read-only Fettl review after successful file mutations. No repair tool.
-import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isAbsolute, resolve as resolvePath } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 const directory = join(homedir(), ".config", "fettl");
@@ -12,6 +13,16 @@ const mutatingTools = new Set<string>(policy.omp_tools);
 export default function fettl(pi: ExtensionAPI) {
   pi.on("tool_result", async (event, ctx) => {
     if (event.isError || !mutatingTools.has(event.toolName)) return;
+    const input = event.input as Record<string, unknown> | undefined;
+    const target = input?.path;
+    if (typeof target !== "string" || target.includes("://")) return;
+    try {
+      const file = realpathSync(isAbsolute(target) ? target : resolvePath(ctx.cwd, target));
+      const root = realpathSync(execFileSync("/usr/bin/git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"], {
+        encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+      }).trim());
+      if (!file.startsWith(root + "/")) return;
+    } catch { return; }
     const { promise, resolve } = Promise.withResolvers<string>();
     const child = spawn("/usr/bin/python3", [join(directory, "hook.py"), "omp"], {
       cwd: ctx.cwd,
@@ -33,6 +44,8 @@ export default function fettl(pi: ExtensionAPI) {
         : `Fettl check incomplete (exit ${code}); this edit was not fully checked.\n${diagnostic}`,
     ));
     const summary = await promise;
-    return { additionalContext: summary };
+    let enforce = false;
+    try { enforce = JSON.parse(readFileSync(join(directory, "mode.json"), "utf8")).mode === "enforce"; } catch {}
+    if (enforce) return { additionalContext: summary };
   });
 }
