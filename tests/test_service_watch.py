@@ -28,8 +28,10 @@ class Contracts(unittest.TestCase):
         self.watch.checkout_roots = []
         self.watch.checkout_discover = lambda roots: []
         self.watch.reaper_status = self.root / 'latest.json'
+        self.watch.refresh_checkout_count()
 
     def tearDown(self):
+        self.watch.stop.set()
         self.watch.store.db.close()
         self.temp.cleanup()
 
@@ -67,6 +69,128 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'unknown'}, {}, time.time())[0]['code'], 'invariant_unavailable')
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'file_freshness', 'path': str(self.root / 'missing'), 'max_age_seconds': 1}, {}, time.time())[0]['code'], 'invariant_unavailable')
 
+    def test_live_checkout_count_overrides_stale_daily_snapshot_and_notifies(self):
+        self.watch.checkout_threshold = 1
+        self.watch.checkout_roots = [self.root]
+        paths = [self.root / name for name in ('first', 'second')]
+        for path in paths:
+            path.mkdir()
+        self.watch.reaper_status.write_text(json.dumps({
+            'checkout_count': 0, 'timestamp': 'old', 'removed_count': 7,
+            'bytes_freed': 123, 'errors': [{'stage': 'archive', 'error': 'archive failed'}]}))
+        with patch.object(self.watch, 'checkout_discover', return_value=paths) as discover, patch.object(self.watch.store, 'notify') as notify:
+            self.watch.refresh_checkout_count()
+            self.watch.checkout_invariants()
+            notify.assert_called_once()
+            discover.assert_called_once_with([self.root])
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['checkout_count'], 2)
+        row = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()
+        data = json.loads(row[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'checkout_count_exceeded')
+        self.assertEqual(data['window']['evidence'][0]['metrics'], {'count': 2, 'threshold': 1})
+        digest = self.watch.store.digest().read_text()
+        for text in ('Live checkout count: 2', 'removed_count', '123', 'archive failed', 'old'):
+            self.assertIn(text, digest)
+        self.assertNotIn('archive failed', json.dumps(data['window']))
+
+    def test_checkout_count_is_fresh_deduplicated_and_threshold_is_strict(self):
+        self.watch.checkout_threshold = 1
+        self.watch.checkout_roots = [self.root, self.root]
+        path = self.root / 'checkout'
+        path.mkdir()
+        with patch.object(self.watch, 'checkout_discover', return_value=[path, path]) as discover, patch.object(self.watch, 'record') as record:
+            self.watch.refresh_checkout_count()
+            self.watch.checkout_invariants()
+            record.assert_not_called()
+            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 1)
+            path.rmdir()
+            self.watch.refresh_checkout_count()
+            self.watch.checkout_invariants()
+            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 0)
+            self.assertEqual(discover.call_count, 2)
+
+    def test_checkout_read_failure_is_unavailable_not_healthy(self):
+        self.watch.checkout_roots = [self.root]
+        with patch.object(self.watch, 'checkout_discover', side_effect=OSError('private error')), patch.object(self.watch, 'record') as record:
+            self.watch.refresh_checkout_count()
+            self.watch.checkout_invariants()
+        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['count_errors'], 1)
+        self.assertEqual(status['status'], 'unavailable')
+        self.assertNotIn('private error', json.dumps(status))
+
+    def test_checkout_default_threshold_and_negative_configuration(self):
+        self.assertEqual(self.watch.checkout_threshold, 200)
+        with self.assertRaises(ValueError):
+            sw.Watch(self.root / 'invalid', checkout_threshold=-1)
+
+    def test_checkout_cache_reports_staleness_and_preserves_last_count_on_failure(self):
+        self.watch.checkout_cache.update(checkout_count=9, refreshed_at=time.time() - 700)
+        with patch.object(self.watch, 'record') as record:
+            self.watch.checkout_invariants()
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['checkout_count'], 9)
+        self.assertEqual(status['count_status'], 'unavailable')
+        self.assertGreaterEqual(status['refresh_age_seconds'], 700)
+        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
+        with patch.object(self.watch, 'checkout_discover', side_effect=OSError('failed')):
+            self.watch.refresh_checkout_count()
+        self.assertEqual(self.watch.checkout_cache['checkout_count'], 9)
+        self.assertEqual(self.watch.checkout_cache['count_errors'], 1)
+
+    def test_slow_checkout_discovery_cannot_block_real_scans_or_watchdog(self):
+        entered, release, scanned, pinged = [threading.Event() for _ in range(4)]
+        scans, pings, discoveries = [], [], []
+        self.watch.checkout_cache.update(checkout_count=None, refreshed_at=None)
+        self.watch.last_scan = time.time()
+        def slow_discovery(roots):
+            discoveries.append(threading.current_thread().name)
+            entered.set()
+            if not release.wait(4):
+                raise TimeoutError('synthetic discovery deadline')
+            return [self.root]
+        original_scan = self.watch.scan
+        def scan():
+            original_scan()
+            scans.append(json.loads((self.watch.store.root / 'status.json').read_text()))
+            if len(scans) >= 5:
+                scanned.set()
+        def notify(value):
+            if value == 'WATCHDOG=1':
+                pings.append(value)
+                if len(pings) >= 5:
+                    pinged.set()
+        daemon = threading.Thread(target=self.watch.serve,
+                                  kwargs={'scan_interval': .01, 'watchdog_interval': .01})
+        with patch.object(self.watch, 'checkout_discover', slow_discovery), \
+                patch.object(self.watch, 'worker', lambda: self.watch.stop.wait()), \
+                patch.object(self.watch, 'scan', scan), \
+                patch.object(sw, 'properties', return_value={}), \
+                patch.object(self.watch, 'phone_caps_invariant'), \
+                patch.object(self.watch, 'journals'), \
+                patch.object(sw, 'notify_systemd', notify):
+            # Discovery can start even while state/model operations hold the Store.
+            with self.watch.store.lock:
+                daemon.start()
+                self.assertTrue(entered.wait(2))
+            try:
+                self.assertTrue(scanned.wait(2))
+                self.assertTrue(pinged.wait(2))
+                self.assertFalse(release.is_set())
+                self.assertEqual(discoveries, ['service-watch-checkouts'])
+                status = self.watch.store.get('worktree-reaper')
+                self.assertTrue(status['inflight'])
+                self.assertIsNone(status['checkout_count'])
+                self.assertEqual(status['count_status'], 'unavailable')
+            finally:
+                self.watch.stop.set()
+                release.set()
+                daemon.join(3)
+            self.assertFalse(daemon.is_alive())
+        self.assertEqual(self.watch.checkout_cache['checkout_count'], 1)
+        self.assertFalse(self.watch.checkout_cache['inflight'])
     def test_phone_caps_invariant_red_green_and_unavailable(self):
         invariant = {'kind': 'phone_caps', 'root': str(self.root)}
         cases = [
@@ -90,58 +214,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
         record.assert_called_once_with('user', 'service-watch.service', [])
 
-    def test_live_checkout_count_overrides_stale_daily_snapshot_and_notifies(self):
-        self.watch.checkout_threshold = 1
-        self.watch.checkout_roots = [self.root]
-        paths = [self.root / name for name in ('first', 'second')]
-        for path in paths:
-            path.mkdir()
-        self.watch.reaper_status.write_text(json.dumps({
-            'checkout_count': 0, 'timestamp': 'old', 'removed_count': 7,
-            'bytes_freed': 123, 'errors': [{'stage': 'archive', 'error': 'archive failed'}]}))
-        with patch.object(self.watch, 'checkout_discover', return_value=paths) as discover, patch.object(self.watch.store, 'notify') as notify:
-            self.watch.checkout_invariants()
-            notify.assert_called_once()
-            discover.assert_called_once_with([self.root])
-        status = self.watch.store.get('worktree-reaper')
-        self.assertEqual(status['checkout_count'], 2)
-        row = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()
-        data = json.loads(row[0])
-        self.assertEqual(data['window']['evidence'][0]['code'], 'checkout_count_exceeded')
-        self.assertEqual(data['window']['evidence'][0]['metrics'], {'count': 2, 'threshold': 1})
-        digest = self.watch.store.digest().read_text()
-        for text in ('Live checkout count: 2', 'removed_count', '123', 'archive failed', 'old'):
-            self.assertIn(text, digest)
-        self.assertNotIn('archive failed', json.dumps(data['window']))
 
-    def test_checkout_count_is_fresh_deduplicated_and_threshold_is_strict(self):
-        self.watch.checkout_threshold = 1
-        self.watch.checkout_roots = [self.root, self.root]
-        path = self.root / 'checkout'
-        path.mkdir()
-        with patch.object(self.watch, 'checkout_discover', return_value=[path, path]) as discover, patch.object(self.watch, 'record') as record:
-            self.watch.checkout_invariants()
-            record.assert_not_called()
-            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 1)
-            path.rmdir()
-            self.watch.checkout_invariants()
-            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 0)
-            self.assertEqual(discover.call_count, 2)
-
-    def test_checkout_read_failure_is_unavailable_not_healthy(self):
-        self.watch.checkout_roots = [self.root]
-        with patch.object(self.watch, 'checkout_discover', side_effect=OSError('private error')), patch.object(self.watch, 'record') as record:
-            self.watch.checkout_invariants()
-        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
-        status = self.watch.store.get('worktree-reaper')
-        self.assertEqual(status['count_errors'], 1)
-        self.assertEqual(status['status'], 'unavailable')
-        self.assertNotIn('private error', json.dumps(status))
-
-    def test_checkout_default_threshold_and_negative_configuration(self):
-        self.assertEqual(self.watch.checkout_threshold, 200)
-        with self.assertRaises(ValueError):
-            sw.Watch(self.root / 'invalid', checkout_threshold=-1)
     def test_policy_age_ingest_stall_and_offload_violations(self):
         now = time.time()
         home = self.root / 'z0int'

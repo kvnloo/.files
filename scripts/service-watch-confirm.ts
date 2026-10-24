@@ -8,8 +8,9 @@ const strings: Record<string, true> = {
   failed: true, restart_loop: true, journal_error_rate: true, journal_gap: true, stale_file: true,
   receipt_error_share: true, error_file_growth: true, timer_stale: true, timer_failed: true,
   silent_noop: true, invariant_unavailable: true, unexpected_state: true, heartbeat_stale: true,
-  phone_resource_caps: true,
   checkout_count_exceeded: true,
+  phone_resource_caps: true,
+
   policy_stale: true, offload_obligation: true, findings_ingest_stall: true,
   js_type_error: true, js_reference_error: true, js_syntax_error: true, module_resolution: true,
   connection_refused: true, connection_reset: true, timeout: true, out_of_memory: true,

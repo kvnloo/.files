@@ -201,11 +201,22 @@ clone remains only when needed by LIVE linked worktrees.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.
+Generated containers include `runs`, `artifacts`, `cache`/`.cache`, `wiring`,
+`_check`, byte-matrix output, nested `tmp`, test-output directories and pytest
+temporary roots. The configured scan root itself (including `~/tmp`) remains a
+real checkout container, not a generated-output exclusion.
 
 The manifest and latest machine-readable counts are stored under
 `/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper/`.
 The service watcher consumes `latest.json` for its worktree invariant.
-Each watcher scan counts live Git worktree registrations. Its
+A dedicated single-flight worker inventories actual checkouts using the reaper's
+shared discovery function, then waits five minutes before refreshing again.
+Discovery never holds the Store lock or blocks scans, model triage, or watchdog
+pings. Each scan consumes its in-memory snapshot: digest and `status.json` expose
+count refresh age, refresh-in-flight state, and explicit unavailable status before
+the first result, after an error, or when the last result is over ten minutes old.
+Failures preserve the last observed count rather than inventing zero checkouts.
+Its
 `--checkout-threshold` defaults to 200; repeatable `--checkout-root` overrides
 the shared default roots, and `--reaper-status` overrides the latest-record path.
 The invariant digest includes the latest cleanup counts, removals, and errors.
