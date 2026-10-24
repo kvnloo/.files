@@ -19,12 +19,23 @@ def checked(argv, **kwargs):
     return subprocess.run(argv, check=True, **kwargs)
 
 
+def workload_class(explicit, command, cpus, quota):
+    if explicit:
+        return explicit
+    if any(Path(word).name in ('pytest', 'py.test') for word in command):
+        return 'test'
+    return 'bench' if float(cpus) == quota else 'build'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src', required=True)
     parser.add_argument('--no-src', action='store_true')
     parser.add_argument('--node')
     parser.add_argument('--class', dest='job_class')
+    parser.add_argument('--priority-class', choices=('test', 'build', 'bench'))
+    parser.add_argument('--checkpoint-safe', action='store_true',
+                        help='command resumes atomically checkpointed work in the persistent source stage')
     parser.add_argument('--mem', default='3G')
     parser.add_argument('--cpus', default='2')
     parser.add_argument('--timeout', type=int, default=3600)
@@ -94,6 +105,11 @@ def main():
     if memory > quantity(quotas['memory']) or float(args.cpus) > quantity(quotas['cpu']):
         print(f'fleet: request exceeds MBP lane quota {quotas}; lower --mem/--cpus (exit 75)', file=sys.stderr)
         return 75
+    priority = workload_class(args.priority_class, args.cmd, args.cpus, quantity(quotas['cpu']))
+    if priority == 'bench' and not args.checkpoint_safe:
+        parser.error('bench requires --checkpoint-safe: persist atomic checkpoints in the source stage and resume on restart')
+    if args.host and priority != 'test':
+        parser.error('preemptible build/bench jobs cannot use --host; host scopes cannot be safely evicted by Kueue')
     state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
     runs = state / 'runs'
     runs.mkdir(parents=True, exist_ok=True)
@@ -160,7 +176,9 @@ def main():
                     cache_setup + 'exec "$@"', 'fleet-kueue', *args.cmd])
         manifest = {
             'apiVersion': 'batch/v1', 'kind': 'Job',
-            'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes', 'app.kubernetes.io/managed-by': 'fleet-build'}},
+            'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes',
+                         'kueue.x-k8s.io/priority-class': priority,
+                         'app.kubernetes.io/managed-by': 'fleet-build'}},
             # Host reservations outlive timeout's forced-stop grace, so quota
             # cannot expire before the bounded host scope after client loss.
             'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout + (90 if args.host else 0),
@@ -179,6 +197,10 @@ def main():
                          'volumes': volumes}}}}
         checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
         created = True
+        (runs / f'{name}.json').write_text(json.dumps({
+            'job_id': name, 'class': priority, 'checkpoint_safe': args.checkpoint_safe,
+            'stage': stage, 'cpus': args.cpus, 'memory': memory,
+        }, indent=2) + '\n')
         print(f'fleet: job {name} -> mbp (Kueue lanes); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
         # Zero preserves fleet's fail-fast contract; allow only a short
         # controller reconciliation grace. Indefinite queueing is explicit.
@@ -188,12 +210,26 @@ def main():
         with logpath.open('wb') as logfile:
             while True:
                 job = json.loads(checked(kube + ['get', 'job', name, '-o', 'json'], capture_output=True).stdout)
+                if job['spec'].get('suspend', False) and admitted:
+                    admitted = False
+                    admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
+                    if logs is not None:
+                        logs.terminate()
+                        logs.wait()
+                        reader.join(timeout=5)
+                        logs = None
+                    print(f'fleet: Kueue suspended {name}; preserving checkpoints', file=sys.stderr, flush=True)
                 if not job['spec'].get('suspend', False) and not admitted:
                     admitted = True
                     print(f'fleet: Kueue admitted {name}', file=sys.stderr, flush=True)
-                pods = json.loads(checked(kube + ['get', 'pods', '-l', f'job-name={name}', '-o', 'json'], capture_output=True).stdout)['items']
+                pods = ([] if job['spec'].get('suspend', False) else
+                        json.loads(checked(kube + ['get', 'pods', '-l', f'job-name={name}', '-o', 'json'], capture_output=True).stdout)['items'])
                 if pods:
-                    pod = pods[0]
+                    pod = next((p for p in pods if not p['metadata'].get('deletionTimestamp')
+                                and p.get('status', {}).get('phase') != 'Failed'), None)
+                    if pod is None:
+                        time.sleep(2)
+                        continue
                     pod_name = pod['metadata']['name']
                     statuses = pod.get('status', {}).get('containerStatuses', [])
                     if logs is None and statuses and ('running' in statuses[0]['state'] or (not args.host and 'terminated' in statuses[0]['state'])):
