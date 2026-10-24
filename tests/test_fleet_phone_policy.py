@@ -32,7 +32,7 @@ class PhonePolicyTests(unittest.TestCase):
     def args(self, name):
         return SimpleNamespace(node=name, cls=None, arch=None, tolerate=[], cmd=["true"],
                                no_src=True, src=None, mem=None, cpus="128", timeout=30,
-                               idempotent=False, fetch=[], input=[])
+                               idempotent=False, fetch=[], input=[], guest=True)
 
     def launch(self, name, probe):
         with tempfile.TemporaryDirectory(prefix="fleet-placement-") as tmp:
@@ -87,11 +87,10 @@ class PhonePolicyTests(unittest.TestCase):
             with self.subTest(node=name), tempfile.TemporaryDirectory(prefix="fleet-health-") as tmp:
                 state = Path(tmp)
                 with patch.object(fleet, "STATE", state), \
-                     patch.object(fleet, "probe", side_effect=lambda node: self.probe()), \
+                     patch.object(fleet, "probe", side_effect=lambda node: self.probe(
+                         transport="adb", power={"on_ac": True, "batteries": [{"pct": 1}]})), \
                      patch.object(fleet, "k8s_nodes", return_value={}), \
-                     patch.object(fleet, "tailnet_online", return_value={}), \
-                     patch.object(fleet, "tern_doctor", return_value="ok"), \
-                     patch.object(fleet, "android_state", return_value={}):
+                     patch.object(fleet, "tailnet_online", return_value={}):
                     self.assertEqual(fleet.cmd_health(SimpleNamespace(node=name, set=[], strikes=None)), 0)
                 record = json.loads((state / "health" / f"{name}.json").read_text())
                 self.assertTrue(record["healthy"])
@@ -154,6 +153,7 @@ class PhonePolicyTests(unittest.TestCase):
         argv = run.call_args.args[0]
         self.assertIn("run", argv)
         self.assertIn("--no-src", argv)
+        self.assertIn("--guest", argv)
         self.assertIn("pacman", argv)
         self.assertEqual(argv[-3:], ["go", "rust", "gcc"])
 

@@ -490,23 +490,27 @@ the `fleet-updates` timer and a cheap k3s workload on it.
 
 ## Phones
 
-Phones run the host lane only. The S25's Linux guest (`omarchy-phone`) is
-Arch Linux ARM inside Omalauncher (`dev.omalauncher`), started through PRoot
-without Android root. k3s cannot run there: no cgroup v2 mount, netlink is
-denied (iptables/nft fail), no systemd. So the phone gets `scripts/fleet-polite-run`:
+Phones run trusted host-lane work through native Android adb by default.
+`fleet run --node s22|s25 -- CMD` submits a detached native job and returns its ID.
+`omarchy-phone` remains an alias for the S25. Discovery checks hardware identity
+with `ro.serialno`, prefers USB, and discovers changing wireless ports via mDNS.
+Health uses adb battery/thermal facts only. Guest SSH or a dead Omalauncher
+LinuxService cannot pause native work. See [PHONE_HOST_LANE.md](PHONE_HOST_LANE.md).
 
 Phones: no agent resource caps; Android manages battery/thermal/RAM. Enforced by Bend law O10 / z0-guard phone-caps.
 
-The wrapper preserves explicit owner pause and call hooks, job timeout and
-process-group cleanup. It does not change Android settings or Tern services.
-Jobs run as Omalauncher's Android uid. Only trusted owner work belongs here.
-`touch ~/.config/fleet/pause` stops guest work. Remove that owner switch to resume.
+Native jobs run as Android shell, with job timeout and owned process-group cleanup.
+Only battery below 2% while not charging blocks resource admission. There are no
+CPU, RAM, nice, or thermal caps. Android has no Linux Python/Bash/Git userland.
+Use `fleet run --node s22 --guest -- CMD` to select the existing Linux PRoot
+executor explicitly. That guest preserves owner pause/call hooks and mise tools.
+`touch ~/.config/fleet/pause` stops guest work, not native adb jobs.
 
 ### Phone audit and routing (2026-10-23)
 
-Use `fleet-build --node galaxy-s22plus --phone --wait 0 -- COMMAND`
-for S22, or replace the node with `omarchy-phone` for S25.
-Prefer phones for arm64-friendly Python/Node suites when the MBP queue is busy.
+Use `fleet-build --node galaxy-s22plus --phone --guest --wait 0 -- COMMAND`
+for Linux-userland S22 work, or replace the node with `s25` for S25.
+The following audit records the opt-in guests, not native Android capabilities.
 Source inventory stays in `config/fleet/nodes.yaml`. There is no resource mode switch.
 
 Both guests expose Python 3.14.8 and Git 2.56.0. S25 has Node 24.21.0 and
