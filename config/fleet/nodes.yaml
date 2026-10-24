@@ -20,18 +20,10 @@
 # aliases:   other names scripts/fleet accepts for the node (`fleet run s22 ...`).
 defaults:
   health:
-    min_mem_available_mb: 1024
     min_disk_free_gb: 15
-    max_temp_c: 95
-    min_battery_pct_on_battery: 40
     strikes: 2            # consecutive bad checks before cordon; same count of good ones to uncordon
     on_unhealthy: cordon
-  lane:
-    mem_floor_mb: 2048
-    default_mem: 2G
-    mem_max: 4G
-    cpu_quota: 600%
-    tasks_max: 4096
+  lane: {}
 
 classes: [cpu-heavy, build, render]
 
@@ -44,11 +36,16 @@ nodes:
     capabilities: [python, git, x86]
     taints: [cloud]         # Explicit --node boat or fleet-build --public overflow only.
     health:
+      min_mem_available_mb: 1024
+      max_temp_c: 95
+      min_battery_pct_on_battery: 40
       on_unhealthy: report
     lane:
       default_mem: 512M
       mem_max: 7G
       mem_floor_mb: 0
+      cpu_quota: 600%
+      tasks_max: 4096
   mbp:
     role: worker
     tailnet_ip: 100.78.215.21
@@ -65,11 +62,16 @@ nodes:
     capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
     toolchains: [jdk17, jdk21, bun, android-sdk]
     lane:
+      mem_floor_mb: 2048
+      default_mem: 2G
+      tasks_max: 4096
       mem_max: 7G           # 16 GiB laptop; a NOOP debug build (Gradle + Kotlin daemons) wants ~5-6 GiB
       # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the
       # i7-4870HQ at 96-98 C with both fans at max (crit 100 C), and health paused it.
       cpu_quota: 400%
     health:
+      min_mem_available_mb: 1024
+      min_battery_pct_on_battery: 40
       # Owner decision 2026-10-22: worn thermal paste keeps this i7-4870HQ near
       # 92-98 C under load. Do not pause on temperature; the CPU's own PROCHOT
       # throttling (TjMax 105 C) protects it. 110 sits above anything a probe can
@@ -112,6 +114,7 @@ nodes:
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
       min_disk_free_gb: 5
+      min_battery_pct_on_battery: 2
       strikes: 2
       on_unhealthy: pause
     lane: {}
@@ -137,6 +140,7 @@ nodes:
       revive: false
     health:
       min_disk_free_gb: 5
+      min_battery_pct_on_battery: 2
       strikes: 2
       on_unhealthy: pause
     lane: {}
@@ -149,7 +153,16 @@ nodes:
     # it (the factory gateway and kueue are pinned here). It runs no host lane.
     taints: ["z0.dev/host=interactive:PreferNoSchedule"]
     health:
+      min_mem_available_mb: 1024
+      max_temp_c: 95
+      min_battery_pct_on_battery: 40
       on_unhealthy: report
+    lane:
+      mem_floor_mb: 2048
+      default_mem: 2G
+      mem_max: 4G
+      cpu_quota: 600%
+      tasks_max: 4096
     kubelet:
       system_reserved: cpu=2,memory=4Gi
       kube_reserved: cpu=1,memory=1Gi

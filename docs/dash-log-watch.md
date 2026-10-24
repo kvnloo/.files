@@ -145,26 +145,31 @@ worker (HTTP 40-second, subscription 55-second deadlines); journal snapshots use
 selector-based wall deadlines even when the child emits no newline.
 The watcher never compiles or runs test suites on groot.
 
-The live binary and all deployment links are owned by the unified `deploy/live`
-checkout at `/mnt/zer0models/worktrees/files-live`, not any task worktree.
-`fleet`, `z0-guard`, `service-watch`, `worktree-reaper` and their units must resolve
-there together. O10 receives the checkout root containing the installed fleet
-script, so admission and the invariant inspect the same scripts and registry. When
-these PRs merge into `dev`, the operator replaces this deployment with
-`/workspace/.files` and switches all these links together.
+The single deployment source is the unified `deploy/live` checkout at
+`/mnt/zer0models/worktrees/files-live`, not any task worktree. Fleet, watcher and
+other `.files` binary/unit links point there. Guard/reaper binaries and units
+are an operator-approved exception: `scripts/install-z0-guard.sh` installs
+content-stamped releases built from that checkout. Their interim backend source
+is `/mnt/zer0models/z0-wt/bend-policy-laws/src` until backend PRs #192/#212 merge;
+the reaper explicitly keeps both that tree and `bend-ops-laws` LIVE.
+O10 receives the actual checkout root and scans its scripts and registry.
+When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
+switch the links together and build the guard release from that canonical tree.
 
 `z0int-policy.timer` declares a fifteen-minute ingest/compile cadence from
 `/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled** until
 the operator confirms that CLI is deployed. The service executes ingest then
 compile only on success, with a five-minute wall limit and bounded resources.
+The loop, intelligence and policy services declare `Z0INT_LIVE_HOME=%h/.z0int`
+through drop-ins; installing these does not restart active model/loop units.
 ServiceWatch checks contract-v1 policy files once per discovery cycle: policy
 age over two hours only while new findings exist; source digest changes without
 ingest for 24 hours; and positive `counts.o12_offload_obligation` in a fresh
 `z0.policy_guard.v1` report. `available=false`, missing/malformed evidence or
 oversized source artifacts are explicitly UNAVAILABLE, never zero violations.
-Source hashing is cached by inode/mtime/size and bounded to 8 MiB per source;
-the recent findings sample is bounded to 1000 rows/2 MiB. Only finite codes and
-numeric counts enter triage; source paths and guard explanations stay local.
+Source hashing is cached by inode/mtime/size and bounded to 8 MiB per source and
+16 MiB of fresh hashing per cycle. Findings sampling is bounded to 1000 rows/2 MiB.
+Only finite codes and numeric counts enter triage; source paths and guard explanations stay local.
 
 Behavioral and captured-request privacy checks:
 

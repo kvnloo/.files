@@ -21,6 +21,27 @@ loader.exec_module(fleet)
 
 
 class PhonePolicyTests(unittest.TestCase):
+    def test_host_limits_preserved_without_phone_inheritance(self):
+        _, nodes = fleet.registry()
+        expected = {
+            'boat': {'mem_floor_mb': 0, 'default_mem': '512M', 'mem_max': '7G',
+                     'cpu_quota': '600%', 'tasks_max': 4096},
+            'mbp': {'mem_floor_mb': 2048, 'default_mem': '2G', 'mem_max': '7G',
+                    'cpu_quota': '400%', 'tasks_max': 4096},
+            'groot': {'mem_floor_mb': 2048, 'default_mem': '2G', 'mem_max': '4G',
+                      'cpu_quota': '600%', 'tasks_max': 4096},
+        }
+        for name, lane in expected.items():
+            self.assertEqual(nodes[name]['lane'], lane)
+            self.assertEqual(nodes[name]['health']['min_mem_available_mb'], 1024)
+            self.assertEqual(nodes[name]['health']['min_battery_pct_on_battery'], 40)
+        self.assertEqual(nodes['mbp']['health']['max_temp_c'], 110)
+        for name in ('omarchy-phone', 'galaxy-s22plus'):
+            self.assertEqual(nodes[name]['lane'], {})
+            self.assertEqual(nodes[name]['health']['min_battery_pct_on_battery'], 2)
+            self.assertNotIn('min_mem_available_mb', nodes[name]['health'])
+            self.assertNotIn('max_temp_c', nodes[name]['health'])
+
     def probe(self, **changes):
         return {"ts": time.time(), "host_lane_supported": True,
                 "mem_available_mb": 0, "load1": 1000, "ncpu": 8,
