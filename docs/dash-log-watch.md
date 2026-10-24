@@ -50,3 +50,96 @@ fleet-build --node mbp --light -- /usr/bin/python3 -m unittest discover -s tests
 ```
 
 `replay --journal-file FILE --state OWNED_FIXTURE_DIR --config CONFIG` is an explicitly synthetic offline journal replay. Only that CLI command overrides foreground and labels all outputs `fixture=true`; it never joins the live state directory. Feed only an owned synthetic journal unit, not private logs. A successful replay is **not** proof of a live phone foreground transition, real production fault, provider concurrency or notification delivery.
+
+## Host-wide service watch
+
+`scripts/service-watch.py` generalizes this sidecar's atomic status files, SQLite
+cursor/dedup state and finite log signatures. Dash's
+foreground gate remains unchanged; host service failures must not be gated on a
+phone foreground state. Install its `service-watch` link and four user units from
+`config/systemd/user`, create
+`/mnt/zer0models/workspace/zer0/data/operations/service-watch` with mode 0700,
+then enable `service-watch.service` and `service-watch-heartbeat.timer`.
+`fleet.toml` declares both on groot. `core-links` links but does not enable them.
+
+The watch list combines active/failed user and readable system services, sockets
+and timers with HostHygiene's `units.json` (KEEP/FIX/STOP plus structured health
+invariants). New live units are discovered each minute. User OnFailure drop-ins
+are generated without replacing existing hooks. System journals/state are
+read-only: system-wide hooks in `config/systemd/{service,timer,socket}.d` and the
+system notifier template require separate root approval. No new groups or ACLs.
+STOP invariants suppress normal health checks, not an actually triggered failure
+hook; no service is stopped, reset-failed, restarted or repaired by this watcher.
+
+Every 15 seconds the deterministic lane checks failed state, restart deltas over
+five minutes (three restarts), journal error windows (at least five errors and
+25%), timer last-run age/result, file freshness, receipt error share and growth.
+The built-in loop check uses actual `rows_added.shadow_decisions` in tick receipts:
+three consecutive zero ticks, not a misleading success log line. Cognition-shadow
+checks include `shadow[].error`/`parse_error`; an error-dominated file over 32MiB or
+growing by over 64KiB in a sample is severe. File samples are bounded to 2MiB/1000
+rows. Unknown/missing invariant evidence is warning/unavailable, never healthy.
+First-start journal lookback is two minutes; `service-watch seed` streams the
+last seven days (bounded to three minutes per journal) and historical tick
+receipts, recording partial/unavailable coverage explicitly.
+
+The model worker cannot block deterministic checks. It batches each anomalous
+unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
+endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
+validated zero-cost Groq route. Potential severe incidents additionally use the
+installed pi-ai SDK via `service-watch-confirm.ts`. The existing Dash Hermes
+OAuth transport remains unchanged: host confirmation uses the requested
+`~/.omp/agent/agent.db` instead, strictly read-only, with credentials in memory
+only. No token refresh, credential copying or account writes. If no unexpired
+subscription credential is available, confirmation is unavailable rather than
+silently using a paid fallback. The helper independently validates the closed
+vocabulary and can capture its actual SDK request payload (never headers) with
+`--capture-request=PATH` for privacy audits. No auth data belongs in a receipt.
+Qwen uses a constrained JSON schema, including nonempty integer evidence indices.
+Seed/replayed windows recover at most twelve local journal excerpts preceding
+the observation; raw excerpts are never persisted.
+Provider errors keep the
+deterministic report and record unavailable tier evidence, not an invented model
+decision. Local model free text is discarded: neither persisted nor forwarded.
+Redirects and environment HTTP proxies are disabled. All arbitrary text is
+withheld before remote tiers, including secrets, emails, addresses, coordinates,
+device IDs, home paths and local summaries; reports store withheld line/character
+counts, SHA-256 evidence line IDs and finite classifications, not replacement
+strings which might miss street/city information.
+
+The first twenty raw-excerpt windows get a paired Qwen projection-only ablation.
+`local_quality` records severity/cause sensitivity and cross-tier agreement, not
+ground-truth accuracy. This measures dependence on private context without
+exporting that context or local summaries.
+
+Definite deterministic severe conditions notify immediately (without waiting for
+model availability); other model-only severe decisions are confirmed by Luna.
+Notifications carry unit, cause and `service-watch details ID`. SQLite admission
+is cross-process atomic: one reservation per fingerprint/six hours, five total
+per hour, reserved before delivery to prevent crash/retry spam. A failed delivery
+is explicitly recorded; exactly-once delivery under a crashing notification daemon
+is not claimed. Desktop-only: no verified phone path is assumed.
+
+`service-watch status` is one line and exits nonzero for stale heartbeat.
+`service-watch details ID` gives evidence/model/latency/confidence. Daily digests
+are `service-watch/digests/YYYY-MM-DD.md`; `triage.jsonl` contains deterministic
+and final model decisions, redacted windows and per-tier measurements suitable
+for shadow learning. Units use Nice=15, MemoryMax=256M and CPUQuota=15%; the
+independent heartbeat timer plus systemd watchdog detect watcher failures/hangs.
+The watcher never compiles or runs test suites on groot.
+
+Behavioral and captured-request privacy checks:
+
+```
+SERVICE_WATCH_TEST_EVIDENCE=service-watch-request-proof.json \
+  fleet-build --node mbp --light --local-data --fetch service-watch-request-proof.json \
+  -- env SERVICE_WATCH_TEST_EVIDENCE=service-watch-request-proof.json \
+  /usr/bin/python3 -m unittest discover -s tests -p test_service_watch.py -v
+```
+
+Rollback: disable/stop only `service-watch.service` and
+`service-watch-heartbeat.timer`; remove only generated
+`*/90-service-watch.conf` user drop-ins and the watcher unit/bin links; run
+`systemctl --user daemon-reload`. Preserve the report directory. If root hooks
+were separately approved, remove only the three installed type-wide hook files
+and `service-watch-system-failure@.service`, then `sudo systemctl daemon-reload`.

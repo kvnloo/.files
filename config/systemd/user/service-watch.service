@@ -1,0 +1,30 @@
+[Unit]
+Description=Host-wide report and severe-notify service watcher
+OnFailure=service-watch-failure@service\x2dwatch.service.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=%h/.local/bin/service-watch run
+WatchdogSec=90
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=10
+KillMode=control-group
+UMask=0077
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=%h/.omp/agent
+ReadWritePaths=%h/.config/systemd/user /mnt/zer0models/workspace/zer0/data/operations/service-watch
+Environment=PATH=/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h
+MemoryHigh=128M
+MemoryMax=256M
+CPUQuota=15%
+TasksMax=32
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Check service watch self-heartbeat without LLM calls
+OnFailure=service-watch-failure@service\x2dwatch\x2dheartbeat.service.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/service-watch heartbeat
+UMask=0077
+Nice=19
+MemoryMax=96M
+CPUQuota=5%
+TasksMax=16
+NoNewPrivileges=true
+TimeoutStartSec=20
