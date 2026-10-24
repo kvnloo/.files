@@ -59,6 +59,16 @@
     "missing_command_exit_code": 1
   },
   "missing_command_message": "Native command not found: fleet-impossible-native-command. Android has no Linux python/bash/git. Push a static Android/aarch64 binary or use fleet run --guest.",
+  "openssh_consumer_diagnostic": {
+    "job": "fleet-mbp-a97406620b244579",
+    "base_commit": "f4a5098",
+    "feature_commit": "768e146",
+    "single_test_result_on_each": "1 failed",
+    "ssh_exit_code_on_each": 255,
+    "ssh_stderr_on_each": "No user exists for uid 1001\n",
+    "cause": "Pre-existing MBP Kueue image passwd/NSS omission, not native phone changes.",
+    "test_fix": "Skip only if plain ssh -G itself exits255 with the exact current-UID missing-user diagnostic. All other preflight or strict policy failures remain errors."
+  },
   "live_probe_process_audit": {
     "method": "Python sys.addaudithook subprocess.Popen audit around the real fleet-adb probe CLI on both phones",
     "s22_exit_code": 0,
