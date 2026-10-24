@@ -74,7 +74,7 @@ def cancel(state, node, jid, ssh):
 
 
 def reconcile(state, node, probe, ssh):
-    phase, reasons = host_health(probe, reserve=0)
+    phase, reasons = host_health(probe)
     directory = records(state, node)
     outcomes = []
     for path in directory.glob("*.json"):

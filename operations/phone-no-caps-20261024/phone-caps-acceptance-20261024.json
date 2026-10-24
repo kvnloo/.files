@@ -1,0 +1,10 @@
+{
+  "source_commit": "33c5fd3",
+  "bend": {"command": "bend PROOF.bend --verdict", "output": "ALL PROOFS CHECK", "mutation_receipt": "/tmp/phone-caps-bend-mutations-20261024.json", "rejected": 46, "total": 46, "o10_rejected": 5, "o10_total": 5},
+  "scanner_red": {"source": "phone) args+=(--arch arm64 --tolerate phone --mem \"${mem:-512M}\") ;;", "exit_code": 3, "status": "refused", "rule": "shell-resource-default", "line": 3},
+  "scanner_green": {"source": "phone) args+=(--arch arm64 --tolerate phone) ;; followed by optional caller-explicit --mem", "exit_code": 0, "status": "ok", "findings": []},
+  "clean_source": {"root": "/mnt/zer0models/worktrees/files-phone-no-agent-caps", "exit_code": 0, "status": "ok", "findings": [], "checked_count": 22, "output_artifact": "artifact://698"},
+  "api": "z0int.fsm.guard.phone_caps_findings(root: Path, paths: list[Path] | None = None)",
+  "cli": "z0-guard phone-caps --root ROOT [--path FILE ...]",
+  "installed_launcher": "/home/kvn/.local/bin/z0-guard defaults to /mnt/zer0models/z0-wt/bend-ops-laws/src"
+}

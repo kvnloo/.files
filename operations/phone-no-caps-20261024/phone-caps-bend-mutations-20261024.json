@@ -1,0 +1,290 @@
+{
+  "verdict_mode": true,
+  "rows": [
+    {
+      "law": "-",
+      "mutation": "reference (unmodified)",
+      "proofs_check": true,
+      "where": ""
+    },
+    {
+      "law": "O1 o1_groot_admits_only",
+      "mutation": "groot admits every class",
+      "proofs_check": false,
+      "where": "Laws.o1_groot_admits_only"
+    },
+    {
+      "law": "O1 o1_groot_admits_only",
+      "mutation": "unknown classes count as groot classes",
+      "proofs_check": false,
+      "where": "Laws.o1_groot_admits_only"
+    },
+    {
+      "law": "O1 o1_never_groot_fallback",
+      "mutation": "no room off groot: fall back to groot",
+      "proofs_check": false,
+      "where": "phone_not_groot"
+    },
+    {
+      "law": "O1 o1_full_waits",
+      "mutation": "no room anywhere: squeeze onto a phone anyway",
+      "proofs_check": false,
+      "where": "Laws.o1_full_waits"
+    },
+    {
+      "law": "O1 o1_never_groot_fallback",
+      "mutation": "placement ignores the class",
+      "proofs_check": false,
+      "where": "Laws.o1_never_groot_fallback"
+    },
+    {
+      "law": "O1 o1_mbp_takes_heavy",
+      "mutation": "heavy jobs wait even when the MBP has room",
+      "proofs_check": false,
+      "where": "Laws.o1_mbp_takes_heavy"
+    },
+    {
+      "law": "O2 o2_served_refuses",
+      "mutation": "served worktree accepts any op",
+      "proofs_check": false,
+      "where": "Laws.o2_served_refuses"
+    },
+    {
+      "law": "O2 o2_served_refuses",
+      "mutation": "rollback (moving the served branch backwards) outside the transaction",
+      "proofs_check": false,
+      "where": "Laws.o2_served_refuses"
+    },
+    {
+      "law": "O2 o2_txn_can_rollback",
+      "mutation": "the transaction cannot roll back",
+      "proofs_check": false,
+      "where": "Laws.o2_txn_can_rollback"
+    },
+    {
+      "law": "O2 o2_served_refuses",
+      "mutation": "ff-merge outside the rollout transaction",
+      "proofs_check": false,
+      "where": "Laws.o2_served_refuses"
+    },
+    {
+      "law": "O2 o2_served_refuses",
+      "mutation": "the served lease is ignored",
+      "proofs_check": false,
+      "where": "Laws.o2_served_refuses"
+    },
+    {
+      "law": "O2 o2_txn_can_ff",
+      "mutation": "the transaction itself cannot merge",
+      "proofs_check": false,
+      "where": "Laws.o2_txn_can_ff"
+    },
+    {
+      "law": "O2 o2_rollout_ff_idle",
+      "mutation": "rollout accepts a non-fast-forward merge",
+      "proofs_check": false,
+      "where": "Laws.o2_rollout_ff_idle"
+    },
+    {
+      "law": "O2 o2_rollout_ff_idle",
+      "mutation": "restart without the idle check",
+      "proofs_check": false,
+      "where": "Laws.o2_rollout_ff_idle"
+    },
+    {
+      "law": "O3 o3_promoted_needs_clean",
+      "mutation": "candidate built in the served worktree is promoted",
+      "proofs_check": false,
+      "where": "Laws.o2_rollout_ff_idle"
+    },
+    {
+      "law": "O3 o3_promoted_needs_check",
+      "mutation": "a failed launch check is promoted anyway",
+      "proofs_check": false,
+      "where": "finish_promoted"
+    },
+    {
+      "law": "O3 o3_admissible_fail_rolls_back",
+      "mutation": "a failed launch check is reported as deferred, not rolled back",
+      "proofs_check": false,
+      "where": "go_fail"
+    },
+    {
+      "law": "O3 o3_promoted_needs_review",
+      "mutation": "review receipt ignored for review-gated PRs",
+      "proofs_check": false,
+      "where": "adm_pre"
+    },
+    {
+      "law": "O3 o3_no_device_work_in_call",
+      "mutation": "restart and launch check run during the owner's call",
+      "proofs_check": false,
+      "where": "Laws.o2_rollout_ff_idle"
+    },
+    {
+      "law": "O3 o3_no_device_work_in_call",
+      "mutation": "a deferred rollout runs anyway",
+      "proofs_check": false,
+      "where": "go_touched"
+    },
+    {
+      "law": "O3 o3_admissible_pass_promotes",
+      "mutation": "every rollout is refused",
+      "proofs_check": false,
+      "where": "decide_touched"
+    },
+    {
+      "law": "O4 o4_private_stays_private",
+      "mutation": "private artifacts push anywhere",
+      "proofs_check": false,
+      "where": "Laws.o4_private_stays_private"
+    },
+    {
+      "law": "O4 o4_private_stays_private",
+      "mutation": "unknown visibility counts as private",
+      "proofs_check": false,
+      "where": "Laws.o4_private_stays_private"
+    },
+    {
+      "law": "O4 o4_nonprivate_free",
+      "mutation": "non-private pushes are refused",
+      "proofs_check": false,
+      "where": "Laws.o4_nonprivate_free"
+    },
+    {
+      "law": "O5 o5_touch_needs_intent",
+      "mutation": "tap without an owner phone-operation intent",
+      "proofs_check": false,
+      "where": "Laws.o5_touch_needs_intent"
+    },
+    {
+      "law": "O5 o5_touch_needs_foreground",
+      "mutation": "tap into whatever app is in the foreground",
+      "proofs_check": false,
+      "where": "Laws.o5_touch_needs_intent"
+    },
+    {
+      "law": "O5 o5_no_chain_install_in_call",
+      "mutation": "install the call-chain app during a live call",
+      "proofs_check": false,
+      "where": "Laws.o5_no_chain_install_in_call"
+    },
+    {
+      "law": "O5 o5_no_chain_restart_in_call",
+      "mutation": "restart the call-chain app during a live call",
+      "proofs_check": false,
+      "where": "Laws.o5_no_chain_restart_in_call"
+    },
+    {
+      "law": "O6 o6_a11y_superset",
+      "mutation": "post-state not consulted for the first service",
+      "proofs_check": false,
+      "where": "Laws.o6_a11y_superset"
+    },
+    {
+      "law": "O6 o6_a11y_superset",
+      "mutation": "only the first service is checked",
+      "proofs_check": false,
+      "where": "Laws.o6_a11y_superset"
+    },
+    {
+      "law": "O6 o6_a11y_superset",
+      "mutation": "any service counts as owner-removed",
+      "proofs_check": false,
+      "where": "Laws.o6_a11y_superset"
+    },
+    {
+      "law": "O7 o7_no_cancelled_provider",
+      "mutation": "cancelled providers still route",
+      "proofs_check": false,
+      "where": "Laws.o7_no_cancelled_provider"
+    },
+    {
+      "law": "O7 o7_no_sol_design",
+      "mutation": "design roles may route to Sol",
+      "proofs_check": false,
+      "where": "Laws.o7_no_sol_design"
+    },
+    {
+      "law": "O8 o8_no_silent_strike",
+      "mutation": "strikes past the limit stay silent",
+      "proofs_check": false,
+      "where": "Laws.o8_no_silent_strike"
+    },
+    {
+      "law": "O8 o8_emit_marks_notified",
+      "mutation": "emission does not mark the node notified (repeats)",
+      "proofs_check": false,
+      "where": "emit_bad"
+    },
+    {
+      "law": "O8 o8_notify_once",
+      "mutation": "a notified node notifies on every strike",
+      "proofs_check": false,
+      "where": "Laws.o8_notify_once"
+    },
+    {
+      "law": "O8 o8_notified_sticks",
+      "mutation": "a notified node re-arms without recovering",
+      "proofs_check": false,
+      "where": "Laws.o8_notified_sticks"
+    },
+    {
+      "law": "O9 o9_restart_never_fails",
+      "mutation": "gateway restart marks runs Failed",
+      "proofs_check": false,
+      "where": "Laws.o9_restart_interrupts"
+    },
+    {
+      "law": "O9 o9_restart_interrupts",
+      "mutation": "gateway restart is ignored (runs look active)",
+      "proofs_check": false,
+      "where": "Laws.o9_restart_interrupts"
+    },
+    {
+      "law": "O9 o9_interrupted_exits",
+      "mutation": "an interrupted run silently fails on error",
+      "proofs_check": false,
+      "where": "Laws.o9_interrupted_exits"
+    },
+    {
+      "law": "O9 o9_resume_needs_session",
+      "mutation": "resume without the run's session",
+      "proofs_check": false,
+      "where": "Laws.o9_resume_needs_session"
+    },
+    {
+      "law": "O10 o10_phone_no_agent_resource_caps",
+      "mutation": "phone admission gated by memory",
+      "proofs_check": false,
+      "where": "Laws.o10_phone_no_agent_resource_caps"
+    },
+    {
+      "law": "O10 o10_phone_no_agent_resource_caps",
+      "mutation": "phone admission gated by cpu",
+      "proofs_check": false,
+      "where": "Laws.o10_phone_no_agent_resource_caps"
+    },
+    {
+      "law": "O10 o10_phone_no_agent_resource_caps",
+      "mutation": "phone admission gated by battery",
+      "proofs_check": false,
+      "where": "Laws.o10_phone_no_agent_resource_caps"
+    },
+    {
+      "law": "O10 o10_phone_no_agent_resource_caps",
+      "mutation": "phone admission gated by thermal",
+      "proofs_check": false,
+      "where": "Laws.o10_phone_no_agent_resource_caps"
+    },
+    {
+      "law": "O10 o10_phone_placement_no_agent_resource_caps",
+      "mutation": "phone placement gated by memory",
+      "proofs_check": false,
+      "where": "Laws.o10_phone_placement_no_agent_resource_caps"
+    }
+  ],
+  "rejected": 46,
+  "total": 46,
+  "reference_restored": true
+}
