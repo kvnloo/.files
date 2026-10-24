@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# agent-launch NAME CMD...
+#
+# Start a coding-agent CLI in its own scope under agent.slice from the first byte.
+#
+# Linux never moves already-charged memory when a process changes cgroup. Agents
+# started from a terminal used to be charged to the compositor's cgroup
+# (wayland-wm@hyprland.desktop.service) and only their children were moved later,
+# so agent.slice's caps barely bound them and the desktop's MemoryLow protected the
+# agents' heaps. One scope per agent also lets systemd-oomd stop a single agent
+# instead of every agent at once.
+#
+# Set AGENT_LAUNCH_INLINE=1 to bypass (for example, inside containers).
+set -u
+name=${1:?usage: agent-launch NAME CMD...}
+shift
+[ $# -gt 0 ] || { echo "agent-launch: no command" >&2; exit 2; }
+
+inline() { exec "$@"; }
+[ -n "${AGENT_LAUNCH_INLINE:-}" ] && inline "$@"
+command -v systemd-run >/dev/null 2>&1 || inline "$@"
+grep -q '/agent.slice/' /proc/self/cgroup 2>/dev/null && inline "$@"   # already placed: no nesting
+systemctl --user show-environment >/dev/null 2>&1 || inline "$@"        # no user manager (ssh, container)
+
+unit="agent-${name//[^A-Za-z0-9_-]/_}-$$-$(date +%s)"
+# --scope keeps the terminal as the controlling tty; --collect drops the unit after exit.
+exec systemd-run --user --scope --quiet --collect --slice=agent.slice --unit="$unit" \
+  --description="coding agent: $name" -- "$@"
