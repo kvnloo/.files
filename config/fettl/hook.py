@@ -54,6 +54,7 @@ def shadow_log(stdout: bytes = b"", stderr: bytes = b"", code: int = 0) -> None:
     row = {"time": datetime.now(timezone.utc).isoformat(), "agent": name,
            "event": sys.argv[2] if len(sys.argv) > 2 else "post-tool",
            "cwd": EVENT.get("cwd", str(Path.cwd())), "scan_id": f"{os.getpid()}-{STARTED}",
+           "repository": EVENT.get("repository"),
            "file": EVENT.get("tool_input", {}).get("file_path") or EVENT.get("tool_input", {}).get("path"),
            "rule": None, "message": raw, "latency_ms": round((time.monotonic() - STARTED) * 1000, 3),
            "scan_errors": scan_errors,
@@ -121,6 +122,7 @@ def run_scanner(args: list[str], payload: bytes | None, cwd: Path) -> tuple[int,
     if repository.returncode:
         raise ValueError("Fettl hooks require a git worktree")
     root = Path(os.fsdecode(repository.stdout).strip()).resolve()
+    EVENT["repository"] = str(root)
     if shadow_mode():
         args.append(str(root))
     key = hashlib.sha256(os.fsencode(root)).hexdigest()[:24]

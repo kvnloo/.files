@@ -22,7 +22,7 @@ def summarize(directory, since):
                 continue
             if stamp < since:
                 continue
-            cwd = row.get("cwd", "")
+            cwd = row.get("repository", "")
             # Synthetic bridge probes predate provenance fields. Controlled
             # fixture sessions use the same explicit fettl-prefixed directories.
             if not cwd or "fettl-shadow-probe-" in cwd or "fettl-agent-eval" in cwd or "fettl-eval" in cwd:
