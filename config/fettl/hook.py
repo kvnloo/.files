@@ -50,6 +50,7 @@ def shadow_log(stdout: bytes = b"", stderr: bytes = b"", code: int = 0) -> None:
         pass
     row = {"time": datetime.now(timezone.utc).isoformat(), "agent": name,
            "event": sys.argv[2] if len(sys.argv) > 2 else "post-tool",
+           "cwd": EVENT.get("cwd", str(Path.cwd())), "scan_id": f"{os.getpid()}-{STARTED}",
            "file": EVENT.get("tool_input", {}).get("file_path") or EVENT.get("tool_input", {}).get("path"),
            "rule": None, "message": raw, "latency_ms": round((time.monotonic() - STARTED) * 1000, 3),
            "exit_code": code, "diagnostic": stderr.decode("utf-8", errors="replace")}
