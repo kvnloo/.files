@@ -218,6 +218,18 @@ extra/default index overrides. Each receipt records `package_index`.
 This prevents uv re-resolution against a different index and restores normal
 signal/PTY behavior without modifying target source or dependency versions.
 
+The FX full Zig gate remains on standard GitHub runners: after normalization,
+the Avrea run at `9f204fc20931d941a996eecd051c782b7271b131` still had 37 failures
+and 13 crashes, including `PrivateStatePermissionsUnsupported`. A separate
+Avrea probe ran as UID 1001 on `ext2/ext3`; chmod 000 blocked reads, and both
+fchmod and fchmodat2 with AT_EMPTY_PATH worked. Root execution and a general
+lack of POSIX modes are therefore ruled out, not established limitations.
+The exact FX-specific permission failure remains unresolved; do not bypass
+its security checks or treat the shorter failing run as a speedup.
+Evidence: [full gate](https://github.com/kvnloo/fleet-runner/actions/runs/40054760995),
+[permission context](https://github.com/kvnloo/fleet-runner/actions/runs/40055788512),
+[syscalls](https://github.com/kvnloo/fleet-runner/actions/runs/40055663726).
+
 ```sh
 # Commit and push first. Otherwise select a public SHA explicitly.
 fleet-build --node avrea --fetch 'test-results/**' --out /tmp/gate -- \
