@@ -14,9 +14,7 @@
 #                    Gradle 2 GiB + Kotlin 4 GiB daemon pair peaked at 6.5 GiB and was
 #                    OOM-killed in a 6 GiB scope). --gradle-args '' keeps the repo's own.
 #   --light          lint / pure-Python tests / scans / git work: phones allowed
-#                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
-#                    its 1200 MiB floor); mbp still wins unless it is busier
-#   --phone          like --light but only on a phone (arm64)
+#   --phone          arm64 phone jobs, without an implicit resource budget
 #   --node NAME      pin a node (mbp, s22, omarchy-phone)
 #   --mem 4G --cpus 4 --timeout 3600   job limits (defaults per mode)
 #   --wait SECS      while no worker has room (exit 75: busy, paused, hot), retry every
@@ -83,8 +81,8 @@ args=(run --src "$src")
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
   build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
-  light)   args+=(--tolerate phone --mem "${mem:-512M}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
-  phone)   args+=(--arch arm64 --tolerate phone --mem "${mem:-512M}") ;;
+  light)   args+=(--tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
+  phone)   args+=(--arch arm64 --tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem") ;;
 esac
 [ -n "$node" ] && args+=(--node "$node")
 [ -n "$timeout" ] && args+=(--timeout "$timeout")

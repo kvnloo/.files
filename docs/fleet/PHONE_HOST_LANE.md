@@ -1,6 +1,6 @@
 # Explicit Android PRoot host lane
 
-Phones are **not Kubernetes nodes**. Registry kind `phone` advertises `proot-host-lane`; `fleet` still performs placement and the existing polite-run wrapper still performs battery/thermal/memory admission and drains. No kubelet, cgroups, Android root, network/security isolation, guaranteed RSS limit, or Kubernetes Ready claim is made. Only trusted owner jobs belong here; the existing agentjob/Linux scope and factory/untrusted pod policy are unchanged.
+Phones are **not Kubernetes nodes**. Registry kind `phone` advertises `proot-host-lane`. No kubelet, cgroups, Android root, network/security isolation, guaranteed RSS limit, or Kubernetes Ready claim is made. Only trusted owner jobs belong here. The existing agentjob/Linux scope and factory/untrusted pod policy are unchanged.
 
 ## Lifecycle: launcher owns, guest supervises
 
@@ -35,25 +35,23 @@ detach a worker from an SSH session and call it persistent. The existing tree
 has no service-list reload API. Until that restart, probes report the executor
 down and placement refuses jobs.
 
-`--defer-adb` permits installation while self-ADB is unavailable, not execution
-without battery/thermal evidence. It never rewrites an unverified serial or
-changes Android settings. Owner action: restore each phone's Wireless debugging
-connection to its guest (re-pair only if necessary), then rerun setup without
-`--defer-adb` to validate the model and current endpoint. No Android power policy,
-APK, account or app-data changes are required by this deployment.
+`--defer-adb` permits installation while self-ADB is unavailable. Self-ADB is
+not an execution prerequisite. Setup never rewrites an unverified serial or
+changes Android settings. Restore Wireless debugging only when an Android UI
+task requires it. No Android power policy, APK, account or app-data changes are
+required by this deployment.
 
-Both phone entries use a 512 MiB sampled default budget and 1200 MiB owner RAM
-floor; S25 remains polite-only, on small cores with nice/ionice. Jobs require
-charging or at least 50% battery, battery at most 40 C and thermal status at most
-1. Missing evidence fails closed. Neither phone advertises builds or kubelet
-capabilities. The repository has Kueue queues but no KEDA, HPA or cluster
-autoscaler; host placement/admission is `fleet run`/`fleet-build`, not Kubernetes
-autoscaling. Groot has no host lane and is never a no-room fallback.
+Phones: no agent resource caps; Android manages battery/thermal/RAM. Enforced by Bend law O10 / z0-guard phone-caps.
+
+Phones remain available for placement without a light/worker resource profile.
+Owner pause and call hooks retain owner intent. Jobs retain timeouts and
+process-group cleanup. Host placement is `fleet run`/`fleet-build`, not
+Kubernetes autoscaling. Groot has no host lane and is never a no-room fallback.
 
 
 ## Shared job API
 
-Existing `fleet run --node s22 --mem 512M -- CMD...` now submits the selected phone job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB` cancels that exact durable ID instead of matching process command lines. Source transfer and artifact fetching still use the existing fleet transport. The phone spool/source are retained to support recovery and log inspection. Linux/MBP execution is unchanged.
+Existing `fleet run --node s22 -- CMD...` submits the selected phone job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB` cancels that exact durable ID instead of matching process command lines. Source transfer and artifact fetching still use the existing fleet transport. The phone spool/source are retained to support recovery and log inspection. Linux/MBP execution is unchanged.
 
 Explicit controller API:
 
@@ -71,18 +69,18 @@ fleet phone s22 capabilities
 Guest API is the same commands on `python3 ~/.local/lib/fleet/fleet-phone-worker`, with `serve` as the launcher-supervised foreground executor. `submit` reads a spec from stdin:
 
 ```json
-{"argv":["python3","-m","unittest","discover"],"cwd":"~/fleet-jobs/stable-owner-id/src","mem_mb":512,"floor_mb":1200,"timeout":3600,"idempotent":false,"max_attempts":1}
+{"argv":["python3","-m","unittest","discover"],"cwd":"~/fleet-jobs/stable-owner-id/src","timeout":3600,"idempotent":false,"max_attempts":1}
 ```
 
-The source directory must already exist beneath `~/fleet-jobs`. Defaults are 512 MiB sampled job budget, 1200 MiB owner RAM floor and one attempt. An identical ID/spec submission returns the same record; binding an existing ID to a different spec fails. Transactions use flock + fsync/atomic rename. Only one executor can run; it serially executes already-placed work, not a second fleet scheduler. Payload HOME is a per-job directory, not the owner's credential home; this is convenience, **not isolation from malicious code**.
+The source directory must already exist beneath `~/fleet-jobs`. One attempt is the default. An optional per-job resource value requires an explicit caller request. An identical ID/spec submission returns the same record. Binding an existing ID to a different spec fails. Transactions use flock + fsync/atomic rename. Only one executor can run. It serially executes already-placed work, not a second fleet scheduler. Payload HOME is a per-job directory, not the owner's credential home. This is convenience, **not isolation from malicious code**.
 
 `submit` and `lease` return an opaque lease token. `heartbeat` takes it only via stdin; status/logs never include it. Guest TTL is 10..600 s (120 default, controller uses 300). Controller copies are mode0600. SSH transport uses BatchMode/identity from the existing fleet helper, but forces strict host checking and disables reused connection masters **before** generic options (OpenSSH uses first value). It never accepts new host pins, shares/rotates private keys, emits raw SSH diagnostics, or substitutes the native Android VPN endpoint for its guest.
 
 ## Outage, retry and drain semantics
 
-Availability states are separate: `unavailable` = authenticated SSH/probe failed, `stale` = evidence too old/clock-skewed, `paused` = owner/battery/thermal/memory/service gate, `unsupported` = wrong host platform, and `ready` = fresh host-lane admission only. Missing battery or thermal metrics fail closed. Jobs start only above owner floor **plus** reservation. Existing polite-run samples memory and thermal/battery during execution, drains on gate failure, and now forwards executor termination to its payload group. These checks are measured polling, not lifecycle survival.
+Availability states are separate: `unavailable` means authenticated SSH/probe failed, `stale` means evidence too old/clock-skewed, `paused` means explicit owner pause/call or stopped service, and `unsupported` means wrong host platform. `ready` means the host lane is reachable and active. Missing device telemetry does not prevent phone jobs. `fleet-polite-run` forwards termination to the payload process group.
 
-Guest executor checks leases/cancel at most every 5 s; admission evidence is rechecked every 30 s while queued. A controller crash/outage stops renewal; the guest drains expired work when it can execute. A frozen guest may still hold execution ownership: lease expiration by itself never licenses a second execution elsewhere. `fleet health` uses its existing measured timer and automatically reconciles only **previously owned** records after strict SSH and fresh healthy probe return. No UI wake or app reopening is invoked.
+Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. `fleet health` uses its existing measured timer and automatically reconciles only **previously owned** records after strict SSH and a fresh probe return. No UI wake or app reopening is invoked.
 
 Recovery checks boot ID + PID start time, live runner/child and surviving process-group descendants. Live/ambiguous executions cannot be re-leased. Dead non-idempotent executions become `needs-confirmation`, never speculative retries. `fleet run --idempotent` (or explicit spec `idempotent:true,max_attempts:3`) permits bounded retry of the **same ID** only after confirmed interruption/drain. Exactly-once arbitrary side effects cannot be guaranteed across a crash between an external effect and durable completion; idempotent jobs must implement their own effect dedupe using `FLEET_JOB_ID`. A late heartbeat from an expired token cannot renew a replacement generation. Offline cancellation is durable controller intent and is delivered on rejoin without renewing that job.
 
@@ -92,4 +90,4 @@ An unavailable/ambiguous phone run returns255 and retains its source, spool and 
 
 Run the focused deterministic suite with `python3 -m unittest discover -s tests -p test_fleet_phone.py -v`; use `fleet-build --node mbp --wait 0 --mem 512M -- ...` for fleet qualification. Tests use temporary homes, fixture children and transport doubles, not a real device. They exercise durable Stop/duplicate-start exclusion, actual child exit/restart/circuit/event behavior, process identities, jobs executed once, lease drain, idempotence/retry, unsupported hosts, strict transport options, health gates and offline/rejoin ownership.
 
-No live deployment/phone tests were performed. Required before reliability claims: parent-managed spare/approved idle tests of screen-off/other app, daemon death, Android process death, network-loss/rejoin, package update, reboot/unlock, and battery/thermal drain, followed by measured overnight availability/outage reasons. Unrooted Android cannot guarantee survival of force-stop, all OS/PRoot kills/freezing, radios off, battery depletion, power loss or locked/reboot restrictions. Force-stop requires owner interaction where Android requires it. No Doze/global-freezer/root/MDM changes or daily-phone UI manipulation belong to this adapter.
+This document does not prove lifecycle reliability. Separate evidence is required for screen-off/other app, daemon death, Android process death, network-loss/rejoin, package update, reboot/unlock and measured overnight availability/outage reasons. Unrooted Android cannot guarantee survival of force-stop, OS/PRoot kills/freezing, radios off, power loss or locked/reboot restrictions. Force-stop requires owner interaction where Android requires it. No Doze/global-freezer/root/MDM changes or daily-phone UI manipulation belong to this adapter.

@@ -102,7 +102,7 @@ def kubernetes_view(node, cluster):
     return cluster.get(node["name"]) if node.get("kind", "linux") == "linux" else None
 
 
-def host_health(probe, now=None, max_age=180, floor=1200, reserve=512):
+def host_health(probe, now=None, max_age=180):
     now = time.time() if now is None else now
     if probe.get("error"):
         return "unavailable", ["ssh/probe unavailable"]
@@ -113,25 +113,6 @@ def host_health(probe, now=None, max_age=180, floor=1200, reserve=512):
     if probe.get("host_lane_supported") is False:
         return "unsupported", ["not an Android PRoot host lane"]
     bad = []
-    memory = probe.get("mem_available_mb")
-    if not isinstance(memory, (int, float)) or memory < floor + reserve:
-        bad.append("memory below admission floor + reservation")
-    pw = probe.get("power") or {}
-    bats = pw.get("batteries") or []
-    if not bats or pw.get("source") == "unreadable":
-        bad.append("battery unreadable")
-    else:
-        for bat in bats:
-            pct = bat.get("pct")
-            if not isinstance(pct, (int, float)):
-                bad.append("battery unreadable")
-            elif pct < 50 and not (pw.get("on_ac") or bat.get("status") in ("Charging", "Full")):
-                bad.append("battery below 50% off charger")
-    temp, thermal = pw.get("battery_temp_c"), pw.get("android_thermal_status")
-    if not isinstance(temp, (int, float)) or temp > 40:
-        bad.append("battery temperature unreadable/hot")
-    if not isinstance(thermal, (int, float)) or thermal > 1:
-        bad.append("Android thermal unreadable/hot")
     if any(v != "active" for v in (probe.get("services") or {}).values()):
         bad.append("guest service degraded")
     return ("paused", bad) if bad else ("ready", [])

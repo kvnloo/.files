@@ -1,0 +1,2 @@
+a55a9551b0f6d5e16bfb6118291fd896d22f7876cf45c33d564588f7d0af84f2  /root/.config/fleet/phone-mode.json
+archived_to=/root/.local/lib/fleet/backups/phone-no-caps-20261024T205239Z/phone-mode.json

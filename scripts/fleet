@@ -65,7 +65,9 @@ def registry():
     reg = yaml.safe_load(REGISTRY.read_text())
     nodes = {}
     for name, n in reg["nodes"].items():
-        n = merge({"health": reg["defaults"]["health"], "lane": reg["defaults"]["lane"]}, n)
+        defaults = {} if n.get("kind") == "phone" else {
+            "health": reg["defaults"]["health"], "lane": reg["defaults"]["lane"]}
+        n = merge(defaults, n)
         n["name"] = name
         n.setdefault("kind", "linux")
         n.setdefault("ssh_user", "agentjob")
@@ -251,12 +253,12 @@ def judge(n, p, k8s, online, overrides):
         bad.append(p["error"])
         return bad, warn
     if n["kind"] == "phone":
-        phase, why = host_health(p, floor=int(h["min_mem_available_mb"]), reserve=0)
+        phase, why = host_health(p)
         if phase != "ready":
             bad.extend(f"host-lane {phase}: {reason}" for reason in why)
     if n["kind"] == "phone" and p.get("supervisor_session") not in (None, "audio"):
         warn.append(f"supervisor runs in the {p['supervisor_session']} session, not Omalauncher's audio one")
-    if not isinstance(p.get("mem_available_mb"), (int, float)) or p["mem_available_mb"] < int(h["min_mem_available_mb"]):
+    if n["kind"] != "phone" and (not isinstance(p.get("mem_available_mb"), (int, float)) or p["mem_available_mb"] < int(h["min_mem_available_mb"])):
         bad.append(f"memory {p.get('mem_available_mb')}MiB < {h['min_mem_available_mb']}MiB")
     for key in ("disk_root", "disk_k3s", "disk_lane"):
         d = p.get(key)
@@ -268,22 +270,16 @@ def judge(n, p, k8s, online, overrides):
                 continue
             if state != "active":
                 bad.append(f"{unit} {state}")
-    if p.get("max_temp_c") and p["max_temp_c"] > float(h["max_temp_c"]):
-        bad.append(f"temperature {p['max_temp_c']}C")
-    pw = p.get("power") or {}
-    if pw.get("source") == "unreadable" and n["kind"] == "phone":
-        bad.append("battery unreadable (fail closed)")
-    for b in pw.get("batteries", []):
-        charging = pw.get("on_ac") or b.get("status") in ("Charging", "Full")
-        if not charging and b.get("pct") is not None and b["pct"] < int(h["min_battery_pct_on_battery"] if n["kind"] != "phone" else 50):
-            bad.append(f"on battery at {b['pct']}%")
-        elif not charging:
-            warn.append(f"on battery ({b.get('pct')}%)")
-    if n["kind"] == "phone":
-        if (pw.get("battery_temp_c") or 0) > 40:
-            bad.append(f"battery {pw['battery_temp_c']}C")
-        if (pw.get("android_thermal_status") or 0) > 1:
-            bad.append(f"android thermal status {pw['android_thermal_status']}")
+    if n["kind"] != "phone":
+        if p.get("max_temp_c") and p["max_temp_c"] > float(h["max_temp_c"]):
+            bad.append(f"temperature {p['max_temp_c']}C")
+        pw = p.get("power") or {}
+        for b in pw.get("batteries", []):
+            charging = pw.get("on_ac") or b.get("status") in ("Charging", "Full")
+            if not charging and b.get("pct") is not None and b["pct"] < int(h["min_battery_pct_on_battery"]):
+                bad.append(f"on battery at {b['pct']}%")
+            elif not charging:
+                warn.append(f"on battery ({b.get('pct')}%)")
     if p.get("maintenance"):
         bad.append("maintenance")
     if n["k8s"]:
@@ -403,7 +399,7 @@ def eligible(n, args, state):
         return f"arch {n.get('arch')}"
     if args.node in (None, "auto") and any(t not in (args.tolerate or []) for t in n["taints"]):
         return f"taint {n['taints']} not tolerated"
-    if state.get(n["name"], {}).get("paused"):
+    if n["kind"] != "phone" and state.get(n["name"], {}).get("paused"):
         return "paused by fleet health"
     return None
 
@@ -434,7 +430,6 @@ def cmd_run(args):
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
-        need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
         if "error" in p:
             notes.append(f"{n['name']}: {p['error']}"); continue
         # The health timer's strike window is NOT launch admission. A fresh unsafe
@@ -446,14 +441,15 @@ def cmd_run(args):
         if bad:
             notes.append(f"{n['name']}: {'; '.join(bad)}"); continue
         if n["kind"] == "phone":
-            phase, reasons = host_health(p, floor=int(n["lane"]["mem_floor_mb"]),
-                                         reserve=mb(args.mem or n["lane"]["default_mem"]))
+            phase, reasons = host_health(p)
             if phase != "ready":
                 notes.append(f"{n['name']}: {phase}: {'; '.join(reasons)}"); continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
-        if p["mem_available_mb"] < need:
-            notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
+        if n["kind"] != "phone":
+            need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
+            if p["mem_available_mb"] < need:
+                notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
         score = p["load1"] / max(p["ncpu"], 1) + (1 if n["kind"] == "phone" else 0)
         if best is None or score < best[0]:
             best = (score, n, p)
@@ -486,8 +482,11 @@ def cmd_run(args):
             tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
             send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
             tar.stdout.close(); send.wait(); tar.wait()
-        if send.returncode:
-            die("source transfer failed")
+        # Both ends must succeed: a sender that hits "Cannot stat" (e.g. a checkout
+        # switching under it) still yields a valid gzip the receiver accepts, so
+        # checking only the receiver would run tests on a partial or mixed tree.
+        if send.returncode or tar.returncode:
+            die(f"source transfer failed (local tar exit {tar.returncode}, remote tar exit {send.returncode})")
     # Exact artifact inputs are staged only AFTER health admission, never by
     # recursively scanning a render store. Relative destinations cannot escape src.
     for item in getattr(args, 'input', []) or []:
@@ -501,12 +500,11 @@ def cmd_run(args):
             subprocess.run(ssh + [f"mkdir -p {jdir}/src/{shlex.quote(parent)} && cat > {jdir}/src/{shlex.quote(relative)}"],
                            stdin=stream, check=True)
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
-    mem = mb(args.mem or n["lane"]["default_mem"])
-    floor = int(n["lane"]["mem_floor_mb"])
     if n["kind"] == "phone":
-        spec = {"argv": args.cmd, "cwd": f"{jdir}/src", "mem_mb": mem,
-                "floor_mb": floor, "timeout": args.timeout,
+        spec = {"argv": args.cmd, "cwd": f"{jdir}/src", "timeout": args.timeout,
                 "idempotent": args.idempotent, "max_attempts": 3 if args.idempotent else 1}
+        if args.mem is not None:
+            spec["mem_mb"] = mb(args.mem)
         with open(log, "w") as lf:
             def emit(text):
                 sys.stdout.write(text); sys.stdout.flush(); lf.write(text); lf.flush()
@@ -523,6 +521,8 @@ def cmd_run(args):
         print(f"fleet: job {jid} on {n['name']} exited {phone_rc}; phone spool retained", file=sys.stderr)
         return phone_rc
     else:
+        mem = mb(args.mem or n["lane"]["default_mem"])
+        floor = int(n["lane"]["mem_floor_mb"])
         cpu = f"{int(float(args.cpus) * 100)}%" if args.cpus else n["lane"]["cpu_quota"]
         # /etc/fleet/toolchain.env (scripts/fleet-toolchain.sh) puts JAVA_HOME, ANDROID_HOME and
         # GRADLE_USER_HOME in place. Stopping the scope afterwards reaps what the job left
@@ -531,9 +531,11 @@ def cmd_run(args):
         # outlive the controller's probe. Missing thermal data holds, never runs.
         gate = ("import json,subprocess,sys,math; "
                 "p=json.loads(subprocess.check_output(['python3','/usr/local/bin/fleet-node-probe'])); "
-                "t=p.get('max_temp_c'); "
-                f"sys.exit(0 if isinstance(t,(int,float)) and not isinstance(t,bool) and math.isfinite(t) and 0<t<={float(n['health']['max_temp_c'])} "
-                f"and not p.get('maintenance') and p.get('mem_available_mb',0)>={floor+mem} else 75)")
+                "t=p.get('max_temp_c'); m=p.get('mem_available_mb',0); "
+                f"ok=isinstance(t,(int,float)) and not isinstance(t,bool) and math.isfinite(t) and 0<t<={float(n['health']['max_temp_c'])}; "
+                f"why=('temperature %sC > {float(n['health']['max_temp_c'])}C' % t if not ok else 'maintenance' if p.get('maintenance') "
+                f"else 'only %sMiB available' % m if m<{floor + mem} else ''); "
+                "why and print('fleet: worker gate held: '+why, file=sys.stderr); sys.exit(75 if why else 0)")
         inner = (f"python3 -c {shlex.quote(gate)} || exit 75; "
                  f"avail=$(awk '/^MemAvailable:/{{print int($2/1024)}}' /proc/meminfo); "
                  f"if [ $avail -lt {floor + mem} ]; then echo \"fleet: only ${{avail}}MiB available\" >&2; exit 75; fi; "
@@ -658,7 +660,8 @@ def cmd_enroll(args):
     kargs = []
     for flag, key in (("system-reserved", "system_reserved"), ("kube-reserved", "kube_reserved"),
                       ("eviction-hard", "eviction_hard"), ("eviction-soft", "eviction_soft"),
-                      ("eviction-soft-grace-period", "eviction_soft_grace")):
+                      ("eviction-soft-grace-period", "eviction_soft_grace"),
+                      ("eviction-minimum-reclaim", "eviction_minimum_reclaim")):
         if kl.get(key):
             kargs += ["--kubelet-arg", f"{flag}={kl[key]}"]
     lane = n["lane"]
@@ -682,9 +685,18 @@ def cmd_enroll(args):
 
 
 def cmd_toolchain(args):
-    """Install (or --check) the registry's `toolchains` for a Linux worker, over root ssh."""
+    """Install/check registry toolchains using Linux root SSH or admitted phone jobs."""
     _, nodes = registry()
     n = nodes.get(args.node) or die(f"unknown node {args.node}")
+    if n["kind"] == "phone":
+        packages = n.get("phone_packages", [])
+        if not packages:
+            die(f"{args.node}: no phone_packages in {REGISTRY}")
+        if args.check:
+            return subprocess.run(ssh_cmd(n) + ["pacman -Q " + " ".join(map(shlex.quote, packages))]).returncode
+        return subprocess.run([sys.executable, str(REPO / "scripts/fleet"), "run",
+            "--node", args.node, "--no-src", "--mem", "1G", "--timeout", "1800", "--",
+            "pacman", "-S", "--needed", "--noconfirm", *packages]).returncode
     if n["kind"] != "linux" or not n["lane_enabled"]:
         die(f"{args.node}: toolchains are for Linux workers")
     if not n["toolchains"]:

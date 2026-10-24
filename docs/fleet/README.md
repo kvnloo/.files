@@ -23,7 +23,7 @@ re-running a command with the same registry changes nothing.
 | groot (i9-10900KF, 24 GB, RTX 3080 Ti) | k3s server, GPU, controller | online; health report-only; server hardening waits on the owner's sudo |
 | mbp (i7-4870HQ 4C/8T, 16 GB, CachyOS) | permanent worker: k3s agent + host lane; **the default build node** | hardened and verified; JDK 17/21, Android SDK (34/35/37.2, build-tools 34/35/37), Bun, Node, Python; NOOP debug APK built there 2026-10-20 |
 | omarchy-phone (S25 Ultra, Arch ARM in Omalauncher) | polite worker, host lane only | polite lane installed and verified; k3s cannot run there |
-| galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only, lowest priority | installed and verified 2026-10-20; ssh on 8022; works when charging or >= 50 % |
+| galaxy-s22plus, alias `s22` (spare S22+, Arch ARM in Omalauncher, guest node `localhost-0`) | polite worker, host lane only | ssh on 8022; explicit light/worker profiles below |
 | cursor, cos | unknown Linux devices | offline; identify, then [add a Linux worker](#adding-a-linux-worker) |
 | RTX 2080 Super PC, Oracle Always Free ARM VM | future workers | not on the tailnet |
 
@@ -40,7 +40,7 @@ Builds and test suites do **not** run on groot. Use `scripts/fleet-build`
 ```sh
 cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/full/debug --out /tmp/apk -- ./gradlew assembleFullDebug
 fleet-build -- bun test                     # class build -> mbp
-fleet-build --light -- python3 -m pytest    # mbp or a phone, 512 MiB
+fleet-build --phone -- python3 -m pytest    # an arm64 phone job
 ```
 
 - Gradle/Android -> capability `android-build` (mbp; 6 GiB, 4 CPUs, JDK 17, or
@@ -121,8 +121,7 @@ judges it on groot:
 - `MemAvailable` and free disk (root, k3s data dir, lane home) above the
   registry thresholds; temperature under 95 C
 - `k3s-agent`/`k3s`, `tailscaled`, `sshd` active
-- laptops: not on battery under 40 %; phones: battery >= 50 % or charging,
-  battery <= 40 C, Android thermal status <= 1
+- laptops: not on battery under 40%. Phone job admission does not use resource telemetry.
 - not in maintenance (`/var/lib/fleet/maintenance`)
 
 After 2 bad checks in a row a `cordon` node is cordoned and annotated
@@ -228,28 +227,141 @@ Arch Linux ARM inside Omalauncher (`dev.omalauncher`), started through PRoot
 without Android root. k3s cannot run there: no cgroup v2 mount, netlink is
 denied (iptables/nft fail), no systemd. So the phone gets `scripts/fleet-polite-run`:
 
-- the job runs under `nice 19`, `ionice idle`, `taskset` cores 0-3 (half the
-  phone), in `~/fleet-jobs/<id>`, with `HOME`/`TMPDIR` pointed there
-- gate before start and every 30 s: battery >= 50 % or charging, battery <= 40 C,
-  Android thermal status <= 1, `MemAvailable >= 1200 MiB`, no
-  `~/.config/fleet/pause` file. Battery and thermal come from read-only
-  `adb shell dumpsys battery|thermalservice` over the guest's wireless-debugging
-  link to its own phone (the guest cannot read `/sys/class/power_supply`); if adb
-  is unreadable the gate fails closed
-- PRoot traces every process, so `SIGSTOP` does not pause a job (tested). Two
-  failed gates in a row **drain** the job (TERM, then KILL; exit 75); it is
-  killed when its process group passes `--mem` RSS (default 1 GiB, max 2 GiB)
-  or the phone drops under 800 MiB available
-- Tern, its daemon and remote serve are not touched and keep running. Android
-  apps and settings are not touched. Jobs in the guest run as the Omalauncher
-  app's uid and can read the guest's `/root`, so only the owner's own work goes
-  there; it is tainted `phone` and needs `--tolerate phone` or `--node`.
-- Owner switch: `touch ~/.config/fleet/pause` in the guest stops phone work
-  (running jobs drain within a minute); `rm` it to resume.
+Phones: no agent resource caps; Android manages battery/thermal/RAM. Enforced by Bend law O10 / z0-guard phone-caps.
 
-If Android restarts wireless debugging, its port changes and the gate closes
-(battery unreadable). Re-pair: in the guest `adb connect <android-tailnet-ip>:<new port>`,
-then `scripts/fleet enroll omarchy-phone` to re-pin the device.
+The wrapper preserves explicit owner pause and call hooks, job timeout and
+process-group cleanup. It does not change Android settings or Tern services.
+Jobs run as Omalauncher's Android uid. Only trusted owner work belongs here.
+`touch ~/.config/fleet/pause` stops guest work. Remove that owner switch to resume.
+
+### Phone audit and routing (2026-10-23)
+
+Use `fleet-build --node galaxy-s22plus --phone --wait 0 -- COMMAND`
+for S22, or replace the node with `omarchy-phone` for S25.
+Prefer phones for arm64-friendly Python/Node suites when the MBP queue is busy.
+Source inventory stays in `config/fleet/nodes.yaml`. There is no resource mode switch.
+
+Both guests expose Python 3.14.8 and Git 2.56.0. S25 has Node 24.21.0 and
+Bun 1.3.14 under mise. The wrapper preserves mise discovery when payload HOME changes.
+S22 package provisioning installed Node 26.12.0, Bun 1.4.3, Go 1.27.3,
+Rust/Cargo 1.99.1 and GCC 16.1.1. A real fleet job executed every version command.
+The transaction downloaded 184.73 MiB and installed 869.06 MiB in 519.775 seconds.
+Neither phone initially exposed Zig.
+
+S25's stale package database initially produced 404 errors. The owner approved
+a full guest `pacman -Syu`, not a partial refresh. Before that operation,
+explicit and complete package lists recorded 61 and 338 entries at
+`~/.local/state/fleet/package-snapshots/20261023-162245-omarchy-phone/` on groot.
+Copies remain in the retained guest upgrade job
+`~/fleet-jobs/20261023-162338-a645/src/pre-upgrade-{explicit,all}.txt`.
+The admission check confirmed 64% battery and charging.
+
+The full upgrade updated 49 packages, then installed Go 1.27.3,
+Rust/Cargo 1.99.1 and GCC 16.1.1. The entire job completed in 197.41 seconds.
+PRoot reported skipped systemd hooks and symlink-permission warnings.
+The transaction exited 0, the existing Tern/SSH services remained reachable,
+and a subsequent real compiler job passed. No Tern binary or session restart
+command was issued. The existing fleet maintenance flag blocked other jobs
+through the package transaction and was removed only on success.
+
+| Job | Phone routing |
+| --- | --- |
+| Owner-owned Python suites, scans, Git work | Prefer phones when MBP is queued. |
+| Node/Bun tests | Both phones have native runtimes. Keep dependencies arm64, not copied x86 node_modules. |
+| Go/Rust tests | Both phones run native compilers. Keep dependencies arm64-native. |
+| Bend-C or Zig cross-builds | Not qualified. No measured Bend/Zig result. Never execute x86 outputs. |
+| Docker, k3s, cgroup-dependent tests | Unsupported inside PRoot. Use a real Linux worker. |
+| Large memory jobs | Android manages phone memory. Explicit caller resource values are job metadata, not admission caps. |
+| GPU inference | Not qualified. S22 and default S25 Vulkan enumerate CPU llvmpipe. Forced S25 Freedreno finds no GPU. |
+
+Bun package installation must avoid PRoot hardlink emulation. Use
+`bun install --backend copyfile` and invoke an already-installed native compiler
+directly, such as `node_modules/.bin/tsgo`, rather than another `bunx` install.
+FactoryScale reported a real S25 OpenCode qualification at `7e399379`
+(`20261023-163855-1ddd`): 562 packages installed in 15.13 seconds with copyfile,
+then 133 tests passed with 747 assertions in 4.59 seconds under job-local Bun 1.4.2.
+The later bunx compiler install expanded `.l2s` pointers and reached sampled
+RSS 2012 MiB against a 1 GiB request. The memory guard correctly returned 137.
+That typecheck was NOT_RUN, not a source failure.
+The leftover job cache refused PRoot cleanup. Accessible entries measured
+345 KiB, not a complete size because some pointers returned EPERM. The phone
+still had 15 GiB free and all slot locks were free. Do not retry that expansion
+or recursively delete unrelated guest data to remove the isolated cache.
+For uv, set `UV_LINK_MODE=copy`. FactoryScale's initial S25
+`20261023-165620-f753` downloaded CPython 3.13.13 but failed venv seeding before
+tests because of hardlink emulation. Its accessible leftover size was 2824 KiB
+with nine inaccessible paths, while the filesystem retained 14 GiB free.
+The corrected copy-mode job `20261023-165805-1b96` passed 19 study tests,
+three manifest tests and the real producer/consumer check in 30.88 seconds.
+These are peer-reported qualification results, not tests rerun by PhoneFleet.
+
+S22 uses key-only SSH at `100.97.11.22:8022` (`ssh s22`), even when its Android
+Tailscale app is offline. Self-ADB uses `_adb-tls-connect._tcp` mDNS.
+Never touch its launcher UI for a build. Worker affinity excludes core 7.
+
+S25 guest SSH/Tailscale and its audio supervisor were already reachable.
+Pinned ADB port 36065 was stale. Read-only
+`avahi-browse -rt _adb-tls-connect._tcp` found port 38547.
+Guest `adb connect 100.117.226.39:38547` and `getprop ro.product.model` confirmed
+SM-S938U before pinning the new serial. Starting only the existing worker runsv
+restored fleet-worker without restarting Tern or SSH. Its tracer was the
+persistent PulseAudio PRoot.
+
+S25 has Termux, but ADB run-as refuses its non-debuggable package and its private
+runtime directory denies access. No native Termux llama.cpp or GPU compute is
+reachable from the current fleet connection.
+
+Initial admissions refused S25 at 34% discharging and S22 above 40 C with
+thermal status 3. The S22 queue exhausted 15 minutes without a payload.
+These are admission holds, not CPU runtime measurements. The owner then chose
+the explicit worker overrides above. Charging is recommended, not required.
+
+Qualification uses the same two-file snapshot of this repository's
+`tests/test_fleet_phone_lane.py` and `scripts/fleet-polite-run`. The eight tests
+exercise real wrapper execution, slot exclusion, aggregate memory admission,
+light-mode gates and the explicit worker override. Android telemetry inside
+the unit tests is an isolated fixture, not evidence of hardware performance.
+
+| Node | Eight-test payload | Observed command wall | Job ID |
+| --- | ---: | ---: | --- |
+| S25 `omarchy-phone` | 25.704 s | 33.124 s | `20261023-161317-97f0` |
+| S22 `galaxy-s22plus` | 45.526 s | 55.319 s | `20261023-162125-2eb0` |
+| MBP `mbp` (1 CPU, 512 MiB) | 25.384 s | 87.87 s including quiet-lock wait | `20261023-165950-0d0c` |
+
+All three jobs exited 0 and printed matching source hashes:
+runner `d44ad6da0a61a4b78e3fab95ffc109a99d74df83b2f9af8c81f2859594b4aaa9`,
+tests `28140676e82c236c7e3e06a55b9fb183c05b36324c56b905405a87ecf2249427`.
+Logs remain under `~/.local/state/fleet/runs/JOB-NODE.log` on groot.
+Phone wall figures measure the direct fleet invocation. MBP's observed command
+wall includes the external quiet-lock wait, so it is not a normalized fleet-only
+comparison. Its persisted job log confirms all eight tests and exit 0.
+The MBP attempt used `--wait 0` inside the shared lock. Any admission retry
+must release the locks and sleep outside them.
+This suite includes wait-based concurrency tests. Do not treat these numbers
+as a CPU or GPU ranking. Source-transfer size also matters: shipping the whole
+dotfiles tree previously cost S25 118.041 seconds end-to-end for a 26.180-second
+payload. The measured comparison therefore sends only the required real files.
+
+Native qualification ran Go's real `crypto/sha256` standard-library tests,
+then compiled and ran three Rust checks for arm64 target, threads and filesystem
+I/O. Both used a 1 GiB request, `GOMAXPROCS=3` and `go test -p 1 -count=1`.
+The Rust checks are an explicit compiler/runtime smoke fixture, not a product
+test suite or a Bend benchmark.
+
+| Node | Go/Rust qualification fleet wall | Job ID |
+| --- | ---: | --- |
+| S25 after full guest upgrade | 33.203 s | `20261023-162830-a54a` |
+| S22 after toolchain installation | 243.123 s | `20261023-162459-bbe0` |
+
+Each job passed Go's suite and all three compiled Rust checks. These first-build
+figures include compiler startup/cache population and PRoot overhead.
+S25 additionally printed its Node/Bun versions. Do not infer a general CPU
+ranking from these jobs. GPU enumeration after S25's Mesa 26.2.5 upgrade still
+reported only CPU llvmpipe, and forced Freedreno still found no physical GPU.
+
+No APK, Android setting or launcher UI was changed by this fleet work.
+After a wireless-debugging port change, discover mDNS, connect guest ADB,
+confirm the model and update the pinned serial.
 
 ### Galaxy S22+ (`galaxy-s22plus`, alias `s22`)
 
@@ -265,22 +377,20 @@ The spare S22+ (SM-S906U1) runs the same polite lane as the S25. Differences:
   sshd, the daemon and remote serve on the S25) does not apply. The clone script
   copies only the S25's start helpers and the peer-credential shim, and installs
   the supervisor below.
-- Jobs get cpus 0-3, the four small cores.
+- Worker mode uses cores 0-6 and four slots, reserving core 7 for its launcher.
 
 Rebuild or repair it from groot (idempotent):
 
 ```sh
 scripts/fleet-phone-clone.sh root@100.104.42.85 root@100.97.11.22 --port 8022 --model SM-S906U1
 scripts/fleet nodes && scripts/fleet health --node s22
-scripts/fleet run s22 --tolerate phone --no-src -- uname -a   # exit 75 + reason while the guard is closed
+scripts/fleet run s22 --no-src -- uname -a
 ```
 
 Verified 2026-10-20:
 - `fleet nodes` lists `galaxy-s22plus`.
-- `fleet run s22 ... uname -a` was refused with `battery 35% and not charging` (exit 75).
 - With the pause file, the run was refused with `paused by ~/.config/fleet/pause`.
-- In a drill, a running polite-run job drained 64 s after `touch ~/.config/fleet/pause`
-  (the drill used a temporary copy with the battery floor lowered to 30 %).
+- In a historical owner-pause drill, a running polite-run job stopped after `touch ~/.config/fleet/pause`.
 
 ### Service supervision on phones without systemd
 
@@ -464,3 +574,17 @@ expires every 12 h. The ACL change that fixes this properly is in
   `systemctl daemon-reload`, restart the matching service.
 - Health timer: `systemctl --user disable --now fleet-health.timer`.
 - Phone lane: `rm -r ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs` in the guest.
+
+## O10 enforcement and retired services
+
+Run `scripts/setup-phone-caps-hooks.sh` once per clone. Tracked pre-commit and
+pre-push hooks invoke `z0-guard phone-caps` against the exact staged or pushed
+Git tree. A missing guard blocks publication. ServiceWatch independently checks
+the installed fleet source as a deterministic invariant.
+
+The 2026-10-24 retirement archives the unused mesh-keel template at
+`config/systemd/archive/20261024/hermes-mesh-keel.service`. It is outside active
+unit lookup paths. Live unit archives, cron before/after receipts and exact
+rollback commands are in
+`operations/host-hygiene/RETIREMENT-20261024.md` under the operations data tree.
+Do not reactivate archived experiment services as part of fleet enrollment.

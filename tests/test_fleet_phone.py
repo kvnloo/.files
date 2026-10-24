@@ -99,17 +99,17 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.phase({**healthy(), "paused": True}), "paused")
         self.assertEqual(self.phase({**healthy(), "host_lane_supported": False}), "unsupported")
 
-    def test_unknown_health_fails_closed(self):
-        for field in ("battery_temp_c", "android_thermal_status", "batteries"):
-            p = healthy(); del p["power"][field]
-            self.assertEqual(self.phase(p), "paused")
+    def test_missing_resource_telemetry_does_not_gate(self):
+        for changes in ({"power": {}}, {"power": None}, {"mem_available_mb": None}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.phase({**healthy(), **changes}), "ready")
 
-    def test_battery_thermal_memory_gates(self):
-        cases = [({"mem_available_mb": 1600}), ({"power": {**healthy()["power"], "battery_temp_c": 41}}),
-                 ({"power": {**healthy()["power"], "android_thermal_status": 2}}),
-                 ({"power": {**healthy()["power"], "batteries": [{"pct": 49, "status": "Discharging"}]}})]
-        for changes in cases:
-            self.assertEqual(self.phase({**healthy(), **changes}), "paused")
+    def test_battery_thermal_memory_are_observations_not_caps(self):
+        p = healthy()
+        p.update(mem_available_mb=0, max_temp_c=150)
+        p["power"].update(battery_temp_c=80, android_thermal_status=6,
+                          batteries=[{"pct": 0, "status": "Discharging"}])
+        self.assertEqual(self.phase(p), "ready")
 
     def test_charging_low_battery_allowed(self):
         p = healthy(); p["power"].update(on_ac=True, batteries=[{"pct": 20}])
@@ -118,8 +118,11 @@ class HealthTests(unittest.TestCase):
     def test_clock_skew_is_stale(self):
         self.assertEqual(self.phase({**healthy(), "ts": 1001}), "stale")
 
-    def test_missing_memory_is_closed_not_an_exception(self):
-        self.assertEqual(self.phase({**healthy(), "mem_available_mb": None}), "paused")
+    def test_service_degradation_still_holds(self):
+        for service in ("sshd", "fleet-worker"):
+            p = healthy()
+            p["services"][service] = "down"
+            self.assertEqual(self.phase(p), "paused")
 
 
 class PoliteGateIntegration(TempHome):
@@ -139,13 +142,13 @@ class PoliteGateIntegration(TempHome):
         adb.chmod(0o700)
 
     def gate(self, **env):
-        return subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--floor-mb", "0", "--gate-only"],
+        return subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--gate-only"],
             capture_output=True, text=True, env={**os.environ, "PATH": f"{self.bin}:/usr/bin:/bin", **env})
 
-    def test_existing_wrapper_battery_temperature_and_thermal_fail_closed(self):
+    def test_wrapper_resource_telemetry_does_not_gate(self):
         self.assertEqual(self.gate().returncode, 0)
-        for changes in ({"TEST_BATTERY": "49"}, {"TEST_TEMP": "410"}, {"TEST_THERMAL": "2"}):
-            self.assertEqual(self.gate(**changes).returncode, 1)
+        for changes in ({"TEST_BATTERY": "0"}, {"TEST_TEMP": "800"}, {"TEST_THERMAL": "6"}):
+            self.assertEqual(self.gate(**changes).returncode, 0)
 
     def test_existing_wrapper_owner_pause_is_respected(self):
         pause = self.home / ".config/fleet/pause"; pause.parent.mkdir(parents=True); pause.touch()
@@ -153,11 +156,12 @@ class PoliteGateIntegration(TempHome):
         self.assertEqual(result.returncode, 1)
         self.assertIn("paused", result.stderr)
 
-    def test_existing_wrapper_memory_gate_and_desktop_rejection(self):
-        result = subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--floor-mb", "999999999", "--gate-only"],
-            capture_output=True, text=True, env={**os.environ, "PATH": f"{self.bin}:/usr/bin:/bin"})
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("memory", result.stderr)
+    def test_wrapper_rejects_retired_resource_options(self):
+        for option in ("--floor-mb", "--mem-mb", "--cpus"):
+            result = subprocess.run([str(SCRIPTS / "fleet-polite-run"), option, "1", "--gate-only"],
+                capture_output=True, text=True, env={**os.environ, "PATH": f"{self.bin}:/usr/bin:/bin"})
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unknown option", result.stderr)
         if not common.platform_supported():
             unsupported = subprocess.run([str(SCRIPTS / "fleet-polite-run"), "--gate-only"], capture_output=True, text=True)
             self.assertEqual(unsupported.returncode, 78)
@@ -167,6 +171,19 @@ class StoreTests(TempHome):
     def setUp(self):
         super().setUp()
         self.store = worker.Store(self.state)
+
+
+    def test_checked_spec_has_no_resource_defaults(self):
+        checked = worker.checked_spec(self.spec())
+        self.assertNotIn("mem_mb", checked)
+        self.assertNotIn("floor_mb", checked)
+
+    def test_checked_spec_retains_unrestricted_explicit_resource_metadata(self):
+        for value in (-100, 0, 1, 10**20):
+            with self.subTest(value=value):
+                checked = worker.checked_spec(self.spec(mem_mb=value, floor_mb=value))
+                self.assertEqual(checked["mem_mb"], value)
+                self.assertEqual(checked["floor_mb"], value)
 
     def test_submit_idempotency_and_conflict(self):
         job = self.store.submit("j", self.spec())
@@ -359,6 +376,18 @@ class ExecutionIntegration(TempHome):
         self.polite.write_text("#!/usr/bin/env python3\nimport os,sys\na=sys.argv[1:]\nif '--gate-only' in a: sys.exit(0)\ni=a.index('--'); os.execvp(a[i+1],a[i+1:])\n")
         self.polite.chmod(0o700)
 
+    def test_real_wrapper_executes_with_unrestricted_resource_metadata(self):
+        tools = self.home / "bin"
+        tools.mkdir()
+        uname = tools / "uname"
+        uname.write_text("#!/bin/sh\nprintf 'fixture-android\\n'\n")
+        uname.chmod(0o700)
+        job = self.store.submit("j", self.spec(mem_mb=10**20, floor_mb=-100))
+        with patch.dict(os.environ, {"PATH": f"{tools}:{os.environ['PATH']}"}):
+            asyncio.run(worker.Executor(self.store, SCRIPTS / "fleet-polite-run").execute(job))
+        self.assertEqual(self.store.get("j")["state"], "succeeded")
+        self.assertIn("PAYLOAD_OK", (self.state / "j.log").read_text())
+
     def test_payload_runs_once_logs_status_duplicate_and_no_credential_home(self):
         count = self.cwd / "count"
         code = "from pathlib import Path; import os; p=Path('count'); p.write_text('1'); print('PAYLOAD_OK'); print(os.environ['HOME'])"
@@ -522,10 +551,10 @@ class RolloutTests(TempHome):
         self.assertNotIn("fleet-phone-supervise up", text)
         self.assertNotIn("fleet-phone-supervise down", text)
 
-    def test_charging_gate_and_executor_readiness(self):
+    def test_battery_does_not_gate_but_executor_readiness_does(self):
         p = healthy()
-        p["power"]["batteries"][0]["pct"] = 10
-        self.assertEqual(common.host_health(p, now=1000)[0], "paused")
+        p["power"]["batteries"][0]["pct"] = 0
+        self.assertEqual(common.host_health(p, now=1000)[0], "ready")
         p["power"]["on_ac"] = True
         self.assertEqual(common.host_health(p, now=1000)[0], "ready")
         p["services"]["fleet-worker"] = "down"

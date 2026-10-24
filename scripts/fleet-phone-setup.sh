@@ -6,7 +6,7 @@
 #
 # Writes guest fleet APIs and an executor service in an existing runsv tree.
 # It never restarts Tern, Tailscale, sshd or the legacy supervisor, or changes
-# Android apps/settings. --defer-adb installs with admission closed if telemetry is absent.
+# Android apps/settings. Self-ADB is optional and never gates phone jobs.
 # Idempotent: re-running rewrites the same files.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,9 +19,8 @@ SSH=(ssh -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=10 -p "
 
 echo "==> checking $TARGET is an Android Linux guest"
 "${SSH[@]}" 'case "$(uname -r)" in *android*) ;; *) echo "not an Android kernel" >&2; exit 1;; esac
-  command -v adb >/dev/null || { echo "adb missing in the guest: pacman -S android-tools" >&2; exit 1; }
   command -v python3 >/dev/null || { echo "python3 missing: pacman -S python" >&2; exit 1; }
-  for t in nice ionice taskset setsid timeout tar flock setpriv; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
+  for t in setsid timeout tar flock setpriv; do command -v $t >/dev/null || { echo "$t missing" >&2; exit 1; }; done'
 
 # Pick the adb device that is this phone (the guest reaches its own Android over
 # wireless debugging). With --model, refuse anything else.
@@ -30,9 +29,8 @@ serial=$("${SSH[@]}" "set -e
     m=\$(timeout 10 adb -s \$s shell getprop ro.product.model | tr -d '\r')
     if [ -z '$MODEL' ] || [ \"\$m\" = '$MODEL' ]; then echo \"\$s \$m\"; exit 0; fi
   done; exit 1") || {
-  [ "$DEFER_ADB" = 1 ] || { echo "no matching adb device: restore guest self-ADB (docs/fleet/PHONE_HOST_LANE.md)" >&2; exit 1; }
   serial=""
-  echo "telemetry unavailable: installing APIs only; battery/thermal admission stays closed" >&2
+  echo "self-ADB unavailable; fleet jobs remain available" >&2
 }
 echo "==> adb device: $serial"
 

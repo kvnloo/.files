@@ -38,6 +38,11 @@ fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
   is hot, or cordoned): `fleet-build` waits and retries every 60 s for up to
   `--wait` seconds (default 1800), then exits 75. That wait is the queue. Do not
   fall back to a groot build to save time.
+- Never hold Groot's `/tmp/mbp-turnstile.lock` or `/tmp/mbp-quiet.lock` during
+  admission waits. Inside either lock, use `fleet-build --wait 0`.
+  On admission exit 75, release the locks, sleep outside them, then retry the
+  whole lock wrapper. A 55-minute admission wait inside an exclusive lock
+  blocked 19 jobs on 2026-10-23.
 - Explicit `--node mbp` does not bypass pause, thermal or health admission.
   Unknown/unhealthy thermal telemetry holds before source transfer. A missing CPU
   toolchain is not permission to run on groot; install it through fleet IaC or hold.
@@ -60,18 +65,23 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
 - Check a node's toolchain before relying on it:
   `scripts/fleet run --node mbp --no-src -- sh -c 'java -version; bun --version; echo $ANDROID_HOME'`.
 
-The phones (`omarchy-phone`, `galaxy-s22plus`) cannot run Gradle (arm64, about
-2-3 GiB free, no SDK) and refuse jobs under 50 % battery off-charger or when
-hot. `--light` (512 MiB per job) sends work there only when mbp is busier;
-`--phone` forces a phone.
+Prefer phone workers for arm64-friendly tests when the MBP queue is busy:
+`fleet-build --node galaxy-s22plus --phone --wait 0 -- python3 ...`,
+or replace the node with `omarchy-phone`.
 
-S25 memory (measured 2026-10-20 23:36): the phone has 11.1 GiB RAM and 12 GiB
-zram swap (6.2 GiB in use). `MemAvailable` is phone-wide, about 2.1 GiB. The
-Omalauncher guest itself holds about 0.8 GiB RSS (Tern UI ~420 MiB, omp ~210 MiB,
-pi, Hermes TUI gateways, tailscaled); the rest is Android: the owner's apps
-(Oura, NOOP, ChatGPT, Telegram, X, WhatsApp, Gmail, ...) and 4.1 GiB of cached
-app processes. Those cached apps are what the kernel would reclaim, so the
-1200 MiB floor stays: it keeps a job from pushing Android's low-memory killer
-into the owner's apps. What refused jobs was the 1 GiB default job size
-(1200 + 1024 = 2224 MiB). A 512 MiB job fits (1712 MiB) and ran there
-(`fleet-build --phone`, PHONE_OK aarch64).
+Phones: no agent resource caps; Android manages battery/thermal/RAM. Enforced by Bend law O10 / z0-guard phone-caps.
+
+Both phones retain owner pause/call hooks, job timeout and process-group cleanup.
+The wrapper preserves installed mise runtime discovery when payload HOME changes.
+Guest package policy is `phone_packages` in the registry.
+`scripts/fleet toolchain NODE` provisions those packages through normal admitted
+phone jobs. `--check` only reads installed package versions.
+See the [phone audit](README.md#phone-audit-and-routing-2026-10-23) for measured
+results and GPU limits. Neither phone supports Docker/k3s or x86 executables.
+For phone dependency setup, use `bun install --backend copyfile` and
+`UV_LINK_MODE=copy` with uv. PRoot hardlink emulation can create inaccessible
+`.l2s` caches and memory expansion. Invoke an installed compiler directly rather
+than a second `bunx` package install. See the audit for real failure receipts.
+
+Android manages phone memory and cached apps. Do not infer a guest job budget
+from phone-wide `MemAvailable`, or reserve RAM for Android on the agent's behalf.

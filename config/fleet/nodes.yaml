@@ -52,16 +52,26 @@ nodes:
       # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the
       # i7-4870HQ at 96-98 C with both fans at max (crit 100 C), and health paused it.
       cpu_quota: 400%
+    health:
+      # Owner decision 2026-10-22: worn thermal paste keeps this i7-4870HQ near
+      # 92-98 C under load. Do not pause on temperature; the CPU's own PROCHOT
+      # throttling (TjMax 105 C) protects it. 110 sits above anything a probe can
+      # report while still requiring a finite reading (missing data still holds).
+      max_temp_c: 110
     kubelet:
       system_reserved: cpu=1,memory=2Gi
       kube_reserved: cpu=500m,memory=1Gi
       eviction_hard: memory.available<1Gi,nodefs.available<10%,imagefs.available<10%
       eviction_soft: memory.available<1536Mi
       eviction_soft_grace: memory.available=1m
+      # Default reclaim (= the threshold, 10%) kept DiskPressure set until 20% free on a
+      # 317 GiB btrfs disk; 2% clears it at 12%. Live since 2026-10-22 via the
+      # owner-run drop-in /etc/rancher/k3s/config.yaml.d/60-eviction-reclaim.yaml.
+      eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
   omarchy-phone:
-    # Owner's S25 Ultra, Arch Linux ARM in Omalauncher's PRoot (no systemd, no
-    # cgroups, no netlink/iptables): k3s cannot run, so host lane only, politely.
-    # Tern and its remote serve keep running; jobs get half the cores at nice 19.
+    # Owner's S25 Ultra, Omalauncher PRoot host lane (not Kubernetes).
+    # Phones: no agent resource caps; Android manages battery/thermal/RAM.
+    # Enforced by Bend law O10 / z0-guard phone-caps.
     role: worker
     kind: phone
     tailnet_ip: 100.104.42.85
@@ -69,29 +79,23 @@ nodes:
     ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, java, proot-host-lane]   # trusted light host jobs, never Kubernetes
-    taints: [phone]         # `fleet run` picks it only with --tolerate phone or --node
+    capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
     model: SM-S938U
+    phone_runtime:
+      node: 24.21.0
+      bun: 1.3.14
+    phone_packages: [go, rust, gcc]
     android:                # groot's adb to the phone itself (fleet health; read-only)
       adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
-      min_mem_available_mb: 1200
       min_disk_free_gb: 5
-      min_battery_pct_on_battery: 50
-      on_unhealthy: pause   # `fleet run` skips it; polite-run drains running jobs itself
-    lane:
-      mem_floor_mb: 1200
-      default_mem: 512M
-      mem_max: 512M        # sampled polite budget, not a cgroup/hard RSS guarantee
-      cpus: 0-3
+      on_unhealthy: pause
+    lane: {}
   galaxy-s22plus:
-    # Spare Galaxy S22+ (SM-S906U1, Snapdragon 8 Gen 1: cores 0-3 are the small
-    # ones), Arch Linux ARM in Omalauncher's PRoot like omarchy-phone. Its guest is
-    # its own tailnet node `localhost-0`; the Android Tailscale app node
-    # `galaxy-s22` (100.72.191.23) is the same phone. No Tailscale SSH in this
-    # guest: key-only OpenSSH on 8022 (`ssh s22` on groot). Same polite lane,
-    # lowest priority: nice 19, ionice idle, half the cores, phone taint.
+    # Spare Galaxy S22+, Omalauncher PRoot host lane.
+    # Guest localhost-0 is separate from Android galaxy-s22.
     role: worker
     kind: phone
     aliases: [s22, localhost-0]
@@ -100,22 +104,17 @@ nodes:
     ssh_port: 8022
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, proot-host-lane]
-    taints: [phone]
+    capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
     model: SM-S906U1
+    phone_packages: [nodejs, bun, go, rust, gcc]
     android:
       adb_host: 100.72.191.23    # galaxy-s22 Android app node; groot has no adb pairing yet
       revive: false
     health:
-      min_mem_available_mb: 1200
       min_disk_free_gb: 5
-      min_battery_pct_on_battery: 50
       on_unhealthy: pause
-    lane:
-      mem_floor_mb: 1200
-      default_mem: 512M
-      mem_max: 512M        # conservative default lane; PRoot cannot enforce hard caps
-      cpus: 0-3
+    lane: {}
   groot:
     role: server
     tailnet_ip: 100.113.138.100
