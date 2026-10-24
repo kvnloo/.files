@@ -1,9 +1,17 @@
 # Kueue queues. A Job joins a queue by carrying the label
-# kueue.x-k8s.io/queue-name=<namespace>; Jobs without it are not managed, so
-# nothing that exists today changes behaviour.
+# kueue.x-k8s.io/queue-name=<LocalQueue name> in its own namespace.
+# The fleet-mbp/lanes and lanes/lanes LocalQueues share one ClusterQueue budget.
 #
-# Quotas sit inside the namespace ResourceQuotas and the nodes' allocatable
-# (groot: 18 CPU, ~18Gi, 1 GPU; mbp: 7 CPU, ~14Gi after system-reserved).
+# Parent-approved static memory budget after host drain and authorized tmpfs cleanup:
+# 16630620160 total - 2147483648 reserve - 2837270528 frozen idle OS baseline
+# - 1204051968 remaining Shmem = 10441814016 bytes, with NO GiB rounding.
+# Idle OS baseline: anonymous memory + unreclaimable kernel + stacks/page tables
+# + unevictable/per-CPU memory. Do not reclassify active job memory as idle OS.
+# Allocatable 12046536Ki = 12335652864 bytes caps this static budget.
+# This is NOT instantaneous MemAvailable admission. Recompute after measured changes.
+# CPU budget = min(4 physical cores, 6.5 allocatable CPUs) = 4.
+# Default fleet-build and --node mbp use Kueue; mbp-host must reserve here too.
+# Host escapes must hold reservations for their full lifetime to share this budget.
 # The GPU flavor pins GPU work to labelled nodes.
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
@@ -25,8 +33,8 @@ spec:
 # limit, not CPU. Raise these when a node joins (one flavor per node).
 # Each node flavor also carries the node's job-class labels (config/fleet/nodes.yaml,
 # applied by `scripts/fleet labels`). Kueue only matches a Job's nodeSelector against
-# keys a flavor names, so a Job with nodeSelector z0.dev/class-render: "true" skips
-# node-mbp and lands on node-groot; Jobs without a class selector are unaffected.
+# keys a flavor names. node-mbp carries all three CPU job classes.
+# node-groot never offers heavyweight CPU-only quota.
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
 metadata:
@@ -62,9 +70,11 @@ spec:
     - coveredResources: [cpu, memory, pods]
       flavors:
         - name: node-mbp
+          # Migration hold: factory and lanes otherwise reserve MBP independently.
+          # Restore only after an explicit shared-capacity plan and fresh sample.
           resources:
-            - {name: cpu, nominalQuota: "5"}
-            - {name: memory, nominalQuota: 8Gi}
+            - {name: cpu, nominalQuota: "0"}
+            - {name: memory, nominalQuota: "0"}
             - {name: pods, nominalQuota: "16"}
 
 ---
@@ -74,7 +84,10 @@ metadata:
   name: lanes
 spec:
   namespaceSelector:
-    matchLabels: {kubernetes.io/metadata.name: lanes}
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values: [lanes, fleet-mbp]
   queueingStrategy: BestEffortFIFO
   resourceGroups:
     - coveredResources: [cpu, memory]
@@ -82,7 +95,7 @@ spec:
         - name: node-mbp
           resources:
             - {name: cpu, nominalQuota: "4"}
-            - {name: memory, nominalQuota: 4Gi}
+            - {name: memory, nominalQuota: "10441814016"}
 ---
 # z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
 # instead of failing to schedule.
@@ -115,6 +128,11 @@ spec: {clusterQueue: factory}
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata: {name: lanes, namespace: lanes}
+spec: {clusterQueue: lanes}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: lanes, namespace: fleet-mbp}
 spec: {clusterQueue: lanes}
 ---
 apiVersion: kueue.x-k8s.io/v1beta2

@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--repo', help='public owner/repository; otherwise infer origin')
     parser.add_argument('--sha', help='exact commit; otherwise clean local HEAD')
     parser.add_argument('--runner', default='avrea-ubuntu-latest-4-vcpu')
+    parser.add_argument('--index', choices=('official', 'avrea'), help='Python package index; default detects PyPI lockfiles on the runner')
     parser.add_argument('--matrix', type=Path, help='JSON file containing command strings for parallel fan-out')
     parser.add_argument('--parallel', type=int, default=1)
     parser.add_argument('--timeout', type=int, default=1200, help='per-command seconds, rounded up to minutes')
@@ -100,6 +101,7 @@ def main():
     output = args.out or Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet'))) / 'runs' / ('avrea-' + identifier)
     output.mkdir(parents=True, exist_ok=True)
     request = {'repository': args.repo, 'sha': args.sha, 'command': shell_command, 'runner': args.runner, 'fetch': '\n'.join(args.fetch), 'matrix': json.dumps(matrix), 'parallel': str(args.parallel), 'timeout_minutes': str(minutes), 'request_id': identifier}
+    request['package_index'] = args.index or ''
     (output / 'request.json').write_text(json.dumps(request, indent=2) + '\n')
     (output / 'budget.json').write_text(json.dumps(decision, indent=2) + '\n')
     repository = 'kvnloo/fleet-runner'

@@ -121,6 +121,10 @@ fi
 export PATH
 # Gradle/Bun caches live in agentjob's home on this node's disk and outlive each job dir.
 export GRADLE_USER_HOME=${GRADLE_USER_HOME:-$HOME/.gradle}
+# Never place package stores on the worker's memory-backed /tmp.
+export UV_CACHE_DIR=$HOME/.cache/uv
+export npm_config_cache=$HOME/.cache/npm
+export npm_config_store_dir=$HOME/.local/share/pnpm/store
 EOF
   if [ -f "$ENV_FILE" ] && cmp -s "$tmp" "$ENV_FILE"; then rm -f "$tmp"; return 0; fi
   install -d -m 0755 "$(dirname "$ENV_FILE")"
