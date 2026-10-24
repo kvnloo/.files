@@ -196,6 +196,10 @@ clone remains only when needed by LIVE linked worktrees.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.
+Generated containers include `runs`, `artifacts`, `cache`/`.cache`, `wiring`,
+`_check`, byte-matrix output, nested `tmp`, test-output directories and pytest
+temporary roots. The configured scan root itself (including `~/tmp`) remains a
+real checkout container, not a generated-output exclusion.
 
 The manifest and latest machine-readable counts are stored under
 `/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper/`.
