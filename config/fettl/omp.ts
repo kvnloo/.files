@@ -14,14 +14,17 @@ export default function fettl(pi: ExtensionAPI) {
   pi.on("tool_result", async (event, ctx) => {
     if (event.isError || !mutatingTools.has(event.toolName)) return;
     const input = event.input as Record<string, unknown> | undefined;
-    const target = input?.path;
-    if (typeof target !== "string" || target.includes("://")) return;
+    const targets = Array.isArray(input?.paths) ? input.paths : [input?.path];
+    const paths = targets.filter((target): target is string => typeof target === "string" && !target.includes("://"));
+    if (!paths.length) return;
     try {
-      const file = realpathSync(isAbsolute(target) ? target : resolvePath(ctx.cwd, target));
       const root = realpathSync(execFileSync("/usr/bin/git", ["-C", ctx.cwd, "rev-parse", "--show-toplevel"], {
         encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
       }).trim());
-      if (!file.startsWith(root + "/")) return;
+      if (!paths.some(target => {
+        try { return realpathSync(isAbsolute(target) ? target : resolvePath(ctx.cwd, target)).startsWith(root + "/"); }
+        catch { return false; }
+      })) return;
     } catch { return; }
     const { promise, resolve } = Promise.withResolvers<string>();
     const child = spawn("/usr/bin/python3", [join(directory, "hook.py"), "omp"], {
