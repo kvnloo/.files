@@ -190,9 +190,13 @@ removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
 LIVE checkouts are never removed. The classifier lives in
 `scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
 external ops-plane dispatcher.
-Immediate cleanup also covers non-LIVE standalone clones, including unique
-clones, preserving their complete refset in a bundle before removal. A base
-clone remains only when needed by LIVE linked worktrees.
+Every removal, including SAFE linked worktrees and standalone clones, requires a
+verified local bundle receipt first. Linked worktrees share an immutable full
+base bundle per common Git store; WIP delta bundles preserve each checkout's
+additional state without duplicating the complete history. The manifest's
+`restore_command` records both base and delta restoration when needed. A base
+clone remains when needed by LIVE linked worktrees. Archive errors prevent the
+affected removal and remain visible in the operational records.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.
@@ -224,5 +228,7 @@ Groot's `fleet.toml` declares the timer. For explicit activation, run
 `scripts/install-z0-guard.sh --activate`; this reloads systemd and enables/starts
 the timer. Plain installation does not enable it. The persistent daily timer
 catches missed runs, with up to 30 minutes of randomized delay.
-To suspend automatic cleanup, disable and stop only `worktree-reaper.timer`;
-preserve its archives and operational records.
+Automatic cleanup is requested active. To suspend it, disable and stop only
+`worktree-reaper.timer` and preserve archives and operational records. The
+reaper's `PAUSED` marker also blocks mutating startup and the next removal-item
+boundary; only the explicit owner resumes cleanup by clearing that marker.
