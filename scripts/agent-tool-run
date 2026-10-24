@@ -2,19 +2,89 @@
 """Fail-closed local agent entry; existing systemd scope + fleet placement policy."""
 import os
 from pathlib import Path
+import re
 import shlex
 import socket
 import subprocess
 import sys
 import uuid
 
+def local_commands(command):
+    """Conservative shell command view; remote payloads and quoted data stay data.
+
+    Keep admission self-contained: this entry runs on fresh fleet checkouts,
+    before any optional supervisor package has been installed.
+    """
+    command = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n[\s\S]*?\n\1\b", "", command)
+    lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>")
+    # Colons are ordinary shell word characters (notably ffmpeg -c:v).
+    lex.wordchars += ":"
+    lex.whitespace = " \t\r"
+    lex.commenters = "#"
+    parts, part = [], []
+    for token in lex:
+        if token == "\n" or token in (";", "&&", "||", "|", "&", "(", ")"):
+            if part:
+                parts.append(part)
+            part = []
+        else:
+            part.append(token)
+    if part:
+        parts.append(part)
+    commands = []
+    for tokens in parts:
+        while tokens and (re.match(r"^[A-Za-z_]\w*=", tokens[0]) or tokens[0] in ("then", "do", "!")):
+            tokens = tokens[1:]
+        while tokens and Path(tokens[0]).name in ("env", "command", "exec", "sudo", "nice", "timeout", "flock"):
+            tokens = tokens[1:]
+            while tokens and (tokens[0].startswith("-") or re.match(r"^\d+[smh]?$", tokens[0])
+                              or re.match(r"^[A-Za-z_]\w*=", tokens[0]) or tokens[0].endswith(".lock")):
+                tokens = tokens[1:]
+        if not tokens:
+            continue
+        exe = Path(tokens[0]).name
+        if exe in ("ssh", "fleet", "fleet-build") or tokens[0].endswith("scripts/fleet"):
+            continue
+        shell_flag = next((i for i, token in enumerate(tokens[1:], 1)
+                           if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", token)), None)
+        if exe in ("bash", "sh", "zsh") and shell_flag is not None:
+            if shell_flag + 1 < len(tokens):
+                commands.extend(local_commands(tokens[shell_flag + 1]))
+        else:
+            commands.append(tokens)
+    return commands
+
+
+def local_heavy(tokens):
+    exe, args = Path(tokens[0]).name, tokens[1:]
+    if not args:
+        return exe in ("ninja", "vitest")
+    if exe in ("gradlew", "gradle"):
+        return any(not a.startswith("-") and a not in ("help", "tasks", "properties") for a in args)
+    if exe == "cargo":
+        return args[0] in ("build", "test", "clippy", "run")
+    if exe in ("npm", "pnpm", "bun", "yarn"):
+        action = args[1] if args[0] == "run" and len(args) > 1 else args[0]
+        return action in ("build", "test")
+    if exe == "blender":
+        return "--background" in args
+    if exe == "docker":
+        return args[0] == "build" or args[:2] == ["buildx", "build"]
+    if exe in ("vitest", "ninja"):
+        return args[0] not in ("--help", "--version", "-h")
+    if exe == "playwright":
+        return args[0] == "test"
+    if exe in ("bend", "bend.bin"):
+        return "--verdict" in args
+    if exe == "hermes":
+        return args[:2] == ["bend", "verify"]
+    return (exe == "cmake" and "--build" in args or
+            exe == "make" and any(a.startswith("-j") for a in args))
+
+
 
 def blocked(argv):
-    # Reuse the maintained supervisor's command parser: quoted mentions, remote
-    # commands and fleet-build are not mistaken for local builds.
-    src = Path('/mnt/zer0models/worktrees/z0-supervisor-bounded-replay/src')
-    sys.path.insert(0, str(src))
-    from z0int.fsm.supervise import local_heavy, local_commands
+    # Quoted mentions, remote commands and fleet-build are not local builds.
     if len(argv) >= 3 and Path(argv[0]).name in {'bash', 'zsh', 'sh'} and '-c' in argv[:3]:
         command = argv[argv.index('-c')+1]
     else:
@@ -32,7 +102,7 @@ def blocked(argv):
             i = tokens.index('--cycles-device')
             if i+1 < len(tokens) and tokens[i+1] in {'CUDA','OPTIX','HIP','ONEAPI','METAL'}:
                 continue  # Explicit native Cycles device, still inside CPU/I/O limits.
-        if local_heavy(shlex.join(tokens)):
+        if local_heavy(tokens):
             return 'CPU build/test/render command belongs on fleet workers'
     return None
 
@@ -47,13 +117,12 @@ def main():
         os.execvp(argv[0], argv)
     try:
         reason = blocked(argv)
-    except (OSError, ImportError, SyntaxError) as exc:
+    except (OSError, ImportError, SyntaxError, ValueError) as exc:
         print('AGENT_WORK_HELD: admission parser unavailable: '+str(exc),file=sys.stderr)
         raise SystemExit(75)
     if reason:
         print(f'AGENT_WORK_HELD: {reason}; use fleet-build; exit 75, no groot fallback', file=sys.stderr)
         raise SystemExit(75)
-    from z0int.fsm.supervise import local_commands
     text = argv[argv.index('-c')+1] if '-c' in argv[:3] else shlex.join(argv)
     commands = local_commands(text)
     interactive = (len(commands) == 1 and Path(commands[0][0]).name in
