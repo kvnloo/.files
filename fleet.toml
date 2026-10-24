@@ -60,3 +60,21 @@ host = "desktop"
 distribution = "kind"
 owner_repo = "hermes-k8s-lab"
 purpose = "local-hermes-experimentation"
+
+# Workload source stays in hermes-k8s-lab; credentials and data stay outside Git.
+[hosts.desktop.quackles]
+owner_repo = "https://github.com/kvnloo/hermes-k8s-lab"
+source = "~/zer0/oss/hermes-k8s-lab/quackles"
+kubeconfig = "~/.kube/k3s.yaml"
+arbiter_kubeconfig = "~/.config/quackles-arbiter/kubeconfig"
+persistent_root = "~/.local/share/quackles"
+arbiter_timer = "quackles-arbiter.timer"
+
+[retirements.kind_bridges]
+stage = "apply after kind deletion"
+host = "desktop"
+apply = "python3 scripts/retire-kind-bridges.py --apply"
+removed_user_services = ["whisperflow-kind-bridge.service"]
+removed_authority_bind = "172.19.0.1"
+retained_authority_bind = "127.0.0.1"
+requires = ["kind hermes-lab deleted", "k3s executor available and ready"]
