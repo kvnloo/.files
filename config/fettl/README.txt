@@ -45,6 +45,14 @@ Read-only/offline enforcement
   Claude PreToolUse previously preserved native blocking responses/exit codes.
   Hook environments omit API credentials.
 
+Shadow summary (no source scan or model call):
+  python3 config/fettl/shadow-summary.py --since 2026-10-24T17:19:15+00:00 --output /path/to/summary.json
+The summary deduplicates scan latency, groups findings by agent/rule, and
+excludes explicit evaluation fixture directories and old unattributed rows.
+window_complete stays false until 24 hours have actually elapsed; an empty
+agent table does not prove that any hook ran. A one-shot user-systemd timer
+can call this command after the observation window without a paid agent.
+
 Hermes compatibility and activation
 Fettl 0.19.78 emits a YAML hooks LIST with when.tools, but the installed Hermes
 shell-hook parser requires an event-to-list MAPPING with matcher. Its actual
