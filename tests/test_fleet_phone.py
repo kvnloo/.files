@@ -525,7 +525,7 @@ class ControllerTests(TempHome):
 
 
 class RolloutTests(TempHome):
-    def test_setup_requires_explicit_deferred_telemetry_and_never_starts_tree(self):
+    def test_setup_without_telemetry_installs_without_starting_tree(self):
         tools = self.home / "bin"
         tools.mkdir()
         calls = self.home / "calls"
@@ -539,12 +539,13 @@ class RolloutTests(TempHome):
         ssh.chmod(0o755)
         env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}", "CALLS": str(calls)}
         command = ["bash", str(SCRIPTS / "fleet-phone-setup.sh"), "root@phone.invalid"]
-        refused = subprocess.run(command, env=env, capture_output=True, text=True)
-        self.assertEqual(refused.returncode, 1)
-        self.assertNotIn("tar -xf", calls.read_text())
-        installed = subprocess.run([*command, "--defer-adb"], env=env, capture_output=True, text=True)
-        self.assertEqual(installed.returncode, 0, installed.stderr)
-        self.assertIn("admission stays closed", installed.stderr)
+        for options in ([], ["--defer-adb"]):
+            with self.subTest(options=options):
+                installed = subprocess.run([*command, *options], env=env, capture_output=True, text=True)
+                self.assertEqual(installed.returncode, 0, installed.stderr)
+                self.assertIn("self-ADB unavailable; fleet jobs remain available", installed.stderr)
+                self.assertIn("API installed (not started)", installed.stdout)
+        self.assertIn("tar -xf", calls.read_text())
         text = calls.read_text()
         self.assertIn("StrictHostKeyChecking=yes", text)
         self.assertIn("sv/fleet-worker", text)
