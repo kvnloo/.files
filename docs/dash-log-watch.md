@@ -197,6 +197,11 @@ removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
 LIVE checkouts are never removed. The classifier lives in
 `scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
 external ops-plane dispatcher.
+The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
+It also scans the agent configuration roots and `/workspace/hermes-home`.
+Installed plugin, extension, and skill directories are live code sources.
+Unreadable link inventories block removals. A verified archive does not permit
+removing a checkout that still serves an installed link.
 Every removal, including SAFE linked worktrees and standalone clones, requires a
 verified local bundle receipt first. Linked worktrees share an immutable full
 base bundle per common Git store; WIP delta bundles preserve each checkout's
