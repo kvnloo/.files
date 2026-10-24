@@ -24,6 +24,9 @@ class Contracts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.watch = sw.Watch(self.root / 'state', self.root / 'inventory.json')
+        self.watch.checkout_roots = []
+        self.watch.checkout_discover = lambda roots: []
+        self.watch.reaper_status = self.root / 'latest.json'
 
     def tearDown(self):
         self.watch.store.db.close()
@@ -62,6 +65,59 @@ class Contracts(unittest.TestCase):
     def test_unknown_and_missing_invariants_are_not_healthy(self):
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'unknown'}, {}, time.time())[0]['code'], 'invariant_unavailable')
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'file_freshness', 'path': str(self.root / 'missing'), 'max_age_seconds': 1}, {}, time.time())[0]['code'], 'invariant_unavailable')
+
+    def test_live_checkout_count_overrides_stale_daily_snapshot_and_notifies(self):
+        self.watch.checkout_threshold = 1
+        self.watch.checkout_roots = [self.root]
+        paths = [self.root / name for name in ('first', 'second')]
+        for path in paths:
+            path.mkdir()
+        self.watch.reaper_status.write_text(json.dumps({
+            'checkout_count': 0, 'timestamp': 'old', 'removed_count': 7,
+            'bytes_freed': 123, 'errors': [{'stage': 'archive', 'error': 'archive failed'}]}))
+        with patch.object(self.watch, 'checkout_discover', return_value=paths) as discover, patch.object(self.watch.store, 'notify') as notify:
+            self.watch.checkout_invariants()
+            notify.assert_called_once()
+            discover.assert_called_once_with([self.root])
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['checkout_count'], 2)
+        row = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()
+        data = json.loads(row[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'checkout_count_exceeded')
+        self.assertEqual(data['window']['evidence'][0]['metrics'], {'count': 2, 'threshold': 1})
+        digest = self.watch.store.digest().read_text()
+        for text in ('Live checkout count: 2', 'removed_count', '123', 'archive failed', 'old'):
+            self.assertIn(text, digest)
+        self.assertNotIn('archive failed', json.dumps(data['window']))
+
+    def test_checkout_count_is_fresh_deduplicated_and_threshold_is_strict(self):
+        self.watch.checkout_threshold = 1
+        self.watch.checkout_roots = [self.root, self.root]
+        path = self.root / 'checkout'
+        path.mkdir()
+        with patch.object(self.watch, 'checkout_discover', return_value=[path, path]) as discover, patch.object(self.watch, 'record') as record:
+            self.watch.checkout_invariants()
+            record.assert_not_called()
+            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 1)
+            path.rmdir()
+            self.watch.checkout_invariants()
+            self.assertEqual(self.watch.store.get('worktree-reaper')['checkout_count'], 0)
+            self.assertEqual(discover.call_count, 2)
+
+    def test_checkout_read_failure_is_unavailable_not_healthy(self):
+        self.watch.checkout_roots = [self.root]
+        with patch.object(self.watch, 'checkout_discover', side_effect=OSError('private error')), patch.object(self.watch, 'record') as record:
+            self.watch.checkout_invariants()
+        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
+        status = self.watch.store.get('worktree-reaper')
+        self.assertEqual(status['count_errors'], 1)
+        self.assertEqual(status['status'], 'unavailable')
+        self.assertNotIn('private error', json.dumps(status))
+
+    def test_checkout_default_threshold_and_negative_configuration(self):
+        self.assertEqual(self.watch.checkout_threshold, 200)
+        with self.assertRaises(ValueError):
+            sw.Watch(self.root / 'invalid', checkout_threshold=-1)
 
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []

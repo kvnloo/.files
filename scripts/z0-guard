@@ -1,0 +1,11 @@
+#!/bin/sh
+# Worktree lifecycle is owned by this checkout; other ops gates remain external.
+if [ "${1:-}" = worktrees ]; then
+    shift
+    script=$(readlink -f "$0") || exit 2
+    exec /usr/bin/python3 "${script%/*}/worktree-reaper.py" "$@"
+fi
+# Existing ops-plane gates: z0intelligence src/z0int/fsm/guard.py.
+Z0INT_SRC=${Z0INT_SRC:-/mnt/zer0models/z0-wt/bend-ops-laws/src}
+[ -d "$Z0INT_SRC/z0int/fsm" ] || { echo "z0-guard: no z0intelligence checkout at $Z0INT_SRC (set Z0INT_SRC)" >&2; exit 2; }
+PYTHONPATH="$Z0INT_SRC${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m z0int.fsm.guard "$@"

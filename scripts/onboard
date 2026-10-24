@@ -203,7 +203,8 @@ run_core_links() {
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh theme \
-             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py; do
+             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py \
+             z0-guard worktree-reaper.py; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"
       command_name="${command_name%.py}"
@@ -222,7 +223,8 @@ run_core_links() {
   mkdir -p "$HOME/.config/systemd/user"
   for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service \
     dash-log-watch.service service-watch.service service-watch-failure@.service \
-    service-watch-heartbeat.service service-watch-heartbeat.timer; do
+    service-watch-heartbeat.service service-watch-heartbeat.timer \
+    worktree-reaper.service worktree-reaper.timer; do
     [[ -e "$repo/config/systemd/user/$unit" ]] && \
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done

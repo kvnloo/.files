@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily aged Git worktree cleanup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+Unit=worktree-reaper.service
+
+[Install]
+WantedBy=timers.target

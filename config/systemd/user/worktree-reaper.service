@@ -1,0 +1,10 @@
+[Unit]
+Description=Archive and reap aged non-live Git worktrees
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/z0-guard worktrees --daily
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min
