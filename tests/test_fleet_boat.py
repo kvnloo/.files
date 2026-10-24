@@ -246,12 +246,15 @@ class BuildRoutingTests(unittest.TestCase):
         fake.write_text('''#!/usr/bin/env python3
 import json,os,sys
 from pathlib import Path
-with Path(os.environ['CALLS']).open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')
+with Path(os.environ['CALLS']).open('a') as f:
+    f.write(json.dumps({'backend': Path(__file__).name, 'argv': sys.argv[1:]})+'\\n')
 if '--node' in sys.argv and sys.argv[sys.argv.index('--node')+1]=='boat': sys.exit(0)
 if os.environ.get('ALLOCATED'): print('fleet: job abc-123 -> mbp',file=sys.stderr)
 sys.exit(75)
 ''')
         fake.chmod(0o700)
+        # fleet-build now invokes this sibling directly for Kueue admission.
+        shutil.copy2(fake, self.root / "fleet-kueue")
         self.calls = self.root / "calls"
 
     def invoke(self, *flags, allocated=False):
@@ -267,8 +270,10 @@ sys.exit(75)
         result, calls = self.invoke('--public')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[1][1:3], ['--node', 'boat'])
-        self.assertEqual(calls[1][-3:], ['python3', '-c', 'print(42)'])
+        self.assertEqual(calls[0]["backend"], "fleet-kueue")
+        self.assertEqual(calls[1]["backend"], "fleet")
+        self.assertEqual(calls[1]["argv"][1:3], ['--node', 'boat'])
+        self.assertEqual(calls[1]["argv"][-3:], ['python3', '-c', 'print(42)'])
 
     def test_private_and_local_data_jobs_never_overflow(self):
         for flags in ([], ['--public', '--local-data']):
@@ -276,12 +281,14 @@ sys.exit(75)
             result, calls = self.invoke(*flags)
             self.assertEqual(result.returncode, 75)
             self.assertEqual(len(calls), 1)
-            self.assertNotIn('boat', calls[0])
+            self.assertEqual(calls[0]["backend"], "fleet-kueue")
+            self.assertNotIn('boat', calls[0]["argv"])
 
     def test_allocated_job_is_never_replayed(self):
         result, calls = self.invoke('--public', allocated=True)
         self.assertEqual(result.returncode, 75)
         self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["backend"], "fleet-kueue")
 
     def test_x86_and_docker_prefer_boat(self):
         for flag in ('--x86', '--docker'):
@@ -289,7 +296,9 @@ sys.exit(75)
             result, calls = self.invoke(flag)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(len(calls), 1)
-            self.assertEqual(calls[0][calls[0].index('--node') + 1], 'boat')
+            self.assertEqual(calls[0]["backend"], "fleet")
+            argv = calls[0]["argv"]
+            self.assertEqual(argv[argv.index('--node') + 1], 'boat')
 
     def test_local_data_rejects_explicit_boat(self):
         result, calls = self.invoke('--local-data', '--node', 'boat')
