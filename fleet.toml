@@ -16,6 +16,14 @@ user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.
 nix_profile = "desktop"
 hypr_host = "0"
 
+# Declared but intentionally disabled until the decision-policy CLI is available.
+[hosts.desktop.policy_pipeline]
+service = "z0int-policy.service"
+timer = "z0int-policy.timer"
+enabled = false
+source = "/mnt/zer0models/z0-wt/decision-policy"
+
+
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]
 repository = "https://github.com/lgse/strata"
