@@ -121,6 +121,8 @@ def run_scanner(args: list[str], payload: bytes | None, cwd: Path) -> tuple[int,
     if repository.returncode:
         raise ValueError("Fettl hooks require a git worktree")
     root = Path(os.fsdecode(repository.stdout).strip()).resolve()
+    if shadow_mode():
+        args.append(str(root))
     key = hashlib.sha256(os.fsencode(root)).hexdigest()[:24]
     store = CACHE / "repositories" / key
     store.mkdir(parents=True, exist_ok=True, mode=0o700)
