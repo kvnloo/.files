@@ -22,6 +22,7 @@ def checked(argv, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src', required=True)
+    parser.add_argument('--no-src', action='store_true')
     parser.add_argument('--node')
     parser.add_argument('--class', dest='job_class')
     parser.add_argument('--mem', default='3G')
@@ -29,6 +30,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--wait', type=int, default=1800)
     parser.add_argument('--keep', action='store_true')
+    parser.add_argument('--host', action='store_true',
+                        help='reserve Kueue quota, then run in a bounded host systemd scope')
     parser.add_argument('--fetch', action='append', default=[])
     parser.add_argument('--out')
     parser.add_argument('--input', action='append', default=[])
@@ -106,7 +109,9 @@ def main():
     try:
         checked(remote(f'mkdir -p {qstage}/src {qstage}/tmp && chmod 700 {qstage}'))
         src = Path(args.src).resolve()
-        if (src / '.git').exists():
+        if args.no_src:
+            sender = tar = None
+        elif (src / '.git').exists():
             files = checked(['git', '-C', str(src), 'ls-files', '-co', '--exclude-standard', '-z'], capture_output=True).stdout
             tar = subprocess.Popen(['tar', '-C', str(src), '--null', '-T', '-', '-czf', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
@@ -120,10 +125,11 @@ def main():
             tar = subprocess.Popen(['tar', '-C', str(src), '-czf', '-', '.'], stdout=subprocess.PIPE)
             sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
             tar.stdout.close()
-        sender.wait()
-        tar.wait()
-        if sender.returncode or tar.returncode:
-            raise RuntimeError(f'source transfer failed: tar={tar.returncode}, receiver={sender.returncode}')
+        if sender is not None:
+            sender.wait()
+            tar.wait()
+            if sender.returncode or tar.returncode:
+                raise RuntimeError(f'source transfer failed: tar={tar.returncode}, receiver={sender.returncode}')
         for source, dest in inputs:
             with open(source, 'rb') as stream:
                 checked(remote(f'mkdir -p {qstage}/src/{shlex.quote(str(dest.parent))} && cat > {qstage}/src/{shlex.quote(str(dest))}'), stdin=stream)
@@ -138,24 +144,42 @@ def main():
             volumes.append({'name': volume, 'hostPath': {'path': path, 'type': 'Directory'}})
             mounts.append({'name': volume, 'mountPath': path, 'readOnly': True})
         resources = {'cpu': args.cpus, 'memory': str(memory)}
+        cache_setup = ('export UV_CACHE_DIR="$HOME/.cache/uv" npm_config_cache="$HOME/.cache/npm" '
+                       'npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
+                       'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; ')
+        unit = f'fleet-{name}.scope'
+        host_script = (
+            f'[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; {cache_setup}'
+            f'cd {qstage}/src || exit 1; export TMPDIR={qstage}/tmp; '
+            f'systemd-run --user --scope --quiet --unit={shlex.quote(unit)} '
+            f'-p MemoryMax={memory} -p MemorySwapMax=512M -p CPUQuota={float(args.cpus) * 100:g}% '
+            f'-- timeout --kill-after=30 {args.timeout} nice -n 5 {shlex.join(args.cmd)}; '
+            f'rc=$?; systemctl --user stop {shlex.quote(unit)} 2>/dev/null || true; exit $rc')
+        command = (['/usr/bin/bash', '-c', 'while :; do sleep 30; done'] if args.host else
+                   ['/usr/bin/bash', '-c', '[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; ' +
+                    cache_setup + 'exec "$@"', 'fleet-kueue', *args.cmd])
         manifest = {
             'apiVersion': 'batch/v1', 'kind': 'Job',
             'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes', 'app.kubernetes.io/managed-by': 'fleet-build'}},
-            'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout,
+            # Host reservations outlive timeout's forced-stop grace, so quota
+            # cannot expire before the bounded host scope after client loss.
+            'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout + (90 if args.host else 0),
                      'ttlSecondsAfterFinished': 86400, 'template': {'metadata': {'labels': {'fleet-job': name}}, 'spec': {
                          'restartPolicy': 'Never', 'automountServiceAccountToken': False,
                          'nodeSelector': {'kubernetes.io/hostname': 'mbp'},
+                         'hostname': 'mbp',
                          'securityContext': {'runAsUser': uid, 'runAsGroup': gid, 'runAsNonRoot': True},
                          'containers': [{'name': 'build', 'image': 'busybox:1.37.0',
-                             'command': ['/usr/bin/bash', '-c', '[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; exec "$@"', 'fleet-kueue', *args.cmd],
+                             'command': command,
                              'workingDir': '/work/src',
-                             'env': [{'name': k, 'value': v} for k, v in {'HOME': home, 'TMPDIR': '/work/tmp', 'PATH': '/usr/local/bin:/usr/bin:/bin', 'FLEET_JOB_ID': name}.items()],
+                             'env': [{'name': k, 'value': v} for k, v in {'HOME': home, 'USER': node['ssh_user'], 'LOGNAME': node['ssh_user'], 'TMPDIR': '/work/tmp', 'PATH': '/usr/local/bin:/usr/bin:/bin', 'FLEET_JOB_ID': name}.items()] +
+                                    [{'name': 'FLEET_NODE_NAME', 'valueFrom': {'fieldRef': {'fieldPath': 'spec.nodeName'}}}],
                              'securityContext': {'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}},
                              'resources': {'requests': resources, 'limits': resources}, 'volumeMounts': mounts}],
                          'volumes': volumes}}}}
         checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
         created = True
-        print(f'fleet: job {name} -> mbp (Kueue lanes); log {logpath}', file=sys.stderr, flush=True)
+        print(f'fleet: job {name} -> mbp (Kueue lanes); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
         # Zero preserves fleet's fail-fast contract; allow only a short
         # controller reconciliation grace. Indefinite queueing is explicit.
         admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
@@ -172,8 +196,9 @@ def main():
                     pod = pods[0]
                     pod_name = pod['metadata']['name']
                     statuses = pod.get('status', {}).get('containerStatuses', [])
-                    if logs is None and statuses and ('running' in statuses[0]['state'] or 'terminated' in statuses[0]['state']):
-                        logs = subprocess.Popen(kube + ['logs', '-f', pod_name, '-c', 'build'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    if logs is None and statuses and ('running' in statuses[0]['state'] or (not args.host and 'terminated' in statuses[0]['state'])):
+                        log_command = remote(host_script) if args.host else kube + ['logs', '-f', pod_name, '-c', 'build']
+                        logs = subprocess.Popen(log_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                         # A reader thread streams while the controller observes terminal status.
                         import threading
                         def relay():
@@ -184,6 +209,10 @@ def main():
                                 logfile.flush()
                         reader = threading.Thread(target=relay, daemon=True)
                         reader.start()
+                    if args.host and logs is not None and logs.poll() is not None:
+                        rc = logs.returncode
+                        terminal = True
+                        break
                     if statuses and 'terminated' in statuses[0]['state']:
                         rc = statuses[0]['state']['terminated']['exitCode']
                         terminal = True
@@ -231,13 +260,17 @@ def main():
     except KeyboardInterrupt:
         return 130
     finally:
+        if args.host and created:
+            # Stop host work BEFORE releasing its quota, even on cancellation.
+            checked(remote(f'if systemctl --user is-active --quiet {shlex.quote(unit)}; then '
+                           f'systemctl --user stop {shlex.quote(unit)}; fi'))
         if logs is not None and logs.poll() is None:
             logs.terminate()
             logs.wait()
         # Cancellation always stops work before removing its disk source. Retain
         # completed --keep jobs for inspectability; Kubernetes TTL bounds lifetime.
-        if created and (not args.keep or not terminal):
-            checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--timeout=60s'])
+        if created and (args.host or not args.keep or not terminal):
+            checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
         if not args.keep or not terminal:
             checked(remote(f'rm -rf -- {qstage}'))
 

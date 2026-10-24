@@ -2,15 +2,16 @@
 # kueue.x-k8s.io/queue-name=<LocalQueue name> in its own namespace.
 # The fleet-mbp/lanes and lanes/lanes LocalQueues share one ClusterQueue budget.
 #
-# Quotas must fit allocatable AND leave 2 GiB of live MemAvailable on MBP.
-# Memory budget = max(0, min(allocatable_bytes, MemAvailable_bytes - 2147483648)).
-# Use the exact byte result, without whole-GiB rounding.
-# Parent sample 2026-10-24T00:45:10Z: MemAvailable 5159075840 bytes.
-# Allocatable 12046536Ki = 12335652864 bytes.
-# max(0, min(12335652864, 5159075840 - 2147483648)) = 3011592192 bytes.
+# Parent-approved static memory budget after host drain and authorized tmpfs cleanup:
+# 16630620160 total - 2147483648 reserve - 2837270528 frozen idle OS baseline
+# - 1204051968 remaining Shmem = 10441814016 bytes, with NO GiB rounding.
+# Idle OS baseline: anonymous memory + unreclaimable kernel + stacks/page tables
+# + unevictable/per-CPU memory. Do not reclassify active job memory as idle OS.
+# Allocatable 12046536Ki = 12335652864 bytes caps this static budget.
+# This is NOT instantaneous MemAvailable admission. Recompute after measured changes.
 # CPU budget = min(4 physical cores, 6.5 allocatable CPUs) = 4.
-# Default fleet-build remains on the host backend; Kueue requires --node k3s-mbp.
-# Re-sample before applying quota. Allocatable is not current free memory.
+# Default fleet-build and --node mbp use Kueue; mbp-host must reserve here too.
+# Host escapes must hold reservations for their full lifetime to share this budget.
 # The GPU flavor pins GPU work to labelled nodes.
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
@@ -94,7 +95,7 @@ spec:
         - name: node-mbp
           resources:
             - {name: cpu, nominalQuota: "4"}
-            - {name: memory, nominalQuota: "3011592192"}
+            - {name: memory, nominalQuota: "10441814016"}
 ---
 # z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
 # instead of failing to schedule.

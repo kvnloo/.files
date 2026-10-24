@@ -7,8 +7,8 @@ suites go to the workers by default:
 | Work | Where | Command |
 | --- | --- | --- |
 | Public-source heavy installs/full suites/compiler gates | Avrea (4 vCPU by default) | `fleet-build --node avrea -- bash -lc 'npm ci && npm test'` |
-| Local/private data, native-toolchain Gradle/Android | MBP host lane | `fleet-build --node mbp -- ./gradlew assembleFullDebug` |
-| Local-data Bun/Node/Python suites, `make` | MBP host lane | `fleet-build --node mbp -- bun test` |
+| Local/private data, native-toolchain Gradle/Android | MBP Kueue, subject to quota | `fleet-build --node mbp -- ./gradlew assembleFullDebug` |
+| Local-data Bun/Node/Python suites, `make` | MBP Kueue | `fleet-build --node mbp -- bun test` |
 | Light arm64-safe tests, scans, git work | phones | `fleet-build --phone -- python3 -m pytest tests/unit` |
 | x86 overflow and Docker | boat (trial allowance) | pin the admitted boat host lane |
 | Genuine GPU work | groot, inside the bounded agent envelope | allocate/prove the GPU; a name or render label is not enough |
@@ -27,10 +27,13 @@ The monthly budget guard warns at80% and refuses at95% projected usage,
 with rate-normalized minutes and a current operator billing baseline.
 See [Avrea routing, budget and security](README.md#avrea-public-exact-head-lane).
 
-Default non-phone local jobs and explicit `--node mbp` retain the host backend.
-Kueue is opt-in only through `--node k3s-mbp` while cache compatibility qualifies.
+Default non-phone local jobs and explicit `--node mbp` use Kueue.
+`--node mbp-host` selects the host escape with a full-lifetime Kueue reservation.
 Explicit phone, Boat and Avrea routes retain their own backends.
 The MBP backends preserve the caller's relative directory and never select groot.
+Direct `scripts/fleet run --node mbp` and automatically selected MBP work also
+delegate to Kueue. They do not bypass shared admission.
+Use `mbp-host` only for exceptional native-host requirements.
 
 ```sh
 cd /mnt/zer0models/noop-oura/android
@@ -47,26 +50,25 @@ fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
 - `--fetch PATH` is relative to the directory you ran from; `--out DIR` copies
   the fetched files there (otherwise they stay under
   `~/.local/state/fleet/runs/<job>/`).
-- Host admission waits retry every 60 seconds for `--wait` seconds.
-  `--wait 0` disables host retries. The host lane remains 7 GiB / 4 CPUs.
-- Never hold `/tmp/mbp-turnstile.lock` or `/tmp/mbp-quiet.lock` during host
-  admission waits. Inside either lock, use `fleet-build --node mbp --wait 0`.
-  On admission exit 75, release locks, sleep outside them, then retry.
-- The following Kueue behavior applies only to `--node k3s-mbp`.
-  Do not wrap Kueue submissions in host turnstile or quiet flocks.
-- Opt-in Kueue jobs enter the `lanes` LocalQueue in namespace `fleet-mbp` as suspended
+- Do not wrap Kueue submissions in manual turnstile or quiet flocks.
+  Remove outer admission locks. Existing named wrappers should pass through to
+  `fleet-build` without locking. Only Kueue reservations authorize admission.
+- `--node mbp-host` must acquire its Kueue reservation before host execution.
+  Retain the reservation until the host process and all its children stop.
+  The old 7 GiB host slice is a safety ceiling, not a second admission budget.
+- MBP Kueue jobs enter the `lanes` LocalQueue in namespace `fleet-mbp` as suspended
   Kubernetes Jobs. Kueue admits them against the MBP flavor quota.
   Queued jobs do not consume CPU.
 - `--wait 0` means no queue wait on all nodes. Kueue permits five seconds for
   controller admission, then deletes a still-pending Job and exits 75.
   Positive `--wait N` permits at most N seconds of admission waiting.
-  Only `--node k3s-mbp --wait -1` waits indefinitely.
+  For MBP Kueue, `--wait -1` explicitly waits indefinitely.
   `--timeout SECONDS` limits execution after admission, not queue time.
   A busy queue is not permission to execute on groot.
-- Opt-in Kueue `--mem` and `--cpus` set both container requests and limits.
+- Kueue `--mem` and `--cpus` set both container requests and limits.
   Requests above the total queue quota exit 75 immediately, before staging.
   The default build request remains 3 GiB. Gradle remains 6 GiB.
-  Neither fits the sampled 3011592192-byte (~2.805 GiB) quota.
+  Both fit the approved 10441814016-byte (~9.73 GiB) aggregate memory quota.
   Use an explicit memory request appropriate for the actual job.
   Do not reduce a real job's request merely to obtain admission.
 - `--input FILE:RELATIVE_PATH` stages an exact artifact without scanning an output
@@ -75,15 +77,20 @@ fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
 
 See [DESKTOP-ADMISSION.md](DESKTOP-ADMISSION.md) for effective cgroup ceilings,
 Kueue worker-only placement, the bounded supervisor, and guarded delivery continuation.
-- The opt-in `lanes` quota is separate from the 7 GiB host slice.
-  Static quota does not account for live host work. Do not run both backends
-  against the same apparent free capacity without coordinating admission.
+- Kueue is the shared admission budget. Direct host jobs are not accounted by static
+  quota unless a reservation covers their whole lifetime. Never reserve the same
+  capacity independently through the host slice and the queue.
 - CPU quota uses physical cores: `min(4 physical cores, 6.5 allocatable CPUs) = 4`.
-  The parent sample at `2026-10-24T00:45:10Z` reported `MemAvailable=5159075840`
-  bytes. Allocatable is `12046536Ki`, or `12335652864` bytes.
-  The exact budget is
-  `max(0, min(12335652864, 5159075840 - 2147483648)) = 3011592192` bytes.
-  The declaration uses that byte value without whole-GiB rounding.
+  After the host-work drain and authorized tmpfs cleanup, the parent approved
+  **10441814016 bytes** (~9.73 GiB), without GiB rounding:
+  `16630620160 - 2147483648 - 2837270528 - 1204051968 = 10441814016`.
+  These terms are total RAM, the 2 GiB reserve, frozen idle OS baseline,
+  and remaining shared memory. The idle baseline includes anonymous memory,
+  unreclaimable kernel memory, stacks, page tables, unevictable and per-CPU memory.
+  Do not treat active job memory as a new idle baseline.
+  The result remains below allocatable `12046536Ki` (`12335652864` bytes).
+  This is a static capacity plan, not instantaneous available-memory admission.
+  Recompute after measured changes rather than assuming additional capacity.
 - During migration, factory's MBP CPU and memory quotas are zero. Otherwise its
   independent queue could overcommit the same worker. Restore capacity only through
   an explicit shared-capacity plan. Both `lanes` LocalQueues share one quota.
@@ -93,9 +100,14 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
   The pod mounts source at `/work/src` through hostPath.
   It runs as `agentjob`, UID 1001, with `runAsNonRoot: true`.
 - HOME is `/home/agentjob`, mounted read-write to retain existing build caches.
-  This allows trusted jobs to access that account's other files and caches.
-  `/tmp` uses a per-job disk directory. Cache qualification must pass before
-  any default-backend cutover receives parent approval.
+  Absolute paths under that HOME remain valid in host and Kueue jobs.
+  Trusted jobs can access that account's other files and caches.
+  Both transports set package-cache environment values to HOME-backed disk storage.
+  pnpm uses `/home/agentjob/.local/share/pnpm/store`.
+  npm uses `/home/agentjob/.cache/npm`. uv uses `/home/agentjob/.cache/uv`.
+  Host transport staging uses HOME-backed jobs storage, not host `/tmp`.
+  Kueue staging and the pod's `/tmp` use per-job HOME-backed disk directories.
+  The parent approved default routing after actual cache qualification and host-work drain.
 - The image is `busybox:1.37.0`. Host toolchain mounts remain read-only:
   `/usr`, `/lib`, `/lib64`, `/opt`, `/etc/fleet` and `/etc/ssl`.
   The pod has no service-account token,
@@ -114,10 +126,16 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
   A transport error does not prove that the command stopped.
 - `--keep` retains terminal Jobs and their staged directories. Jobs have a 24-hour
   TTL. Retained staging needs separate removal after inspection.
+  Native-host `--keep` retains staging and logs, not the reservation Job.
+  The helper always releases that reservation after the host work stops.
   Without `--keep`, foreground Job deletion stops pods before staging removal.
   Cancellation removes the Job and staging even with `--keep`.
   `--fetch` copies results under `~/.local/state/fleet/runs/<job>/`.
   `--out DIR` also copies requested results there.
+- Native execution has deadline T. Its reservation deadline is T+90 seconds
+  so host termination grace remains covered.
+  `scripts/fleet kill mbp <job-id>` stops a native host scope, if present,
+  before deleting its Kueue Job. Other host/phone routing remains unchanged.
 - Workload manifests for the migrated Hermes executor and quackles stay in
   `hermes-k8s-lab`. `.files` owns fleet policy, queue declarations and references.
   The parent retires kind only after it proves the replacement workloads healthy.

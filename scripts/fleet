@@ -16,10 +16,10 @@
   fleet update NODE [--apply]                   show pending updates; --apply cordons, upgrades, uncordons
   fleet install-timer                           user systemd timer: `fleet health` every 2 minutes
 
-Host-lane jobs (`fleet run`) are for our own builds and tests that need a host
-toolchain. They run as the unprivileged `agentjob` user inside a capped
-systemd scope (Linux) or under polite-run (phones). Untrusted code goes through
-the k3s `factory` queue instead (oss-factory `factory submit`).
+Trusted jobs (`fleet run`) reuse the owner's host toolchain. MBP jobs are
+Kueue-admitted Jobs; `--node mbp-host` reserves the same quota for a native
+systemd scope. Other Linux workers use capped agentjob scopes, and phones use
+polite-run. Untrusted code belongs in the restricted k3s `factory` queue.
 """
 import argparse
 import concurrent.futures as cf
@@ -411,6 +411,24 @@ def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
         die("usage: fleet run [opts] -- CMD...")
+    def queued_mbp():
+        worker = nodes["mbp"]
+        if (args.arch and args.arch != worker["arch"]) or (args.cls and args.cls not in worker["classes"] + worker["capabilities"]):
+            die("mbp: incompatible architecture or job capability", 75)
+        argv = [sys.executable, str(REPO / "scripts/fleet-kueue"),
+                "--src", args.src or os.getcwd(), "--mem", args.mem or worker["lane"]["default_mem"],
+                "--cpus", args.cpus or "2", "--timeout", str(args.timeout), "--wait", "0"]
+        if args.node == "mbp-host":
+            argv += ["--host"]
+        for option in ("no_src", "keep"):
+            if getattr(args, option):
+                argv += ["--" + option.replace("_", "-")]
+        for option in ("fetch", "input"):
+            for value in getattr(args, option) or []:
+                argv += ["--" + option, value]
+        return subprocess.run(argv + ["--", *args.cmd]).returncode
+    if args.node in ("mbp", "mbp-host", "k3s-mbp"):
+        return queued_mbp()
     if args.node == "boat":
         if (args.arch and args.arch != "amd64") or (args.cls and args.cls not in nodes["boat"]["classes"] + nodes["boat"]["capabilities"]):
             die("boat: incompatible architecture or job capability", 75)
@@ -470,6 +488,8 @@ def cmd_run(args):
     if not best:
         die("no node has room now: " + "; ".join(notes), 75)
     _, n, p = best
+    if n["name"] == "mbp":
+        return queued_mbp()
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
@@ -541,6 +561,8 @@ def cmd_run(args):
                  f"if [ \"$smax\" != max ]; then left=$(( (smax - $(awk '/^anon /{{print $2}}' $sl/memory.stat)) / 1048576 )); "
                  f"if [ $left -lt {mem} ]; then echo \"fleet: lane has ${{left}}MiB left for a {mem}MiB job (other jobs running)\" >&2; exit 75; fi; fi; "
                  f"[ -r /etc/fleet/toolchain.env ] && . /etc/fleet/toolchain.env; "
+                 f'export UV_CACHE_DIR="$HOME/.cache/uv" npm_config_cache="$HOME/.cache/npm" npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
+                 f'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; '
                  f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
                  f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
                  f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; rc=$?; "
@@ -568,6 +590,15 @@ def cmd_run(args):
 
 def cmd_kill(args):
     _, nodes = registry()
+    if args.node in ("mbp", "mbp-host", "k3s-mbp"):
+        unit = shlex.quote(f"fleet-{args.job}.scope")
+        stop = f"if systemctl --user is-active --quiet {unit}; then systemctl --user stop {unit}; fi"
+        result = subprocess.run(ssh_cmd(nodes["mbp"]) + ["bash -c " + shlex.quote(stop)])
+        if result.returncode:
+            return result.returncode  # Never release host quota before host work stops.
+        return subprocess.run(["kubectl", "--kubeconfig", str(Path.home() / ".kube/k3s.yaml"),
+                               "-n", "fleet-mbp", "delete", "job", args.job,
+                               "--cascade=foreground", "--wait=true"]).returncode
     n = nodes[args.node]
     if n["kind"] == "phone":
         r = subprocess.run(ssh_cmd(n) + [f"pkill -TERM -f -- 'fleet-jobs/{args.job}/' ; true"])

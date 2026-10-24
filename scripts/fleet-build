@@ -16,10 +16,10 @@
 #                    (--tolerate phone, --mem 512M: fits the S25's ~2.1 GiB free over
 #                    its 1200 MiB floor); mbp still wins unless it is busier
 #   --phone          like --light but only on a phone (arm64)
-#   --node NAME      pin a node (avrea, mbp, k3s-mbp, s22, omarchy-phone, boat)
+#   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
 #   --mem 4G --cpus 4 --timeout 3600   requests/limits (defaults per mode)
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
-#                    Positive = bounded wait (default 1800); k3s-mbp -1 = indefinite.
+#                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
 #                    Oversized Kueue requests exit 75; never fall back to groot.
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
@@ -139,9 +139,10 @@ exec "$@"'
 args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
 use_kueue=0
 runner=("$FLEET"); run_args=("${args[@]}")
-if [ "$node" = k3s-mbp ]; then
+if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -z "$node" ] && [ "$mode" != phone ]; }; then
   use_kueue=1
   runner=(python3 "$(dirname "$FLEET")/fleet-kueue" --wait "$wait_s")
+  [ "$node" != mbp-host ] || runner+=(--host)
   [ -z "$out" ] || runner+=(--out "$out")
   run_args=("${args[@]:1}")
 fi
