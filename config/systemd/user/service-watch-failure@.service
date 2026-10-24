@@ -1,0 +1,14 @@
+[Unit]
+Description=Report and deduplicate failure of %I
+OnFailure=
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/service-watch failure %I
+UMask=0077
+Nice=15
+MemoryMax=96M
+CPUQuota=10%
+TasksMax=16
+NoNewPrivileges=true
+TimeoutStartSec=20

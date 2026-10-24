@@ -11,8 +11,8 @@ onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "
 system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
 system_timers = ["tern-remote-refresh.timer"]
 system_sockets = ["keyd-layers.socket"]
-user_services = ["hermes-gateway.service"]
-user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
+user_services = ["hermes-gateway.service", "service-watch.service"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "service-watch-heartbeat.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
