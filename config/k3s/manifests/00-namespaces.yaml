@@ -2,7 +2,12 @@
 #          and places them per node; this ResourceQuota is the outer ceiling above
 #          Kueue's 20 pods (defense in depth; oss-factory owns worker claims).
 # z0:      z0intelligence services and unsloth/GPU jobs (trusted, our code).
-# lanes:   relay jobs that call free model APIs; CPU and network only.
+# lanes:   restricted relay jobs that call free model APIs; CPU and network only.
+# fleet-mbp: owner's trusted local builds. HostPath requires privileged admission
+#            in this namespace only. The backend uses agentjob UID 1001, non-root,
+#            no API token, drop ALL capabilities and no privilege escalation.
+#            Host toolchains mount read-only; agentjob HOME mounts read-write
+#            to preserve existing caches. This is a trusted-code lane.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -23,6 +28,15 @@ metadata:
   name: lanes
   labels:
     pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet-mbp
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
 kind: ResourceQuota

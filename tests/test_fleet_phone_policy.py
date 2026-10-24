@@ -3,6 +3,8 @@ import importlib.machinery
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import time
 import json
@@ -89,13 +91,53 @@ class PhonePolicyTests(unittest.TestCase):
                      patch.object(fleet, "k8s_nodes", return_value={}), \
                      patch.object(fleet, "tailnet_online", return_value={}), \
                      patch.object(fleet, "tern_doctor", return_value="ok"), \
-                     patch.object(fleet, "android_state", return_value={}), \
-                     patch.object(fleet.phone_controller, "reconcile", return_value={"phase": "ready"}):
+                     patch.object(fleet, "android_state", return_value={}):
                     self.assertEqual(fleet.cmd_health(SimpleNamespace(node=name, set=[], strikes=None)), 0)
                 record = json.loads((state / "health" / f"{name}.json").read_text())
                 self.assertTrue(record["healthy"])
                 self.assertFalse(record["paused"])
                 self.assertEqual(record["reasons"], [])
+
+    def test_public_mbp_cli_dispatches_only_through_queue(self):
+        code = (
+            "import json,runpy,subprocess,sys; from types import SimpleNamespace; "
+            "path=sys.argv.pop(1); sys.path.insert(0,str(__import__('pathlib').Path(path).parent)); "
+            "subprocess.run=lambda argv,**kw: (print(json.dumps(argv)),SimpleNamespace(returncode=23))[1]; "
+            "runpy.run_path(path,run_name='__main__')"
+        )
+        for node in ("mbp", "mbp-host"):
+            with self.subTest(node=node):
+                result = subprocess.run([sys.executable, "-c", code, str(PATH), "run",
+                                         "--node", node, "--no-src", "--", "echo", "QUEUE_PAYLOAD"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 23, result.stderr)
+                calls = [json.loads(line) for line in result.stdout.splitlines()]
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(Path(calls[0][1]).name, "fleet-kueue")
+                self.assertEqual("--host" in calls[0], node == "mbp-host")
+                self.assertEqual(calls[0][-3:], ["--", "echo", "QUEUE_PAYLOAD"])
+
+    def test_actual_build_wrapper_pinned_mbp_dispatches_queue(self):
+        wrapper = PATH.parent / "fleet-build"
+        with tempfile.TemporaryDirectory(prefix="fleet-build-dispatch-") as tmp:
+            tools = Path(tmp)
+            receipt = tools / "argv.json"
+            shim = tools / "python3"
+            shim.write_text(f"#!{sys.executable}\nimport json,os,sys\n"
+                            "with open(os.environ['QUEUE_RECEIPT'],'w') as f: json.dump(sys.argv[1:],f)\n")
+            shim.chmod(0o700)
+            for node in ("mbp", "mbp-host"):
+                with self.subTest(node=node):
+                    result = subprocess.run(["bash", str(wrapper), "--node", node, "--src", tmp,
+                                             "--wait", "0", "--", "echo", "QUEUE_PAYLOAD"],
+                                            cwd=tmp, capture_output=True, text=True, timeout=10,
+                                            env={**os.environ, "PATH": f"{tools}:{os.environ['PATH']}",
+                                                 "QUEUE_RECEIPT": str(receipt)})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    argv = json.loads(receipt.read_text())
+                    self.assertEqual(Path(argv[0]).name, "fleet-kueue")
+                    self.assertEqual("--host" in argv, node == "mbp-host")
+                    self.assertEqual(argv[-2:], ["echo", "QUEUE_PAYLOAD"])
 
     def test_retired_phone_mode_command_is_not_a_public_interface(self):
         import subprocess
