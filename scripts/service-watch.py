@@ -557,8 +557,9 @@ class Watch:
         model = 'deterministic'
         start = time.monotonic()
         try:
+            revision = hashlib.sha256((PROMPT + json.dumps(window, sort_keys=True)).encode()).hexdigest()[:16]
             response = post('http://127.0.0.1:11501/v1/worker', {
-                'harness': 'service-watch', 'function': 'cheap_bounded_worker', 'trace_id': 'service-watch-' + ident,
+                'harness': 'service-watch', 'function': 'cheap_bounded_worker', 'trace_id': 'service-watch-' + ident + '-' + revision,
                 'parent_agent': 'service-watch', 'provider': 'groq', 'model': 'openai/gpt-oss-20b',
                 'reason': 'Finite-fact service anomaly triage on validated zero-cost route',
                 'task': PROMPT, 'context': json.dumps(window), 'max_tokens': 800, 'free_only': True})
