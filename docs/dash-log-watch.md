@@ -158,6 +158,9 @@ external ops-plane dispatcher.
 Immediate cleanup also covers non-LIVE standalone clones, including unique
 clones, preserving their complete refset in a bundle before removal. A base
 clone remains only when needed by LIVE linked worktrees.
+The checkout baseline validates real Git roots and excludes generated Git
+fixtures beneath run, artifact, cache, and test-output containers; those fixtures
+are not checkouts and do not contribute to the watcher threshold.
 
 The manifest and latest machine-readable counts are stored under
 `/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper/`.

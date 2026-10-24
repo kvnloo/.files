@@ -25,6 +25,7 @@ OUTPUT = Path('/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper')
 ARCHIVE = Path('/mnt/zer0models/wt-archive')
 DAY = 86400
 SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', '.gradle', '.build', 'target', '.next', '.pnpm-store'}
+OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', 'test-output', 'test-outputs', 'test-results'}
 PATH_PATTERN = re.compile(r'(?:/mnt/zer0models|/home/kvn|/workspace)(?:/[^\s\x00\"\'`;<>|(){}\[\],:=]*)?')
 HOOK_REFERENCES = {}
 
@@ -38,6 +39,8 @@ def command(args, cwd=None, timeout=60, env=None, check=True):
 
 def git(path, *args, check=True, timeout=60, env=None):
     e = os.environ.copy()
+    for key in ('GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES'):
+        e.pop(key, None)
     e.update({'GIT_OPTIONAL_LOCKS': '0', 'GIT_TERMINAL_PROMPT': '0'})
     if env:
         e.update(env)
@@ -64,7 +67,8 @@ def discover(roots):
             continue
         for base, dirs, files in os.walk(root, followlinks=False):
             if '.git' in dirs or '.git' in files:
-                found.add(os.path.realpath(base))
+                if text(base, 'rev-parse', '--is-inside-work-tree', check=False) == 'true':
+                    found.add(os.path.realpath(base))
                 # Do not crawl dependency/build trees inside each checkout.
                 # Git's own registrations below enumerate linked worktrees.
                 dirs[:] = []
@@ -72,7 +76,7 @@ def discover(roots):
             if 'pyvenv.cfg' in files:
                 dirs[:] = []
                 continue
-            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY and not os.path.islink(os.path.join(base, d))]
+            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY | OUTPUT_CONTAINERS and not os.path.islink(os.path.join(base, d))]
     # Registration and submodule metadata enumerate nested Git checkouts without
     # recursively stat'ing every dependency/build artifact in each repository.
     pending = list(found)
@@ -90,8 +94,10 @@ def discover(roots):
             targets.extend(os.path.join(path, line.split(None, 1)[1]) for line in p.stdout.decode(errors='replace').splitlines() if len(line.split(None, 1)) == 2)
         for target in targets:
             target = os.path.realpath(target)
-            if any(target == os.path.realpath(r) or target.startswith(os.path.realpath(r) + '/') for r in roots) and os.path.exists(os.path.join(target, '.git')):
-                if target not in found:
+            in_scope = any(target == os.path.realpath(r) or target.startswith(os.path.realpath(r) + '/') for r in roots)
+            generated = any(target.startswith(os.path.realpath(r) + '/') and set(Path(os.path.relpath(target, os.path.realpath(r))).parts) & OUTPUT_CONTAINERS for r in roots)
+            if in_scope and not generated and os.path.exists(os.path.join(target, '.git')) and target not in found:
+                if text(target, 'rev-parse', '--is-inside-work-tree', check=False) == 'true':
                     found.add(target)
                     pending.append(target)
     return sorted(found)
@@ -240,7 +246,7 @@ def inspect(path, roots, refs, now):
     # Relative git-dir output is relative to the checkout, not the controller cwd.
     rawcommon = text(path, 'rev-parse', '--git-common-dir')
     common = os.path.realpath(os.path.join(path, rawcommon))
-    head = text(path, 'rev-parse', '--verify', 'HEAD', check=False)
+    head = text(path, 'rev-parse', '--verify', 'HEAD^{commit}', check=False)
     branch = text(path, 'symbolic-ref', '--short', '-q', 'HEAD', check=False)
     upstream = text(path, 'rev-parse', '--abbrev-ref', '@{upstream}', check=False)
     ahead = behind = None
@@ -307,7 +313,7 @@ def preserve(row, out, archive):
         staged_commit = text(path, *staged_args, env=identity)
     # A private index records tracked changes, deletions and nonignored untracked
     # files without changing the user's original branch, index or working files.
-    if row['dirty_count'] or row['untracked_count']:
+    if row['dirty_count'] or row['untracked_count'] or not row['head']:
         idx = archive / (hashlib.sha256(path.encode()).hexdigest()[:16] + '.index')
         try:
             idx.unlink(missing_ok=True)
@@ -412,6 +418,7 @@ def main():
             target = os.path.realpath(os.path.join(path, os.path.expanduser(hooks)))
             HOOK_REFERENCES.setdefault(target, set()).add('git-core.hooksPath:' + path)
     refs, errors = references()
+    reference_errors = list(errors)
     now = time.time()
     rows = []
     emit(args.output, 'run_started', mode='apply' if args.apply else 'daily' if args.daily else 'inventory', roots=roots, checkout_count=len(paths), reference_errors=errors)
@@ -441,7 +448,7 @@ def main():
     mutating = args.apply or args.daily
     # Missing Tern/k3s visibility is never interpreted as proof of inactivity.
     # Retry the collector/operator environment before applying a destructive run.
-    if mutating and errors:
+    if mutating and reference_errors:
         emit(args.output, 'preflight_failed', errors=errors)
         report(args.output, rows, actions, before, before, errors, 'preflight-blocked')
         return 1
@@ -476,7 +483,7 @@ def main():
                 raise RuntimeError('Checkout became live after archive: ' + str(reasons or issues))
             # Archive writes only .git metadata, which is deliberately excluded
             # from activity age. Any changed working content still blocks removal.
-            if text(row['path'], 'rev-parse', '--verify', 'HEAD', check=False) != row['head']:
+            if text(row['path'], 'rev-parse', '--verify', 'HEAD^{commit}', check=False) != row['head']:
                 raise RuntimeError('HEAD changed during archival')
             if newest_mtime(row['path'], time.time()-DAY) > time.time()-DAY:
                 raise RuntimeError('Working files changed during archival')
