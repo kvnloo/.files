@@ -1654,6 +1654,8 @@ def parser() -> argparse.ArgumentParser:
     nextact.add_argument("--bar", action="store_true", help="print one Noctalia CustomButton JSON line")
     commands.add_parser("commit-next", help="commit prepared reversible navigation only")
     commands.add_parser("dismiss-next", help="suppress current next-action until evidence changes")
+    commands.add_parser("rerank-train", help="retrain the next-action re-ranker from the private database")
+    commands.add_parser("rerank-status", help="show the next-action re-ranker model and holdout scores")
     shadow = commands.add_parser("shadow-stats", help="os.next_context.v0 shadow metrics")
     shadow.add_argument("--hours", type=float, default=24.0)
     ctxsnap = commands.add_parser(
@@ -1800,6 +1802,14 @@ def main() -> None:
         db.commit()
         workspace_flow._shell_refresh()
         print_data(result, True if args.json else True)
+    elif args.command == "rerank-train":
+        import workspace_rerank
+
+        print_data(workspace_rerank.train(db), True)
+    elif args.command == "rerank-status":
+        import workspace_rerank
+
+        print_data(workspace_rerank.status(), True)
     elif args.command == "shadow-stats":
         print_data(
             workspace_flow.shadow_stats(db, limit_hours=args.hours),

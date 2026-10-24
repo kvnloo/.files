@@ -1,0 +1,17 @@
+# K3s agent config (mbp, the RTX 2080 Super PC). setup-k3s.sh renders the
+# placeholders. The join token is read from a root-only file, never from Git.
+server: "https://@SERVER_IP@:6443"
+token-file: /etc/rancher/k3s/join-token
+node-ip: "@TS_IP@"
+flannel-iface: tailscale0
+node-label:
+  - "z0.dev/role=agent"
+# A new node takes no work until `setup-k3s.sh admit <node>` proves network
+# policy is enforced on it (its policy controller needs a moment after joining).
+node-taint:
+  - "z0.dev/onboarding=true:NoSchedule"
+kubelet-arg:
+  - "system-reserved=cpu=1,memory=1Gi"
+  - "eviction-hard=memory.available<512Mi"
+# Images and cluster state live here, not on the root disk.
+data-dir: "@K3S_DATA@"

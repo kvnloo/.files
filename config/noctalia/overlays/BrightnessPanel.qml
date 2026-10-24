@@ -50,6 +50,7 @@ SmartPanel {
     syncMonitorLayoutApi();
     monitorLayout?.refreshOutputs();
     monitorLayout?.refreshDisplayTimeout();
+    refreshNightFilter();
   }
 
 
@@ -92,6 +93,84 @@ SmartPanel {
     Quickshell.execDetached([Quickshell.env("HOME") + "/workspace/.files/scripts/" + script, argument]);
   }
 
+  property var nightState: ({ available: false, enabled: false, blue_light: 100, darkness: 45, error: "" })
+  property var pendingNightValues: ({})
+  property var activeNightValues: ({})
+  property string nightError: ""
+  property bool nightDragging: false
+  readonly property string nightScript: Quickshell.env("HOME") + "/workspace/.files/scripts/night-filter"
+
+  function refreshNightFilter() {
+    if (!nightProcess.running && !nightDebounce.running && !nightDragging)
+      runNightFilter(["status"]);
+  }
+
+  function runNightFilter(args) {
+    nightProcess.command = [nightScript].concat(args).concat(["--json"]);
+    nightProcess.running = true;
+  }
+
+  function queueNightValue(key, value) {
+    var next = Object.assign({}, pendingNightValues);
+    next[key] = Math.round(value);
+    pendingNightValues = next;
+    nightDebounce.restart();
+  }
+
+  function flushNightValues() {
+    if (nightProcess.running) {
+      nightDebounce.restart();
+      return;
+    }
+    var keys = Object.keys(pendingNightValues);
+    if (keys.length === 0)
+      return;
+    var key = keys[0];
+    var value = pendingNightValues[key];
+    var active = {};
+    active[key] = value;
+    activeNightValues = active;
+    var next = Object.assign({}, pendingNightValues);
+    delete next[key];
+    pendingNightValues = next;
+    runNightFilter([key === "blue_light" ? "set-blue-light" : "set-darkness", String(value)]);
+  }
+
+  Timer {
+    interval: 2000
+    running: root.isPanelOpen
+    repeat: true
+    onTriggered: root.refreshNightFilter()
+  }
+
+  Timer {
+    id: nightDebounce
+    interval: 120
+    onTriggered: root.flushNightValues()
+  }
+
+  Process {
+    id: nightProcess
+    onExited: (exitCode, exitStatus) => {
+      if (exitCode !== 0 && root.nightError === "")
+        root.nightError = "Night filter could not complete the request.";
+      if (Object.keys(root.pendingNightValues).length > 0)
+        nightDebounce.restart();
+    }
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var state = JSON.parse(text);
+          root.nightState = state;
+          root.nightError = state.error || "";
+          root.activeNightValues = {};
+        } catch (error) {
+          root.nightError = "Could not read night-filter state.";
+          root.activeNightValues = {};
+        }
+      }
+    }
+  }
   property var pendingVibrance: ({})
 
   function queueVibrance(portIndex, value) {
@@ -329,6 +408,119 @@ SmartPanel {
 
           NBox {
             Layout.fillWidth: true
+            implicitHeight: nightColumn.implicitHeight + Style.margin2M
+
+            ColumnLayout {
+              id: nightColumn
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.margins: Style.marginM
+              spacing: Style.marginS
+
+              NToggle {
+                id: nightToggle
+                objectName: "nightModeToggle"
+                label: "Night mode"
+                description: "Manual until the next scheduled sunrise or sunset"
+                icon: "moon"
+                checked: root.nightState.enabled
+                enabled: root.nightState.available && !root.nightState.foreign_shader && !nightProcess.running && Object.keys(root.pendingNightValues).length === 0
+                activeFocusOnTab: true
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: label
+                Accessible.description: description
+                Accessible.checkable: true
+                Accessible.checked: checked
+                Accessible.onPressAction: if (enabled) toggled(!checked)
+                Keys.onSpacePressed: if (enabled) toggled(!checked)
+                Keys.onReturnPressed: if (enabled) toggled(!checked)
+                onToggled: checked => root.runNightFilter([checked ? "on" : "off"])
+              }
+
+              NLabel {
+                label: "Blue-light reduction"
+                description: "0%: original color · 100%: full warm red tint"
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+                NSlider {
+                  id: blueLightSlider
+                  objectName: "blueLightSlider"
+                  Layout.fillWidth: true
+                  from: 0
+                  to: 100
+                  stepSize: 1
+                  value: root.pendingNightValues.blue_light ?? root.activeNightValues.blue_light ?? root.nightState.blue_light
+                  enabled: root.nightState.available
+                  Accessible.name: "Blue-light reduction"
+                  Accessible.description: "Percent of the full warm red tint"
+                  onMoved: root.queueNightValue("blue_light", value)
+                  onPressedChanged: {
+                    root.nightDragging = pressed;
+                    if (!pressed) root.queueNightValue("blue_light", value);
+                  }
+                }
+                NText {
+                  text: Math.round(blueLightSlider.value) + "%"
+                  Layout.preferredWidth: 45 * Style.uiScaleRatio
+                  horizontalAlignment: Text.AlignRight
+                }
+              }
+
+              NLabel {
+                label: "Darkness"
+                description: "Software dimming · 90% maximum leaves at least 10% brightness"
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+                NSlider {
+                  id: darknessSlider
+                  objectName: "darknessSlider"
+                  Layout.fillWidth: true
+                  from: 0
+                  to: 90
+                  stepSize: 1
+                  value: root.pendingNightValues.darkness ?? root.activeNightValues.darkness ?? root.nightState.darkness
+                  enabled: root.nightState.available
+                  Accessible.name: "Darkness"
+                  Accessible.description: "Software dimming percentage, from zero to ninety"
+                  onMoved: root.queueNightValue("darkness", value)
+                  onPressedChanged: {
+                    root.nightDragging = pressed;
+                    if (!pressed) root.queueNightValue("darkness", value);
+                  }
+                }
+                NText {
+                  text: Math.round(darknessSlider.value) + "%"
+                  Layout.preferredWidth: 45 * Style.uiScaleRatio
+                  horizontalAlignment: Text.AlignRight
+                }
+              }
+
+              NText {
+                Layout.fillWidth: true
+                text: root.nightState.enabled ? "Levels apply now and are saved for the next night." : "Night mode is off. Adjustments are saved without enabling it."
+                color: Color.mOnSurfaceVariant
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+
+              NText {
+                Layout.fillWidth: true
+                visible: root.nightError !== ""
+                text: root.nightError
+                color: Color.mError
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+            }
+          }
+
+          NBox {
+            Layout.fillWidth: true
             implicitHeight: displayTools.implicitHeight + Style.margin2M
 
             ColumnLayout {
@@ -342,6 +534,30 @@ SmartPanel {
               NLabel {
                 label: "Displays"
                 description: "Real advertised modes; layout changes apply only after confirmation"
+              }
+
+              NText {
+                Layout.fillWidth: true
+                text: "Drag monitors to rearrange them. Changes are staged until Apply."
+                color: Color.mOnSurfaceVariant
+                pointSize: Style.fontSizeS
+                wrapMode: Text.WordWrap
+              }
+
+              Loader {
+                id: monitorArrangement
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.round(230 * Style.uiScaleRatio)
+                Layout.minimumHeight: Math.round(230 * Style.uiScaleRatio)
+                active: root.monitorLayoutApi !== null
+                source: active ? "file://" + root.monitorLayoutApi.pluginDir + "/MonitorArrangement.qml" : ""
+              }
+
+              Binding {
+                target: monitorArrangement.item
+                property: "mainInstance"
+                value: root.monitorLayout
+                when: monitorArrangement.status === Loader.Ready
               }
 
               RowLayout {

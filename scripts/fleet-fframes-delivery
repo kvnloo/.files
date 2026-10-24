@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Run the canonical delivery recipe through existing fleet admission, never locally."""
+import argparse
+from pathlib import Path
+import subprocess
+import sys
+
+ap=argparse.ArgumentParser(description=__doc__)
+ap.add_argument('--source',type=Path,default=Path('/mnt/zer0models/workspace/zer0/products/fframestudio-launch'))
+ap.add_argument('--artifacts',type=Path,default=Path('/mnt/zer0models/project-artifacts/fframestudio/launch/v2-render-20261021'))
+ap.add_argument('--out',type=Path,required=True,help='new output directory, never the paused encoder destination')
+ap.add_argument('--wait',type=int,default=0)
+a=ap.parse_args()
+a.source=a.source.resolve();a.artifacts=a.artifacts.resolve();a.out=a.out.resolve()
+if a.out == a.artifacts or a.artifacts in a.out.parents or a.out.exists():
+    ap.error('--out must be a NEW separate directory, outside the paused artifact tree')
+for filename in ('deliver_v2.py','render_v2.py'):
+    if not (a.source/filename).is_file():ap.error(f'missing canonical source: {filename}')
+for filename in ('picture-2160p120.mkv','soundtrack.wav'):
+    if not (a.artifacts/filename).is_file():ap.error(f'missing source artifact: {filename}')
+fleet=Path(__file__).resolve().with_name('fleet-build')
+cmd=[str(fleet),'--node','mbp','--wait',str(a.wait),'--src',str(a.source),
+     '--cpus','2','--mem','3G','--timeout','21600','--keep','--out',str(a.out)]
+for filename in ('picture-2160p120.mkv','soundtrack.wav'):
+    cmd+=['--input',f'{a.artifacts/filename}:render/{filename}']
+for filename in ('fframestudio-launch-1080p120.mp4','fframestudio-launch-1080p60.mp4',
+                 'fframestudio-launch-2160p60.mp4','fframestudio-launch-square-1080p60.mp4',
+                 'fframestudio-launch-vertical-1080p60.mp4','fframestudio-launch-1080p120-hevc.mp4',
+                 'poster.jpg','execution.jsonl','logs'):
+    cmd+=['--fetch',f'render/{filename}']
+cmd+=['--','bash','-c','command -v ffmpeg >/dev/null || exit 3; FFRAMES_OUT="$PWD/render" exec python3 deliver_v2.py encode']
+# Source subdir semantics belong to fleet-build; run at its root, not our checkout.
+r=subprocess.run(cmd,cwd=a.source)
+if r.returncode==75:print('DELIVERY_HELD: remote unavailable/unsafe; canonical inputs and paused local output untouched',file=sys.stderr)
+raise SystemExit(r.returncode)

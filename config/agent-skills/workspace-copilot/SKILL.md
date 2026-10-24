@@ -209,3 +209,19 @@ workspace-copilot --json next-action
 ```
 
 SURFACE stays rare (p≥0.82). COMMIT remains explicit only.
+
+## Next-action re-ranker
+
+The bar chip's guesses are re-ranked by a small learned model (`scripts/workspace_rerank.py`,
+`rerank-v1`): recency-weighted softmax regression over the current app/workspace, recent focus
+moves, recent apps, switch rate and hour, trained on the engine's own 60 s outcomes.
+
+```sh
+workspace-copilot rerank-status   # holdout top-1/top-3 for model vs engine, age, whether it is live
+workspace-copilot rerank-train    # retrain now (the workspace-copilot-rerank.timer does this daily)
+```
+
+It is live only when it beat the transition-table engine on the newest held-out sessions and is
+under three days old; otherwise the engine's top-k passes through. `WORKSPACE_RERANK=0` in the
+daemon environment disables it. Each re-ranked item keeps `incumbent_p`, and the first item keeps
+`incumbent_keys`, so later training still scores the engine's own ranking.

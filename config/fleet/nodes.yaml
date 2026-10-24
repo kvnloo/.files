@@ -1,0 +1,160 @@
+# Fleet registry: the one place that says which tailnet devices take work and how.
+# Read by scripts/fleet (on groot). No secrets here; tailnet IPs are not secrets.
+#
+# role:      server | worker
+# ssh:       host lane access as the locked-down `agentjob` user (key-only sshd on
+#            port 2222, reachable on tailscale0 from the controller only)
+# classes:   job classes this node accepts. scripts/fleet labels writes them as node
+#            labels z0.dev/class-<name>=true|false (every class, every node) and
+#            config/k3s/kueue/queues.yaml copies them into the node's flavor.
+# capabilities: installed node toolchains; MBP Kueue mounts these from the host.
+#            `fleet run --class X` matches classes or capabilities, so
+#            `--class android-build` lands on a node that can run ./gradlew assemble*.
+#            `fleet labels` mirrors them as node labels z0.dev/cap-<name>=true|false.
+# toolchains: what `fleet toolchain <node>` (and `fleet enroll`) installs there with
+#            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk.
+# health:    thresholds for `fleet health`; on_unhealthy: cordon | report
+# lane:      native host limits: the agentjob slice is capped at mem_max/cpu_quota.
+#            Direct `fleet run` MBP work delegates to Kueue, even after auto-selection.
+#            mbp-host additionally holds a Kueue reservation for its entire lifetime.
+# aliases:   other names scripts/fleet accepts for the node (`fleet run s22 ...`).
+defaults:
+  health:
+    min_mem_available_mb: 1024
+    min_disk_free_gb: 15
+    max_temp_c: 95
+    min_battery_pct_on_battery: 40
+    strikes: 2            # consecutive bad checks before cordon; same count of good ones to uncordon
+    on_unhealthy: cordon
+  lane:
+    mem_floor_mb: 2048
+    default_mem: 2G
+    mem_max: 4G
+    cpu_quota: 600%
+    tasks_max: 4096
+
+classes: [cpu-heavy, build, render]
+
+nodes:
+  boat:
+    role: worker
+    kind: boat
+    arch: amd64
+    classes: [build, cpu-heavy]
+    capabilities: [python, git, x86]
+    taints: [cloud]         # Explicit --node boat or fleet-build --public overflow only.
+    health:
+      on_unhealthy: report
+    lane:
+      default_mem: 512M
+      mem_max: 7G
+      mem_floor_mb: 0
+  mbp:
+    role: worker
+    tailnet_ip: 100.78.215.21
+    ssh_port: 2222
+    arch: amd64
+    classes: [cpu-heavy, build, render]
+    # Default builds and --node mbp use Kueue in namespace fleet-mbp:
+    # LocalQueue lanes -> ClusterQueue lanes, config/k3s/kueue/queues.yaml.
+    # Explicit --node mbp-host requires a Kueue reservation for its full lifetime.
+    # This host-lane ceiling is not a separate admission budget.
+    # Hermes executor/quackles manifests belong in hermes-k8s-lab, not .files.
+    # The parent migration retires kind only after the real k3s readiness proof.
+    # SDK in /opt/android-sdk; Gradle caches in /home/agentjob/.gradle.
+    capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
+    toolchains: [jdk17, jdk21, bun, android-sdk]
+    lane:
+      mem_max: 7G           # 16 GiB laptop; a NOOP debug build (Gradle + Kotlin daemons) wants ~5-6 GiB
+      # 4 of 8 threads for all host jobs together: at 6 threads a NOOP build held the
+      # i7-4870HQ at 96-98 C with both fans at max (crit 100 C), and health paused it.
+      cpu_quota: 400%
+    health:
+      # Owner decision 2026-10-22: worn thermal paste keeps this i7-4870HQ near
+      # 92-98 C under load. Do not pause on temperature; the CPU's own PROCHOT
+      # throttling (TjMax 105 C) protects it. 110 sits above anything a probe can
+      # report while still requiring a finite reading (missing data still holds).
+      max_temp_c: 110
+    kubelet:
+      system_reserved: cpu=1,memory=2Gi
+      kube_reserved: cpu=500m,memory=1Gi
+      eviction_hard: memory.available<1Gi,nodefs.available<10%,imagefs.available<10%
+      eviction_soft: memory.available<1536Mi
+      eviction_soft_grace: memory.available=1m
+      # Default reclaim (= the threshold, 10%) kept DiskPressure set until 20% free on a
+      # 317 GiB btrfs disk; 2% clears it at 12%. Live since 2026-10-22 via the
+      # owner-run drop-in /etc/rancher/k3s/config.yaml.d/60-eviction-reclaim.yaml.
+      eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
+  omarchy-phone:
+    # Owner's S25 Ultra, Omalauncher PRoot host lane (not Kubernetes).
+    # Phones: no agent resource caps; Android manages battery/thermal/RAM.
+    # Enforced by Bend law O10 / z0-guard phone-caps.
+    role: worker
+    kind: phone
+    tailnet_ip: 100.104.42.85
+    ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
+    ssh_port: 22            # verified existing guest listener; not Android's SSH
+    arch: arm64
+    classes: [phone]
+    capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
+    model: SM-S938U
+    phone_runtime:
+      node: 24.21.0
+      bun: 1.3.14
+    phone_packages: [go, rust, gcc]
+    android:                # groot's adb to the phone itself (fleet health; read-only)
+      adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
+      revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
+    health:
+      min_disk_free_gb: 5
+      strikes: 2
+      on_unhealthy: pause
+    lane: {}
+  galaxy-s22plus:
+    # Spare Galaxy S22+, Omalauncher PRoot host lane.
+    # Guest localhost-0 is separate from Android galaxy-s22.
+    role: worker
+    kind: phone
+    aliases: [s22, localhost-0]
+    tailnet_ip: 100.97.11.22
+    ssh_user: root
+    ssh_port: 8022
+    arch: arm64
+    classes: [phone]
+    capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
+    model: SM-S906U1
+    phone_packages: [nodejs, bun, go, rust, gcc]
+    android:
+      adb_host: 100.72.191.23    # galaxy-s22 Android app node; groot has no adb pairing yet
+      revive: false
+    health:
+      min_disk_free_gb: 5
+      strikes: 2
+      on_unhealthy: pause
+    lane: {}
+  groot:
+    role: server
+    tailnet_ip: 100.113.138.100
+    arch: amd64
+    classes: [render]
+    # groot is the owner's desktop and the control plane: report only, never cordon
+    # it (the factory gateway and kueue are pinned here). It runs no host lane.
+    taints: ["z0.dev/host=interactive:PreferNoSchedule"]
+    health:
+      on_unhealthy: report
+    kubelet:
+      system_reserved: cpu=2,memory=4Gi
+      kube_reserved: cpu=1,memory=1Gi
+      eviction_hard: memory.available<1Gi,nodefs.available<10%,imagefs.available<10%
+      eviction_soft: memory.available<1536Mi
+      eviction_soft_grace: memory.available=2m
+
+# Known devices that are not workers (yet). `fleet enroll` refuses anything not
+# listed under nodes; move an entry up once the device is verified online.
+candidates:
+  pc-2080s:   {note: "RTX 2080 Super desktop; not on the tailnet. GPU worker: classes [render, build, cpu-heavy]."}
+  oracle-arm: {note: "Oracle Always Free Ampere A1 (arm64, 4 OCPU/24 GB). 24/7 CPU worker; images must be multi-arch."}
+  cursor:     {note: "linux, offline since 2026-09-26; identify before enrolling."}
+  cos:        {note: "linux, offline since 2026-09-05; identify before enrolling."}

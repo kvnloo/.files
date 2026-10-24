@@ -1,0 +1,25 @@
+#!/usr/bin/busybox sh
+# runsv ./finish <exit code> <signal>. busybox sh: date/cat/grep run as applets, which is
+# much cheaper than exec'ing coreutils under PRoot. Restart policy: an exit after 30 s or
+# more of running, or the first two quick ones in a row, restart at once; from the third
+# quick exit (under 30 s) in a row on, back off 1, 2, 4 ... 60 s. A deliberate stop
+# (sv down/exit, a handover) never waits.
+exec 9>&- 8>&-
+now=$(date +%s)
+start=$(cat ./start 2>/dev/null || echo "$now")
+up=$((now - start))
+n=0
+# 143 / signal 15: stopped by TERM (sv restart, a handover, the tailscaled wrapper).
+if [ "$up" -lt 30 ] && [ "$1" != 143 ] && [ "${2:-}" != 15 ] && ! sv status . 2>/dev/null | grep -q 'want down'; then
+    n=$(($(cat ./fails 2>/dev/null || echo 0) + 1))
+    [ "$n" -gt 9 ] && n=9
+fi
+echo "$n" >./fails
+d=0
+[ "$n" -ge 3 ] && d=$((1 << (n - 3)))
+[ "$d" -gt 60 ] && d=60
+ev=/root/.local/state/fleet/supervise/events
+[ -f "$ev" ] && [ "$(wc -c <"$ev")" -gt 131072 ] && mv -f "$ev" "$ev.1"
+echo "$(date '+%F %T') ${PWD##*/} exited (code $1, signal $2) after ${up} s; next start in ${d} s" >>"$ev"
+[ "$d" -gt 0 ] && exec sleep "$d"
+exit 0

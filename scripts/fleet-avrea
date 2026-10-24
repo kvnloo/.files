@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Dispatch exact public commits to the dedicated Avrea verification repository."""
+import argparse
+import datetime as dt
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import time
+import uuid
+
+
+def run(argv, **kwargs):
+    return subprocess.run(argv, check=True, text=True, **kwargs)
+
+
+def capture(argv, **kwargs):
+    return run(argv, stdout=subprocess.PIPE, **kwargs).stdout.strip()
+
+
+def gh_json(*args):
+    return json.loads(capture(['gh', *args]))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--src', default='.')
+    parser.add_argument('--repo', help='public owner/repository; otherwise infer origin')
+    parser.add_argument('--sha', help='exact commit; otherwise clean local HEAD')
+    parser.add_argument('--runner', default='avrea-ubuntu-latest-4-vcpu')
+    parser.add_argument('--index', choices=('official', 'avrea'), help='Python package index; default detects PyPI lockfiles on the runner')
+    parser.add_argument('--matrix', type=Path, help='JSON file containing command strings for parallel fan-out')
+    parser.add_argument('--parallel', type=int, default=1)
+    parser.add_argument('--timeout', type=int, default=1200, help='per-command seconds, rounded up to minutes')
+    parser.add_argument('--wait', type=int, default=1800, help='maximum queue/dispatch wait seconds')
+    parser.add_argument('--fetch', action='append', default=[])
+    parser.add_argument('--out', type=Path)
+    parser.add_argument('--snapshot', type=Path)
+    parser.add_argument('command', nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    command = args.command[1:] if args.command[:1] == ['--'] else args.command
+    if not command and not args.matrix:
+        parser.error('a verification command or --matrix is required')
+    if args.timeout < 1 or args.wait < 1 or args.parallel < 1:
+        parser.error('timeout, wait, and parallel must be positive')
+    source = Path(args.src).resolve()
+    explicit_sha = args.sha is not None
+    if not args.repo:
+        remote = capture(['git', '-C', str(source), 'remote', 'get-url', 'origin'])
+        match = re.fullmatch(r'(?:https://github\.com/|git@github\.com:)([\w.-]+/[\w.-]+?)(?:\.git)?/?', remote)
+        if not match:
+            parser.error('origin is not github.com; provide --repo and --sha')
+        args.repo = match[1]
+    if not re.fullmatch(r'[\w.-]+/[\w.-]+', args.repo):
+        parser.error('--repo must be owner/name')
+    metadata = gh_json('api', 'repos/' + args.repo)
+    if metadata.get('private') is not False or metadata.get('visibility') != 'public':
+        parser.error('Avrea lane accepts public source repositories only')
+    if not args.sha:
+        if capture(['git', '-C', str(source), 'status', '--porcelain']):
+            parser.error('local tree is dirty: commit/push first, or explicitly select a public --sha')
+        args.sha = capture(['git', '-C', str(source), 'rev-parse', 'HEAD'])
+    if not re.fullmatch('[0-9a-f]{40}', args.sha):
+        parser.error('--sha must be a complete lowercase commit SHA')
+    public_commit = gh_json('api', f'repos/{args.repo}/commits/{args.sha}')
+    if public_commit['sha'] != args.sha:
+        parser.error('requested SHA is not present in the public repository')
+    matrix = json.loads(args.matrix.read_text()) if args.matrix else []
+    if args.matrix and (not isinstance(matrix, list) or not 1 <= len(matrix) <= 32 or any(not isinstance(c, str) or not c.strip() for c in matrix)):
+        parser.error('--matrix must contain 1..32 nonempty command strings')
+    minutes = (args.timeout + 59) // 60
+    if minutes > 360:
+        parser.error('per-command timeout cannot exceed six hours')
+    # Preserve the caller subdirectory only for local inferred heads. Explicit repo/SHA
+    # commands are rooted at the target checkout and never ship local files.
+    shell_command = shlex.join(command) if command else ':'
+    if not explicit_sha:
+        root = Path(capture(['git', '-C', str(source), 'rev-parse', '--show-toplevel']))
+        try:
+            relative = Path.cwd().resolve().relative_to(root)
+        except ValueError:
+            relative = Path('.')
+        if str(relative) != '.':
+            prefix = 'cd ' + shlex.quote(str(relative)) + ' && '
+            shell_command = prefix + shell_command
+            matrix = [prefix + item for item in matrix]
+    budget = Path(__file__).with_name('fleet-avrea-budget')
+    budget_args = [str(budget), 'check', '--repo', 'kvnloo/fleet-runner', '--runner', args.runner, '--jobs', str(len(matrix) or 1), '--timeout-minutes', str(minutes)]
+    if args.snapshot:
+        budget_args += ['--snapshot', str(args.snapshot)]
+    budget_args += ['--parallel', str(args.parallel), '--overhead-minutes', '2']
+    decision_process = subprocess.run(budget_args, text=True, stdout=subprocess.PIPE)
+    if decision_process.returncode:
+        print(decision_process.stdout, file=sys.stderr)
+        return decision_process.returncode
+    decision = json.loads(decision_process.stdout)
+    identifier = uuid.uuid4().hex
+    output = args.out or Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet'))) / 'runs' / ('avrea-' + identifier)
+    output.mkdir(parents=True, exist_ok=True)
+    request = {'repository': args.repo, 'sha': args.sha, 'command': shell_command, 'runner': args.runner, 'fetch': '\n'.join(args.fetch), 'matrix': json.dumps(matrix), 'parallel': str(args.parallel), 'timeout_minutes': str(minutes), 'request_id': identifier}
+    request['package_index'] = args.index or ''
+    (output / 'request.json').write_text(json.dumps(request, indent=2) + '\n')
+    (output / 'budget.json').write_text(json.dumps(decision, indent=2) + '\n')
+    repository = 'kvnloo/fleet-runner'
+    # The UUID identifies only our dispatch; never select somebody else's latest run.
+    run(['gh', 'workflow', 'run', 'verify.yml', '--repo', repository, '--ref', 'main', '--json'], input=json.dumps(request))
+    print(f'fleet-avrea: dispatched {identifier}; results {output}', file=sys.stderr)
+    deadline = time.monotonic() + args.wait
+    run_id = None
+    while run_id is None:
+        candidates = gh_json('run', 'list', '--repo', repository, '--workflow', 'verify.yml', '--event', 'workflow_dispatch', '--limit', '100', '--json', 'databaseId,displayTitle')
+        matches = [item['databaseId'] for item in candidates if item['displayTitle'] == 'fleet-' + identifier]
+        if len(matches) > 1:
+            raise RuntimeError('ambiguous dispatch identity; inspect request.json')
+        if matches:
+            run_id = matches[0]
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError('dispatch not visible; reservation retained, do not blindly replay')
+        time.sleep(3)
+    url = f'https://github.com/{repository}/actions/runs/{run_id}'
+    (output / 'run.json').write_text(json.dumps({'id': run_id, 'url': url}) + '\n')
+    settlement = [str(budget), 'settle', '--reservation-id', decision['reservation_id'], '--run-id', str(run_id)]
+    run(settlement)
+    print(f'fleet-avrea: {url}', file=sys.stderr)
+    queue_deadline = time.monotonic() + args.wait
+    active_deadline = None
+    while True:
+        status = gh_json('run', 'view', str(run_id), '--repo', repository, '--json', 'status,conclusion,jobs')
+        (output / 'status.json').write_text(json.dumps(status, indent=2) + '\n')
+        if status['status'] == 'completed':
+            break
+        started = any(job.get('name', '').startswith('verify-') and job['status'] in {'in_progress', 'completed'} for job in status.get('jobs', []))
+        if started and active_deadline is None:
+            batches = ((len(matrix) or 1) + args.parallel - 1) // args.parallel
+            active_deadline = time.monotonic() + minutes * 60 * batches + 600
+        expired = time.monotonic() > (active_deadline or queue_deadline)
+        if expired:
+            run(['gh', 'run', 'cancel', str(run_id), '--repo', repository])
+            print(f'fleet-avrea: timed out; cancellation requested; inspect {url}', file=sys.stderr)
+            return 124
+        time.sleep(10)
+    downloaded = subprocess.run(['gh', 'run', 'download', str(run_id), '--repo', repository, '--dir', str(output / 'artifacts')], check=False)
+    receipts = sorted((output / 'artifacts').glob('fleet-result-*/receipt.json'))
+    if downloaded.returncode or len(receipts) != (len(matrix) or 1):
+        print(f'fleet-avrea: missing result receipts ({len(receipts)}/{len(matrix) or 1}); {url}', file=sys.stderr)
+        return 1
+    codes = []
+    for receipt_path in receipts:
+        receipt = json.loads(receipt_path.read_text())
+        if receipt.get('sha') != args.sha or receipt.get('repository') != args.repo or str(receipt.get('run_id')) != str(run_id):
+            raise RuntimeError('downloaded receipt does not match dispatched exact head')
+        codes.append(int(receipt['exit_code']))
+        print(f"fleet-avrea: job {receipt['index']} exit={receipt['exit_code']} duration={receipt['duration_seconds']:.2f}s", file=sys.stderr)
+    return next((code for code in codes if code), 0) if status['conclusion'] == 'success' or any(codes) else 1
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
+        print(f'fleet-avrea: {error}', file=sys.stderr)
+        sys.exit(2)

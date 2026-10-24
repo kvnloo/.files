@@ -1,0 +1,74 @@
+# factory: untrusted OSS repo jobs. Restricted pods. Kueue (kueue/queues.yaml) admits
+#          and places them per node; this ResourceQuota is the outer ceiling above
+#          Kueue's 20 pods (defense in depth; oss-factory owns worker claims).
+# z0:      z0intelligence services and unsloth/GPU jobs (trusted, our code).
+# lanes:   restricted relay jobs that call free model APIs; CPU and network only.
+# fleet-mbp: owner's trusted local builds. HostPath requires privileged admission
+#            in this namespace only. The backend uses agentjob UID 1001, non-root,
+#            no API token, drop ALL capabilities and no privilege escalation.
+#            Host toolchains mount read-only; agentjob HOME mounts read-write
+#            to preserve existing caches. This is a trusted-code lane.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: factory
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: z0
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lanes
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet-mbp
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: factory-ceiling
+  namespace: factory
+spec:
+  hard:
+    pods: "24"
+    requests.cpu: "8"
+    requests.memory: 12Gi
+    limits.memory: 24Gi
+    requests.nvidia.com/gpu: "0"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: factory-defaults
+  namespace: factory
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "1", memory: 2Gi}
+      defaultRequest: {cpu: 250m, memory: 512Mi}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: lanes-defaults
+  namespace: lanes
+spec:
+  limits:
+    - type: Container
+      default: {cpu: 500m, memory: 512Mi}
+      defaultRequest: {cpu: 50m, memory: 128Mi}

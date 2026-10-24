@@ -1,0 +1,65 @@
+# Placement, not agent.slice, protects the desktop from root-owned k3s workers.
+# Applies only to workload namespaces; kube-system and the desktop are untouched.
+# A genuinely requested GPU is the exception, not a name/label saying "render".
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: interactive-cpu-placement
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: init
+      expression: "has(object.spec.initContainers) ? object.spec.initContainers : []"
+    - name: gpu
+      expression: >-
+        object.spec.containers.exists(c, has(c.resources) && has(c.resources.limits) &&
+        'nvidia.com/gpu' in c.resources.limits && quantity(c.resources.limits['nvidia.com/gpu']).compareTo(quantity('0')) > 0)
+    - name: small
+      expression: >-
+        size(object.spec.containers) == 1 && size(variables.init) <= 1 &&
+        (object.spec.containers + variables.init).all(c,
+          has(c.resources) && has(c.resources.limits) &&
+          'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(c.resources.limits['cpu']).compareTo(quantity('200m')) <= 0 &&
+          quantity(c.resources.limits['memory']).compareTo(quantity('64Mi')) <= 0)
+  validations:
+    - expression: >-
+        variables.small ||
+        (has(object.spec.nodeSelector) &&
+         'kubernetes.io/hostname' in object.spec.nodeSelector &&
+         object.spec.nodeSelector['kubernetes.io/hostname'] == 'mbp' &&
+         'z0.dev/cpu-admit' in object.spec.nodeSelector && object.spec.nodeSelector['z0.dev/cpu-admit'] == 'true' &&
+         (!has(object.spec.nodeName) || object.spec.nodeName == 'mbp')) ||
+        (variables.gpu && has(object.spec.nodeSelector) &&
+         (('kubernetes.io/hostname' in object.spec.nodeSelector && object.spec.nodeSelector['kubernetes.io/hostname'] == 'groot') ||
+          ('z0.dev/gpu' in object.spec.nodeSelector && object.spec.nodeSelector['z0.dev/gpu'] == 'rtx3080ti')) &&
+         (!has(object.spec.nodeName) || object.spec.nodeName == 'groot'))
+      message: "CPU-only work must select mbp and z0.dev/cpu-admit=true; groot requires an allocated NVIDIA GPU (only <=200m/64Mi infrastructure is exempt)"
+    - expression: >-
+        size(object.spec.containers) <= 2 && size(variables.init) <= 2 &&
+        (object.spec.containers + variables.init).all(c,
+          has(c.resources) && has(c.resources.limits) &&
+          'cpu' in c.resources.limits && 'memory' in c.resources.limits &&
+          quantity(c.resources.limits['cpu']).compareTo(quantity('2')) <= 0 &&
+          quantity(c.resources.limits['memory']).compareTo(quantity('4Gi')) <= 0)
+      message: "Workload pods require explicit CPU/memory limits (max two main/init containers, each <=2 CPU/4Gi); GPU allocation does not exempt CPU limits"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: interactive-cpu-placement
+spec:
+  policyName: interactive-cpu-placement
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [factory, lanes, z0]

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Phones: no agent resource caps; Android manages battery/thermal/RAM.
+# Enforced by Bend law O10 / z0-guard phone-caps.
+# Owner pause/call intent, timeout and owned process-group cleanup only.
+set -u
+TIMEOUT=3600
+GATE_ONLY=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --timeout)
+      [ $# -ge 2 ] && [[ $2 =~ ^[1-9][0-9]*$ ]] || exit 2
+      TIMEOUT=$2; shift 2 ;;
+    --gate-only) GATE_ONLY=1; shift ;;
+    --) shift; break ;;
+    *) echo "polite-run: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+log() { echo "[polite-run $(date +%H:%M:%S)] $*" >&2; }
+case $(uname -r) in *android*) ;; *) log "unsupported: phone adapter requires Android PRoot"; exit 78 ;; esac
+gate() {
+  [ ! -e "$HOME/.config/fleet/pause" ] || { echo 'paused by owner'; return 1; }
+  [ ! -e "$HOME/.config/fleet/owner-call" ] || { echo 'owner call active'; return 1; }
+  echo 'owner permits jobs'
+}
+reason=$(gate); rc=$?
+log "$reason"
+[ "$GATE_ONLY" -eq 1 ] && exit "$rc"
+[ "$rc" -eq 0 ] || exit 75
+[ $# -gt 0 ] || { echo 'polite-run: no command' >&2; exit 2; }
+# Preserve installed runtime discovery when the executor changes payload HOME.
+export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$PATH"
+export MISE_DATA_DIR="$HOME/.local/share/mise"
+export MISE_CONFIG_DIR="$HOME/.config/mise"
+setsid "$@" &
+pid=$!
+start=$(date +%s)
+why=''
+cleanup() {
+  kill -TERM -- -"$pid" 2>/dev/null || true
+  # Give the complete owned group time to exit, even if its leader already exited.
+  for ((i=0; i<20; i++)); do
+    kill -0 -- -"$pid" 2>/dev/null || return 0
+    sleep .1
+  done
+  kill -KILL -- -"$pid" 2>/dev/null || true
+}
+trap 'cleanup; wait "$pid" 2>/dev/null; exit 75' TERM INT HUP
+while kill -0 "$pid" 2>/dev/null; do
+  sleep 1
+  if [ $(($(date +%s) - start)) -ge "$TIMEOUT" ]; then why=timeout; break; fi
+  if ! reason=$(gate); then why=$reason; break; fi
+done
+if [ -n "$why" ]; then cleanup; fi
+wait "$pid"; rc=$?
+# Reap descendants left behind by a payload whose leader returned normally.
+cleanup
+case $why in
+  '') exit "$rc" ;;
+  timeout) log "job timeout ${TIMEOUT}s"; exit 124 ;;
+  *) log "$why"; exit 75 ;;
+esac

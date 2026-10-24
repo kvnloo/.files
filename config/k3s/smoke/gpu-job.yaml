@@ -1,0 +1,22 @@
+# GPU path: the device plugin advertises nvidia.com/gpu and a pod can see the card.
+#   kubectl create -f config/k3s/smoke/gpu-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: smoke-gpu-
+  namespace: z0
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      automountServiceAccountToken: false
+      containers:
+        - name: smoke
+          image: nvidia/cuda:12.8.1-base-ubuntu24.04
+          command: ["sh", "-c", "nvidia-smi --query-gpu=name,memory.total --format=csv && echo GPU_SMOKE_OK"]
+          resources:
+            limits: {nvidia.com/gpu: 1}

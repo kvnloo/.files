@@ -1,0 +1,10 @@
+[Unit]
+Description=Plan today's night filter switch times (sunset on, sunrise off)
+
+[Timer]
+OnStartupSec=30s
+OnCalendar=*-*-* 00:05
+Persistent=true
+
+[Install]
+WantedBy=timers.target
