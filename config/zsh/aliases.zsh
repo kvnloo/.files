@@ -67,6 +67,13 @@ alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
 alias claude-home='CLAUDE_CONFIG_DIR=$HOME/.claude-home claude'
 alias claude-mem='bun "/Users/kvn/.claude-work/plugins/cache/thedotmack/claude-mem/10.5.6/scripts/worker-service.cjs"'
 
+# tokenmaxxing uses ccusage, which accepts a comma-separated CLAUDE_CONFIG_DIR list.
+# Do NOT export this globally — Claude Code itself expects a single config dir.
+tokenmaxxing() {
+  CLAUDE_CONFIG_DIR="${HOME}/.claude,${HOME}/.claude-home,${HOME}/.claude-work" \
+    command tokenmaxxing "$@"
+}
+
 # Hunyuan3D API server on demand (idle it eats ~8GB RAM + 7GB VRAM)
 alias hunyuan="/workspace/venv/hunyuan3d/hunyuan.sh"
 

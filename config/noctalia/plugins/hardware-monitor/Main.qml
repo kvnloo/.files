@@ -33,7 +33,9 @@ Item {
   Component.onDestruction: SystemStatService.unregisterComponent("plugin-hardware-monitor")
 
   Timer {
-    interval: 3000
+    // Persistent telemetry runs at 10 seconds too; avoid repeatedly spawning
+    // nvidia-smi and the latency probe faster than the UI can use the result.
+    interval: 10000
     repeat: true
     running: true
     onTriggered: root.refresh()

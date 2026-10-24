@@ -1,0 +1,26 @@
+id = "workspace-xfs-to-bcachefs"
+enabled = false
+kind = "filesystem-migration"
+mountpoint = "/workspace"
+source_fstype = "xfs"
+target_fstype = "bcachefs"
+minimum_bcachefs_tools = "1.39.6"
+
+[gates]
+stable_device_identity_required = true
+source_unmounted = true
+offline_environment = true
+p0_backup_verified = true
+alternate_superblock_mount_verified = true
+content_comparison_verified = true
+filesystem_semantics_verified = true
+explicit_human_commit = true
+
+[forbidden_in_normal_apply]
+partition_table_changes = true
+migrate_superblock = true
+fstab_mutation = true
+
+[notes]
+device_identity = "Populate from ./iac collect before enabling. Never key this transition only by /dev/nvme0n1p3."
+commit_boundary = "bcachefs migrate-superblock remains a separate human-approved transition step."

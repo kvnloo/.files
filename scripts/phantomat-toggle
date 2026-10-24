@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Keep entry/leave state and layout restoration in the adjacent Python helper.
+set -euo pipefail
+umask 077
+script=$(readlink -f -- "${BASH_SOURCE[0]}")
+exec python3 "${script%/*}/phantomat-canvas-state.py" "$@"

@@ -1,0 +1,8 @@
+#!/bin/bash
+# Load the Phantomat plugin into the running Hyprland, then re-read the config so its settings apply.
+# Does nothing harmful if the plugin is missing or was built for another Hyprland: keys keep their normal actions.
+SO=/home/kvn/.local/share/hyprland/plugins/phantomat/spatialoverview.so
+[ -r "$SO" ] || exit 0
+hyprctl plugins list | grep -q spatialoverview && exit 0
+hyprctl plugin load "$SO" >/dev/null 2>&1 || exit 0
+hyprctl reload >/dev/null 2>&1

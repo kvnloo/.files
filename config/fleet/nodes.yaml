@@ -7,16 +7,16 @@
 # classes:   job classes this node accepts. scripts/fleet labels writes them as node
 #            labels z0.dev/class-<name>=true|false (every class, every node) and
 #            config/k3s/kueue/queues.yaml copies them into the node's flavor.
-# capabilities: host toolchains a `fleet run` job finds on the node (not k3s pods).
+# capabilities: installed node toolchains; MBP Kueue mounts these from the host.
 #            `fleet run --class X` matches classes or capabilities, so
 #            `--class android-build` lands on a node that can run ./gradlew assemble*.
 #            `fleet labels` mirrors them as node labels z0.dev/cap-<name>=true|false.
 # toolchains: what `fleet toolchain <node>` (and `fleet enroll`) installs there with
 #            scripts/fleet-toolchain.sh: jdk17 jdk21 bun android-sdk.
 # health:    thresholds for `fleet health`; on_unhealthy: cordon | report
-# lane:      limits for host jobs (`fleet run`): the agentjob user slice is capped at
-#            mem_max/cpu_quota; a job only starts when MemAvailable >= mem_floor_mb
-#            plus the job's own --mem.
+# lane:      native host limits: the agentjob slice is capped at mem_max/cpu_quota.
+#            Direct `fleet run` MBP work delegates to Kueue, even after auto-selection.
+#            mbp-host additionally holds a Kueue reservation for its entire lifetime.
 # aliases:   other names scripts/fleet accepts for the node (`fleet run s22 ...`).
 defaults:
   health:
@@ -36,15 +36,32 @@ defaults:
 classes: [cpu-heavy, build, render]
 
 nodes:
+  boat:
+    role: worker
+    kind: boat
+    arch: amd64
+    classes: [build, cpu-heavy]
+    capabilities: [python, git, x86]
+    taints: [cloud]         # Explicit --node boat or fleet-build --public overflow only.
+    health:
+      on_unhealthy: report
+    lane:
+      default_mem: 512M
+      mem_max: 7G
+      mem_floor_mb: 0
   mbp:
     role: worker
     tailnet_ip: 100.78.215.21
     ssh_port: 2222
     arch: amd64
     classes: [cpu-heavy, build, render]
-    # The default build node (docs/fleet/README.md "Default routing"): NOOP and
-    # Lawnchair Gradle builds, Bun/Node and Python suites. SDK in /opt/android-sdk,
-    # Gradle caches in /home/agentjob/.gradle on mbp's own disk.
+    # Default builds and --node mbp use Kueue in namespace fleet-mbp:
+    # LocalQueue lanes -> ClusterQueue lanes, config/k3s/kueue/queues.yaml.
+    # Explicit --node mbp-host requires a Kueue reservation for its full lifetime.
+    # This host-lane ceiling is not a separate admission budget.
+    # Hermes executor/quackles manifests belong in hermes-k8s-lab, not .files.
+    # The parent migration retires kind only after the real k3s readiness proof.
+    # SDK in /opt/android-sdk; Gradle caches in /home/agentjob/.gradle.
     capabilities: [android-build, jdk17, jdk21, bun, node, python, git]
     toolchains: [jdk17, jdk21, bun, android-sdk]
     lane:
@@ -69,22 +86,19 @@ nodes:
       # owner-run drop-in /etc/rancher/k3s/config.yaml.d/60-eviction-reclaim.yaml.
       eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
   omarchy-phone:
-    # Owner's S25 Ultra, Arch Linux ARM in Omalauncher's PRoot (no systemd, no
-    # cgroups, no netlink/iptables): k3s cannot run, so host lane only, politely.
-    # Owner-controlled light/worker profiles; live battery/thermal/RAM gates always win.
+    # Owner's S25 Ultra, Omalauncher PRoot host lane (not Kubernetes).
+    # Phones: no agent resource caps; Android manages battery/thermal/RAM.
+    # Enforced by Bend law O10 / z0-guard phone-caps.
     role: worker
     kind: phone
     tailnet_ip: 100.104.42.85
     ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
-    ssh_port: 22
+    ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, java, node, bun, go, rust, cargo, gcc]
-    taints: [phone]         # `fleet run` picks it only with --tolerate phone or --node
+    capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
     model: SM-S938U
-    phone_modes:
-      light: {cpus: "0-1", slots: 1, memory_pct: 25}
-      worker: {cpus: "0-5", slots: 6, memory_pct: 75, min_battery_pct: 2}
     phone_runtime:
       node: 24.21.0
       bun: 1.3.14
@@ -93,50 +107,33 @@ nodes:
       adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
-      min_mem_available_mb: 1200
       min_disk_free_gb: 5
-      max_android_thermal_status: 1
-      on_unhealthy: pause   # `fleet run` skips it; polite-run drains running jobs itself
-    lane:
-      mem_floor_mb: 1200
-      default_mem: 512M
-      mem_max: 8G
-      cpus: 0-5
+      strikes: 2
+      on_unhealthy: pause
+    lane: {}
   galaxy-s22plus:
-    # Spare Galaxy S22+ (SM-S906U1, Snapdragon 8 Gen 1: cores 0-3 are the small
-    # ones), Arch Linux ARM in Omalauncher's PRoot like omarchy-phone. Its guest is
-    # its own tailnet node `localhost-0`; the Android Tailscale app node
-    # `galaxy-s22` (100.72.191.23) is the same phone. No Tailscale SSH in this
-    # guest: key-only OpenSSH on 8022 (`ssh s22` on groot). Same polite lane,
-    # Reserve core 7 for the launcher. Both profiles keep nice 19 and idle I/O.
+    # Spare Galaxy S22+, Omalauncher PRoot host lane.
+    # Guest localhost-0 is separate from Android galaxy-s22.
     role: worker
     kind: phone
-    aliases: [s22]
+    aliases: [s22, localhost-0]
     tailnet_ip: 100.97.11.22
     ssh_user: root
     ssh_port: 8022
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, node, bun, go, rust, cargo, gcc]
-    taints: [phone]
+    capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    taints: []
     model: SM-S906U1
-    phone_modes:
-      light: {cpus: "0-1", slots: 1, memory_pct: 25}
-      worker: {cpus: "0-6", slots: 4, memory_pct: 75, min_battery_pct: 0}
     phone_packages: [nodejs, bun, go, rust, gcc]
     android:
       adb_host: 100.72.191.23    # galaxy-s22 Android app node; groot has no adb pairing yet
       revive: false
     health:
-      min_mem_available_mb: 1200
       min_disk_free_gb: 5
-      max_android_thermal_status: 1
+      strikes: 2
       on_unhealthy: pause
-    lane:
-      mem_floor_mb: 1200
-      default_mem: 512M
-      mem_max: 5G
-      cpus: 0-6
+    lane: {}
   groot:
     role: server
     tailnet_ip: 100.113.138.100

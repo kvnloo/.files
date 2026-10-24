@@ -172,6 +172,11 @@ headphone-switch.sh eq monarch   # Switch to Monarch MKII IRs
 headphone-switch.sh              # Shows active sink and EQ profile
 ```
 
+### Oh My Pi `/live`
+Voice is Pulse, 24 kHz mono. Music can stay on Room. Active rule `40-omp-live-dry.conf` pins OMP/`media.name=voice` to the **raw Topping DX5** sink (no AutoEQ/loudness/MBC/BRIR). The old AutoEQ path is `41-omp-live-dsp.conf` (rules commented). Capture: `52-blue-snowball.conf` forces Snowball `input:mono-fallback`.
+
+
+
 ## Verification
 
 ### Check DSP Chain is Loaded

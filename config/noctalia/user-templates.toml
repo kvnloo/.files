@@ -1,0 +1,6 @@
+[config]
+
+[templates.hyprland_groups]
+input_path = "/workspace/.files/config/noctalia/hyprland-group-colors.conf"
+output_path = "~/.cache/noctalia/hyprland-group-colors.conf"
+post_hook = "python3 /workspace/.files/scripts/sync-pywal-theme.py --apply-hyprland \"$HOME/.cache/noctalia/hyprland-group-colors.conf\""

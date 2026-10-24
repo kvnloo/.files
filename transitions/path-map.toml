@@ -1,0 +1,6 @@
+# Repository path moves for the fleet-IaC future-state rollout.
+# Consumed by: ./iac links scan --map transitions/path-map.toml ...
+
+[[move]]
+from = "proposal_codexbar_aggregate.md"
+to = "docs/proposals/codexbar-aggregate.md"

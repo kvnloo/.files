@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
+import os
 import shutil
 from pathlib import Path
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIGHTNESS_PANEL_SOURCE = ROOT / "config/noctalia/overlays/BrightnessPanel.qml"
@@ -16,6 +19,9 @@ DISPLAY_OVERRIDE = Path("Modules/Panels/Settings/Tabs/Display/DisplayTab.qml")
 BRIGHTNESS_PANEL_OVERRIDE = Path("Modules/Panels/Brightness/BrightnessPanel.qml")
 BRIGHTNESS_WIDGET_OVERRIDE = Path("Modules/Bar/Widgets/Brightness.qml")
 SYSTEM_MONITOR_OVERRIDE = Path("Modules/Cards/SystemMonitorCard.qml")
+PROFILE_CARD_OVERRIDE = Path("Modules/Cards/ProfileCard.qml")
+PLUGIN_PANEL_OVERRIDE = Path("Modules/Panels/Plugins/PluginPanelSlot.qml")
+PANEL_SERVICE_OVERRIDE = Path("Services/UI/PanelService.qml")
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -762,12 +768,123 @@ def customize_system_monitor(_: str) -> str:
     return SYSTEM_MONITOR_SOURCE.read_text()
 
 
+def customize_profile_card(text: str) -> str:
+    text = replace_once(
+        text,
+        "import qs.Services.System\nimport qs.Services.UI",
+        "import qs.Services.System\nimport qs.Services.Noctalia\nimport qs.Services.UI",
+    )
+    return replace_once(
+        text,
+        '''      NIconButton {
+        icon: "power"
+        tooltipText: I18n.tr("tooltips.session-menu")''',
+        '''      NIconButton {
+        id: reforgeGrootButton
+        icon: "package"
+        tooltipText: "Reforge Groot · update everything"
+        onClicked: reforgeGrootAnimation.restart()
+      }
+
+      SequentialAnimation {
+        id: reforgeGrootAnimation
+        running: false
+        NumberAnimation {
+          target: reforgeGrootButton
+          property: "rotation"
+          from: 0
+          to: 360
+          duration: 480
+          easing.type: Easing.InOutCubic
+        }
+        ScriptAction {
+          script: {
+            reforgeGrootButton.rotation = 0;
+            PanelService.getPanel("controlCenterPanel", screen)?.close();
+            PluginService.getPluginAPI("reforge-groot")?.openPanel(screen, reforgeGrootButton);
+          }
+        }
+      }
+
+      NIconButton {
+        icon: "power"
+        tooltipText: I18n.tr("tooltips.session-menu")''',
+    )
+
+
+def customize_plugin_panel_slot(text: str) -> str:
+    return replace_once(
+        text,
+        "  property var pluginInstance: null\n",
+        """  property var pluginInstance: null
+
+  // Resolve the main policy before the lazy panel-content loader runs.
+  exclusiveKeyboard: pluginInstance?.exclusiveKeyboard
+      ?? PluginService.loadedPlugins[root.currentPluginId]?.mainInstance?.exclusiveKeyboard
+      ?? true
+""",
+    )
+
+
+def customize_panel_service(text: str) -> str:
+    text = replace_once(
+        text,
+        """  Timer {
+    id: keyboardInitTimer
+    interval: 100
+    repeat: false
+    onTriggered: {
+      root.isInitializingKeyboard = false;
+    }
+  }
+""",
+        """  Timer {
+    id: keyboardInitTimer
+    interval: 100
+    repeat: false
+    onTriggered: {
+      root.isInitializingKeyboard = false;
+    }
+  }
+
+  function syncKeyboardInitialization() {
+    keyboardInitTimer.stop();
+    isInitializingKeyboard = root.openedPanel?.exclusiveKeyboard === true;
+    if (isInitializingKeyboard)
+      keyboardInitTimer.restart();
+  }
+
+  Connections {
+    target: root.openedPanel
+    function onExclusiveKeyboardChanged() {
+      root.syncKeyboardInitialization();
+    }
+  }
+""",
+    )
+    return replace_once(
+        text,
+        """    // Start keyboard initialization period (for Hyprland workaround)
+    if (panel && panel.exclusiveKeyboard) {
+      isInitializingKeyboard = true;
+      keyboardInitTimer.restart();
+    }
+""",
+        """    // Start or clear keyboard focus initialization for the active panel.
+    syncKeyboardInitialization();
+""",
+    )
+
+
 CUSTOMIZERS = {
     BRIGHTNESS_WIDGET_OVERRIDE: customize_brightness_widget,
     AUDIO_OVERRIDE: customize_audio_panel,
     DISPLAY_OVERRIDE: customize_display_tab,
     BRIGHTNESS_PANEL_OVERRIDE: customize_brightness_panel,
     SYSTEM_MONITOR_OVERRIDE: customize_system_monitor,
+    PROFILE_CARD_OVERRIDE: customize_profile_card,
+    PLUGIN_PANEL_OVERRIDE: customize_plugin_panel_slot,
+    PANEL_SERVICE_OVERRIDE: customize_panel_service,
 }
 
 
@@ -789,6 +906,25 @@ def mirror_overlay(source: Path, target: Path, relative: Path = Path()) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--display-panel-only", action="store_true",
+                        help="Atomically update only the installed Display Center; do not rebuild other overlays")
+    args = parser.parse_args()
+    if args.display_panel_only:
+        destination = TARGET / BRIGHTNESS_PANEL_OVERRIDE
+        if TARGET.is_symlink() or not destination.is_file() or destination.is_symlink() or not destination.resolve().is_relative_to(TARGET.resolve()):
+            raise SystemExit("Install the full user-local overlay before updating its display panel.")
+        with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, delete=False) as out:
+            temporary = Path(out.name)
+            try:
+                out.write(BRIGHTNESS_PANEL_SOURCE.read_text())
+                out.close()
+                os.chmod(temporary, destination.stat().st_mode & 0o777)
+                temporary.replace(destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+        print(destination)
+        return
     missing = [SOURCE / override for override in CUSTOMIZERS if not (SOURCE / override).is_file()]
     if missing:
         raise SystemExit("Noctalia source not found: " + ", ".join(map(str, missing)))

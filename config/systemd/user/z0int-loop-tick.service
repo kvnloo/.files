@@ -1,0 +1,14 @@
+[Unit]
+Description=z0int continuous shadow-learning tick (never promotes)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=Z0INT_HOME=%h/.z0int
+Environment=PYTHONPATH=%h/workspace/z0intelligence-pinned/src
+Environment=AGENTSVIEW_DATA_DIR=%h/.agentsview
+Environment=Z0INT_PYTHON=/usr/bin/python3.11
+ExecStart=/usr/bin/python3.11 -m z0int.cli loop tick --lock %h/.z0int/loop/quiet-lane.lock --lock-wait-s 30 --budget-s 120 --ledger %h/.z0int/loop/quiet-lane-ledger.jsonl
+Nice=19
+SuccessExitStatus=3
+IOSchedulingClass=idle

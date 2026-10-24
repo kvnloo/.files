@@ -1,0 +1,32 @@
+[Unit]
+Description=Read-only keyd layer state relay
+Requires=keyd-layers.socket
+After=keyd.service
+
+[Service]
+# Root-owned copy only: a user-writable ExecStart would hold keyd's control socket.
+ExecStart=/usr/local/bin/keyd-layers serve normal
+Restart=on-failure
+DynamicUser=yes
+SupplementaryGroups=keyd
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077

@@ -2,7 +2,10 @@
 set -euo pipefail
 
 cache_root=${XDG_CACHE_HOME:-$HOME/.cache}
-cache_file=${CODEXBAR_CACHE_FILE:-$cache_root/codexbar-waybar/last.json}
+cache_file=${CODEXBAR_CACHE_FILE:-$cache_root/codexbar-waybar/full.json}
+if [[ ! -r $cache_file ]]; then
+  cache_file=${CODEXBAR_CACHE_FALLBACK:-$cache_root/codexbar-waybar/last.json}
+fi
 wrapper=${CODEXBAR_WAYBAR_WRAPPER:-$HOME/.config/waybar/scripts/codexbar.sh}
 
 if [[ ${1:-read} == refresh ]]; then

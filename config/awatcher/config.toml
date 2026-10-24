@@ -11,5 +11,5 @@ poll-time-window-seconds = 1
 # never persist raw window titles. Task semantics come from explicit fleet
 # session metadata rather than browser, editor, or conversation titles.
 [[awatcher.filters]]
-match-title = ".*"
+match-title = "(?s:.*)"
 replace-title = "[redacted]"

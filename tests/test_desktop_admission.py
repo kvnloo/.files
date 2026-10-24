@@ -2,25 +2,33 @@
 import importlib.machinery
 import pathlib
 import os
+import sys
+import time
 import tempfile
 import types
 import unittest
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 fleet = importlib.machinery.SourceFileLoader('fleet_admission', str(ROOT/'scripts/fleet')).load_module()
 classifier = importlib.machinery.SourceFileLoader('agent_classifier', str(ROOT/'scripts/agent-resource-classify')).load_module()
 
 class Admission(unittest.TestCase):
     def setUp(self):
-        self.n = fleet.registry()[1]['mbp']
-        self.args = types.SimpleNamespace(node='mbp', cls=None, arch=None, tolerate=[], cmd=['true'], mem='1G')
-        self.kn = {'mbp': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
+        # Exercise the direct Linux admission seam. MBP itself now dispatches
+        # through Kueue; it must not be used as a fixture for a retired host lane.
+        self.n = dict(fleet.registry()[1]['mbp'], name='admission-worker')
+        self.args = types.SimpleNamespace(
+            node='admission-worker', cls=None, arch=None, tolerate=[], cmd=['true'],
+            mem='1G', cpus='1', timeout=60, src=str(ROOT), no_src=True,
+            keep=False, fetch=[], input=[], guest=False)
+        self.kn = {'admission-worker': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
         self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8, 'max_temp_c': 99, 'power': {}}
 
     def launch_rejected(self, probe, state):
         with tempfile.TemporaryDirectory() as td, \
-             patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+             patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'k8s_nodes', return_value=self.kn), \
              patch.object(fleet, 'probe', return_value=probe), \
              patch.object(fleet, 'STATE', pathlib.Path(td)), \
@@ -44,7 +52,7 @@ class Admission(unittest.TestCase):
 
     def test_explicit_paused_node_is_temporary_failure(self):
         self.n['lane_enabled'] = True
-        with patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+        with patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'eligible', return_value='paused by fleet health'):
             with self.assertRaises(SystemExit) as e:
                 fleet.cmd_run(self.args)
@@ -53,13 +61,27 @@ class Admission(unittest.TestCase):
     def test_healthy_remote_reaches_dispatch(self):
         self.p['max_temp_c'] = 80
         with tempfile.TemporaryDirectory() as td, \
-             patch.object(fleet, 'registry', return_value=({}, {'mbp': self.n})), \
+             patch.object(fleet, 'registry', return_value=({}, {'admission-worker': self.n})), \
              patch.object(fleet, 'k8s_nodes', return_value=self.kn), \
              patch.object(fleet, 'probe', return_value=self.p), \
              patch.object(fleet, 'STATE', pathlib.Path(td)), \
              patch.object(fleet.subprocess, 'run', side_effect=RuntimeError('DISPATCH_MBP_ONLY')):
             with self.assertRaisesRegex(RuntimeError, 'DISPATCH_MBP_ONLY'):
                 fleet.cmd_run(self.args)
+
+    def test_explicit_mbp_uses_shared_queue_and_propagates_hold(self):
+        self.args.node = 'mbp'
+        with patch.object(fleet, 'probe', side_effect=AssertionError('retired MBP host path')), \
+             patch.object(fleet.subprocess, 'run',
+                          return_value=types.SimpleNamespace(returncode=75)) as dispatch:
+            self.assertEqual(fleet.cmd_run(self.args), 75)
+        argv = dispatch.call_args.args[0]
+        self.assertEqual(argv[:2], [sys.executable, str(ROOT/'scripts/fleet-kueue')])
+        self.assertEqual(argv[argv.index('--src')+1], str(ROOT))
+        self.assertEqual(argv[argv.index('--mem')+1], '1G')
+        self.assertEqual(argv[argv.index('--cpus')+1], '1')
+        self.assertEqual(argv[-2:], ['--', 'true'])
+        dispatch.assert_called_once()
 
     def test_core_cli_browser_compositor_audio_preserved(self):
         cg = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/interactive.scope'
@@ -76,6 +98,40 @@ class Admission(unittest.TestCase):
     def test_offline_tailnet_self_does_not_crash_health(self):
         with patch.object(fleet.subprocess,'run',return_value=types.SimpleNamespace(stdout='{"Self":{"TailscaleIPs":[]},"Peer":{}}')):
             self.assertEqual(fleet.tailnet_online(),{})
+
+class PhonePlacement(unittest.TestCase):
+    def test_s25_gates_before_transfer_and_never_falls_back_to_groot(self):
+        nodes = fleet.registry()[1]
+        nodes = {name: nodes[name] for name in ("omarchy-phone", "groot")}
+        args = types.SimpleNamespace(node=None, cls="phone", arch="arm64", tolerate=["phone"],
+                                     cmd=["true"], mem="512M")
+        p = {"ts": time.time(), "host_lane_supported": True, "mem_available_mb": 3000,
+             "load1": 0, "ncpu": 8, "services": {"fleet-worker": "active"},
+             "power": {"on_ac": False, "source": "adb", "battery_temp_c": 30,
+                       "android_thermal_status": 0,
+                       "batteries": [{"pct": 49, "status": "Discharging"}]}}
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(fleet, "registry", return_value=({}, nodes)), \
+             patch.object(fleet, "k8s_nodes", return_value={}), \
+             patch.object(fleet, "probe", return_value=p), \
+             patch.object(fleet, "STATE", pathlib.Path(td)), \
+             patch.object(fleet.subprocess, "run", side_effect=RuntimeError("TRANSFER")) as transfer:
+            with self.assertRaises(SystemExit) as refused:
+                fleet.cmd_run(args)
+            self.assertEqual(refused.exception.code, 75)
+            transfer.assert_not_called()
+            p["power"]["on_ac"] = True
+            with self.assertRaisesRegex(RuntimeError, "TRANSFER"):
+                fleet.cmd_run(args)
+            self.assertIn("root@100.104.42.85", transfer.call_args.args[0])
+            self.assertNotIn("100.113.138.100", " ".join(transfer.call_args.args[0]))
+            p["power"]["battery_temp_c"] = 41
+            transfer.reset_mock()
+            with self.assertRaises(SystemExit) as hot:
+                fleet.cmd_run(args)
+            self.assertEqual(hot.exception.code, 75)
+            transfer.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

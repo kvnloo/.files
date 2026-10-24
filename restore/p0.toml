@@ -1,0 +1,47 @@
+schema = 1
+
+# This file stores restore metadata only. It must never contain the data itself
+# or secret values. Paths marked discover=true are finalized by the live-state
+# import before any backup automation is enabled.
+
+[[dataset]]
+id = "hermes-chiefstaff"
+class = "P0"
+discover = true
+backup_required = true
+path_hints = [
+  "/workspace/hermes-home/profiles/chiefstaff",
+  "/home/kvn/.hermes/profiles/chiefstaff",
+]
+verify = ["sqlite-quick-check", "hermes-profile-doctor"]
+notes = "Mutable Hermes profile state, including state.db and profile memory."
+
+[[dataset]]
+id = "hermes-kanban"
+class = "P0"
+discover = true
+backup_required = true
+path_hints = [
+  "/workspace/hermes-home/kanban",
+  "/home/kvn/.hermes/kanban",
+]
+verify = ["path-exists", "sqlite-quick-check"]
+notes = "Kanban boards/workspaces and their local databases."
+
+[[dataset]]
+id = "dirty-git-state"
+class = "P0"
+discover = true
+backup_required = true
+path_hints = ["/workspace", "/home/kvn/workspace"]
+verify = ["git-status-audit"]
+notes = "Only unpushed commits, dirty worktrees, and unique untracked files; normal cloned repositories are reproducible."
+
+[[dataset]]
+id = "model-caches"
+class = "R"
+discover = true
+backup_required = false
+path_hints = ["/mnt/zer0models", "~/.cache/huggingface"]
+verify = ["n/a"]
+notes = "Reproducible/downloadable unless live import proves a unique artifact exists."

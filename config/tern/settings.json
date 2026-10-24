@@ -1,0 +1,27 @@
+{
+  "theme": "Dark",
+  "theme_dark": "pywal",
+  "cursor": {
+    "trail": "comet"
+  },
+  "tabs": "Vertical",
+  "keymap": "tmux",
+  "keymap_prefix": "ctrl+b",
+  "keybinds": {
+    "ctrl+b>h": "focus_pane:left",
+    "ctrl+b>j": "focus_pane:down",
+    "ctrl+b>k": "focus_pane:up",
+    "ctrl+b>l": "focus_pane:right",
+    "ctrl+b>shift+h": "resize_split:left",
+    "ctrl+b>shift+j": "resize_split:down",
+    "ctrl+b>shift+k": "resize_split:up",
+    "ctrl+b>shift+l": "resize_split:right",
+    "ctrl+b>-": "split_down",
+    "ctrl+b>|": "split_right",
+    "ctrl+b>tab": "show_previous_tab",
+    "ctrl+b>r": "reload_config"
+  },
+  "carly": {
+    "model": "@smol"
+  }
+}

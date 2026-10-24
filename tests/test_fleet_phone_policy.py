@@ -3,6 +3,11 @@ import importlib.machinery
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import json
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -16,34 +21,131 @@ loader.exec_module(fleet)
 
 
 class PhonePolicyTests(unittest.TestCase):
-    def failures(self, name, *, pct=32, mode="worker", thermal=3, available=3000):
-        node = fleet.registry()[1][name]
-        profile = {**node.get("phone_modes", {}).get(mode, {}), "mode": mode}
-        probe = {"mem_available_mb": available, "phone_profile": profile,
-                 "max_temp_c": 150 if mode == "worker" and name != "mbp" else None,
-                 "power": {"source": "adb", "on_ac": False, "battery_temp_c": 50,
-                           "android_thermal_status": thermal,
-                           "batteries": [{"pct": pct, "status": "Discharging"}]}}
-        return fleet.judge(node, probe, {}, {}, {})[0]
+    def probe(self, **changes):
+        return {"ts": time.time(), "host_lane_supported": True,
+                "mem_available_mb": 0, "load1": 1000, "ncpu": 8,
+                "max_temp_c": 150, "services": {"sshd": "active", "fleet-worker": "active"},
+                "power": {"source": "adb", "on_ac": False, "battery_temp_c": 80,
+                          "android_thermal_status": 6,
+                          "batteries": [{"pct": 0, "status": "Discharging"}]}, **changes}
 
-    def test_s25_worker_ignores_thermal_and_charging_but_requires_two_percent(self):
-        self.assertEqual(self.failures("omarchy-phone", pct=2), [])
-        self.assertTrue(any("battery 1% < 2%" in reason for reason in self.failures("omarchy-phone", pct=1)))
+    def args(self, name):
+        return SimpleNamespace(node=name, cls=None, arch=None, tolerate=[], cmd=["true"],
+                               no_src=True, src=None, mem=None, cpus="128", timeout=30,
+                               idempotent=False, fetch=[], input=[])
 
-    def test_s22_worker_has_no_battery_or_thermal_gate(self):
-        self.assertEqual(self.failures("galaxy-s22plus", pct=0, thermal=6), [])
+    def launch(self, name, probe):
+        with tempfile.TemporaryDirectory(prefix="fleet-placement-") as tmp:
+            state = Path(tmp)
+            (state / "health").mkdir()
+            (state / "health/state.json").write_text(json.dumps({name: {"paused": True}}))
+            with patch.object(fleet, "STATE", state), \
+                 patch.object(fleet, "probe", return_value=probe), \
+                 patch.object(fleet, "k8s_nodes", return_value={}), \
+                 patch.object(fleet.subprocess, "run") as transport, \
+                 patch.object(fleet.phone_controller, "run", return_value=0) as execute:
+                try:
+                    rc = fleet.cmd_run(self.args(name))
+                except SystemExit as error:
+                    return error.code, execute.call_args, transport.call_count
+                return rc, execute.call_args, transport.call_count
 
-    def test_light_retains_battery_and_thermal_gates(self):
-        reasons = self.failures("omarchy-phone", mode="light", pct=49)
-        self.assertTrue(any("battery 49% < 50%" in reason for reason in reasons))
-        self.assertTrue(any("thermal" in reason for reason in reasons))
-        self.assertTrue(any("battery 50C" in reason for reason in reasons))
+    def test_phone_placement_ignores_resources_and_historical_health_pause(self):
+        for name in ("omarchy-phone", "galaxy-s22plus"):
+            for changes in ({}, {"power": {}, "mem_available_mb": None, "max_temp_c": None}):
+                with self.subTest(node=name, changes=changes):
+                    rc, call, _ = self.launch(name, self.probe(**changes))
+                    self.assertEqual(rc, 0)
+                    self.assertIsNotNone(call)
+                    spec = call.args[3]
+                    self.assertEqual(spec["argv"], ["true"])
+                    self.assertNotIn("mem_mb", spec)
+                    self.assertNotIn("floor_mb", spec)
+                    self.assertNotIn("cpus", spec)
 
-    def test_worker_memory_floor_still_holds(self):
-        self.assertTrue(any("memory" in reason for reason in self.failures("omarchy-phone", available=100)))
+    def test_phone_placement_respects_owner_reachability_and_services(self):
+        cases = ({"paused": True}, {"maintenance": True}, {"error": "ssh unavailable"},
+                 {"services": {"sshd": "down"}}, {"services": {"fleet-worker": "down"}},
+                 {"host_lane_supported": False},
+                 {"android": {"omalauncher_fgs": False}}, {"tern_doctor": "failed"})
+        for changes in cases:
+            with self.subTest(changes=changes):
+                rc, call, transports = self.launch("omarchy-phone", self.probe(**changes))
+                self.assertEqual(rc, 75)
+                self.assertIsNone(call)
+                self.assertEqual(transports, 0)
 
     def test_non_phone_battery_gate_is_unchanged(self):
-        self.assertTrue(any("battery 39% < 40%" in reason for reason in self.failures("mbp", pct=39)))
+        node = fleet.registry()[1]["mbp"]
+        reasons, _ = fleet.judge(node, self.probe(
+            mem_available_mb=999999, max_temp_c=30,
+            power={"on_ac": False, "batteries": [{"pct": 39, "status": "Discharging"}]}), {}, {}, {})
+        self.assertTrue(any("battery" in reason for reason in reasons), reasons)
+
+    def test_phone_health_command_consumes_resource_neutral_registry_defaults(self):
+        for name in ("omarchy-phone", "galaxy-s22plus"):
+            with self.subTest(node=name), tempfile.TemporaryDirectory(prefix="fleet-health-") as tmp:
+                state = Path(tmp)
+                with patch.object(fleet, "STATE", state), \
+                     patch.object(fleet, "probe", side_effect=lambda node: self.probe()), \
+                     patch.object(fleet, "k8s_nodes", return_value={}), \
+                     patch.object(fleet, "tailnet_online", return_value={}), \
+                     patch.object(fleet, "tern_doctor", return_value="ok"), \
+                     patch.object(fleet, "android_state", return_value={}):
+                    self.assertEqual(fleet.cmd_health(SimpleNamespace(node=name, set=[], strikes=None)), 0)
+                record = json.loads((state / "health" / f"{name}.json").read_text())
+                self.assertTrue(record["healthy"])
+                self.assertFalse(record["paused"])
+                self.assertEqual(record["reasons"], [])
+
+    def test_public_mbp_cli_dispatches_only_through_queue(self):
+        code = (
+            "import json,runpy,subprocess,sys; from types import SimpleNamespace; "
+            "path=sys.argv.pop(1); sys.path.insert(0,str(__import__('pathlib').Path(path).parent)); "
+            "subprocess.run=lambda argv,**kw: (print(json.dumps(argv)),SimpleNamespace(returncode=23))[1]; "
+            "runpy.run_path(path,run_name='__main__')"
+        )
+        for node in ("mbp", "mbp-host"):
+            with self.subTest(node=node):
+                result = subprocess.run([sys.executable, "-c", code, str(PATH), "run",
+                                         "--node", node, "--no-src", "--", "echo", "QUEUE_PAYLOAD"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 23, result.stderr)
+                calls = [json.loads(line) for line in result.stdout.splitlines()]
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(Path(calls[0][1]).name, "fleet-kueue")
+                self.assertEqual("--host" in calls[0], node == "mbp-host")
+                self.assertEqual(calls[0][-3:], ["--", "echo", "QUEUE_PAYLOAD"])
+
+    def test_actual_build_wrapper_pinned_mbp_dispatches_queue(self):
+        wrapper = PATH.parent / "fleet-build"
+        with tempfile.TemporaryDirectory(prefix="fleet-build-dispatch-") as tmp:
+            tools = Path(tmp)
+            receipt = tools / "argv.json"
+            shim = tools / "python3"
+            shim.write_text(f"#!{sys.executable}\nimport json,os,sys\n"
+                            "with open(os.environ['QUEUE_RECEIPT'],'w') as f: json.dump(sys.argv[1:],f)\n")
+            shim.chmod(0o700)
+            for node in ("mbp", "mbp-host"):
+                with self.subTest(node=node):
+                    result = subprocess.run(["bash", str(wrapper), "--node", node, "--src", tmp,
+                                             "--wait", "0", "--", "echo", "QUEUE_PAYLOAD"],
+                                            cwd=tmp, capture_output=True, text=True, timeout=10,
+                                            env={**os.environ, "PATH": f"{tools}:{os.environ['PATH']}",
+                                                 "QUEUE_RECEIPT": str(receipt)})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    argv = json.loads(receipt.read_text())
+                    self.assertEqual(Path(argv[0]).name, "fleet-kueue")
+                    self.assertEqual("--host" in argv, node == "mbp-host")
+                    self.assertEqual(argv[-2:], ["echo", "QUEUE_PAYLOAD"])
+
+    def test_retired_phone_mode_command_is_not_a_public_interface(self):
+        import subprocess
+        import sys
+        result = subprocess.run([sys.executable, str(PATH), "phone-mode", "--help"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice", result.stderr)
 
     def test_phone_provisioning_uses_normal_admitted_host_lane(self):
         with patch.object(fleet.subprocess, "run") as run:

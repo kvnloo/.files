@@ -1,0 +1,3 @@
+# Allow the logged-in user to start/stop the agent-seat Sway VT and switch VTs.
+# Installed to /etc/sudoers.d/agent-seat (visudo). Command is a fixed binary.
+kvn ALL=(root) NOPASSWD: /usr/local/bin/agent-seat-vt

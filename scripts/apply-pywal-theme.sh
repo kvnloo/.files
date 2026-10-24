@@ -11,12 +11,46 @@ command -v wal >/dev/null 2>&1 || { printf 'pywal (wal) is required\n' >&2; exit
 
 wal -i "$image" -n -s -t -e -q
 "$root/scripts/sync-pywal-theme.py"
+lua_artifact=${HOME}/.cache/wal/colors-hyprland.lua
+[[ -f $lua_artifact ]] || { printf 'pywal generated Lua artifact missing: %s\n' "$lua_artifact" >&2; exit 1; }
+
+# Tern terminal: pywal → its omp theme (~/.omp/agent/themes/pywal.json), which
+# running windows follow by themselves. Never fatal to the rest of the sync.
+if [[ -x $root/scripts/tern-theme-sync ]]; then
+  "$root/scripts/tern-theme-sync" >/dev/null 2>&1 || true
+fi
+
+# Hermes Desktop liquid-glass theme (pywal → DesktopTheme + plugin poll).
+if [[ -x $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
+  "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true
+elif [[ -f $root/config/hermes-liquid-glass/scripts/apply.sh ]]; then
+  bash "$root/config/hermes-liquid-glass/scripts/apply.sh" >/dev/null || true
+fi
+
+# Unified theme manager (scripts/theme). Once it has been activated it owns the
+# live colours: a fixed theme ignores wallpaper changes, and wallpaper mode
+# re-renders its generated files from the pywal palette just written above.
+theme_state=$HOME/.local/state/theme/state.json
+if [[ -f $theme_state ]]; then
+  if grep -q '"source": "wallpaper"' "$theme_state"; then
+    exec "$root/scripts/theme" wallpaper-mode
+  fi
+  exit 0
+fi
 
 if command -v dunstctl >/dev/null 2>&1; then
   dunstctl reload "$HOME/.cache/wal/dunstrc" >/dev/null 2>&1 || true
 fi
 if command -v hyprctl >/dev/null 2>&1; then
-  hyprctl reload config-only >/dev/null 2>&1 || true
+  conf=${HOME}/.cache/wal/colors-hyprland.conf
+  if [[ -f $conf ]]; then
+    while IFS= read -r line; do
+      [[ $line == \#* || -z $line ]] && continue
+      key=${line%% = *}
+      val=${line#*= }
+      hyprctl keyword "$key" "$val" >/dev/null 2>&1 || true
+    done < "$conf"
+  fi
 fi
 if command -v tmux >/dev/null 2>&1 && tmux list-sessions >/dev/null 2>&1; then
   tmux source-file "$HOME/.tmux.conf" >/dev/null 2>&1 || true

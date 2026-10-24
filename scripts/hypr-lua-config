@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+link=$config_home/hypr/hyprland.conf
+case ${1:-} in
+  activate) target=$root/config/hyprland/hyprland.lua ;;
+  rollback) target=$root/config/hyprland/hyprland.legacy.conf ;;
+  *) printf 'usage: %s activate|rollback\n' "$0" >&2; exit 2 ;;
+esac
+mkdir -p "$(dirname "$link")"
+ln -sfn "$target" "$link"
+printf '%s -> %s\n' "$link" "$target"

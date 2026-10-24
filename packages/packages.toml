@@ -76,6 +76,10 @@ packages = [
     "wlogout",
 ]
 
+# Opt-in only on the desktop host; never intercept a laptop keyboard.
+[modal-keyboard]
+packages = ["keyd"]
+
 # ---------------------------------------------------------
 # Audio
 # ---------------------------------------------------------
@@ -222,6 +226,8 @@ packages = [
     "ttf-jetbrains-mono-nerd",
     "ttf-firacode-nerd",
     "ttf-iosevka-nerd",
+    "ttf-meslo-nerd",
+    "ttf-fantasque-nerd",
     "noto-fonts",
     "noto-fonts-cjk",
     "noto-fonts-emoji",

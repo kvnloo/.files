@@ -14,6 +14,7 @@ Item {
   readonly property string snapshotScriptPath: root.pluginApi?.pluginDir + "/scripts/snapshot.sh"
 
   readonly property int maxUsedPercent: computeMaxUsedPercent()
+  readonly property int averageRemainingPercent: computeAverageRemainingPercent()
   readonly property bool hasData: providers.length > 0
 
   Component.onCompleted: {
@@ -83,9 +84,15 @@ Item {
       cursor: "Cursor",
       copilot: "Copilot",
       grok: "Grok",
+      groq: "Groq",
+      opencode: "OpenCode",
+      openrouter: "OpenRouter",
+      cerebras: "Cerebras",
+      vercel: "Vercel AI Gateway",
+      nous: "Nous Portal",
+      hermes: "Hermes",
       kimi: "Kimi",
       minimax: "MiniMax",
-      openrouter: "OpenRouter",
       zai: "Z.ai"
     };
     return names[providerId] || String(providerId || "Provider");
@@ -99,9 +106,14 @@ Item {
       cursor: "cursor-text",
       copilot: "brand-github-copilot",
       grok: "letter-x",
-      kimi: "moon-stars",
+      groq: "droplet",
+      opencode: "code-bracket",
+      cerebras: "chip",
+      hermes: "network-wired",
       minimax: "sparkles",
       openrouter: "router",
+      vercel: "cloud",
+      nous: "brain",
       zai: "sparkles"
     };
     return icons[providerId] || "robot";
@@ -198,6 +210,25 @@ Item {
     for (let i = 0; i < windows.length; i++)
       maximum = Math.max(maximum, Number(windows[i].usedPercent || 0));
     return Math.round(maximum);
+  }
+
+  function providerRemainingPercent(entry) {
+    const used = providerMax(entry);
+    return Math.max(0, 100 - used);
+  }
+
+  function computeAverageRemainingPercent() {
+    if (providers.length === 0) return 100;
+    let totalRemaining = 0;
+    let count = 0;
+    for (let i = 0; i < providers.length; i++) {
+      const remaining = providerRemainingPercent(providers[i]);
+      if (!isNaN(remaining)) {
+        totalRemaining += remaining;
+        count++;
+      }
+    }
+    return Math.round(totalRemaining / Math.max(1, count));
   }
 
   function computeMaxUsedPercent() {

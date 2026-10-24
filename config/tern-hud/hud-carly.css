@@ -1,0 +1,21 @@
+/* omp-hud Carly mode: Carly alone, no chat.
+ *
+ * scripts/omp-hud loads this as the sheet "hud-mode.css" when Ctrl Ctrl opens
+ * Carly from another app, and swaps it for an empty sheet when SUPER+I asks
+ * for the chat. Carly stays open across the swap.
+ */
+
+/* No conversation, no composer: only Carly shows. */
+main#panel {
+	visibility: hidden !important;
+}
+
+/* Her pill sits where the composer sits, bottom centre; her answers stack
+ * upward from it. */
+#carly.tn-carly {
+	top: auto !important;
+	bottom: 14px !important;
+	left: calc(50% - 280px) !important;
+	width: 560px !important;
+	flex-direction: column-reverse !important;
+}

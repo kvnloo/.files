@@ -4,6 +4,37 @@ set -euo pipefail
 command -v hyprctl >/dev/null 2>&1 || exit 1
 command -v jq >/dev/null 2>&1 || exit 1
 
+HYPR_LUA=0
+if hyprctl dispatch 'hl.dsp.no_op()' >/dev/null 2>&1; then
+  HYPR_LUA=1
+fi
+
+hypr_focus() {
+  local address="$1"
+  if [[ "$HYPR_LUA" -eq 1 ]]; then
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:${address}\" })" >/dev/null
+  else
+    hyprctl dispatch focuswindow "address:${address}" >/dev/null
+  fi
+}
+
+hypr_toggle_group() {
+  if [[ "$HYPR_LUA" -eq 1 ]]; then
+    hyprctl dispatch 'hl.dsp.group.toggle()' >/dev/null
+  else
+    hyprctl dispatch togglegroup >/dev/null
+  fi
+}
+
+hypr_into_group() {
+  local direction="$1"
+  if [[ "$HYPR_LUA" -eq 1 ]]; then
+    hyprctl dispatch "hl.dsp.window.move({ into_group = \"${direction}\" })" >/dev/null
+  else
+    hyprctl dispatch moveintogroup "${direction}" >/dev/null
+  fi
+}
+
 workspace=$(hyprctl -j activeworkspace | jq -r '.id')
 monitor=$(hyprctl -j monitors | jq -r '.[] | select(.focused) | .id')
 active=$(hyprctl -j activewindow | jq -r '.address')
@@ -28,8 +59,8 @@ count=$(jq 'length' <<<"$snapshot")
 anchor=$(jq -r 'sort_by(.grouped | length) | last.address' <<<"$snapshot")
 if (( $(jq --arg anchor "$anchor" '[.[] | select(.address == $anchor)][0].grouped | length' <<<"$snapshot") == 0 )); then
   anchor=$active
-  hyprctl dispatch focuswindow "address:$anchor" >/dev/null
-  hyprctl dispatch togglegroup >/dev/null
+  hypr_focus "$anchor"
+  hypr_toggle_group
 fi
 
 # Always absorb the nearest remaining tiled window. That keeps the target
@@ -61,11 +92,11 @@ for ((attempt = 0; attempt < count * 2; attempt++)); do
     if (($dx | fabs) >= ($dy | fabs)) then (if $dx < 0 then "l" else "r" end)
     else (if $dy < 0 then "u" else "d" end) end' <<<"$snapshot")
 
-  hyprctl dispatch focuswindow "address:$address" >/dev/null
-  hyprctl dispatch moveintogroup "$direction" >/dev/null
+  hypr_focus "$address"
+  hypr_into_group "$direction"
 done
 
-hyprctl dispatch focuswindow "address:$active" >/dev/null
+hypr_focus "$active"
 final=$(clients)
 grouped=$(jq --arg anchor "$anchor" '[.[] | select(.address == $anchor)][0].grouped | length' <<<"$final")
 if (( grouped == count )); then

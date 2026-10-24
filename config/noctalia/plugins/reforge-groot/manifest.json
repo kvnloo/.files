@@ -1,0 +1,17 @@
+{
+  "id": "reforge-groot",
+  "name": "Reforge Groot",
+  "version": "1.0.0",
+  "minNoctaliaVersion": "4.7.7",
+  "author": "kvn",
+  "license": "MIT",
+  "description": "Animated dashboard for updating every package ecosystem on Groot.",
+  "tags": ["Panel", "System", "Updates"],
+  "entryPoints": {
+    "main": "Main.qml",
+    "panel": "Panel.qml",
+    "controlCenterWidget": "ControlCenterWidget.qml"
+  },
+  "dependencies": {"plugins": []},
+  "metadata": {"icon": "sparkles"}
+}

@@ -1,0 +1,1 @@
+{"executor_allowed": [0, 1, 2, 3], "executor_pid": 28037, "online_cpus": "0-7", "owner_call": false, "owner_pause": false, "present_cpus": "0-7", "ssh_process_allowed": [0, 1, 2, 3], "supervisor_allowed": [0, 1, 2, 3], "supervisor_pid": 11316}

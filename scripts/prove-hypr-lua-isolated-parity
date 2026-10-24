@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# Isolated nested Hyprland Lua parity vs live host. Never uses WS1/2/8.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+CONTROLLER="$ROOT/scripts/gui-e2e-display.sh"
+CONFIG="$ROOT/config/hyprland/hyprland.lua"
+LEGACY="$ROOT/config/hyprland/hyprland.legacy.conf"
+WORKSPACE=${HYPR_LUA_NESTED_WORKSPACE:-99}
+OUTPUT=${HYPR_LUA_NESTED_OUTPUT:-E2E-LUA-PARITY}
+LEASE=${HYPR_LUA_NESTED_LEASE:-hypr-lua-parity-$$}
+EVIDENCE=${HYPR_LUA_EVIDENCE_DIR:-"$ROOT/.artifacts/hypr-lua-isolated-$(date +%Y%m%d-%H%M%S)-$$"}
+RUNTIME=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+HOST_WAYLAND=${WAYLAND_DISPLAY:-wayland-1}
+HOST_HISS=${HYPRLAND_INSTANCE_SIGNATURE:-}
+PLUGIN=${HYPR_LUA_PLUGIN:-/home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so}
+NESTED_HISS=""
+NESTED_WAYLAND=""
+NESTED_PID=""
+started=0
+
+usage() {
+  printf '%s\n' \
+    'usage: prove-hypr-lua-isolated-parity [--help]' \
+    'Creates a host headless output on workspace 99, launches sequential nested' \
+    'legacy then Lua Hyprland instances, writes a machine-readable parity report' \
+    'against live host state, and cleans up. Refuses protected workspaces 1, 2, 8.'
+}
+[[ ${1:-} == --help ]] && { usage; exit 0; }
+[[ $WORKSPACE =~ ^[0-9]+$ ]] || { printf 'workspace must be numeric\n' >&2; exit 2; }
+case " $WORKSPACE " in ' 1 '|' 2 '|' 8 ') printf 'refusing protected workspace %s\n' "$WORKSPACE" >&2; exit 3;; esac
+command -v Hyprland >/dev/null
+command -v hyprctl >/dev/null
+command -v jq >/dev/null
+mkdir -p "$EVIDENCE"
+
+host_hypr() {
+  HYPRLAND_INSTANCE_SIGNATURE="$HOST_HISS" WAYLAND_DISPLAY="$HOST_WAYLAND" hyprctl "$@"
+}
+nested_hypr() {
+  HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" hyprctl "$@"
+}
+
+OPTIONS=(
+  general:gaps_in general:gaps_out decoration:rounding animations:enabled
+  plugin:hyprglass:enabled plugin:hyprglass:default_theme plugin:hyprglass:default_preset
+  plugin:hyprglass:preset-flow plugin:hyprglass:preset-flow-dark
+  plugin:hyprglass:layers-enabled plugin:hyprglass:layers-namespaces
+  plugin:hyprglass:layers-preset plugin:hyprglass:layers-namespace_mask_thresholds
+)
+
+snapshot_isolation() {
+  host_hypr -j monitors all | jq '{
+    physical_monitor_workspaces: (
+      map(select(.name == "DP-1" or .name == "DP-2"))
+      | map({key:.name, value:{focused:.focused, workspace:.activeWorkspace.id}})
+      | from_entries
+    ),
+    focused_monitor: (map(select(.focused == true)) | .[0].name)
+  }'
+}
+
+capture_instance() {
+  local stem=$1
+  nested_hypr systeminfo >"$EVIDENCE/${stem}-systeminfo.txt" 2>/dev/null || true
+  nested_hypr configerrors >"$EVIDENCE/${stem}-configerrors.txt" 2>/dev/null || true
+  for category in monitors workspaces workspacerules clients binds devices; do
+    nested_hypr -j "$category" >"$EVIDENCE/${stem}-${category}.json"
+  done
+  nested_hypr plugin list >"$EVIDENCE/${stem}-plugins.txt" 2>/dev/null || true
+  jq -Rn --rawfile readback "$EVIDENCE/${stem}-plugins.txt" '{plugins:$readback}' >"$EVIDENCE/${stem}-plugins.json"
+  local option safe
+  for option in "${OPTIONS[@]}"; do
+    safe=${option//:/-}
+    nested_hypr -j getoption "$option" >"$EVIDENCE/${stem}-config-${safe}.json" 2>/dev/null || true
+  done
+}
+
+wait_nested() {
+  local label=$1
+  NESTED_HISS="" NESTED_WAYLAND="" NESTED_PID=""
+  local row
+  for _ in $(seq 1 300); do
+    row=$(hyprctl -j instances 2>/dev/null | jq -r --arg host "$HOST_HISS" '.[] | select(.instance != $host) | [.instance,.wl_socket,.pid] | @tsv' | tail -n 1)
+    if [[ -n $row ]]; then
+      IFS=$'\t' read -r NESTED_HISS NESTED_WAYLAND NESTED_PID <<<"$row"
+      break
+    fi
+    sleep .1
+  done
+  [[ -n $NESTED_HISS && -n $NESTED_WAYLAND && -n $NESTED_PID ]] || { printf '%s nested instance did not start\n' "$label" >&2; exit 1; }
+  for _ in $(seq 1 50); do
+    if nested_hypr systeminfo >"$EVIDENCE/${label}-systeminfo.txt" 2>/dev/null; then
+      break
+    fi
+    sleep .1
+  done
+}
+
+stop_nested() {
+  if [[ -n ${NESTED_PID:-} ]]; then
+    kill "$NESTED_PID" 2>/dev/null || true
+    for _ in $(seq 1 50); do kill -0 "$NESTED_PID" 2>/dev/null || break; sleep .1; done
+    kill -9 "$NESTED_PID" 2>/dev/null || true
+    kill -0 "$NESTED_PID" 2>/dev/null && { printf 'nested pid %s remains\n' "$NESTED_PID" >&2; return 1; }
+  fi
+  NESTED_HISS="" NESTED_WAYLAND="" NESTED_PID=""
+}
+
+cleanup() {
+  local status=$?
+  local cleanup_ok=true
+  trap - EXIT INT TERM
+  if [[ -z ${NESTED_PID:-} ]]; then
+    local row
+    row=$(hyprctl -j instances 2>/dev/null | jq -r --arg host "$HOST_HISS" '.[] | select(.instance != $host) | [.instance,.wl_socket,.pid] | @tsv' | tail -n 1 || true)
+    [[ -z $row ]] || IFS=$'\t' read -r NESTED_HISS NESTED_WAYLAND NESTED_PID <<<"$row"
+  fi
+  stop_nested || cleanup_ok=false
+  GUI_E2E_LEASE_DIR="$EVIDENCE/leases" "$CONTROLLER" --tier hypr-headless --workspace "$WORKSPACE" --output "$OUTPUT" --lease-id "$LEASE" stop >/dev/null 2>&1 || true
+  snapshot_isolation >"$EVIDENCE/host-isolation-after.json" 2>/dev/null || cleanup_ok=false
+  host_hypr -j monitors all >"$EVIDENCE/host-after.json" 2>/dev/null || true
+  host_hypr -j workspaces >"$EVIDENCE/host-workspaces-after.json" 2>/dev/null || true
+  [[ -z ${NESTED_WAYLAND:-} || ! -S "$RUNTIME/$NESTED_WAYLAND" ]] || { printf 'nested socket remains\n' >&2; cleanup_ok=false; }
+  jq -e --arg output "$OUTPUT" 'all(.[]; .name != $output)' "$EVIDENCE/host-after.json" >/dev/null 2>&1 || cleanup_ok=false
+  jq -e --argjson ws "$WORKSPACE" 'all(.[]; .id != $ws)' "$EVIDENCE/host-workspaces-after.json" >/dev/null 2>&1 || cleanup_ok=false
+  [[ $cleanup_ok == true ]] || status=1
+  jq -n --argjson status "$status" --argjson complete "$cleanup_ok" \
+    '{exit_status:$status,cleanup_complete:$complete,evidence:"'"$EVIDENCE"'"}' >"$EVIDENCE/result.json"
+  printf 'evidence: %s\n' "$EVIDENCE"
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+readlink -f /home/kvn/.config/hypr/hyprland.conf >"$EVIDENCE/live-selection.txt"
+host_hypr -j monitors all >"$EVIDENCE/live-monitors.json"
+host_hypr -j workspaces >"$EVIDENCE/live-workspaces.json"
+host_hypr -j workspacerules >"$EVIDENCE/live-workspacerules.json"
+host_hypr -j clients >"$EVIDENCE/live-clients.json"
+host_hypr -j binds >"$EVIDENCE/live-binds.json"
+host_hypr -j devices >"$EVIDENCE/live-devices.json"
+host_hypr plugin list >"$EVIDENCE/live-plugins.txt"
+jq -Rn --rawfile readback "$EVIDENCE/live-plugins.txt" '{plugins:$readback}' >"$EVIDENCE/live-plugins.json"
+host_hypr configerrors >"$EVIDENCE/live-configerrors.txt"
+host_hypr systeminfo >"$EVIDENCE/live-systeminfo.txt"
+for option in "${OPTIONS[@]}"; do
+  safe=${option//:/-}
+  host_hypr -j getoption "$option" >"$EVIDENCE/live-config-${safe}.json"
+done
+snapshot_isolation >"$EVIDENCE/host-isolation-before.json"
+
+GUI_E2E_LEASE_DIR="$EVIDENCE/leases" "$CONTROLLER" --tier hypr-headless --workspace "$WORKSPACE" --output "$OUTPUT" --lease-id "$LEASE" start
+started=1
+snapshot_isolation >"$EVIDENCE/host-isolation-after-output.json"
+jq -e --argjson expected "$(cat "$EVIDENCE/host-isolation-before.json")" \
+  '.physical_monitor_workspaces == $expected.physical_monitor_workspaces and .focused_monitor == $expected.focused_monitor' \
+  "$EVIDENCE/host-isolation-after-output.json" >/dev/null \
+  || { printf 'host isolation broken while creating headless output\n' >&2; exit 1; }
+
+grep -v '^[[:space:]]*exec-once' "$LEGACY" >"$EVIDENCE/legacy-baseline.conf"
+
+legacy_launcher="$EVIDENCE/launch-legacy.sh"
+printf '#!/usr/bin/env bash\nexec env -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY XDG_RUNTIME_DIR=%q WAYLAND_DISPLAY=%q AQ_NO_MODIFIERS=1 Hyprland -c %q >%q 2>&1\n' \
+  "$RUNTIME" "$HOST_WAYLAND" "$EVIDENCE/legacy-baseline.conf" "$EVIDENCE/legacy.log" >"$legacy_launcher"
+chmod +x "$legacy_launcher"
+host_hypr dispatch exec "[workspace $WORKSPACE silent] $legacy_launcher" >/dev/null
+wait_nested legacy
+nested_hypr plugin load "$PLUGIN" >"$EVIDENCE/legacy-plugin-load.txt" 2>&1 || true
+nested_hypr reload >/dev/null || true
+for _ in $(seq 1 30); do nested_hypr plugin list | grep -q hyprglass && break; sleep .1; done
+capture_instance legacy
+printf '%s\n' "$NESTED_HISS" >"$EVIDENCE/legacy-instance.txt"
+printf '%s\n' "$NESTED_WAYLAND" >"$EVIDENCE/legacy-socket.txt"
+stop_nested
+
+lua_launcher="$EVIDENCE/launch-lua.sh"
+printf '#!/usr/bin/env bash\nexec env -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY XDG_RUNTIME_DIR=%q WAYLAND_DISPLAY=%q HYPR_LUA_TEST_MODE=1 HYPR_LUA_ISOLATED_MODE=1 HYPR_LUA_PLUGIN=%q AQ_NO_MODIFIERS=1 Hyprland -c %q >%q 2>&1\n' \
+  "$RUNTIME" "$HOST_WAYLAND" "$PLUGIN" "$CONFIG" "$EVIDENCE/lua.log" >"$lua_launcher"
+chmod +x "$lua_launcher"
+host_hypr dispatch exec "[workspace $WORKSPACE silent] $lua_launcher" >/dev/null
+wait_nested lua
+grep -q 'configProvider: lua' "$EVIDENCE/lua-systeminfo.txt" || {
+  nested_hypr systeminfo >"$EVIDENCE/lua-systeminfo.txt" || true
+}
+grep -q 'configProvider: lua' "$EVIDENCE/lua-systeminfo.txt" || { printf 'nested lua configProvider missing\n' >&2; cat "$EVIDENCE/lua-systeminfo.txt" >&2; exit 1; }
+grep -qi 'backend: wayland' "$EVIDENCE/lua-systeminfo.txt" || { printf 'nested lua backend is not wayland\n' >&2; exit 1; }
+for _ in $(seq 1 30); do nested_hypr plugin list | grep -q hyprglass && break; sleep .1; done
+capture_instance lua
+[[ -z $(tr -d '[:space:]' <"$EVIDENCE/lua-configerrors.txt") ]] || { printf 'nested lua configerrors are non-empty\n' >&2; cat "$EVIDENCE/lua-configerrors.txt" >&2; exit 1; }
+nested_hypr plugin list | grep -q hyprglass || { printf 'hyprglass did not load in nested lua\n' >&2; cat "$EVIDENCE/lua-plugins.txt" >&2; exit 1; }
+printf '%s\n' "$NESTED_HISS" >"$EVIDENCE/lua-instance.txt"
+printf '%s\n' "$NESTED_WAYLAND" >"$EVIDENCE/lua-socket.txt"
+snapshot_isolation >"$EVIDENCE/host-isolation-during.json"
+stop_nested
+
+python3 "$ROOT/scripts/hypr_lua_isolated_parity.py" --evidence "$EVIDENCE" --write "$EVIDENCE/parity-report.json"
+printf 'isolated Lua nested parity vs live host: ok\n'

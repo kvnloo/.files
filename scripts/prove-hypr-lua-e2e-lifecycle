@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+# Isolated nested Hyprland: E2E controller + phone lifecycle, sabotage, rollback.
+# Never uses WS1/2/8. Never activates Lua or restarts the live compositor.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+CONTROLLER="$ROOT/scripts/gui-e2e-display.sh"
+PHONE="$ROOT/scripts/phone-display.sh"
+CONFIG="$ROOT/config/hyprland/hyprland.lua"
+LEGACY="$ROOT/config/hyprland/hyprland.legacy.conf"
+SELECTOR="$ROOT/scripts/hypr-lua-config"
+WORKSPACE=${HYPR_LUA_NESTED_WORKSPACE:-99}
+OUTPUT=${HYPR_LUA_NESTED_OUTPUT:-E2E-LUA-E2E}
+LEASE=${HYPR_LUA_NESTED_LEASE:-hypr-lua-e2e-$$}
+EVIDENCE=${HYPR_LUA_EVIDENCE_DIR:-"$ROOT/.artifacts/hypr-lua-e2e-$(date +%Y%m%d-%H%M%S)-$$"}
+RUNTIME=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+HOST_WAYLAND=${WAYLAND_DISPLAY:-wayland-1}
+HOST_HISS=${HYPRLAND_INSTANCE_SIGNATURE:-}
+PLUGIN=${HYPR_LUA_PLUGIN:-/home/kvn/.local/share/hyprland/plugins/hyprglass/hyprglass.so}
+INNER_OUTPUT=E2E-INNER
+INNER_WS=97
+NESTED_HISS=""
+NESTED_WAYLAND=""
+NESTED_PID=""
+
+usage() {
+  printf '%s\n' \
+    'usage: prove-hypr-lua-e2e-lifecycle [--help]' \
+    'Creates a host headless output on workspace 99, launches nested Lua Hyprland,' \
+    'exercises gui-e2e-display and phone-display add/remove/recover, sabotages' \
+    'representative conversions, proves rollback to hyprland.legacy.conf, and' \
+    'cleans up. Refuses protected workspaces 1, 2, 8. Does not activate Lua or' \
+    'restart the live compositor.'
+}
+[[ ${1:-} == --help ]] && { usage; exit 0; }
+[[ $WORKSPACE =~ ^[0-9]+$ ]] || { printf 'workspace must be numeric\n' >&2; exit 2; }
+case " $WORKSPACE " in ' 1 '|' 2 '|' 8 ') printf 'refusing protected workspace %s\n' "$WORKSPACE" >&2; exit 3;; esac
+command -v Hyprland >/dev/null
+command -v hyprctl >/dev/null
+command -v jq >/dev/null
+mkdir -p "$EVIDENCE"
+
+if [[ -z $HOST_HISS ]]; then
+  HOST_HISS=$(hyprctl -j instances | jq -r '.[0].instance // empty')
+  HOST_WAYLAND=$(hyprctl -j instances | jq -r '.[0].wl_socket // empty')
+fi
+[[ -n $HOST_HISS && -n $HOST_WAYLAND ]] || { printf 'no host Hyprland instance\n' >&2; exit 1; }
+
+host_hypr() {
+  HYPRLAND_INSTANCE_SIGNATURE="$HOST_HISS" WAYLAND_DISPLAY="$HOST_WAYLAND" hyprctl "$@"
+}
+nested_hypr() {
+  HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" hyprctl "$@"
+}
+
+snapshot_isolation() {
+  host_hypr -j monitors all | jq '{
+    physical_monitor_workspaces: (
+      map(select(.name == "DP-1" or .name == "DP-2"))
+      | map({key:.name, value:{focused:.focused, workspace:.activeWorkspace.id}})
+      | from_entries
+    ),
+    focused_monitor: (map(select(.focused == true)) | .[0].name)
+  }'
+}
+
+wait_nested() {
+  local label=$1
+  NESTED_HISS="" NESTED_WAYLAND="" NESTED_PID=""
+  local row
+  for _ in $(seq 1 300); do
+    row=$(hyprctl -j instances 2>/dev/null | jq -r --arg host "$HOST_HISS" '.[] | select(.instance != $host) | [.instance,.wl_socket,.pid] | @tsv' | tail -n 1)
+    if [[ -n $row ]]; then
+      IFS=$'\t' read -r NESTED_HISS NESTED_WAYLAND NESTED_PID <<<"$row"
+      break
+    fi
+    sleep .1
+  done
+  [[ -n $NESTED_HISS && -n $NESTED_WAYLAND && -n $NESTED_PID ]] || { printf '%s nested instance did not start\n' "$label" >&2; exit 1; }
+  for _ in $(seq 1 50); do
+    if nested_hypr systeminfo >"$EVIDENCE/${label}-systeminfo.txt" 2>/dev/null; then
+      break
+    fi
+    sleep .1
+  done
+}
+
+stop_nested() {
+  if [[ -n ${NESTED_PID:-} ]]; then
+    kill "$NESTED_PID" 2>/dev/null || true
+    for _ in $(seq 1 50); do kill -0 "$NESTED_PID" 2>/dev/null || break; sleep .1; done
+    kill -9 "$NESTED_PID" 2>/dev/null || true
+    kill -0 "$NESTED_PID" 2>/dev/null && { printf 'nested pid %s remains\n' "$NESTED_PID" >&2; return 1; }
+  fi
+  NESTED_HISS="" NESTED_WAYLAND="" NESTED_PID=""
+}
+
+nested_has_output() {
+  nested_hypr -j monitors all | jq -e --arg o "$1" 'any(.[]; .name == $o)' >/dev/null
+}
+
+nested_output_matches() {
+  local name=$1 width=$2 height=$3 refresh=$4 scale=$5 workspace=$6
+  local slug=${name//[^A-Za-z0-9_.-]/_}
+  nested_hypr -j monitors all >"$EVIDENCE/${slug}-monitors.json"
+  nested_hypr -j workspacerules >"$EVIDENCE/${slug}-workspacerules.json"
+  jq -e \
+    --arg name "$name" \
+    --argjson width "$width" \
+    --argjson height "$height" \
+    --argjson refresh "$refresh" \
+    --argjson scale "$scale" \
+    --arg workspace "$workspace" '
+      any(.[];
+        .name == $name
+        and .scale == $scale
+        and .activeWorkspace.name == $workspace
+        and any(.availableModes[]?;
+          startswith(($width | tostring) + "x" + ($height | tostring) + "@" + ($refresh | tostring))
+        )
+      )
+    ' "$EVIDENCE/${slug}-monitors.json" >/dev/null || return 1
+  jq -e \
+    --arg name "$name" --arg workspace "$workspace" '
+      any(.[];
+        .workspaceString == $workspace
+        and .monitor == $name
+        and .default == true
+      )
+    ' "$EVIDENCE/${slug}-workspacerules.json" >/dev/null || return 1
+}
+
+run_controller() {
+  GUI_E2E_HYPRCTL=hyprctl HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" \
+    GUI_E2E_WIDTH=1920 GUI_E2E_HEIGHT=1080 GUI_E2E_REFRESH=60 \
+    GUI_E2E_LEASE_DIR="$EVIDENCE/nested-leases" \
+    "$CONTROLLER" --tier hypr-headless --workspace "$INNER_WS" --output "$INNER_OUTPUT" --lease-id inner "$1"
+}
+
+run_phone() {
+  PHONE_DISPLAY_SYSTEMCTL=/bin/true HYPRLAND_INSTANCE_SIGNATURE="$NESTED_HISS" WAYLAND_DISPLAY="$NESTED_WAYLAND" \
+    PHONE_DISPLAY_MODE=1920x1080@60 PHONE_DISPLAY_POSITION=auto \
+    "$PHONE" "$1"
+}
+
+verify_controller_window_rule() {
+  local class command_lua matched=false
+  class=$(jq -r '.window_class' "$EVIDENCE/nested-leases/inner/lease.json")
+  command_lua=$(jq -Rrn --arg value "kitty --class $class --title HyprLuaRuleProbe sh -c 'sleep 1'" '$value | @json')
+  nested_hypr -r eval "hl.exec_cmd($command_lua)" >/dev/null
+  for _ in $(seq 1 30); do
+    nested_hypr -j clients >"$EVIDENCE/controller-rule-clients.json"
+    if jq -e --arg class "$class" --argjson workspace "$INNER_WS" \
+      'any(.[]; .class == $class and .workspace.id == $workspace)' \
+      "$EVIDENCE/controller-rule-clients.json" >/dev/null; then
+      matched=true
+      break
+    fi
+    sleep .1
+  done
+  [[ $matched == true ]] || { printf 'controller window rule did not route %s to workspace %s\n' "$class" "$INNER_WS" >&2; return 1; }
+  for _ in $(seq 1 30); do
+    nested_hypr -j clients | jq -e --arg class "$class" 'all(.[]; .class != $class)' >/dev/null && return 0
+    sleep .1
+  done
+  printf 'controller window-rule probe did not exit\n' >&2
+  return 1
+}
+
+lifecycle_output() {
+  local tool=$1 name=$2 dest=$3
+  local start_fn=$4 stop_fn=$5 width height refresh scale workspace
+  local window_rule_verified=false
+  if [[ $tool == controller ]]; then
+    width=1920 height=1080 refresh=60 scale=1 workspace=$INNER_WS
+  else
+    width=1920 height=1080 refresh=60 scale=1 workspace=20
+  fi
+  "$start_fn" start
+  nested_has_output "$name" || { printf '%s did not add %s\n' "$tool" "$name" >&2; exit 1; }
+  nested_output_matches "$name" "$width" "$height" "$refresh" "$scale" "$workspace" \
+    || { printf '%s added %s without requested monitor/workspace semantics\n' "$tool" "$name" >&2; exit 1; }
+  if [[ $tool == controller ]]; then
+    verify_controller_window_rule
+    window_rule_verified=true
+  fi
+  "$stop_fn" stop
+  nested_has_output "$name" && { printf '%s did not remove %s\n' "$tool" "$name" >&2; exit 1; }
+  "$start_fn" start
+  nested_has_output "$name" || { printf '%s did not recover %s\n' "$tool" "$name" >&2; exit 1; }
+  nested_output_matches "$name" "$width" "$height" "$refresh" "$scale" "$workspace" \
+    || { printf '%s recovered %s without requested monitor/workspace semantics\n' "$tool" "$name" >&2; exit 1; }
+  if [[ $tool == controller ]]; then
+    verify_controller_window_rule
+    window_rule_verified=true
+  fi
+  "$stop_fn" stop
+  nested_has_output "$name" && { printf '%s leftover %s after recover-stop\n' "$tool" "$name" >&2; exit 1; }
+  jq -n --arg name "$name" --argjson window_rule_verified "$window_rule_verified" \
+    '{name:$name,added:true,removed:true,recovered:true,semantics_verified:true,window_rule_verified:$window_rule_verified,control_path:"native-eval"}' >"$dest"
+}
+
+visible_error() {
+  local kind=$1
+  shift
+  local out="$EVIDENCE/sabotage-$kind.txt"
+  set +e
+  nested_hypr "$@" >"$out" 2>&1
+  set -e
+  grep -Fq "keyword can't work with non-legacy parsers. Use eval." "$out"
+}
+
+cleanup() {
+  local status=$?
+  local cleanup_ok=true
+  trap - EXIT INT TERM
+  if [[ -z ${NESTED_PID:-} ]]; then
+    local row
+    row=$(hyprctl -j instances 2>/dev/null | jq -r --arg host "$HOST_HISS" '.[] | select(.instance != $host) | [.instance,.wl_socket,.pid] | @tsv' | tail -n 1 || true)
+    [[ -z $row ]] || IFS=$'\t' read -r NESTED_HISS NESTED_WAYLAND NESTED_PID <<<"$row"
+  fi
+  stop_nested || cleanup_ok=false
+  GUI_E2E_LEASE_DIR="$EVIDENCE/leases" "$CONTROLLER" --tier hypr-headless --workspace "$WORKSPACE" --output "$OUTPUT" --lease-id "$LEASE" stop >/dev/null 2>&1 || true
+  snapshot_isolation >"$EVIDENCE/host-isolation-after.json" 2>/dev/null || cleanup_ok=false
+  host_hypr -j monitors all >"$EVIDENCE/host-after.json" 2>/dev/null || true
+  host_hypr -j workspaces >"$EVIDENCE/host-workspaces-after.json" 2>/dev/null || true
+  [[ -z ${NESTED_WAYLAND:-} || ! -S "$RUNTIME/$NESTED_WAYLAND" ]] || { printf 'nested socket remains\n' >&2; cleanup_ok=false; }
+  jq -e --arg output "$OUTPUT" 'all(.[]; .name != $output)' "$EVIDENCE/host-after.json" >/dev/null 2>&1 || cleanup_ok=false
+  jq -e --argjson ws "$WORKSPACE" 'all(.[]; .id != $ws)' "$EVIDENCE/host-workspaces-after.json" >/dev/null 2>&1 || cleanup_ok=false
+  [[ $cleanup_ok == true ]] || status=1
+  jq -n --argjson status "$status" --argjson complete "$cleanup_ok" \
+    --arg evidence "$EVIDENCE" \
+    '{exit_status:$status,cleanup_complete:$complete,evidence:$evidence}' >"$EVIDENCE/result.json"
+  if [[ -f $EVIDENCE/controller-lifecycle.json && -f $EVIDENCE/phone-lifecycle.json && -f $EVIDENCE/sabotage.json && -f $EVIDENCE/rollback.json ]]; then
+    python3 "$ROOT/scripts/hypr_lua_e2e_lifecycle.py" --evidence "$EVIDENCE" --write "$EVIDENCE/lifecycle-report.json" || status=1
+  fi
+  printf 'evidence: %s\n' "$EVIDENCE"
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+readlink -f /home/kvn/.config/hypr/hyprland.conf >"$EVIDENCE/live-selection.txt"
+snapshot_isolation >"$EVIDENCE/host-isolation-before.json"
+
+# Sandbox rollback proof, then reselect live legacy without activating Lua.
+sandbox="$EVIDENCE/rollback-sandbox"
+mkdir -p "$sandbox"
+XDG_CONFIG_HOME="$sandbox/config" HOME="$sandbox" "$SELECTOR" activate >"$EVIDENCE/rollback-activate.txt"
+sandbox_link="$sandbox/config/hypr/hyprland.conf"
+[[ $(readlink -f "$sandbox_link") == "$CONFIG" ]] || { printf 'sandbox activate did not select lua\n' >&2; exit 1; }
+XDG_CONFIG_HOME="$sandbox/config" HOME="$sandbox" "$SELECTOR" rollback >"$EVIDENCE/rollback-sandbox.txt"
+[[ $(readlink -f "$sandbox_link") == "$LEGACY" ]] || { printf 'sandbox rollback did not select legacy\n' >&2; exit 1; }
+"$SELECTOR" rollback >"$EVIDENCE/rollback-live.txt"
+live_after=$(readlink -f /home/kvn/.config/hypr/hyprland.conf)
+[[ $live_after == "$LEGACY" ]] || { printf 'live rollback did not reselect legacy\n' >&2; exit 1; }
+printf '%s\n' "$live_after" >"$EVIDENCE/live-selection.txt"
+jq -n --arg command 'scripts/hypr-lua-config rollback' --arg target "$live_after" \
+  '{command:$command,target:$target,proven:true}' >"$EVIDENCE/rollback.json"
+
+GUI_E2E_LEASE_DIR="$EVIDENCE/leases" "$CONTROLLER" --tier hypr-headless --workspace "$WORKSPACE" --output "$OUTPUT" --lease-id "$LEASE" start
+snapshot_isolation >"$EVIDENCE/host-isolation-after-output.json"
+jq -e --argjson expected "$(cat "$EVIDENCE/host-isolation-before.json")" \
+  '.physical_monitor_workspaces == $expected.physical_monitor_workspaces and .focused_monitor == $expected.focused_monitor' \
+  "$EVIDENCE/host-isolation-after-output.json" >/dev/null \
+  || { printf 'host isolation broken while creating headless output\n' >&2; exit 1; }
+
+lua_launcher="$EVIDENCE/launch-lua.sh"
+printf '#!/usr/bin/env bash\nexec env -u HYPRLAND_INSTANCE_SIGNATURE -u DISPLAY XDG_RUNTIME_DIR=%q WAYLAND_DISPLAY=%q HYPR_LUA_TEST_MODE=1 HYPR_LUA_ISOLATED_MODE=1 HYPR_LUA_PLUGIN=%q AQ_NO_MODIFIERS=1 Hyprland -c %q >%q 2>&1\n' \
+  "$RUNTIME" "$HOST_WAYLAND" "$PLUGIN" "$CONFIG" "$EVIDENCE/lua.log" >"$lua_launcher"
+chmod +x "$lua_launcher"
+host_hypr dispatch exec "[workspace $WORKSPACE silent] $lua_launcher" >/dev/null
+wait_nested lua
+cp "$EVIDENCE/lua-systeminfo.txt" "$EVIDENCE/lua-systeminfo.txt.bak" 2>/dev/null || true
+grep -q 'configProvider: lua' "$EVIDENCE/lua-systeminfo.txt" || nested_hypr systeminfo >"$EVIDENCE/lua-systeminfo.txt"
+grep -q 'configProvider: lua' "$EVIDENCE/lua-systeminfo.txt" || { printf 'nested lua configProvider missing\n' >&2; cat "$EVIDENCE/lua-systeminfo.txt" >&2; exit 1; }
+grep -qi 'backend: wayland' "$EVIDENCE/lua-systeminfo.txt" || { printf 'nested lua backend is not wayland\n' >&2; exit 1; }
+nested_hypr configerrors >"$EVIDENCE/lua-configerrors.txt"
+[[ -z $(tr -d '[:space:]' <"$EVIDENCE/lua-configerrors.txt") ]] || { printf 'nested lua configerrors are non-empty\n' >&2; cat "$EVIDENCE/lua-configerrors.txt" >&2; exit 1; }
+
+lifecycle_output controller "$INNER_OUTPUT" "$EVIDENCE/controller-lifecycle.json" run_controller run_controller
+lifecycle_output phone PHONE "$EVIDENCE/phone-lifecycle.json" run_phone run_phone
+
+monitor_ok=false window_ok=false bind_ok=false source_ok=false
+if visible_error monitor keyword monitor 'SABOTAGE-MON,not-a-mode,auto,1'; then monitor_ok=true; fi
+if visible_error window keyword windowrule 'this-is-not-a-valid-window-rule'; then window_ok=true; fi
+if visible_error bind keyword bind ',,,'; then bind_ok=true; fi
+if visible_error source keyword source '/tmp/hypr-lua-missing-source.conf'; then source_ok=true; fi
+nested_hypr -j monitors all >"$EVIDENCE/nested-monitors-after-sabotage.json"
+nested_hypr configerrors >"$EVIDENCE/lua-configerrors-after-sabotage.txt"
+[[ -z $(tr -d '[:space:]' <"$EVIDENCE/lua-configerrors-after-sabotage.txt") ]] || {
+  printf 'nested configerrors remain after conversion sabotage\n' >&2
+  cat "$EVIDENCE/lua-configerrors-after-sabotage.txt" >&2
+  exit 1
+}
+cp "$EVIDENCE/lua-configerrors-after-sabotage.txt" "$EVIDENCE/lua-configerrors.txt"
+recovered=true
+jq -n \
+  --argjson monitor "$monitor_ok" --argjson window "$window_ok" \
+  --argjson bind "$bind_ok" --argjson source "$source_ok" \
+  --argjson recovered "$recovered" \
+  '{
+    monitor:{visible:$monitor,recovered:$recovered},
+    window:{visible:$window,recovered:$recovered},
+    bind:{visible:$bind,recovered:$recovered},
+    source:{visible:$source,recovered:$recovered}
+  }' >"$EVIDENCE/sabotage.json"
+[[ $monitor_ok == true && $window_ok == true && $bind_ok == true && $source_ok == true ]] || {
+  printf 'nested conversion sabotage did not produce visible errors\n' >&2
+  cat "$EVIDENCE/sabotage.json" >&2
+  exit 1
+}
+
+snapshot_isolation >"$EVIDENCE/host-isolation-during.json"
+stop_nested
+printf 'nested Lua E2E lifecycle, sabotage, rollback, and host isolation: ok\n'

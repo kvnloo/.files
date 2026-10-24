@@ -1,0 +1,22 @@
+[Unit]
+Description=Tailscale Taildrop receiver (receive-only, no execution)
+After=network-online.target tailscale.service
+Wants=network-online.target
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/hermes-taildrop-receiver.sh
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/hermes-taildrop
+Restart=on-failure
+RestartSec=5
+# Bounded open-file limit
+LimitNOFILE=1024
+
+[Install]
+WantedBy=default.target

@@ -146,8 +146,12 @@ case "${1:-status}" in
   toggle)
     if [[ -e $ACTIVE_FILE ]]; then
       "$0" disable manual
+      command -v notify-send >/dev/null 2>&1 &&
+        notify-send -a performance-mode -h string:x-dunst-stack-tag:performance-mode "Performance mode" "Off — animations and effects restored"
     else
       "$0" enable manual
+      command -v notify-send >/dev/null 2>&1 &&
+        notify-send -a performance-mode -h string:x-dunst-stack-tag:performance-mode "Performance mode" "On — blur, animations, and wallpaper load reduced"
     fi
     ;;
   status)

@@ -50,6 +50,8 @@ start_noctalia() {
   stop_noctalia
   "$ROOT/scripts/install-noctalia-audio-overlay.py" >/dev/null
   systemd-run --user --unit=noctalia-shell --collect "${command[@]}" >/dev/null
+  # Noctalia recreates its wallpaper layer on start, above a running live wallpaper. Put the engine back on top.
+  ( sleep 8; "$ROOT/scripts/wallpaper-mode.sh" guard ) >/dev/null 2>&1 &
   printf 'noctalia\n' > "$STATE_FILE"
 }
 
@@ -59,7 +61,7 @@ current_mode() {
   elif pgrep -x noctalia >/dev/null 2>&1 || pgrep -x quickshell >/dev/null 2>&1 || pgrep -x qs >/dev/null 2>&1; then
     printf 'noctalia\n'
   else
-    cat "$STATE_FILE" 2>/dev/null || printf 'waybar\n'
+    cat "$STATE_FILE" 2>/dev/null || printf 'noctalia\n'
   fi
 }
 
@@ -74,10 +76,10 @@ case "${1:-status}" in
     fi
     ;;
   restore)
-    if [[ $(cat "$STATE_FILE" 2>/dev/null || printf 'waybar') == noctalia ]]; then
-      start_noctalia || start_waybar
-    else
+    if [[ $(cat "$STATE_FILE" 2>/dev/null || printf 'noctalia') == waybar ]]; then
       start_waybar
+    else
+      start_noctalia
     fi
     ;;
   status) current_mode ;;

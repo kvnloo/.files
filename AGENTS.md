@@ -22,6 +22,7 @@ If `offer_onboarding` is `true` (or `recommended_complete` is `false`):
 
 ```sh
 ./scripts/onboard run core-links
+./scripts/onboard run fonts
 ./scripts/onboard run agent-skills
 ./scripts/onboard run agent-tools      # optional research tools
 ./scripts/onboard run tailnet-ssh      # optional Linux remote access
@@ -65,6 +66,7 @@ Minimum useful desktop/agent baseline:
 | Module | Purpose |
 |--------|---------|
 | `core-links` | Symlink shell, tmux, git, Hyprland, nvim, noctalia, Waybar, PipeWire fragments, Sunshine config (no credentials), helpers |
+| `fonts` | Install Nerd Fonts and the base families named by desktop configs |
 | `agent-skills` | Install `workspace-copilot` into Claude/Codex/OpenCode/Gemini/Cursor skill dirs |
 
 Everything else is optional and should be confirmed with the user.

@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Generate Lua from persist-monitor-layout monitors.conf without editing it."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "config/hyprland/lua/generated/monitors.lua"
+SRC = Path(os.environ.get("HYPR_MONITORS_CONF", Path.home() / ".config/hypr/monitors.conf"))
+
+
+def parse_monitor(text: str) -> dict[str, object]:
+    _, payload = text.split("=", 1)
+    parts = [part.strip() for part in payload.split(",")]
+    record: dict[str, object] = {
+        "output": parts[0],
+        "mode": parts[1] if len(parts) > 1 else "preferred",
+        "position": parts[2] if len(parts) > 2 else "auto",
+        "scale": float(parts[3]) if len(parts) > 3 else 1,
+    }
+    if "transform" in parts:
+        index = parts.index("transform")
+        if index + 1 < len(parts):
+            record["transform"] = int(parts[index + 1])
+    return record
+
+
+def lua_monitor(record: dict[str, object]) -> str:
+    fields = [
+        f'output="{record["output"]}"',
+        f'mode="{record["mode"]}"',
+        f'position="{record["position"]}"',
+        f'scale={record["scale"]:g}',
+    ]
+    if "transform" in record:
+        fields.append(f'transform={record["transform"]}')
+    return "  hl.monitor({ " + ", ".join(fields) + " })"
+
+
+def main() -> None:
+    if not SRC.is_file():
+        raise SystemExit(f"persist-monitor-layout output missing: {SRC}")
+    source = SRC.read_text()
+    if not source.startswith("# Generated from the live layout by persist-monitor-layout.py."):
+        raise SystemExit(f"refusing to consume non-generated monitors.conf: {SRC}")
+    monitors = [
+        parse_monitor(line)
+        for line in source.splitlines()
+        if line.strip().startswith("monitor")
+    ]
+    if not monitors:
+        raise SystemExit(f"no monitor directives in {SRC}")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join(
+        [
+            "-- Generated from persist-monitor-layout monitors.conf by build-hypr-lua-generated-monitors.",
+            "-- Not sourced by live hyprland.legacy.conf; do not hand-edit monitors.conf.",
+            "-- Do not apply at startup (legacy does not source this file).",
+            "local function apply_generated_monitors()",
+            *[lua_monitor(item) for item in monitors],
+            "end",
+            "return { apply = apply_generated_monitors, sourced = false }",
+            "",
+        ]
+    )
+    OUT.write_text(body)
+
+
+if __name__ == "__main__":
+    main()

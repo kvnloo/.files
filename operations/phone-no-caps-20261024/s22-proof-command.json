@@ -1,0 +1,35 @@
+{
+  "ssh": [
+    "ssh",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    "ConnectTimeout=12",
+    "s22"
+  ],
+  "command": "/root/.local/lib/fleet/fleet-phone-worker submit no-caps-20261024t205239z --ttl 600",
+  "spec": {
+    "argv": [
+      "/usr/bin/flock",
+      "-x",
+      "/tmp/edge-probe-s22-worker-bench.lock",
+      "/usr/bin/python3",
+      "phone_resource_proof.py"
+    ],
+    "cwd": "/root/fleet-jobs/phone-no-caps-20261024T205239Z/src",
+    "timeout": 180,
+    "idempotent": true,
+    "max_attempts": 1
+  },
+  "submit": {
+    "attempt": 0,
+    "cancel": false,
+    "created": 1792875350.6416,
+    "digest": "7a3d2a0820ba39c100f8ed9a1eeafa51c1e65ea37872f426fd7db392fc001125",
+    "expires": 1792875950.6415935,
+    "id": "no-caps-20261024t205239z",
+    "state": "queued"
+  }
+}
