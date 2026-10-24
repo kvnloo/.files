@@ -168,3 +168,37 @@ Rollback: disable/stop only `service-watch.service` and
 `systemctl --user daemon-reload`. Preserve the report directory. If root hooks
 were separately approved, remove only the three installed type-wide hook files
 and `service-watch-system-failure@.service`, then `sudo systemctl daemon-reload`.
+
+## Deterministic worktree cleanup
+
+`z0-guard worktrees --inventory` records the checkout classification without
+removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
+`--daily` applies the age policy (SAFE at least 3 days, WIP at least 14 days).
+LIVE checkouts are never removed. The classifier lives in
+`scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
+external ops-plane dispatcher.
+Immediate cleanup also covers non-LIVE standalone clones, including unique
+clones, preserving their complete refset in a bundle before removal. A base
+clone remains only when needed by LIVE linked worktrees.
+The checkout baseline validates real Git roots and excludes generated Git
+fixtures beneath run, artifact, cache, and test-output containers; those fixtures
+are not checkouts and do not contribute to the watcher threshold.
+
+The manifest and latest machine-readable counts are stored under
+`/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper/`.
+The service watcher consumes `latest.json` for its worktree invariant.
+Each watcher scan counts live Git worktree registrations. Its
+`--checkout-threshold` defaults to 200; repeatable `--checkout-root` overrides
+the shared default roots, and `--reaper-status` overrides the latest-record path.
+The invariant digest includes the latest cleanup counts, removals, and errors.
+`core-links` runs `scripts/install-z0-guard.sh`, copying the launcher, classifier,
+and `worktree-reaper.service`/`.timer` into
+`~/.local/lib/z0-guard/<content-sha256>/`. Binary links, unit links, and an
+existing timer-wants link point only into that stable version, never the source
+task checkout. The installer leaves `service-watch` deployment untouched.
+Groot's `fleet.toml` declares the timer. For explicit activation, run
+`scripts/install-z0-guard.sh --activate`; this reloads systemd and enables/starts
+the timer. Plain installation does not enable it. The persistent daily timer
+catches missed runs, with up to 30 minutes of randomized delay.
+To suspend automatic cleanup, disable and stop only `worktree-reaper.timer`;
+preserve its archives and operational records.

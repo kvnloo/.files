@@ -228,6 +228,10 @@ run_core_links() {
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done
 
+  # Copy cleanup runtime into a content-stamped stable installation, never a
+  # task-worktree symlink. Linking here does not enable the daily timer.
+  bash "$repo/scripts/install-z0-guard.sh"
+
   if [[ -d "$repo/config/omp/extensions/z0-continuity" ]]; then
     mkdir -p "$HOME/.omp/agent/extensions"
     onboard_link "$repo/config/omp/extensions/z0-continuity" "$HOME/.omp/agent/extensions/z0-continuity"
