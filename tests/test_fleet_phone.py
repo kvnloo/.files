@@ -461,6 +461,14 @@ class ExecutionIntegration(TempHome):
 
 class ControllerTests(TempHome):
     def test_real_openssh_consumer_uses_strict_first_policy(self):
+        # Some Kueue images run the host UID without its passwd/NSS entry.
+        # Prove plain ssh -G cannot run before skipping the policy consumer.
+        baseline = subprocess.run(["ssh", "-G", "-F", "/dev/null", "host.invalid"],
+                                  capture_output=True, text=True)
+        missing_user = f"No user exists for uid {os.getuid()}"
+        if baseline.returncode == 255 and baseline.stderr.strip() == missing_user:
+            self.skipTest(f"OpenSSH config dump unavailable in sandbox: {missing_user}")
+        baseline.check_returncode()
         argv = controller.strict_ssh(["ssh", "-F", "/dev/null", "-o", "StrictHostKeyChecking=no",
                                       "-o", "ControlMaster=auto", "host.invalid"])
         argv.insert(1, "-G")
