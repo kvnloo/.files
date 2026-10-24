@@ -69,6 +69,14 @@
     "cause": "Pre-existing MBP Kueue image passwd/NSS omission, not native phone changes.",
     "test_fix": "Skip only if plain ssh -G itself exits255 with the exact current-UID missing-user diagnostic. All other preflight or strict policy failures remain errors."
   },
+  "phone_suite_verification": {
+    "head": "af68487",
+    "job": "fleet-mbp-edec979151554b7c",
+    "result": "74 passed, 1 skipped, 40 subtests passed",
+    "skip_reason": "Plain ssh -G exits255 because no user exists for uid1001 in the Kueue image.",
+    "test_files": ["tests/test_fleet_phone.py", "tests/test_fleet_phone_lane.py", "tests/test_fleet_phone_policy.py", "tests/test_fleet_adb.py"]
+  },
+  "build_routing_fixture_migration": "Add the sibling fleet-kueue executable to the temporary backend fixture. Assert Kueue-first, public-only preadmission Boat overflow, and no replay after allocation. No production admission policy changed.",
   "live_probe_process_audit": {
     "method": "Python sys.addaudithook subprocess.Popen audit around the real fleet-adb probe CLI on both phones",
     "s22_exit_code": 0,
