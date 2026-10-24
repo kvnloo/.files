@@ -16,6 +16,22 @@ user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
+# Accountless local scanner; setup-fettl.py verifies both manifest and this pin.
+[hosts.desktop.fettl]
+version = "0.19.78"
+manifest = "https://downloads.fettl.dev/releases/v0.19.78/manifest.json"
+asset = "fettl-0.19.78-x86_64-unknown-linux-gnu.tar.gz"
+sha256 = "b989a935f10418c9d2058a8009f11675dae17c5891e134037a0771feeb326d4d"
+size = 20903386
+binary_sha256 = "34bcf66428e7bd349ad10f57203eff163d9ad5c04a964bc63ba9b05865eeacaf"
+binary = "~/.local/bin/fettl"
+installer = "scripts/setup-fettl.py"
+hooks_installer = "scripts/setup-fettl-hooks.py"
+runtime_packages = ["bubblewrap", "util-linux", "git", "python", "python-yaml"]
+account = false
+source_upload = false
+automatic_fixes = false
+
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]
 repository = "https://github.com/lgse/strata"
