@@ -140,14 +140,19 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
   `hermes-k8s-lab`. `.files` owns fleet policy, queue declarations and references.
   The parent retires kind only after it proves the replacement workloads healthy.
 
-Prefer phone workers for arm64-friendly tests when the MBP queue is busy:
-`fleet-build --node galaxy-s22plus --phone --wait 0 -- python3 ...`,
-or replace the node with `omarchy-phone`.
+Phones default to native Android adb jobs, not the Omalauncher Linux userland.
+Use `fleet run --node s22 --src ./native-payload -- ./worker` for native binaries.
+Linux Python/Node suites require explicit guest opt-in:
+`fleet-build --node galaxy-s22plus --phone --guest --wait 0 -- python3 ...`,
+or replace the node with `s25` (`omarchy-phone`).
 
 Phones: no agent resource caps; Android manages battery/thermal/RAM. Enforced by Bend law O10 / z0-guard phone-caps.
 
-Both phones retain owner pause/call hooks, job timeout and process-group cleanup.
-The wrapper preserves installed mise runtime discovery when payload HOME changes.
+Native jobs have no CPU pinning, memory ceiling, nice, or thermal admission gate.
+The only resource gate refuses battery below 2% when not charging.
+They retain job timeouts and process-group cleanup. See
+[PHONE_HOST_LANE.md](PHONE_HOST_LANE.md) for status/logs/kill/fetch and native tools.
+Guest jobs retain owner pause/call hooks and installed mise runtime discovery.
 Guest package policy is `phone_packages` in the registry.
 `scripts/fleet toolchain NODE` provisions those packages through normal admitted
 phone jobs. `--check` only reads installed package versions.

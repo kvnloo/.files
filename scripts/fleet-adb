@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""Trusted native Android jobs. Runs on groot with the SDK adb, never in a guest."""
+import argparse
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+ROOT = "/data/local/tmp/fleet-jobs"
+TOOLBOX = "/data/local/tmp/fleet-bin"
+HARDWARE = {"s22": "RFCTA1RZAQY", "galaxy-s22plus": "RFCTA1RZAQY",
+            "localhost-0": "RFCTA1RZAQY", "s25": "R5CY93G2WNH", "omarchy-phone": "R5CY93G2WNH"}
+
+
+class Device:
+    def __init__(self, node):
+        self.hardware = HARDWARE[node]
+        self.adb = str(Path.home() / "android/sdk/platform-tools/adb")
+        if not Path(self.adb).is_file():
+            raise RuntimeError("native phone lane requires ~/android/sdk/platform-tools/adb")
+        self.env = {**os.environ, "ANDROID_ADB_SERVER_PORT": "5037"}
+        self.env.pop("ADB_SERVER_SOCKET", None)
+        self.serial = None
+        connected = [f[0] for line in self.call("devices", "-l").stdout.splitlines()
+                     if len(f := line.split()) >= 2 and f[1] == "device"]
+        # Check every authenticated entry by hardware identity, preferring USB.
+        connected.sort(key=lambda s: (":" in s or "._tcp" in s, s))
+        for candidate in connected:
+            if self.matches(candidate):
+                self.serial = candidate
+                break
+        if self.serial is None:
+            mdns = self.call("mdns", "services").stdout
+            advertised = [f[-1] for line in mdns.splitlines()
+                          if len(f := line.split()) >= 3
+                          and f[0].startswith(f"adb-{self.hardware}-")
+                          and f[1] == "_adb-tls-connect._tcp"]
+            for candidate in dict.fromkeys(advertised):
+                self.call("connect", candidate, check=False)
+                if self.matches(candidate):
+                    self.serial = candidate
+                    break
+        if self.serial is None:
+            raise RuntimeError(f"authenticated adb hardware {self.hardware} unavailable (no guest fallback)")
+
+    def call(self, *args, check=True, timeout=30, **kwargs):
+        return subprocess.run([self.adb, "-P", "5037", *args], env=self.env,
+                              capture_output=True, text=True, check=check, timeout=timeout, **kwargs)
+
+    def matches(self, candidate):
+        try:
+            r = self.call("-s", candidate, "shell", "getprop ro.serialno", check=False, timeout=10)
+            return r.returncode == 0 and r.stdout.strip() == self.hardware
+        except subprocess.TimeoutExpired:
+            return False
+
+    def shell(self, command, **kwargs):
+        return self.call("-s", self.serial, "shell", command, **kwargs).stdout.strip()
+
+    def push(self, source, destination):
+        self.call("-s", self.serial, "push", str(source), destination, timeout=600)
+
+    def probe(self):
+        kv = {}
+        for line in self.shell("dumpsys battery").splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                kv[key.strip()] = value.strip()
+        if "level" not in kv:
+            raise RuntimeError("adb battery telemetry unavailable")
+        scale = int(kv.get("scale", "100"))
+        pct = int(kv["level"]) * 100 / scale
+        charging = any(kv.get(k) == "true" for k in ("AC powered", "USB powered", "Wireless powered", "Dock powered")) or kv.get("status") in ("2", "5")
+        thermal = self.shell("dumpsys thermalservice")
+        status = re.search(r"Thermal Status:\s*(\d+)", thermal)
+        load = self.shell("cat /proc/loadavg").split()
+        cpus = self.shell("cat /sys/devices/system/cpu/online")
+        ncpu = sum(int(b) - int(a) + 1 if sep else 1
+                   for part in cpus.split(",") for a, sep, b in [part.partition("-")])
+        return {"ts": int(time.time()), "transport": "adb", "adb_serial": self.serial,
+                "hardware_serial": self.hardware, "online": True, "ncpu": ncpu,
+                "load1": float(load[0]), "load5": float(load[1]),
+                "power": {"source": "adb dumpsys battery", "on_ac": charging,
+                          "batteries": [{"pct": pct, "status": "Charging" if charging else "Discharging"}],
+                          "battery_temp_c": int(kv.get("temperature", "0")) / 10,
+                          "android_thermal_status": int(status[1]) if status else None},
+                "thermal_source": "adb dumpsys thermalservice", "thermalservice": thermal,
+                "host_lane_supported": True, "kubernetes_member": False}
+
+
+def jobdir(job):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,95}", job):
+        raise RuntimeError("invalid job id")
+    return f"{ROOT}/{job}"
+
+
+def relative(path):
+    rel = PurePosixPath(path)
+    if rel.is_absolute() or ".." in rel.parts or not rel.parts or any(ord(c) < 32 for c in path):
+        raise RuntimeError("artifact paths must stay inside the job directory")
+    return str(rel)
+
+
+def identity(device, directory):
+    # Read cmdline and stat in one shell. A reused PID or reboot cannot match.
+    script = f'''d={shlex.quote(directory)}
+[ -f "$d/pid" ] || exit 0
+p=$(cat "$d/pid")
+case "$p" in ''|*[!0-9]*) exit 1;; esac
+[ -r /proc/$p/stat ] || exit 0
+cat /proc/sys/kernel/random/boot_id
+cat /proc/$p/stat
+tr '\\000' '\\n' < /proc/$p/cmdline
+'''
+    lines = device.shell(script).splitlines()
+    if len(lines) < 3:
+        return None
+    fields = lines[1].rsplit(")", 1)[1].split()
+    pid = int(lines[1].split("(", 1)[0])
+    if fields[0] == "Z" or directory + "/runner.sh" not in lines[2:]:
+        return None
+    if int(fields[2]) != pid or int(fields[3]) != pid:
+        raise RuntimeError("job does not own its process group/session")
+    return {"pid": pid, "start": fields[19], "boot": lines[0]}
+
+
+def status(device, job):
+    directory = jobdir(job)
+    result = device.shell(f"cat {directory}/exit 2>/dev/null; cat {directory}/identity.json 2>/dev/null", check=False).splitlines()
+    if not result:
+        raise RuntimeError("unknown job or launch identity unavailable")
+    code = int(result[0]) if result[0].lstrip("-").isdigit() else None
+    saved = json.loads(result[-1])
+    current = identity(device, directory)
+    running = current == saved
+    return {"job": job, "directory": directory, "pid": saved["pid"],
+            "state": "running" if running else "exited" if code is not None else "interrupted",
+            "exit_code": code, "identity_matches": running}
+
+
+def kill(device, job):
+    directory = jobdir(job)
+    saved = json.loads(device.shell(f"cat {directory}/identity.json"))
+    current = identity(device, directory)
+    if current != saved:
+        if current is not None:
+            raise RuntimeError("refusing to signal a changed process identity")
+        return status(device, job)
+    # Check cmdline AND start time again at the signal boundary on the device.
+    guard = f'''p={saved['pid']}; d={shlex.quote(directory)}
+[ "$(cat /proc/sys/kernel/random/boot_id)" = {shlex.quote(saved['boot'])} ] || exit 1
+set -- $(cat /proc/$p/stat); [ "${{22}}" = {shlex.quote(saved['start'])} ] || exit 1
+tr '\\000' '\\n' < /proc/$p/cmdline | /system/bin/grep -Fx "$d/runner.sh" >/dev/null || exit 1
+'''
+    device.shell(guard + 'kill -TERM -- -$p')
+    for _ in range(30):
+        if identity(device, directory) != saved:
+            return status(device, job)
+        time.sleep(0.1)
+    device.shell(guard + 'kill -KILL -- -$p')
+    return status(device, job)
+
+
+def fetch(device, job, paths, destination):
+    directory = jobdir(job)
+    destination.mkdir(parents=True, exist_ok=True)
+    for path in paths:
+        rel = relative(path)
+        target = destination / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        device.call("-s", device.serial, "pull", f"{directory}/{rel}", str(target), timeout=600)
+        print(f"fleet-adb: fetched {rel} -> {target}", file=sys.stderr)
+
+
+def run(device, args):
+    if not args.argv:
+        raise RuntimeError("run requires -- CMD...")
+    if args.timeout <= 0:
+        raise RuntimeError("timeout must be positive")
+    facts = device.probe()
+    power = facts["power"]
+    if power["batteries"][0]["pct"] < 2 and not power["on_ac"]:
+        raise RuntimeError("battery below 2% and not charging")
+    job = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:12]
+    directory = jobdir(job)
+    device.shell(f"mkdir -p {directory}/src {directory}/home {directory}/tmp")
+    if not args.no_src:
+        source = Path(args.src or os.getcwd()).resolve()
+        if not source.is_dir():
+            raise RuntimeError("--src must be a directory")
+        device.push(str(source) + "/.", directory + "/src/")
+    for item in args.input:
+        source, sep, path = item.rpartition(":")
+        if not sep or not Path(source).is_file():
+            raise RuntimeError("--input requires FILE:RELATIVE_PATH")
+        rel = relative(path)
+        device.shell(f"mkdir -p {shlex.quote(directory + '/src/' + str(PurePosixPath(rel).parent))}")
+        device.push(source, directory + "/src/" + rel)
+    env = f"export PATH={shlex.quote(directory + '/src:' + TOOLBOX)}:/system/bin:/system/xbin; "
+    first = shlex.quote(args.argv[0])
+    device.shell(f"cd {directory}/src; {env} command -v {first} >/dev/null || "
+                 f"{{ echo {shlex.quote('Native command not found: ' + args.argv[0] + '. Android has no Linux python/bash/git. Push a static Android/aarch64 binary or use fleet run --guest.')} >&2; exit 127; }}")
+    # The session leader stays as runner.sh, so its cmdline identifies the group.
+    runner = f'''#!/system/bin/sh
+cd {directory}/src || exit 1
+{env}
+export HOME={directory}/home TMPDIR={directory}/tmp FLEET_JOB_ID={job}
+echo $$ > {directory}/pid
+attempt=0
+while [ ! -f {directory}/go ]; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 600 ] || exit 125
+  sleep 0.05
+done
+finish() {{
+  trap '' TERM INT HUP
+  echo "$1" > {directory}/exit
+  kill -TERM -- -$$ 2>/dev/null
+  sleep 0.2
+  kill -KILL -- -$$ 2>/dev/null
+}}
+trap 'if [ -f {directory}/timed-out ]; then finish 124; else finish 143; fi' TERM HUP
+trap 'finish 130' INT
+( sleep {args.timeout}; touch {directory}/timed-out; kill -TERM -- -$$ ) &
+{shlex.join(args.argv)} &
+child=$!
+wait "$child"
+finish $?
+'''
+    with tempfile.TemporaryDirectory(prefix="fleet-adb-") as tmp:
+        path = Path(tmp) / "runner.sh"
+        path.write_text(runner)
+        device.push(path, directory + "/runner.sh")
+    device.shell(f"nohup setsid /system/bin/sh {directory}/runner.sh </dev/null >{directory}/stdout 2>{directory}/stderr &")
+    owned = None
+    for _ in range(100):
+        owned = identity(device, directory)
+        if owned:
+            break
+        time.sleep(0.05)
+    if not owned:
+        raise RuntimeError(f"job {job} failed to create owned session; inspect {directory}/stderr")
+    device.shell(f"printf '%s\\n' {shlex.quote(json.dumps(owned))} > {directory}/identity.json.tmp"
+                 f" && mv {directory}/identity.json.tmp {directory}/identity.json && touch {directory}/go")
+    print(job, flush=True)
+    if args.fetch:
+        while status(device, job)["state"] == "running":
+            time.sleep(0.5)
+        fetch(device, job, args.fetch, Path(args.dest or Path.home() / '.local/state/fleet/runs' / job))
+        result = status(device, job)
+        return result["exit_code"] if result["exit_code"] is not None else 255
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["discover", "probe", "run", "status", "logs", "kill", "fetch"])
+    parser.add_argument("node", choices=HARDWARE)
+    parser.add_argument("job", nargs="?")
+    parser.add_argument("--src")
+    parser.add_argument("--no-src", action="store_true")
+    parser.add_argument("--input", action="append", default=[])
+    parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument("--fetch", action="append", default=[])
+    parser.add_argument("--dest")
+    argv = sys.argv[1:]
+    split = argv.index("--") if "--" in argv else len(argv)
+    args = parser.parse_args(argv[:split])
+    args.argv = argv[split + 1:]
+    try:
+        device = Device(args.node)
+        if args.action == "discover":
+            print(json.dumps({"serial": device.serial, "hardware_serial": device.hardware}))
+        elif args.action == "probe":
+            print(json.dumps(device.probe()))
+        elif args.action == "run":
+            return run(device, args)
+        else:
+            if not args.job:
+                raise RuntimeError("job id required")
+            directory = jobdir(args.job)
+            if args.action == "logs":
+                for name, stream in (("stdout", sys.stdout), ("stderr", sys.stderr)):
+                    stream.write(device.call("-s", device.serial, "shell", f"cat {directory}/{name}").stdout)
+            elif args.action == "kill":
+                print(json.dumps(kill(device, args.job)))
+            elif args.action == "status":
+                print(json.dumps(status(device, args.job)))
+            if args.fetch or args.action == "fetch":
+                if not args.fetch:
+                    raise RuntimeError("fetch requires --fetch PATH")
+                fetch(device, args.job, args.fetch, Path(args.dest or Path.home() / '.local/state/fleet/runs' / args.job))
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)
+        print(f"fleet-adb: {detail}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

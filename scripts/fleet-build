@@ -14,6 +14,7 @@
 #                    OOM-killed in a 6 GiB scope). --gradle-args '' keeps the repo's own.
 #   --light          lint / pure-Python tests / scans / git work: phones allowed
 #   --phone          arm64 phone jobs, without an implicit resource budget
+#   --guest          explicitly use the phone's SSH Linux userland (Python/Bash/Git)
 #   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
 #   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
@@ -43,13 +44,14 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0; guest=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 while [ $# -gt 0 ]; do
   case $1 in
     --android) mode=android; shift ;;
     --light) mode=light; shift ;;
     --phone) mode=phone; shift ;;
+    --guest) guest=1; shift ;;
     --public) public=1; shift ;;
     --x86|--docker) public=1; prefer_boat=1; shift ;;
     --local-data) local_data=1; shift ;;
@@ -103,6 +105,7 @@ case $here/ in "$src"/*) rel=${here#"$src"}; rel=${rel#/} ;; *) rel="" ;; esac
 rel=${rel:-.}
 
 args=(run --src "$src")
+[ "$guest" = 0 ] || args+=(--guest)
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
   build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
@@ -134,7 +137,7 @@ case $1 in
 esac
 exec "$@"'
 [ "$mode" = android ] || gradle_args=""
-args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" bash -c "$script" fleet-build "$rel" "$@")
+args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" sh -c "$script" fleet-build "$rel" "$@")
 use_kueue=0
 runner=("$FLEET"); run_args=("${args[@]}")
 if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -z "$node" ] && [ "$mode" != phone ]; }; then

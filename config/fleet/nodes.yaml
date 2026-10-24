@@ -86,17 +86,20 @@ nodes:
       # owner-run drop-in /etc/rancher/k3s/config.yaml.d/60-eviction-reclaim.yaml.
       eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
   omarchy-phone:
-    # Owner's S25 Ultra, Omalauncher PRoot host lane (not Kubernetes).
+    # Owner's S25 Ultra, native adb lane by default. SSH guest requires --guest.
     # Phones: no agent resource caps; Android manages battery/thermal/RAM.
     # Enforced by Bend law O10 / z0-guard phone-caps.
     role: worker
     kind: phone
+    aliases: [s25]
+    transport: adb
     tailnet_ip: 100.104.42.85
     ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
     ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    capabilities: [android-native, adb-host-lane]
+    guest_capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
     taints: []
     model: SM-S938U
     phone_runtime:
@@ -105,6 +108,7 @@ nodes:
     phone_packages: [go, rust, gcc]
     android:                # groot's adb to the phone itself (fleet health; read-only)
       adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
+      serial: R5CY93G2WNH       # hardware identity, not a pinned adb endpoint
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
       min_disk_free_gb: 5
@@ -112,22 +116,24 @@ nodes:
       on_unhealthy: pause
     lane: {}
   galaxy-s22plus:
-    # Spare Galaxy S22+, Omalauncher PRoot host lane.
-    # Guest localhost-0 is separate from Android galaxy-s22.
+    # Spare Galaxy S22+, native adb lane. Guest localhost-0 is opt-in.
     role: worker
     kind: phone
     aliases: [s22, localhost-0]
+    transport: adb
     tailnet_ip: 100.97.11.22
     ssh_user: root
     ssh_port: 8022
     arch: arm64
     classes: [phone]
-    capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
+    capabilities: [android-native, adb-host-lane]
+    guest_capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
     taints: []
     model: SM-S906U1
     phone_packages: [nodejs, bun, go, rust, gcc]
     android:
-      adb_host: 100.72.191.23    # galaxy-s22 Android app node; groot has no adb pairing yet
+      adb_host: 100.72.191.23
+      serial: RFCTA1RZAQY       # discovery verifies every transport with ro.serialno
       revive: false
     health:
       min_disk_free_gb: 5

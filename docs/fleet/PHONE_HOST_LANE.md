@@ -1,8 +1,86 @@
-# Explicit Android PRoot host lane
+# Android phone host lanes
 
-Phones are **not Kubernetes nodes**. Registry kind `phone` advertises `proot-host-lane`. No kubelet, cgroups, Android root, network/security isolation, guaranteed RSS limit, or Kubernetes Ready claim is made. Only trusted owner jobs belong here. The existing agentjob/Linux scope and factory/untrusted pod policy are unchanged.
+Phones are **not Kubernetes nodes**. Only trusted owner jobs belong here. The default lane runs native Android commands from groot through SDK adb. It does not need Omalauncher, its LinuxService, guest SSH, Python, or Tailscale inside a guest. Omalauncher stays installed to host Hermes/OMP/Tern. Its availability does not control native fleet jobs.
 
-## Lifecycle: launcher owns, guest supervises
+## Default: native adb
+
+```sh
+job=$(scripts/fleet run --node s22 --src ./native-payload -- ./worker --output result.bin)
+scripts/fleet status s22 "$job"
+scripts/fleet logs s22 "$job"
+scripts/fleet status s22 "$job" --fetch src/result.bin --dest ./results
+scripts/fleet kill s22 "$job"
+# Or wait for completion and fetch in the submit call:
+scripts/fleet run --node s25 --src ./native-payload --fetch src/result.bin -- ./worker
+```
+
+`s25` and `omarchy-phone` name the same device. `s22` names `galaxy-s22plus`.
+`scripts/fleet-adb discover PHONE` selects an authenticated transport by
+`getprop ro.serialno`, with USB first. It checks all connected adb entries, then
+discovers the hardware's `_adb-tls-connect._tcp` mDNS endpoint if necessary.
+Neither an old wireless port nor the apparent adb serial is trusted as identity.
+The helper uses `~/android/sdk/platform-tools/adb` and groot's server on port5037,
+not a guest tunnel or `/usr/bin/adb`. It does not scan ports or pair devices.
+
+Submit copies `--src` (default cwd, use `--no-src` to omit) into
+`/data/local/tmp/fleet-jobs/JOB/src/`. `--input FILE:RELATIVE_PATH` stages an
+exact extra file there. The working directory is `src`. Each job has private
+`home` and `tmp` directories, an independent session/process group, `pid`,
+`identity.json`, `stdout`, `stderr`, and an `exit` file. The runner starts through
+`adb shell` with `nohup setsid`. `FLEET_JOB_ID` is available to the payload.
+Run normally returns the job ID immediately. `--fetch PATH` on run waits for
+completion and returns the payload exit code after the pull. Paths are relative
+to the job directory, so payload results normally use `src/…`.
+`fleet fetch PHONE JOB --fetch PATH --dest DIR` also pulls existing results.
+Without `--dest`, results go to `~/.local/state/fleet/runs/JOB/`.
+
+The runner enforces `--timeout` (default 3600 s) and drains its process group on
+exit. Kill checks the exact runner path in `/proc/PID/cmdline`, PID start time,
+boot ID, and process-group/session ownership before it signals the whole group.
+It never uses `pkill`. A reused PID is not a job. Spools stay on the device for
+logs, status, and result recovery. The lane makes no reboot-survival guarantee,
+retry, lease, isolation, cgroup, Android-root, or Kubernetes Ready claim.
+
+Phones: no agent resource caps; Android manages battery/thermal/RAM.
+Enforced by Bend law O10 / z0-guard phone-caps. There is no CPU pinning,
+memory ceiling, priority change, thermal gate, or light/worker profile.
+The only native resource admission gate refuses a battery **below 2% and not
+charging**. Exactly 2% and a charging phone remain available.
+Native health reads online identity, `dumpsys battery`, and
+`dumpsys thermalservice` through adb only. Thermal readings are informational.
+A dead guest cannot pause the native phone lane.
+
+### Native toolbox
+
+Android supplies `/system/bin/sh` and toybox, not a Linux distribution.
+It has no Linux Python, Bash, Git, glibc, or guest package toolchain.
+The native lane fails before launch if the first command cannot be resolved on
+the device or in the payload. Use a static Android-compatible aarch64 binary,
+or explicitly select `--guest` for a Linux-userland job.
+
+Put a checksum-verified static aarch64 busybox and other native tools in
+`/data/local/tmp/fleet-bin`. The payload directory and this toolbox precede
+`/system/bin` on PATH. A Linux/glibc binary is not necessarily Android-compatible.
+For inference, reuse EdgeProbe's measured llama.cpp/MNN runtimes already under
+`/data/local/tmp`, with their required libraries and model paths. Those model and
+runtime directories are not copied into each job or assumed to have a fixed
+version. Supply their actual native executable path and environment, for example
+through `sh -c 'export LD_LIBRARY_PATH=…; exec /data/local/tmp/…/llama-cli …'`.
+Do not invent a toolbox download or silently fall back to a guest.
+
+## Opt-in: SSH Linux guest
+
+```sh
+scripts/fleet run --node s22 --guest --src ./linux-project -- python3 worker.py
+scripts/fleet kill s22 GUEST_JOB_ID --guest
+```
+
+This path retains the existing durable leased PRoot executor. Its Linux tools
+and guest service health apply only when explicitly selected. The explicit
+`fleet phone` API below also always targets this guest contract.
+The existing agentjob/Linux scope and factory/untrusted pod policy are unchanged.
+
+### Guest lifecycle: launcher owns, guest supervises
 
 After owner persistent-host opt-in, Omalauncher's long-lived LinuxService must invoke the following as a foreground guest child, independent of any Activity, terminal window or audio playback:
 
@@ -51,7 +129,7 @@ Kubernetes autoscaling. Groot has no host lane and is never a no-room fallback.
 
 ## Shared job API
 
-Existing `fleet run --node s22 -- CMD...` submits the selected phone job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB` cancels that exact durable ID instead of matching process command lines. Source transfer and artifact fetching still use the existing fleet transport. The phone spool/source are retained to support recovery and log inspection. Linux/MBP execution is unchanged.
+`fleet run --node s22 --guest -- CMD...` submits the selected guest job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB --guest` cancels that exact durable ID. Source transfer and artifact fetching use SSH. The guest spool/source remain available for recovery. Linux/MBP execution is unchanged.
 
 Explicit controller API:
 
@@ -80,7 +158,7 @@ The source directory must already exist beneath `~/fleet-jobs`. One attempt is t
 
 Availability states are separate: `unavailable` means authenticated SSH/probe failed, `stale` means evidence too old/clock-skewed, `paused` means explicit owner pause/call or stopped service, and `unsupported` means wrong host platform. `ready` means the host lane is reachable and active. Missing device telemetry does not prevent phone jobs. `fleet-polite-run` forwards termination to the payload process group.
 
-Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. `fleet health` uses its existing measured timer and automatically reconciles only **previously owned** records after strict SSH and a fresh probe return. No UI wake or app reopening is invoked.
+Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. Guest reconciliation occurs through the explicit guest API, not default adb-only `fleet health`. No UI wake or app reopening is invoked.
 
 Recovery checks boot ID + PID start time, live runner/child and surviving process-group descendants. Live/ambiguous executions cannot be re-leased. Dead non-idempotent executions become `needs-confirmation`, never speculative retries. `fleet run --idempotent` (or explicit spec `idempotent:true,max_attempts:3`) permits bounded retry of the **same ID** only after confirmed interruption/drain. Exactly-once arbitrary side effects cannot be guaranteed across a crash between an external effect and durable completion; idempotent jobs must implement their own effect dedupe using `FLEET_JOB_ID`. A late heartbeat from an expired token cannot renew a replacement generation. Offline cancellation is durable controller intent and is delivered on rejoin without renewing that job.
 

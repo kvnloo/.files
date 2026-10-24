@@ -5,10 +5,10 @@
   fleet run [opts] -- CMD...                    run CMD on the least-loaded eligible node
       --node NAME|auto  --class C  --arch amd64|arm64  --tolerate phone
       --mem 2G  --cpus 2  --timeout 3600  --src DIR (default: cwd)  --no-src
-      --fetch PATH (repeatable, relative to the job dir)  --keep
+      --fetch PATH (repeatable, relative to the job dir)  --keep  --guest
       (--class matches a node's classes or its capabilities, e.g. android-build;
        scripts/fleet-build wraps this with the default routing for builds)
-  fleet kill NODE JOB_ID                        stop a running host-lane job
+  fleet status|logs|kill|fetch NODE JOB_ID       native phone job control (--guest for guest kill)
   fleet phone NODE submit|status|logs|cancel|heartbeat|lease|recover [JOB_ID]
                                                explicit leased PRoot host-lane contract
   fleet health [--node N] [--strikes K] [--set key=value]   probe, judge, cordon/uncordon
@@ -20,8 +20,8 @@
 
 Trusted jobs (`fleet run`) reuse the owner's host toolchain. MBP jobs are
 Kueue-admitted Jobs; `--node mbp-host` reserves the same quota for a native
-systemd scope. Other Linux workers use capped agentjob scopes, and phones use
-polite-run. Untrusted code belongs in the restricted k3s `factory` queue.
+systemd scope. Other Linux workers use capped agentjob scopes. Phones use native
+adb by default, or the existing PRoot executor with explicit --guest.
 """
 import argparse
 import concurrent.futures as cf
@@ -111,8 +111,8 @@ def probe_path(n):
     return "~/.local/lib/fleet/fleet-node-probe" if n["kind"] == "phone" else "/usr/local/bin/fleet-node-probe"
 
 
-def probe(n):
-    """Run the node's probe; groot probes itself locally."""
+def probe(n, guest=False):
+    """Read health on groot, over adb for phones, or over SSH for Linux/opt-in guests."""
     if n["kind"] == "boat":
         result = subprocess.run([sys.executable, str(REPO / "scripts/boat"), "limits"],
                                 capture_output=True, text=True, timeout=90)
@@ -120,6 +120,13 @@ def probe(n):
             return {"boat_limits": json.loads(result.stdout)}
         except ValueError:
             return {"error": "Boat limits unavailable"}
+    if n["kind"] == "phone" and not guest:
+        try:
+            result = subprocess.run([sys.executable, str(REPO / "scripts/fleet-adb"), "probe", n["name"]],
+                                    capture_output=True, text=True, timeout=120, check=True)
+            return json.loads(result.stdout)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return {"error": f"adb probe failed: {type(exc).__name__}", "transport": "adb"}
     try:
         if n["role"] == "server":
             out = subprocess.run([sys.executable, str(REPO / "scripts/fleet-node-probe")],
@@ -170,76 +177,6 @@ def tailnet_online():
     return out
 
 
-# ---------------------------------------------------------------- phone keep-alive
-
-def tern_doctor(n):
-    """`tern remote doctor` from groot: does the phone's `tern remote serve` accept us?"""
-    tern = shutil.which("tern") or str(Path.home() / ".local/bin/tern")
-    try:
-        r = subprocess.run([tern, "remote", "doctor", f"{n['ssh_user']}@{n['tailnet_ip']}"],
-                           capture_output=True, text=True, timeout=45, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return f"failed: {type(e).__name__}"
-    lines = [l for l in (r.stdout + r.stderr).splitlines() if l.strip()]
-    if any(l.startswith("ok") and " auth " in f"{l} " for l in lines):
-        return "ok"
-    bad = [l for l in lines if not l.startswith(("ok", "warn", "skip"))]
-    return " ".join((bad[0] if bad else f"exit {r.returncode}").split())[:160]
-
-
-def adb_device(host):
-    """groot's adb serial for a phone's Android tailnet IP (the port changes), or None."""
-    try:
-        out = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=15).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    for line in out.splitlines()[1:]:
-        f = line.split()
-        if len(f) >= 2 and f[1] == "device" and f[0].startswith(host + ":"):
-            return f[0]
-    return None
-
-
-def android_state(n):
-    """Read-only: is Omalauncher's foreground service (it holds the guest) up, is the screen on?"""
-    host = (n.get("android") or {}).get("adb_host")
-    serial = adb_device(host) if host else None
-    if not serial:
-        return None
-
-    def sh(cmd):
-        return subprocess.run(["adb", "-s", serial, "shell", cmd], capture_output=True, text=True,
-                              timeout=20).stdout
-    try:
-        svc = sh("dumpsys activity services dev.omalauncher")
-        wake = sh("dumpsys power | grep -m1 mWakefulness=").strip()
-    except (OSError, subprocess.TimeoutExpired):
-        return {"adb": serial, "error": "adb timeout"}
-    return {"adb": serial, "omalauncher_fgs": "isForeground=true" in svc,
-            "wakefulness": wake.split("=")[-1] or None}
-
-
-def maybe_revive(n, st, s, pr):
-    """Opt-in (`android.revive: true`): reopen Omalauncher, whose MainActivity is the only
-    thing that starts the Linux guest, but only when the guest is truly down: the probe
-    could not reach it over ssh, `tern remote doctor` failed too, and Omalauncher's
-    foreground service is gone (process killed). A guest whose services merely restart
-    is the supervisor's job (it restarts them within a second, inside the guest).
-    Only while the screen is off and at most every 15 min, so it never takes over a
-    screen in use. Linux startup runs the guest's PulseAudio hook, which starts the
-    supervisor, so no window has to open."""
-    if not (n.get("android") or {}).get("revive") or not st or "error" in st:
-        return None
-    if "error" not in pr or pr.get("tern_doctor") == "ok":
-        return None
-    if st.get("omalauncher_fgs") or st.get("wakefulness") in (None, "Awake"):
-        return None
-    if time.time() - s.get("revived_ts", 0) < 900:
-        return None
-    subprocess.run(["adb", "-s", st["adb"], "shell", "am start -n dev.omalauncher/.MainActivity"],
-                   capture_output=True, text=True, timeout=20)
-    s["revived_ts"] = int(time.time())
-    return "revived"
 
 
 # ---------------------------------------------------------------- health
@@ -251,6 +188,14 @@ def judge(n, p, k8s, online, overrides):
         limits = p.get("boat_limits", {})
         return ([] if limits.get("canStart") else [p.get("error", "Boat cannot start")]), []
     bad, warn = [], []
+    if n["kind"] == "phone" and p.get("transport") == "adb":
+        if p.get("error"):
+            return [p["error"]], []
+        power = p["power"]
+        pct = power["batteries"][0]["pct"]
+        if pct < 2 and not power["on_ac"]:
+            bad.append(f"battery {pct}% below 2% and not charging")
+        return bad, warn
     # The probe crossing the tailnet is the stronger signal; a peer's Online flag can lag.
     if "error" in p and not online.get(n["tailnet_ip"], False):
         bad.append("tailscale offline")
@@ -313,7 +258,7 @@ def judge(n, p, k8s, online, overrides):
 
 def cmd_health(args):
     reg, nodes = registry()
-    sel = [nodes[args.node]] if args.node else list(nodes.values())
+    sel = [nodes[resolve(nodes, args.node)]] if args.node else list(nodes.values())
     overrides = {}
     for kv in args.set or []:
         k, v = kv.split("=", 1)
@@ -322,13 +267,6 @@ def cmd_health(args):
     online = tailnet_online()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in sel], ex.map(probe, sel)))
-        phones = [n for n in sel if n["kind"] == "phone"]
-        doctors = dict(zip([n["name"] for n in phones], ex.map(tern_doctor, phones)))
-    for n in phones:  # adb is one server; ask it serially
-        probes[n["name"]]["tern_doctor"] = doctors[n["name"]]
-        st = android_state(n)
-        if st:
-            probes[n["name"]]["android"] = st
     hdir = STATE / "health"
     hdir.mkdir(parents=True, exist_ok=True)
     state_f = hdir / "state.json"
@@ -352,10 +290,6 @@ def cmd_health(args):
             thermal = probes[name].get("max_temp_c")
             safe = not bad and isinstance(thermal, (int, float)) and not isinstance(thermal, bool) and math.isfinite(thermal) and thermal > 0
             kc("label", "--overwrite", "node", name, f"z0.dev/cpu-admit={str(safe).lower()}")
-        phone_state = None
-        if n["kind"] == "phone":
-            # Health never opens Android UI or claims Kubernetes membership.
-            phone_state = phone_controller.reconcile(STATE, name, probes[name], ssh_cmd(n))
         if bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)
@@ -375,17 +309,14 @@ def cmd_health(args):
             s["paused"] = False
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
                "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
-        if phone_state:
-            rec["host_lane"] = phone_state
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
             f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
-        if n["kind"] == "phone":  # keep-alive log: services, doctor, Android side
-            pr = probes[name]
+        if n["kind"] == "phone":
             with open(hdir / "phone-keepalive.jsonl", "a") as f:
-                f.write(json.dumps({"node": name, "ts": rec["ts"], "reachable": "error" not in pr,
-                                    "services": pr.get("services"), "tern_doctor": pr.get("tern_doctor"),
-                                    "android": pr.get("android"), "action": action}) + "\n")
+                f.write(json.dumps({"node": name, "ts": rec["ts"], "transport": "adb",
+                                    "reachable": "error" not in probes[name],
+                                    "power": probes[name].get("power"), "action": action}) + "\n")
         flag = "OK " if not bad else "BAD"
         print(f"{flag} {name:14} action={action:10} {'; '.join(bad) or '-'}"
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
@@ -403,7 +334,8 @@ def cmd_health(args):
 def eligible(n, args, state):
     if not n["lane_enabled"]:
         return "no host lane"
-    if args.cls and args.cls not in n["classes"] + n["capabilities"]:
+    capabilities = n.get("guest_capabilities", n["capabilities"]) if getattr(args, "guest", False) else n["capabilities"]
+    if args.cls and args.cls not in n["classes"] + capabilities:
         return f"not class/capability {args.cls}"
     if args.arch and n.get("arch") != args.arch:
         return f"arch {n.get('arch')}"
@@ -470,7 +402,7 @@ def cmd_run(args):
             die("no eligible node: " + ", ".join(skipped), 75)
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
-        probes = dict(zip([n["name"] for n in cands], ex.map(probe, cands)))
+        probes = dict(zip([n["name"] for n in cands], ex.map(lambda n: probe(n, args.guest), cands)))
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
@@ -484,7 +416,7 @@ def cmd_run(args):
         bad, _ = judge(n, p, k8s, {n["tailnet_ip"]: True}, {})
         if bad:
             notes.append(f"{n['name']}: {'; '.join(bad)}"); continue
-        if n["kind"] == "phone":
+        if n["kind"] == "phone" and args.guest:
             phase, reasons = host_health(p)
             if phase != "ready":
                 notes.append(f"{n['name']}: {phase}: {'; '.join(reasons)}"); continue
@@ -502,6 +434,17 @@ def cmd_run(args):
     _, n, p = best
     if n["name"] == "mbp":
         return queued_mbp()
+    if n["kind"] == "phone" and not args.guest:
+        argv = [sys.executable, str(REPO / "scripts/fleet-adb"), "run", n["name"],
+                "--timeout", str(args.timeout)]
+        if args.no_src:
+            argv += ["--no-src"]
+        elif args.src:
+            argv += ["--src", args.src]
+        for option in ("fetch", "input"):
+            for value in getattr(args, option) or []:
+                argv += ["--" + option, value]
+        return subprocess.run(argv + ["--", *args.cmd]).returncode
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
@@ -631,6 +574,9 @@ def cmd_kill(args):
                                "--cascade=foreground", "--wait=true"]).returncode
     n = nodes[args.node]
     if n["kind"] == "phone":
+        if not args.guest:
+            return subprocess.run([sys.executable, str(REPO / "scripts/fleet-adb"),
+                                   "kill", n["name"], args.job]).returncode
         try:
             print(json.dumps(phone_controller.cancel(STATE, n["name"], args.job, ssh_cmd(n))))
             return 0
@@ -639,6 +585,19 @@ def cmd_kill(args):
     else:
         r = subprocess.run(ssh_cmd(n) + [f"systemctl --user stop fleet-{args.job}.scope"])
     return r.returncode
+
+def cmd_native(args):
+    _, nodes = registry()
+    n = nodes.get(args.node)
+    if not n or n["kind"] != "phone":
+        die("status/logs/fetch require a registered native phone")
+    argv = [sys.executable, str(REPO / "scripts/fleet-adb"), args.cmd_name, n["name"], args.job]
+    for path in args.fetch or []:
+        argv += ["--fetch", path]
+    if args.dest:
+        argv += ["--dest", args.dest]
+    return subprocess.run(argv).returncode
+
 
 
 def cmd_phone(args):
@@ -681,7 +640,7 @@ def cmd_nodes(args):
         pws = "mains" if not pw.get("batteries") else f"{b.get('pct')}% {b.get('status')}"
         load = f"{p.get('load1', '?')}/{p.get('ncpu', '?')}"
         print(f"{name:14} {n['kind']:6} {n.get('arch', '?'):6} {','.join(n['classes']) or '-':22} "
-              f"{'yes' if (p.get('boat_limits', {}).get('canStart') if n['kind'] == 'boat' else online.get(n['tailnet_ip'])) else 'no':6} {ks:14} {load:9} "
+              f"{'yes' if (p.get('boat_limits', {}).get('canStart') if n['kind'] == 'boat' else p.get('online') if n['kind'] == 'phone' else online.get(n['tailnet_ip'])) else 'no':6} {ks:14} {load:9} "
               f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws:14} {','.join(n['capabilities']) or '-'}")
     for name, c in reg.get("candidates", {}).items():
         print(f"{name:14} (candidate) {c['note']}")
@@ -752,7 +711,7 @@ def cmd_toolchain(args):
         if args.check:
             return subprocess.run(ssh_cmd(n) + ["pacman -Q " + " ".join(map(shlex.quote, packages))]).returncode
         return subprocess.run([sys.executable, str(REPO / "scripts/fleet"), "run",
-            "--node", args.node, "--no-src", "--mem", "1G", "--timeout", "1800", "--",
+            "--node", args.node, "--guest", "--no-src", "--timeout", "1800", "--",
             "pacman", "-S", "--needed", "--noconfirm", *packages]).returncode
     if n["kind"] != "linux" or not n["lane_enabled"]:
         die(f"{args.node}: toolchains are for Linux workers")
@@ -842,8 +801,14 @@ def main():
     r.add_argument("--input", action="append", default=[], metavar="FILE:RELATIVE_PATH",
                    help="stage an exact artifact under job src after health admission (no directory scans)")
     r.add_argument("--idempotent", action="store_true", help="permit bounded phone retry after confirmed drain/death")
+    r.add_argument("--guest", action="store_true", help="opt in to the SSH Linux guest executor on phones")
     r.add_argument("cmd", nargs=argparse.REMAINDER)
     k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
+    k.add_argument("--guest", action="store_true", help="cancel an opt-in guest job")
+    for action in ("status", "logs", "fetch"):
+        p = sub.add_parser(action)
+        p.add_argument("node"); p.add_argument("job")
+        p.add_argument("--fetch", action="append"); p.add_argument("--dest")
     h = sub.add_parser("health"); h.add_argument("--node"); h.add_argument("--strikes", type=int)
     h.add_argument("--set", action="append", help="override a health threshold, e.g. min_disk_free_gb=99999")
     sub.add_parser("labels")
@@ -863,6 +828,7 @@ def main():
     if args.cmd_name == "run" and args.cmd and args.cmd[0] == "--":
         args.cmd = args.cmd[1:]
     fn = {"nodes": cmd_nodes, "phone": cmd_phone, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,
+          "status": cmd_native, "logs": cmd_native, "fetch": cmd_native,
           "enroll": cmd_enroll, "update": cmd_update, "toolchain": cmd_toolchain,
           "install-timer": cmd_install_timer}[args.cmd_name]
     sys.exit(fn(args) or 0)
