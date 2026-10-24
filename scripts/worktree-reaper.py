@@ -110,6 +110,12 @@ def references():
             add(m.group(0).rstrip('\\'), reason)
     for target, reasons in HOOK_REFERENCES.items():
         refs[target].update(reasons)
+    for root in ['/home/kvn/.local/bin', '/home/kvn/.config/systemd/user']:
+        for base, dirs, files in os.walk(root, followlinks=False):
+            for name in [*dirs, *files]:
+                link = Path(base) / name
+                if link.is_symlink():
+                    add(str(link.resolve()), f'deployment-symlink:{link}')
     # Read every process link we are allowed to inspect, never process contents.
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():

@@ -166,10 +166,14 @@ Each watcher scan counts live Git worktree registrations. Its
 `--checkout-threshold` defaults to 200; repeatable `--checkout-root` overrides
 the shared default roots, and `--reaper-status` overrides the latest-record path.
 The invariant digest includes the latest cleanup counts, removals, and errors.
-`core-links` installs the launcher, classifier, and
-`worktree-reaper.service`/`.timer`; groot's `fleet.toml` declares the timer.
-After installing the links, run `systemctl --user daemon-reload` and
-`systemctl --user enable --now worktree-reaper.timer`. The persistent daily
-timer catches missed runs, with up to 30 minutes of randomized delay.
+`core-links` runs `scripts/install-z0-guard.sh`, copying the launcher, classifier,
+and `worktree-reaper.service`/`.timer` into
+`~/.local/lib/z0-guard/<content-sha256>/`. Binary links, unit links, and an
+existing timer-wants link point only into that stable version, never the source
+task checkout. The installer leaves `service-watch` deployment untouched.
+Groot's `fleet.toml` declares the timer. For explicit activation, run
+`scripts/install-z0-guard.sh --activate`; this reloads systemd and enables/starts
+the timer. Plain installation does not enable it. The persistent daily timer
+catches missed runs, with up to 30 minutes of randomized delay.
 To suspend automatic cleanup, disable and stop only `worktree-reaper.timer`;
 preserve its archives and operational records.
