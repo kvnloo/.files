@@ -24,7 +24,8 @@ class Admission(unittest.TestCase):
             mem='1G', cpus='1', timeout=60, src=str(ROOT), no_src=True,
             keep=False, fetch=[], input=[], guest=False)
         self.kn = {'admission-worker': {'conditions': {'Ready': 'True'}, 'unschedulable': False}}
-        self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8, 'max_temp_c': 99, 'power': {}}
+        self.p = {'mem_available_mb': 10000, 'load1': 0, 'ncpu': 8,
+                  'max_temp_c': float(self.n['health']['max_temp_c']) + 1, 'power': {}}
 
     def launch_rejected(self, probe, state):
         with tempfile.TemporaryDirectory() as td, \
