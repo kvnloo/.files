@@ -12,7 +12,9 @@ entry=importlib.machinery.SourceFileLoader('agent_tool_entry',str(ROOT/'scripts/
 class EntryPolicy(unittest.TestCase):
     def test_known_cpu_work_and_mentions_gpu_remote(self):
         for command in ('cargo build','bun test','python3 -m pytest tests','ffmpeg -i input -c:v libx264 out',
-                        'blender --background model.blend'):
+                        'blender --background model.blend', "bash -lc 'cargo build'",
+                        'env MODE=test cargo test', "printf ok && cargo build",
+                        'cmake --build out', 'ninja', 'npm run build'):
             self.assertIsNotNone(entry.blocked(['bash','-c',command]),command)
         for command in ("printf 'cargo build'", "ssh mbp 'cargo build'",'fleet-build -- cargo test',
                         'ffmpeg -i in -c:v h264_nvenc out',
@@ -28,6 +30,15 @@ class EntryPolicy(unittest.TestCase):
             argv=run.call_args.args[0]
             self.assertIn('--slice=app.slice',argv)
             self.assertFalse(any('CPUQuota' in x or 'MemoryMax' in x for x in argv))
+
+    def test_malformed_shell_is_held_before_execution(self):
+        with patch.object(sys, 'argv', ['agent-tool-run', '--', 'sh', '-c', "cargo build '"]), \
+             patch.object(entry.socket, 'gethostname', return_value='groot'), \
+             patch.object(entry.subprocess, 'run') as run:
+            with self.assertRaises(SystemExit) as refused:
+                entry.main()
+            self.assertEqual(refused.exception.code, 75)
+            run.assert_not_called()
 
     def test_scope_failure_never_direct_exec_fallback(self):
         with patch.object(sys,'argv',['agent-tool-run','--','sh','-c','true']), \

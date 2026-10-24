@@ -44,10 +44,11 @@ inside `hermes-core.scope` without a CPU ceiling: the prefix drop-in alone is NO
 proof of complete protection. The isolated Hermes branch
 `repair/foreground-resource-admission-20261022` carries the small
 `LocalEnvironment._run_bash` entry hook. It calls installed `agent-tool-run` before
-payload execution. The wrapper reuses the existing supervisor parser and native
-systemd scope manager; it holds known CPU builds/tests/encodes, exempts explicit
-single interactive application/CLI launches from workload throttling, and never
-falls back to direct execution if scope creation fails.
+payload execution. The wrapper owns its conservative shell parser in this
+checkout and uses the native systemd scope manager; it needs no external z0int
+checkout or private home state. It holds known CPU builds/tests/encodes, exempts
+explicit single interactive application/CLI launches from workload throttling,
+and never falls back to direct execution if parsing or scope creation fails.
 
 `python3 scripts/verify-hermes-foreground-entry` exercised the exact patched method
 body in isolation using real subprocesses and kernel cgroups; only environment
