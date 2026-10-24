@@ -127,6 +127,7 @@ class Contracts(unittest.TestCase):
             sw.Watch(self.root / 'invalid', checkout_threshold=-1)
 
     def test_checkout_cache_reports_staleness_and_preserves_last_count_on_failure(self):
+        self.watch.checkout_threshold = 1
         self.watch.checkout_cache.update(checkout_count=9, refreshed_at=time.time() - 700)
         with patch.object(self.watch, 'record') as record:
             self.watch.checkout_invariants()
@@ -134,11 +135,16 @@ class Contracts(unittest.TestCase):
         self.assertEqual(status['checkout_count'], 9)
         self.assertEqual(status['count_status'], 'unavailable')
         self.assertGreaterEqual(status['refresh_age_seconds'], 700)
-        self.assertEqual(record.call_args[0][2][0]['code'], 'invariant_unavailable')
+        self.assertEqual([item['code'] for item in record.call_args[0][2]],
+                         ['invariant_unavailable'])
         with patch.object(self.watch, 'checkout_discover', side_effect=OSError('failed')):
             self.watch.refresh_checkout_count()
         self.assertEqual(self.watch.checkout_cache['checkout_count'], 9)
         self.assertEqual(self.watch.checkout_cache['count_errors'], 1)
+        with patch.object(self.watch, 'record') as record:
+            self.watch.checkout_invariants()
+        self.assertEqual([item['code'] for item in record.call_args[0][2]],
+                         ['invariant_unavailable'])
 
     def test_slow_checkout_discovery_cannot_block_real_scans_or_watchdog(self):
         entered, release, scanned, pinged = [threading.Event() for _ in range(4)]

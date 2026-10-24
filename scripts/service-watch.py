@@ -553,7 +553,7 @@ class Watch:
         self.store.set('worktree-reaper', status)
         events = []
         count = snapshot['checkout_count']
-        if count is not None and count > self.checkout_threshold:
+        if available and count is not None and count > self.checkout_threshold:
             events.append(event('checkout_count_exceeded', count=count,
                                 threshold=self.checkout_threshold))
         if not available:
