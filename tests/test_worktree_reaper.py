@@ -65,6 +65,15 @@ class ReaperBehavior(unittest.TestCase):
         self.assertEqual(row['class'], 'LIVE')
         self.assertTrue(any('process:123:fd:4' in x for x in row['live_reasons']))
 
+    def test_active_guard_source_is_live_without_recent_files_or_processes(self):
+        self.age(self.repo)
+        for reason in ('active-guard-stack:PR192-stack-ancestor', 'active-guard-stack:PR212-deployed-backend'):
+            with self.subTest(reason=reason), patch.object(reaper, 'ACTIVE_GUARD_SOURCES', {str(self.repo): reason}):
+                refs = reaper.active_guard_references()
+                row = self.inspect(refs)
+                self.assertEqual(row['class'], 'LIVE')
+                self.assertTrue(any(reason in evidence for evidence in row['live_reasons']))
+
     def test_clean_local_only_clone_is_wip_not_discardable(self):
         self.age(self.repo)
         row = self.inspect()

@@ -28,6 +28,12 @@ SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cach
 OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', 'test-output', 'test-outputs', 'test-results'}
 PATH_PATTERN = re.compile(r'(?:/mnt/zer0models|/home/kvn|/workspace)(?:/[^\s\x00\"\'`;<>|(){}\[\],:=]*)?')
 HOOK_REFERENCES = {}
+# The deployment owner keeps both sides of the active backend stack until its
+# normal PR merge/cutover; transient process activity is not ownership evidence.
+ACTIVE_GUARD_SOURCES = {
+    '/mnt/zer0models/z0-wt/bend-ops-laws': 'active-guard-stack:PR192-stack-ancestor',
+    '/mnt/zer0models/z0-wt/bend-policy-laws': 'active-guard-stack:PR212-deployed-backend',
+}
 
 
 def command(args, cwd=None, timeout=60, env=None, check=True):
@@ -103,6 +109,10 @@ def discover(roots):
     return sorted(found)
 
 
+def active_guard_references():
+    return {os.path.realpath(path): {reason} for path, reason in ACTIVE_GUARD_SOURCES.items()}
+
+
 def references():
     refs = collections.defaultdict(set)
     errors = []
@@ -115,6 +125,8 @@ def references():
         for m in PATH_PATTERN.finditer(data):
             add(m.group(0).rstrip('\\'), reason)
     for target, reasons in HOOK_REFERENCES.items():
+        refs[target].update(reasons)
+    for target, reasons in active_guard_references().items():
         refs[target].update(reasons)
     for root in ['/home/kvn/.local/bin', '/home/kvn/.config/systemd/user']:
         for base, dirs, files in os.walk(root, followlinks=False):
@@ -428,6 +440,7 @@ def main():
         try:
             row = inspect(path, roots, refs, now)
             rows.append(row)
+            emit(args.output, 'inventory_checkpoint', **row)
             print(json.dumps({'inventory': path, 'class': row['class'], 'dirty': row['dirty_count'], 'untracked': row['untracked_count']}), flush=True)
         except Exception as e:
             errors.append({'path': path, 'inventory_error': str(e)})
