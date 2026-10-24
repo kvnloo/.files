@@ -113,3 +113,29 @@ Report:
 - rollback result if used
 - READY FOR CUTOVER yes/no
 ```
+
+## Factory phone orchestration on Groot
+
+The desktop fleet declares `tern-queue-loop@s22.service`,
+`tern-queue-loop@s25.service` and `chat-poller.service`. Unit sources are in
+`config/systemd/user/`; install those three definitions (the launcher uses
+one template) into `~/.config/systemd/user/`, then reload the user manager
+and enable the two instances plus the poller. Stop obsolete transient
+`tern-queue-loop-s22` and `tern-queue-loop-s25` units before cutover so there
+is only one dispatcher per phone.
+
+These are orchestration only: `agent.slice`, Nice=5, IOWeight=10, a 600M
+launcher cap and 300M poller cap, with restart after 30 seconds. They require
+the operator-owned scripts at
+`/mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/bin/`;
+this repository owns the service lifecycle, not the workload checkout,
+authenticated phone sessions, GitHub credentials or mutable queues.
+
+Both phones share one ChatGPT account. The workload launcher honors the
+shared `/tmp/chatgpt-quota-pause` Unix resume epoch before UI access or
+claiming work. Do not clear it, shift to the other phone or replay an
+unconfirmed tag to evade quota. A service being active while paused is
+intentional; it does not mean briefs were sent. The `/tmp` marker does not
+survive reboot: an operator must restore any unexpired provider pause
+before restarting the factory after reboot.
+
