@@ -81,9 +81,11 @@ def rescue(data):
         loose.append(pid)
     if loose:
         if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', CORE_SCOPE]).returncode:
-            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '3',
+            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '5',
+                 # Rescued control processes must not escape every memory limit.
                  'Description', 's', 'Hermes control processes (kept out of agent-workloads)',
-                 'Slice', 's', 'app.slice', 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
+                 'Slice', 's', 'app.slice', 'MemoryMax', 't', str(5 << 30), 'MemorySwapMax', 't', str(1 << 30),
+                 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
         else:
             _bus('AttachProcessesToUnit', 'ssau', CORE_SCOPE, '', str(len(loose)), *map(str, loose))
     return stuck

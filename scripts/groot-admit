@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""groot-admit: one admission check before any agent job starts on the desktop.
+
+Exit 0 when the desktop has headroom, 75 (EX_TEMPFAIL, the fleet's "no room")
+otherwise, with the reason on stderr. --wait SECS retries every 15s.
+
+Use it in front of every groot-local job an agent starts: GPU benchmarks,
+model servers, builds that only have a toolchain here, indexers:
+    groot-admit --need-mb 3000 -- python bench.py
+A GPU check alone is not enough: on 2026-10-23 a GPU guard admitted a 2.6G
+benchmark 18s after the desktop started swapping.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import time
+
+MIN_AVAILABLE_MB = 6144      # MemAvailable left for the desktop after the job's own need
+MAX_FULL_PSI_AVG60 = 5.0     # /proc/pressure/memory "full" avg60, percent
+MAX_SWAP_GROWTH = 0.85       # refuse once zram/swap is this full
+
+
+def meminfo() -> dict[str, int]:
+    out = {}
+    for line in open("/proc/meminfo"):
+        k, v = line.split(":", 1)
+        out[k] = int(v.split()[0])
+    return out
+
+
+def full_psi_avg60() -> float:
+    for line in open("/proc/pressure/memory"):
+        if line.startswith("full"):
+            return float(dict(kv.split("=") for kv in line.split()[1:])["avg60"])
+    return 0.0
+
+
+def why_not(need_mb: int) -> str | None:
+    m = meminfo()
+    avail = m["MemAvailable"] // 1024
+    if avail < MIN_AVAILABLE_MB + need_mb:
+        return f"only {avail} MiB available; need {MIN_AVAILABLE_MB} for the desktop + {need_mb} for the job"
+    psi = full_psi_avg60()
+    if psi > MAX_FULL_PSI_AVG60:
+        return f"memory pressure full avg60={psi:.1f}% > {MAX_FULL_PSI_AVG60}%"
+    total, free = m.get("SwapTotal", 0), m.get("SwapFree", 0)
+    if total and (total - free) / total > MAX_SWAP_GROWTH:
+        return f"swap {100 * (total - free) / total:.0f}% used"
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--need-mb", type=int, default=1024, help="the job's expected peak RSS")
+    ap.add_argument("--wait", type=int, default=0, help="retry for up to SECS before giving up")
+    ap.add_argument("cmd", nargs=argparse.REMAINDER)
+    a = ap.parse_args(argv)
+    cmd = a.cmd[1:] if a.cmd[:1] == ["--"] else a.cmd
+    deadline = time.monotonic() + a.wait
+    while True:
+        reason = why_not(a.need_mb)
+        if reason is None:
+            break
+        if time.monotonic() >= deadline:
+            print(f"groot-admit: held: {reason}", file=sys.stderr)
+            return 75
+        print(f"groot-admit: waiting: {reason}", file=sys.stderr)
+        time.sleep(15)
+    if cmd:
+        os.execvp(cmd[0], cmd)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

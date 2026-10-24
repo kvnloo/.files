@@ -1,0 +1,18 @@
+#!/bin/sh
+# Root-only: install config/system/groot-memory and apply what can change live.
+# zram size/algorithm changes from zram-generator.conf take effect at next boot;
+# the resident limit and sysctls apply now.
+set -eu
+[ "$(id -u)" = 0 ] || { echo "run as root (pkexec)" >&2; exit 1; }
+src=$(dirname "$(readlink -f "$0")")/../config/system/groot-memory
+bak=${1:?backup dir}; mkdir -p "$bak"
+cp -a /etc/sysctl.d "$bak/" ; cp -a /etc/systemd/zram-generator.conf "$bak/" 2>/dev/null || true
+[ -f /etc/udev/rules.d/30-zram.rules ] && cp -a /etc/udev/rules.d/30-zram.rules "$bak/"
+install -m 0644 "$src/99-zz-groot-memory.conf" /etc/sysctl.d/99-zz-groot-memory.conf
+install -m 0644 "$src/30-zram.rules" /etc/udev/rules.d/30-zram.rules
+install -m 0644 "$src/zram-generator.conf" /etc/systemd/zram-generator.conf
+sysctl -q -p /etc/sysctl.d/99-zz-groot-memory.conf
+udevadm control --reload
+total_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+echo $((total_kb * 1024 / 2)) > /sys/block/zram0/mem_limit
+echo "applied: swappiness=$(sysctl -n vm.swappiness) wsf=$(sysctl -n vm.watermark_scale_factor) dirty_bytes=$(sysctl -n vm.dirty_bytes) zram mem_limit=$(zramctl --noheadings --output MEM-LIMIT /dev/zram0)"
