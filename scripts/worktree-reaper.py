@@ -365,7 +365,8 @@ def preserve(row, out, archive):
         git(path, 'bundle', 'verify', str(bundle), timeout=120)
         record['bundle'] = str(bundle)
         record['bundle_bytes'] = bundle.stat().st_size
-        record['bundle_sha256'] = hashlib.file_digest(bundle.open('rb'), 'sha256').hexdigest()
+        with bundle.open('rb') as bundle_file:
+            record['bundle_sha256'] = hashlib.file_digest(bundle_file, 'sha256').hexdigest()
     if not record['push_ok'] and not record['bundle']:
         raise RuntimeError('Preservation did not reach durable remote or bundle storage')
     if record['bundle']:
@@ -420,6 +421,7 @@ def main():
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
+        lock.close()
         raise SystemExit('Another reaper holds the lifecycle lock')
     roots = args.roots or ROOTS
     emit(args.output, 'discovery_started', roots=roots)
@@ -466,6 +468,7 @@ def main():
     if mutating and reference_errors:
         emit(args.output, 'preflight_failed', errors=errors)
         report(args.output, rows, actions, before, before, errors, 'preflight-blocked')
+        lock.close()
         return 1
     for row in sorted(rows, key=lambda r: (r['plain_clone'], -len(r['path']))):
         if not mutating or row['class'] == 'LIVE':
@@ -523,6 +526,7 @@ def main():
     after_paths = discover(roots) if mutating else paths
     after = {r: sum(p == os.path.realpath(r) or p.startswith(os.path.realpath(r)+'/') for p in after_paths) for r in roots}
     report(args.output, rows, actions, before, after, errors, 'apply' if args.apply else 'daily' if args.daily else 'inventory')
+    lock.close()
     return int(bool(errors))
 
 if __name__ == '__main__':
