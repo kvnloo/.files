@@ -151,9 +151,9 @@ unit links must resolve into content-stamped copies, never into the checkout.
 Guard/reaper binaries and units use `scripts/install-z0-guard.sh`.
 The three z0int live services receive `Z0INT_LIVE_HOME=%h/.z0int` through
 `30-live-home.conf`, installed by `core-links`; a daemon reload reads the drop-ins
-without restarting the router. Their interim backend source
-is `/mnt/zer0models/z0-wt/bend-policy-laws/src` until backend PRs #192/#212 merge;
-the reaper explicitly keeps both that tree and `bend-ops-laws` LIVE.
+without restarting the router. The guard installer archives the committed
+backend `src` from `Z0INT_BACKEND_REPO` (default `bend-policy-laws`) into the
+release and records `backend-head`; runtime does not depend on that worktree.
 O10 receives the actual checkout root and scans its scripts and registry.
 When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
 switch the links together and build the guard release from that canonical tree.
@@ -227,7 +227,7 @@ Its
 the shared default roots, and `--reaper-status` overrides the latest-record path.
 The invariant digest includes the latest cleanup counts, removals, and errors.
 `core-links` runs `scripts/install-z0-guard.sh`, copying the launcher, classifier,
-and `worktree-reaper.service`/`.timer` into
+committed backend source, and `worktree-reaper.service`/`.timer` into
 `~/.local/lib/z0-guard/<content-sha256>/`. Binary links, unit links, and an
 existing timer-wants link point only into that stable version, never the source
 task checkout. The installer leaves `service-watch` deployment untouched.
