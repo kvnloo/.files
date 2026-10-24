@@ -158,6 +158,8 @@ O10 Git hooks are installed by `scripts/setup-phone-caps-hooks.sh` into
 `~/.local/lib/files-hooks/<content-sha256>/`; both checks derive the committing
 repository with `git rev-parse --show-toplevel`, never from the hook location
 or a temporary extraction tree.
+`uniichat-luna.service` preserves the live transient server's environment,
+resource limits, slice and port 8798 as a permanent enabled user service.
 O10 receives the actual checkout root and scans its scripts and registry.
 When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
 switch the links together and build the guard release from that canonical tree.
