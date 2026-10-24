@@ -17,6 +17,8 @@ def local_commands(command):
     """
     command = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?[^\n]*\n[\s\S]*?\n\1\b", "", command)
     lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>")
+    # Colons are ordinary shell word characters (notably ffmpeg -c:v).
+    lex.wordchars += ":"
     lex.whitespace = " \t\r"
     lex.commenters = "#"
     parts, part = [], []
