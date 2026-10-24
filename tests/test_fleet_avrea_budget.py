@@ -233,7 +233,8 @@ class BudgetTests(unittest.TestCase):
         jobs = [job(status="in_progress", completed_at=None, started_at=stamp(NOW - timedelta(minutes=2))),
                 job(2, status="queued", started_at=None, completed_at=None)]
         api = self.api_with_runs([run(status="in_progress")], {(1, 1): jobs})
-        data, code = self.check(api)
+        with patch.object(budget, "monotonic", return_value=100.0):
+            data, code = self.check(api)
         self.assertEqual(code, 0)
         self.assertEqual(data["used_minutes"], 103)
         self.assertEqual(data["reserved_minutes"], 10)
@@ -391,6 +392,110 @@ class BudgetTests(unittest.TestCase):
                 _, code = self.check(self.api_with_runs([candidate], {(1, 1): jobs}))
                 self.assertEqual(code, 0)
                 self.assertIn(identity, [item["id"] for item in self.state()["reservations"]])
+
+    def test_avrea_validate_preflight_is_charged_but_not_a_command_job(self):
+        self.args.runner = "avrea-ubuntu-latest-4-vcpu"
+        self.args.overhead_minutes = 2
+        first, _ = self.check()
+        identity = first["reservation_id"]
+        self.assertEqual(first["requested_minutes"], 22)
+        self.assertEqual(self.state()["reservations"][0]["overhead_minutes"], "2")
+        self.cli("settle", "--reservation-id", identity, "--run-id", "1", "--state-dir", self.args.state_dir)
+        jobs = [job(1, name="validate", started_at=stamp(NOW), completed_at=stamp(NOW)),
+                job(2, name="verify (0)", labels=[self.args.runner], started_at=stamp(NOW), completed_at=stamp(NOW))]
+        data, code = self.check(self.api_with_runs([run(created_at=stamp(NOW), conclusion="success")], {(1, 1): jobs}))
+        self.assertEqual(code, 0)
+        self.assertEqual(data["used_minutes"], 103)
+        self.assertEqual(data["reserved_minutes"], 22)
+        self.assertNotIn(identity, [item["id"] for item in self.state()["reservations"]])
+
+    def test_incomplete_terminal_runs_settle_only_for_cancelled_or_failed_outcomes(self):
+        cases = [
+            ("cancelled", [], True),
+            ("cancelled", [job(name="validate", labels=["ubuntu-latest"], conclusion="cancelled",
+                               started_at=None, completed_at=stamp(NOW))], True),
+            ("cancelled", [job(name="validate", conclusion="cancelled", started_at=None,
+                               completed_at=stamp(NOW))], True),
+            ("failure", [job(name="verify (0)", started_at=stamp(NOW), completed_at=stamp(NOW))], True),
+            ("success", [job(name="verify (0)", started_at=stamp(NOW), completed_at=stamp(NOW))], False),
+            ("failure", [job(name="verify (0)", labels=["avrea-ubuntu-latest-1-vcpu"],
+                             started_at=stamp(NOW), completed_at=stamp(NOW))], False),
+        ]
+        self.args.jobs = 2
+        for index, (conclusion, jobs, should_settle) in enumerate(cases):
+            with self.subTest(conclusion=conclusion, jobs=jobs):
+                self.args.state_dir = str(self.root / f"terminal{index}")
+                first, _ = self.check()
+                identity = first["reservation_id"]
+                self.cli("settle", "--reservation-id", identity, "--run-id", "1", "--state-dir", self.args.state_dir)
+                api = self.api_with_runs([run(created_at=stamp(NOW), conclusion=conclusion)], {(1, 1): jobs})
+                data, code = self.check(api)
+                self.assertEqual(code, 0)
+                self.assertEqual(data["reserved_minutes"], 20 if should_settle else 40)
+                self.assertEqual(identity not in [item["id"] for item in self.state()["reservations"]], should_settle)
+                if conclusion == "cancelled":
+                    self.assertEqual(data["used_minutes"], 100)
+
+    def test_validate_preflight_must_be_terminal_before_settlement(self):
+        for index, labels in enumerate(([LABEL], ["ubuntu-latest"])):
+            with self.subTest(labels=labels):
+                self.args.state_dir = str(self.root / f"pending-preflight{index}")
+                first, _ = self.check()
+                identity = first["reservation_id"]
+                self.cli("settle", "--reservation-id", identity, "--run-id", "1", "--state-dir", self.args.state_dir)
+                jobs = [job(1, name="validate", labels=labels, status="queued", conclusion=None,
+                            started_at=None, completed_at=None),
+                        job(2, name="verify (0)", started_at=stamp(NOW), completed_at=stamp(NOW))]
+                api = self.api_with_runs([run(created_at=stamp(NOW), conclusion="success")], {(1, 1): jobs})
+                _, code = self.check(api)
+                self.assertEqual(code, 0)
+                self.assertIn(identity, [item["id"] for item in self.state()["reservations"]])
+
+    def test_job_timestamps_use_observation_time_after_slow_api_calls(self):
+        for index, (status, start_seconds, end_seconds, expected_used) in enumerate((
+                ("completed", 2, 15, 101 + 13 / 60),
+                ("in_progress", 12, None, 101 + 6 / 60),
+                ("completed", 2, 19, 101 + 17 / 60))):
+            with self.subTest(status=status, end_seconds=end_seconds):
+                self.args.state_dir = str(self.root / f"slow-api{index}")
+                clock = [100.0]
+                candidate = job(status=status, started_at=stamp(NOW + timedelta(seconds=start_seconds)),
+                                completed_at=stamp(NOW + timedelta(seconds=end_seconds)) if end_seconds is not None else None)
+                api = self.api_with_runs([run()], {(1, 1): [candidate]})
+                get = api.get
+
+                def delayed_get(endpoint):
+                    evidence = get(endpoint)
+                    if "/jobs?" in endpoint:
+                        clock[0] = 118.0
+                    return evidence
+
+                with patch.object(api, "get", side_effect=delayed_get), \
+                     patch.object(budget, "monotonic", side_effect=lambda: clock[0]):
+                    data, code = self.check(api)
+                self.assertEqual(code, 0)
+                self.assertAlmostEqual(data["used_minutes"], expected_used)
+
+    def test_slow_scan_still_rejects_genuinely_future_or_reversed_intervals(self):
+        for candidate in (
+                job(started_at=stamp(NOW + timedelta(seconds=2)), completed_at=stamp(NOW + timedelta(seconds=20))),
+                job(status="in_progress", started_at=stamp(NOW + timedelta(seconds=20)), completed_at=None),
+                job(started_at=stamp(NOW + timedelta(seconds=15)), completed_at=stamp(NOW + timedelta(seconds=2)))):
+            with self.subTest(candidate=candidate):
+                clock = [100.0]
+                api = self.api_with_runs([run()], {(1, 1): [candidate]})
+                get = api.get
+
+                def delayed_get(endpoint):
+                    evidence = get(endpoint)
+                    if "/jobs?" in endpoint:
+                        clock[0] = 118.0
+                    return evidence
+
+                with patch.object(api, "get", side_effect=delayed_get), \
+                     patch.object(budget, "monotonic", side_effect=lambda: clock[0]), \
+                     self.assertRaises(budget.AccountingError):
+                    self.check(api)
 
     def test_month_rollover_drops_old_ledger_but_requires_current_snapshot(self):
         self.check()

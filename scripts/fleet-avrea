@@ -90,7 +90,7 @@ def main():
     budget_args = [str(budget), 'check', '--repo', 'kvnloo/fleet-runner', '--runner', args.runner, '--jobs', str(len(matrix) or 1), '--timeout-minutes', str(minutes)]
     if args.snapshot:
         budget_args += ['--snapshot', str(args.snapshot)]
-    budget_args += ['--parallel', str(args.parallel)]
+    budget_args += ['--parallel', str(args.parallel), '--overhead-minutes', '2']
     decision_process = subprocess.run(budget_args, text=True, stdout=subprocess.PIPE)
     if decision_process.returncode:
         print(decision_process.stdout, file=sys.stderr)

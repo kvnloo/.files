@@ -33,8 +33,10 @@ authorized factory accounting scope, not a hard all-account spend guarantee.
 
 An ALLOWED check atomically charges a durable reservation, even before dispatch.
 Call settle after dispatch with its exact run ID; the charge is removed only
-when a subsequent scan observes the exact expected jobs terminal and accounts
-for their usage. release --undispatched is ONLY for a dispatch that never
+when a subsequent scan accounts for terminal jobs: successful runs require the
+exact command-job count; failed/cancelled runs may have fewer. The named validate
+preflight is charged separately and must also be terminal, but does not count as
+a command job or need its runner label. release --undispatched is ONLY for a dispatch that never
 happened. Reservations never expire within the month (queued dispatch may be
 late). All dispatchers must share state-dir; this is a local, not distributed,
 admission lock. A completed run is not permission to release an unbound charge.
@@ -51,6 +53,7 @@ import re
 import subprocess
 import tempfile
 import uuid
+from time import monotonic
 from urllib.parse import urlencode
 
 OWNER = "kvnloo"
@@ -233,6 +236,7 @@ def avrea_label(job):
 
 
 def scan(api, captured, now, requested_repo, reservations, snapshot):
+    scan_started = monotonic()
     repos = {entry["repo"]: entry for entry in snapshot["repositories"]}
     if requested_repo not in repos or any(item["repo"] not in repos for item in reservations):
         raise AccountingError("requested or reserved repository missing from explicit factory scope")
@@ -261,23 +265,31 @@ def scan(api, captured, now, requested_repo, reservations, snapshot):
         for run_id, run in runs.items():
             attempt_count = integer(run.get("run_attempt"), "run attempt")
             jobs, ids = [], set()
+            all_terminal = True
             for attempt in range(1, attempt_count + 1):
                 for job in api.pages(f"/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs"):
                     job_id = integer(job.get("id"), "job id")
                     if job_id in ids:
                         raise AccountingError("duplicate job accounting evidence")
                     ids.add(job_id)
+                    all_terminal = all_terminal and job.get("status") == "completed"
                     label = avrea_label(job)
                     if label is None:
                         continue
-                    jobs.append((job_id, label, job.get("status")))
+                    jobs.append((job_id, label, job.get("status"), job.get("name")))
+                    # API calls may take seconds; anchor elapsed time monotonically
+                    # so normal completions during this scan are not future-dated.
+                    observed_at = now + timedelta(seconds=monotonic() - scan_started)
+                    latest_valid = observed_at + timedelta(seconds=1)
                     multiplier = runner_multiplier(label)
                     if job.get("status") == "completed":
                         if job.get("conclusion") == "skipped":
                             continue
+                        if job.get("conclusion") == "cancelled" and job.get("started_at") is None:
+                            continue
                         start = timestamp(job.get("started_at"))
                         end = timestamp(job.get("completed_at"))
-                        if end < start or end > now:
+                        if end < start or end > latest_valid:
                             raise AccountingError("invalid completed job interval")
                         if end > captured:
                             elapsed = Decimal(str((end - max(start, captured)).total_seconds())) / 60
@@ -285,21 +297,25 @@ def scan(api, captured, now, requested_repo, reservations, snapshot):
                     elif job.get("status") in {"queued", "in_progress", "waiting", "pending", "requested"}:
                         if job.get("status") == "in_progress":
                             start = timestamp(job.get("started_at"))
-                            if start > now:
+                            if start > latest_valid:
                                 raise AccountingError("future running-job timestamp")
-                            used += (Decimal(str(max(0, (now - max(start, captured)).total_seconds()))) / 60 + 1) * multiplier
+                            used += (Decimal(str(max(0, (observed_at - max(start, captured)).total_seconds()))) / 60 + 1) * multiplier
                         active_jobs += 1
                     else:
                         raise AccountingError("unknown job lifecycle state")
-            observed[(repo, run_id)] = (run, jobs)
+            observed[(repo, run_id)] = (run, jobs, all_terminal)
     retained = []
     for item in reservations:
         evidence = observed.get((item["repo"], item.get("run_id")))
         settled = False
         if evidence:
-            run, jobs = evidence
-            settled = (run.get("status") == "completed" and len(jobs) == item["jobs"]
-                       and all(label == item["runner"] and status == "completed" for _, label, status in jobs)
+            run, jobs, all_terminal = evidence
+            commands = [entry for entry in jobs if entry[3] != "validate"]
+            count_matches = len(commands) == item["jobs"]
+            if run.get("conclusion") in {"cancelled", "failure", "timed_out", "startup_failure"}:
+                count_matches = len(commands) <= item["jobs"]
+            settled = (run.get("status") == "completed" and all_terminal and count_matches
+                       and all(label == item["runner"] for _, label, _, _ in commands)
                        and timestamp(run.get("created_at")) >= timestamp(item["created_at"]))
         if not settled:
             retained.append(item)
@@ -338,7 +354,8 @@ def load_state(path, month):
         ratio = runner_multiplier(item.get("runner", ""))
         jobs = integer(item.get("jobs"), "reservation jobs")
         timeout = integer(item.get("timeout_minutes"), "reservation timeout", high=360)
-        if number(item.get("minutes"), "reservation minutes") != ratio * jobs * timeout:
+        overhead = number(item.get("overhead_minutes", 0), "reservation overhead")
+        if number(item.get("minutes"), "reservation minutes") != ratio * jobs * timeout + overhead:
             raise AccountingError("corrupt reservation charge")
         if timestamp(item.get("created_at")).strftime("%Y-%m") != month:
             raise AccountingError("reservation has wrong accounting month")
@@ -385,6 +402,7 @@ def check(args, now=None):
     jobs = integer(args.jobs, "jobs")
     timeout = integer(args.timeout_minutes, "timeout-minutes", high=360)
     parallel = integer(args.parallel, "parallel")
+    overhead = number(getattr(args, "overhead_minutes", 0), "overhead-minutes")
     with locked_state(args.state_dir) as path:
         now = now or datetime.now(timezone.utc)
         snapshot, captured = snapshot_at(args.snapshot, now)
@@ -394,7 +412,7 @@ def check(args, now=None):
         state = load_state(path, now.strftime("%Y-%m"))
         incremental, retained, repo_count, active_jobs = scan(GitHub(args.max_api_requests), captured, now, args.repo, state["reservations"], snapshot)
         used = number(snapshot["used_minutes"], "used_minutes") + incremental
-        requested = ratio * jobs * timeout
+        requested = ratio * jobs * timeout + overhead
         local = sum((number(item["minutes"], "reservation minutes") for item in retained), Decimal(0))
         reserved = local + requested
         allowance = number(snapshot.get("allowance_minutes", 3000), "allowance_minutes", positive=True)
@@ -404,7 +422,7 @@ def check(args, now=None):
         if allowed:
             reservation_id = uuid.uuid4().hex
             retained.append({"id": reservation_id, "repo": args.repo, "runner": args.runner,
-                             "jobs": jobs, "timeout_minutes": timeout, "minutes": str(requested),
+                             "jobs": jobs, "timeout_minutes": timeout, "overhead_minutes": str(overhead), "minutes": str(requested),
                              "created_at": now.isoformat()})
         state["reservations"] = retained
         save_state(path, state)
@@ -436,6 +454,7 @@ def main(argv=None):
     check_parser.add_argument("--timeout-minutes", type=int, required=True)
     check_parser.add_argument("--parallel", type=int, default=1, help="requested concurrent jobs; checked against account snapshot cap")
     check_parser.add_argument("--snapshot", default=os.environ.get("FLEET_AVREA_SNAPSHOT", str(DEFAULT_STATE / "snapshot.json")))
+    check_parser.add_argument("--overhead-minutes", type=float, default=0, help="additional reference-minute setup reservation")
     check_parser.add_argument("--max-api-requests", type=int, default=200)
     for name in ("release", "settle"):
         child = commands.add_parser(name)
