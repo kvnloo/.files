@@ -78,19 +78,19 @@ spec:
             - {name: pods, nominalQuota: "16"}
 
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata: {name: test}
 value: 1000
 description: Short tests ahead of builds and restart-safe benchmarks.
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata: {name: build}
 value: 100
 description: Builds ahead of restart-safe benchmarks.
 ---
-apiVersion: kueue.x-k8s.io/v1beta1
+apiVersion: kueue.x-k8s.io/v1beta2
 kind: WorkloadPriorityClass
 metadata: {name: bench}
 value: 10
