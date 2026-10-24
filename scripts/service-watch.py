@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import selectors
 import re
 import signal
 import shutil
@@ -173,6 +174,27 @@ def post(url, body, timeout=40):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     with opener.open(req, timeout=timeout) as response:
         return json.loads(response.read(65536))
+
+
+def journal_lines(proc, timeout):
+    """Read a finite journal snapshot without a blocking text readline."""
+    deadline = time.monotonic() + timeout
+    pending = b''
+    with selectors.DefaultSelector() as ready:
+        ready.register(proc.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not ready.select(remaining):
+                raise subprocess.TimeoutExpired(proc.args, timeout)
+            chunk = os.read(proc.stdout.fileno(), 65536)
+            if not chunk:
+                if pending:
+                    yield pending
+                return
+            pending += chunk
+            while b'\n' in pending:
+                line, pending = pending.split(b'\n', 1)
+                yield line
 
 
 class Store:
@@ -447,7 +469,7 @@ class Watch:
 
     def phone_caps_invariant(self):
         fleet = shutil.which('fleet')
-        root = Path(fleet).resolve().parent.parent if fleet else ROOT.parent
+        root = Path(fleet).resolve().parent if fleet else ROOT
         events = self.invariant('user', 'service-watch.service',
                                 {'kind': 'phone_caps', 'root': str(root)}, {}, time.time())
         self.record('user', 'service-watch.service', events)
@@ -488,14 +510,11 @@ class Watch:
                     '--output-fields=MESSAGE,PRIORITY,_SYSTEMD_USER_UNIT,_SYSTEMD_UNIT,UNIT,USER_UNIT,__CURSOR,__REALTIME_TIMESTAMP']
             args += ['--after-cursor', cursor] if cursor else ['--since', '7 days ago' if seed else '2 minutes ago']
             # Stream rather than collect an unbounded seven-day journal into RAM.
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             groups = {}
             last = None
-            started = time.monotonic()
             try:
-                for line in proc.stdout:
-                    if time.monotonic() - started > (180 if seed else 15):
-                        break
+                for line in journal_lines(proc, 180 if seed else 15):
                     try:
                         row = json.loads(line)
                     except ValueError:
@@ -669,17 +688,36 @@ class Watch:
                 self.store.append('worker-errors.jsonl', {'ts': time.time(), 'id': ident, 'code': 'triage_failed'})
                 self.stop.wait(15)
 
+    def watchdog(self, interval=10):
+        # This path must never acquire the Store lock or wait for a scan/model.
+        while not self.stop.wait(interval):
+            notify_systemd('WATCHDOG=1')
+
+    def serve(self, scan_interval=15, watchdog_interval=10):
+        worker = threading.Thread(target=self.worker, name='service-watch-triage', daemon=True)
+        watchdog = threading.Thread(target=self.watchdog, args=(watchdog_interval,),
+                                    name='service-watch-watchdog', daemon=True)
+        worker.start()
+        notify_systemd('READY=1')
+        watchdog.start()
+        try:
+            while not self.stop.is_set():
+                self.scan()
+                self.stop.wait(scan_interval)
+        finally:
+            self.stop.set()
+            watchdog.join(timeout=1)
+            worker.join(timeout=1)
+
     def run(self):
         lock = (self.store.root / 'daemon.lock').open('w')
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        threading.Thread(target=self.worker, daemon=True).start()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            signal.signal(sig, lambda *_: self.stop.set())
-        notify_systemd('READY=1')
-        while not self.stop.is_set():
-            self.scan()
-            notify_systemd('WATCHDOG=1')
-            self.stop.wait(15)
+        try:
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                signal.signal(sig, lambda *_: self.stop.set())
+            self.serve()
+        finally:
+            lock.close()
 
 
 def notify_systemd(value):

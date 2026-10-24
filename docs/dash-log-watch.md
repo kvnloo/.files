@@ -138,8 +138,20 @@ is not claimed. Desktop-only: no verified phone path is assumed.
 are `service-watch/digests/YYYY-MM-DD.md`; `triage.jsonl` contains deterministic
 and final model decisions, redacted windows and per-tier measurements suitable
 for shadow learning. Units use Nice=15, MemoryMax=256M and CPUQuota=15%; the
-independent heartbeat timer plus systemd watchdog detect watcher failures/hangs.
+independent heartbeat timer checks completed-scan freshness. A separate ten-second
+systemd watchdog thread takes no database/model lock: a slow scan or model cannot
+starve the process liveness signal. Model calls remain on the dedicated triage
+worker (HTTP 40-second, subscription 55-second deadlines); journal snapshots use
+selector-based wall deadlines even when the child emits no newline.
 The watcher never compiles or runs test suites on groot.
+
+The live binary and all deployment links are owned by the unified `deploy/live`
+checkout at `/mnt/zer0models/worktrees/files-live`, not any task worktree.
+`fleet`, `z0-guard`, `service-watch`, `worktree-reaper` and their units must resolve
+there together. O10 receives the installed fleet script's parent directory as its
+explicit root, so admission and the invariant inspect the same scripts. When
+these PRs merge into `dev`, the operator replaces this deployment with
+`/workspace/.files` and switches all these links together.
 
 Behavioral and captured-request privacy checks:
 

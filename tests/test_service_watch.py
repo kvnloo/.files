@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -83,7 +84,7 @@ class Contracts(unittest.TestCase):
     def test_phone_caps_recurring_root_follows_installed_fleet(self):
         with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
             self.watch.phone_caps_invariant()
-        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
+        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root / 'scripts')})
         record.assert_called_once_with('user', 'service-watch.service', [])
 
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
@@ -228,6 +229,66 @@ class Contracts(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sw.post(sw.LOCAL_URL, {'raw': 'synthetic secret'})
             opener.assert_not_called()
+
+    def test_slow_model_cannot_block_scans_or_independent_watchdog(self):
+        entered = threading.Event()
+        release = threading.Event()
+        scanned = threading.Event()
+        pinged = threading.Event()
+        scans, pings, model_threads = [], [], []
+        decision = {'severity': 'warn', 'cause': 'synthetic error', 'fix': 'Inspect manually',
+                    'evidence': [0], 'confidence': .8}
+        self.watch.record('user', 'fixture.service', [sw.event('journal_error_rate', count=5)], ['synthetic error'])
+        def slow_model(url, body, timeout=40):
+            model_threads.append(threading.current_thread().name)
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError('synthetic model deadline')
+            if url == sw.LOCAL_URL:
+                return {'choices': [{'message': {'content': json.dumps(decision)}}]}
+            return {'ok': True, 'provider': 'groq', 'model': 'openai/gpt-oss-20b',
+                    'output': json.dumps(decision)}
+        def scan():
+            scans.append(time.monotonic())
+            if len(scans) >= 5:
+                scanned.set()
+        def notify(value):
+            if value == 'WATCHDOG=1':
+                pings.append(time.monotonic())
+                if len(pings) >= 5:
+                    pinged.set()
+        daemon = threading.Thread(target=self.watch.serve, kwargs={'scan_interval': .01, 'watchdog_interval': .01})
+        with patch.object(sw, 'post', slow_model), patch.object(self.watch, 'scan', scan), patch.object(sw, 'notify_systemd', notify):
+            daemon.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                # Even a held state lock must not suppress systemd watchdog pings.
+                with self.watch.store.lock:
+                    self.assertTrue(scanned.wait(2))
+                    self.assertTrue(pinged.wait(2))
+                self.assertFalse(release.is_set())
+                self.assertEqual(set(model_threads), {'service-watch-triage'})
+            finally:
+                self.watch.stop.set()
+                release.set()
+                daemon.join(3)
+            self.assertFalse(daemon.is_alive())
+
+    def test_stalled_journal_read_has_real_wall_deadline(self):
+        proc = subprocess.Popen([sys.executable, '-c',
+                                 'import json,time; print(json.dumps({"MESSAGE":"synthetic"}),flush=True); time.sleep(5)'],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        started = time.monotonic()
+        try:
+            lines = sw.journal_lines(proc, .3)
+            self.assertEqual(json.loads(next(lines)), {'MESSAGE': 'synthetic'})
+            with self.assertRaises(subprocess.TimeoutExpired):
+                list(lines)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            proc.kill()
+            proc.communicate()
+            proc.stdout.close()
 
     def test_post_refuses_redirects(self):
         captured = []
