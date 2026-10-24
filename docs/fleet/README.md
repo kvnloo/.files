@@ -208,6 +208,16 @@ The dedicated repo has provisioned an Avrea runner successfully. For a future
 selected-repository installation, add it through
 [the Avrea app installation](https://github.com/apps/avrea/installations/new).
 
+Avrea injects a pip cache URL and may inherit ignored SIGHUP/SIGINT/SIGQUIT.
+The executor resets those three POSIX signals to `SIG_DFL` before Bash starts.
+It selects official PyPI when `uv.lock` or `poetry.lock` names pypi.org, or
+a requirements text file contains hashes; otherwise it retains Avrea's cache.
+Use `fleet-avrea --index official|avrea` to override detection. Official mode
+sets pip and uv index URLs to `https://pypi.org/simple` and removes inherited
+extra/default index overrides. Each receipt records `package_index`.
+This prevents uv re-resolution against a different index and restores normal
+signal/PTY behavior without modifying target source or dependency versions.
+
 ```sh
 # Commit and push first. Otherwise select a public SHA explicitly.
 fleet-build --node avrea --fetch 'test-results/**' --out /tmp/gate -- \
