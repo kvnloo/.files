@@ -55,8 +55,10 @@ tern_plugin_source = "config/tern-phone/phone-controls"
 # Workload ownership stays in the workload repo. This declaration only says
 # where the local lab belongs once the repo URL is published.
 [clusters.hermes-lab]
-enabled = false
+enabled = true
 host = "desktop"
-distribution = "kind"
-owner_repo = "hermes-k8s-lab"
-purpose = "local-hermes-experimentation"
+distribution = "k3s"
+owner_repo = "https://github.com/kvnloo/hermes-k8s-lab"
+queue = "lanes"
+queue_namespace = "fleet-mbp"
+purpose = "hermes-workloads-and-mbp-kueue"
