@@ -56,6 +56,14 @@ class ReaperBehavior(unittest.TestCase):
         self.git(self.repo, 'worktree', 'add', '-b', 'feature', str(linked))
         self.assertEqual(set(reaper.discover([str(self.root)])), {str(self.repo), str(linked)})
 
+    def test_discovery_excludes_generated_fixture_worktrees(self):
+        for index, name in enumerate(('runs', 'artifacts', 'wiring', 'tmp', '_check', 'pytest-of-test')):
+            container = self.root / name
+            container.mkdir()
+            linked = container / 'fixture'
+            self.git(self.repo, 'worktree', 'add', '-b', f'fixture-{index}', str(linked))
+        self.assertEqual(reaper.discover([str(self.root)]), [str(self.repo)])
+
     def test_recent_files_are_live(self):
         self.assertEqual(self.inspect()['class'], 'LIVE')
 

@@ -25,7 +25,7 @@ OUTPUT = Path('/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper')
 ARCHIVE = Path('/mnt/zer0models/wt-archive')
 DAY = 86400
 SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', '.gradle', '.build', 'target', '.next', '.pnpm-store'}
-OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', 'test-output', 'test-outputs', 'test-results'}
+OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', '.cache', 'test-output', 'test-outputs', 'test-results', 'wiring', '_check', 'bytes_N', 'bytes_R', 'tmp'}
 PATH_PATTERN = re.compile(r'(?:/mnt/zer0models|/home/kvn|/workspace)(?:/[^\s\x00\"\'`;<>|(){}\[\],:=]*)?')
 HOOK_REFERENCES = {}
 # The deployment owner keeps both sides of the active backend stack until its
@@ -34,6 +34,10 @@ ACTIVE_GUARD_SOURCES = {
     '/mnt/zer0models/z0-wt/bend-ops-laws': 'active-guard-stack:PR192-stack-ancestor',
     '/mnt/zer0models/z0-wt/bend-policy-laws': 'active-guard-stack:PR212-deployed-backend',
 }
+
+
+def output_component(name):
+    return name in OUTPUT_CONTAINERS or name.startswith(('pytest-of-', 'pytest-'))
 
 
 def command(args, cwd=None, timeout=60, env=None, check=True):
@@ -82,7 +86,7 @@ def discover(roots):
             if 'pyvenv.cfg' in files:
                 dirs[:] = []
                 continue
-            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY | OUTPUT_CONTAINERS and not os.path.islink(os.path.join(base, d))]
+            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY and not output_component(d) and not os.path.islink(os.path.join(base, d))]
     # Registration and submodule metadata enumerate nested Git checkouts without
     # recursively stat'ing every dependency/build artifact in each repository.
     pending = list(found)
@@ -101,7 +105,7 @@ def discover(roots):
         for target in targets:
             target = os.path.realpath(target)
             in_scope = any(target == os.path.realpath(r) or target.startswith(os.path.realpath(r) + '/') for r in roots)
-            generated = any(target.startswith(os.path.realpath(r) + '/') and set(Path(os.path.relpath(target, os.path.realpath(r))).parts) & OUTPUT_CONTAINERS for r in roots)
+            generated = any(target.startswith(os.path.realpath(r) + '/') and any(output_component(part) for part in Path(os.path.relpath(target, os.path.realpath(r))).parts) for r in roots)
             if in_scope and not generated and os.path.exists(os.path.join(target, '.git')) and target not in found:
                 if text(target, 'rev-parse', '--is-inside-work-tree', check=False) == 'true':
                     found.add(target)
@@ -169,7 +173,10 @@ def references():
     # Only config files and symlinks: do not scrape private chat histories.
     for root in ['/home/kvn/.omp', '/home/kvn/.claude', '/home/kvn/.codex', '/home/kvn/.hermes']:
         for base, dirs, files in os.walk(root, followlinks=False):
-            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY | {'sessions', 'logs', 'history', 'cache', 'backups', 'projects', 'skills', 'conversations', 'plugins', 'plugin-data', 'archives', 'archive', 'artifacts', 'datasets', 'outputs', 'browser-profiles'}]
+            if '.git' in dirs or '.git' in files:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs if d not in SKIP_DISCOVERY | {'.tmp', 'natives', 'webcache', 'sessions', 'logs', 'history', 'cache', 'backups', 'projects', 'skills', 'conversations', 'plugins', 'plugin-data', 'archives', 'archive', 'artifacts', 'datasets', 'outputs', 'browser-profiles'}]
             for filename in [*dirs, *files]:
                 p = Path(base) / filename
                 try:
