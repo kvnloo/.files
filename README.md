@@ -40,6 +40,17 @@ Useful commands:
 ./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
+## Agent state packet freshness
+
+`scripts/install-state-packet-timer.sh --activate` installs content-stamped user
+units and enables `z0-state-packet.timer` on a persistent 15-minute calendar.
+The oneshot service calls `~/.local/lib/z0-state-packet/current/bin/generate-packet`,
+which must first be installed from the z0intelligence startup-packet feature.
+It publishes `~/.local/state/z0int/STATE-PACKET.md` atomically.
+OMP, Hermes and Claude Code replace packets older than two hours with a
+one-line stale warning. Unit replacements have backups under
+`~/.local/state/z0int/startup-packet-unit-backups/`.
+
 ## What this repo configures
 
 - **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
