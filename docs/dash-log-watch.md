@@ -146,10 +146,12 @@ selector-based wall deadlines even when the child emits no newline.
 The watcher never compiles or runs test suites on groot.
 
 The single deployment source is the unified `deploy/live` checkout at
-`/mnt/zer0models/worktrees/files-live`, not any task worktree. Fleet, watcher and
-other `.files` binary/unit links point there. Guard/reaper binaries and units
-are an operator-approved exception: `scripts/install-z0-guard.sh` installs
-content-stamped releases built from that checkout. Their interim backend source
+`/mnt/zer0models/worktrees/files-live`, not any task worktree. Live binaries and
+unit links must resolve into content-stamped copies, never into the checkout.
+Guard/reaper binaries and units use `scripts/install-z0-guard.sh`.
+The three z0int live services receive `Z0INT_LIVE_HOME=%h/.z0int` through
+`30-live-home.conf`, installed by `core-links`; a daemon reload reads the drop-ins
+without restarting the router. Their interim backend source
 is `/mnt/zer0models/z0-wt/bend-policy-laws/src` until backend PRs #192/#212 merge;
 the reaper explicitly keeps both that tree and `bend-ops-laws` LIVE.
 O10 receives the actual checkout root and scans its scripts and registry.

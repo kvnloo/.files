@@ -227,6 +227,12 @@ run_core_links() {
     [[ -e "$repo/config/systemd/user/$unit" ]] && \
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done
+  for service in z0intelligence.service z0int-policy.service z0int-loop-tick.service; do
+    mkdir -p "$HOME/.config/systemd/user/$service.d"
+    onboard_link "$repo/config/systemd/user/$service.d/30-live-home.conf" \
+      "$HOME/.config/systemd/user/$service.d/30-live-home.conf"
+  done
+
 
   # Copy cleanup runtime into a content-stamped stable installation, never a
   # task-worktree symlink. Linking here does not enable the daily timer.
