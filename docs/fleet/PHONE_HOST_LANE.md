@@ -127,6 +127,41 @@ process-group cleanup. Host placement is `fleet run`/`fleet-build`, not
 Kubernetes autoscaling. Groot has no host lane and is never a no-room fallback.
 
 
+## Pure-Python suites in a guest
+
+```sh
+fleet-build --node s25 --src /path/to/private/repo -- \
+  sh -c 'python -m pip install -q pyyaml jsonschema && PYTHONPATH=src python -m pytest -q tests/unit'
+# Use --node s22 to pin the other phone, or --node phones to select by health/load.
+```
+
+Named phone nodes in `fleet-build` imply the Python guest lane. Android/JDK
+builds and Bend/native x86 proofs stay on the MBP. This does not change native
+`fleet run --node s25 -- CMD` or the explicit general-purpose `--guest` API.
+No CPU/RAM caps are added or accepted by the Python wrapper.
+Disk free space is diagnostic, not a phone admission threshold. An actual
+out-of-space error fails the job normally.
+
+Admission requires a fresh native adb health probe and authenticated guest SSH.
+A phone below 2% battery charge cannot start a job unless it is charging.
+Existing owner-intent and service checks still apply.
+Source uses the existing checked tar-over-SSH transfer into a unique
+`~/fleet-jobs/<job>/src`, not a package install or a second scheduler. Both tar
+ends must succeed. No source is sent to public CI. Each job creates a sibling
+`venv` with `python3 -m venv`, installs pytest, and runs the supplied argv with
+that venv first on PATH. Install any additional suite dependencies explicitly.
+Pip uses the guest owner's persistent `~/.cache/pip`, even though payload HOME
+is job-local. No system Python packages, Android settings or app state change.
+
+Logs are `~/.local/state/fleet/runs/<job>-<registry-node>.log` on the controller.
+They include command, exit/status, venv setup, command and total elapsed times,
+and guest uptime before source transfer and after execution. A kernel boot-ID
+change, uptime reset/insufficient coverage, or changed PRoot tracer PID/start
+identity makes the result `guest_restarted` (exit76), even if pytest exited0.
+Missing final lifetime evidence is `guest_unavailable` (exit255), never success.
+The retained source and executor spool are available for diagnosis; no job is
+automatically replayed after allocation.
+
 ## Shared job API
 
 `fleet run --node s22 --guest -- CMD...` submits the selected guest job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB --guest` cancels that exact durable ID. Source transfer and artifact fetching use SSH. The guest spool/source remain available for recovery. Linux/MBP execution is unchanged.
