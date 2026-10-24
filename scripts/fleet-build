@@ -16,6 +16,7 @@
 #   --phone          arm64 phone jobs, without an implicit resource budget
 #   --guest          explicitly use the phone's SSH Linux userland (Python/Bash/Git)
 #   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
+#                    s25|s22 = guest Python venv; phones = healthiest reachable guest.
 #   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
 #                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
@@ -95,6 +96,22 @@ if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi
 
+# Pure-Python phone jobs use the existing leased guest executor, never native adb.
+# Do not carry build-class defaults or artificial resource caps into this lane.
+python_guest=0
+case $node in
+  s25|s22|omarchy-phone|galaxy-s22plus|phones)
+    [ "$mode" != android ] && [ -z "$jdk" ] || {
+      echo "fleet-build: Android/JDK builds stay on the MBP, not phone Python guests" >&2; exit 2;
+    }
+    [ -z "$mem" ] && [ -z "$cpus" ] || {
+      echo "fleet-build: phone Python guests do not accept agent resource caps" >&2; exit 2;
+    }
+    python_guest=1; guest=1; mode=phone
+    [ "$node" != phones ] || node=""
+    ;;
+esac
+
 # Ship the whole repo, run from the same subdirectory the caller is in.
 if [ -z "$src" ]; then
   src=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -106,6 +123,7 @@ rel=${rel:-.}
 
 args=(run --src "$src")
 [ "$guest" = 0 ] || args+=(--guest)
+[ "$python_guest" = 0 ] || args+=(--python-venv)
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
   build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;

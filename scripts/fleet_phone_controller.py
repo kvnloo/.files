@@ -121,6 +121,18 @@ def run(state, node, jid, spec, ssh, output):
             if record.get("cancel"):
                 transport(ssh, "cancel", jid)
             job = transport(ssh, "status", jid)
+            if job["state"] not in TERMINAL:
+                try:
+                    if job["state"] == "queued" and job.get("expires", 0) <= time.time():
+                        leased = transport(ssh, "lease", jid)
+                        record = update_record(path, {"lease": leased["lease"]})
+                    transport(ssh, "heartbeat", jid, {"lease": record["lease"]})
+                except Blocked:
+                    # Completion can race either lease operation. Reconcile only
+                    # read-only terminal evidence, never resubmit/replay the job.
+                    job = transport(ssh, "status", jid)
+                    if job["state"] not in TERMINAL:
+                        raise
             logs = transport(ssh, "logs", jid)
             if len(logs) >= printed:
                 output(logs[printed:])
@@ -129,10 +141,6 @@ def run(state, node, jid, spec, ssh, output):
             record = update_record(path, {"state": job["state"], "checked": time.time(), "availability": "ready", "terminal": terminal})
             if terminal:
                 return 0 if job["state"] == "succeeded" else job.get("exit", 255) if job["state"] == "failed" else 255
-            if job["state"] == "queued" and job.get("expires", 0) <= time.time():
-                leased = transport(ssh, "lease", jid)
-                record = update_record(path, {"lease": leased["lease"]})
-            transport(ssh, "heartbeat", jid, {"lease": record["lease"]})
             time.sleep(5)  # measured job status, never lifecycle survival
     except Blocked:
         update_record(path, {"availability": "unavailable", "checked": time.time()})

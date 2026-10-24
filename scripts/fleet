@@ -40,6 +40,7 @@ from pathlib import Path
 import yaml
 from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
+import fleet_phone_python as phone_python
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -217,7 +218,7 @@ def judge(n, p, k8s, online, overrides):
         bad.append(f"memory {p.get('mem_available_mb')}MiB < {h['min_mem_available_mb']}MiB")
     for key in ("disk_root", "disk_k3s", "disk_lane"):
         d = p.get(key)
-        if d and d["free_gb"] < float(h["min_disk_free_gb"]):
+        if n["kind"] != "phone" and d and d["free_gb"] < float(h["min_disk_free_gb"]):
             bad.append(f"{key} {d['free_gb']}GiB free < {h['min_disk_free_gb']}GiB")
     if p.get("services"):
         for unit, state in p["services"].items():
@@ -334,6 +335,8 @@ def cmd_health(args):
 def eligible(n, args, state):
     if not n["lane_enabled"]:
         return "no host lane"
+    if getattr(args, "python_venv", False) and n["kind"] != "phone":
+        return "Python guest jobs require a phone"
     capabilities = n.get("guest_capabilities", n["capabilities"]) if getattr(args, "guest", False) else n["capabilities"]
     if args.cls and args.cls not in n["classes"] + capabilities:
         return f"not class/capability {args.cls}"
@@ -346,10 +349,25 @@ def eligible(n, args, state):
     return None
 
 
+def probe_python_guest(n):
+    """Admit with Android health AND authenticated guest/service reachability."""
+    android = probe(n)
+    bad, _ = judge(n, android, {}, {}, {})
+    if bad:
+        return {"error": "; ".join(bad)}
+    guest = probe(n, guest=True)
+    if "error" not in guest:
+        guest["power"] = android["power"]
+    return guest
+
+
 def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
         die("usage: fleet run [opts] -- CMD...")
+    python_guest = getattr(args, "python_venv", False)
+    if python_guest:
+        args.guest = True
     def queued_mbp():
         worker = nodes["mbp"]
         if (args.arch and args.arch != worker["arch"]) or (args.cls and args.cls not in worker["classes"] + worker["capabilities"]):
@@ -402,7 +420,8 @@ def cmd_run(args):
             die("no eligible node: " + ", ".join(skipped), 75)
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
-        probes = dict(zip([n["name"] for n in cands], ex.map(lambda n: probe(n, args.guest), cands)))
+        probes = dict(zip([n["name"] for n in cands],
+                          ex.map(probe_python_guest if python_guest else lambda n: probe(n, args.guest), cands)))
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
@@ -456,6 +475,14 @@ def cmd_run(args):
     ssh = ssh_cmd(n)
     if n["kind"] == "phone":
         ssh = phone_controller.strict_ssh(ssh)
+    if python_guest:
+        try:
+            before = phone_python.snapshot(ssh)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            die(f"guest lifetime probe failed: {type(exc).__name__}", 75)
+        guest_started = time.monotonic()
+        log.write_text(f"# fleet job {jid} node={n['name']} cmd={shlex.join(args.cmd)}\n"
+                       f"# guest_before={json.dumps(before, sort_keys=True)}\n")
     subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
     if not args.no_src:
         src = Path(args.src or os.getcwd()).resolve()
@@ -490,14 +517,26 @@ def cmd_run(args):
                            stdin=stream, check=True)
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
     if n["kind"] == "phone":
-        spec = {"argv": args.cmd, "cwd": f"{jdir}/src", "timeout": args.timeout,
+        spec = {"argv": phone_python.command(args.cmd, before["pip_cache"]) if python_guest else args.cmd,
+                "cwd": f"{jdir}/src", "timeout": args.timeout,
                 "idempotent": args.idempotent, "max_attempts": 3 if args.idempotent else 1}
         if args.mem is not None:
             spec["mem_mb"] = mb(args.mem)
-        with open(log, "w") as lf:
+        with open(log, "a" if python_guest else "w") as lf:
             def emit(text):
                 sys.stdout.write(text); sys.stdout.flush(); lf.write(text); lf.flush()
             phone_rc = phone_controller.run(STATE, n["name"], jid, spec, ssh, emit)
+            if python_guest:
+                elapsed = time.monotonic() - guest_started
+                status = "succeeded" if phone_rc == 0 else "failed"
+                try:
+                    after = phone_python.snapshot(ssh)
+                    emit(f"# guest_after={json.dumps(after, sort_keys=True)}\n")
+                    if phone_python.restarted(before, after, elapsed):
+                        status, phone_rc = "guest_restarted", 76
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    status, phone_rc = "guest_unavailable", 255
+                emit(f"# status={status} exit={phone_rc} total_seconds={elapsed:.3f}\n")
         if phone_rc != 255:
             for path in args.fetch or []:
                 dest = logdir / jid
@@ -802,6 +841,8 @@ def main():
                    help="stage an exact artifact under job src after health admission (no directory scans)")
     r.add_argument("--idempotent", action="store_true", help="permit bounded phone retry after confirmed drain/death")
     r.add_argument("--guest", action="store_true", help="opt in to the SSH Linux guest executor on phones")
+    r.add_argument("--python-venv", action="store_true",
+                   help="phone guest Python job: per-job venv, shared pip cache, uptime continuity")
     r.add_argument("cmd", nargs=argparse.REMAINDER)
     k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
     k.add_argument("--guest", action="store_true", help="cancel an opt-in guest job")
