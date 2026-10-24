@@ -199,6 +199,11 @@ Recovery checks boot ID + PID start time, live runner/child and surviving proces
 
 An unavailable/ambiguous phone run returns255 and retains its source, spool and controller record; this deliberately prevents fleet-build's generic exit75 loop from creating new IDs for an already-started non-idempotent payload. Exit75 is still pre-admission/no-room. There is no relocation or pretend success. No automatic cleanup deletes uncertain records; explicit maintenance after inspection is required.
 
+A job can finish between a status read and its next lease renewal. If that
+renewal fails, the controller makes one read-only status check. A confirmed
+terminal state supplies the actual exit result and final log. Missing or
+nonterminal evidence still returns255. The controller never resubmits the job.
+
 ## Verification and platform boundary
 
 Run the focused deterministic suite with `python3 -m unittest discover -s tests -p test_fleet_phone.py -v`; use `fleet-build --node mbp --wait 0 --mem 512M -- ...` for fleet qualification. Tests use temporary homes, fixture children and transport doubles, not a real device. They exercise durable Stop/duplicate-start exclusion, actual child exit/restart/circuit/event behavior, process identities, jobs executed once, lease drain, idempotence/retry, unsupported hosts, strict transport options, health gates and offline/rejoin ownership.
