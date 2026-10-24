@@ -232,6 +232,37 @@ WirePlumber saves application volume. Changing the browser routing rule requires
 a `pipewire-pulse` service restart, which briefly interrupts PulseAudio clients;
 moving one live stream alone does not change the rule for subsequent streams.
 
+## Noctalia Display Center night filter
+
+The brightness bar widget opens Display Center. **Night mode** toggles the existing
+Hyprland screen shader. **Blue-light reduction** ranges from 0% (original color)
+to 100% (the original warm red tint); **Darkness** independently dims from 0% to
+90%, leaving at least 10% brightness. Defaults retain the original 100% tint and
+45% darkness. These are software filters, separate from hardware brightness.
+Both sliders also work while night mode is off: their values are saved without
+turning the filter on.
+
+`scripts/night-filter set-blue-light 65` and `set-darkness 35` expose the same
+controls. `on`, `off`, `toggle`, `status`, and `schedule` remain available; add
+`--json` for actual shader state and saved percentages. Levels and generated
+shader copies live under `$XDG_STATE_HOME/night-filter` (normally
+`~/.local/state/night-filter`). The panel refreshes on opening and every two
+seconds while open, including changes made by the scheduler or another caller.
+It reports backend failures and will not replace or clear another tool's shader.
+
+Manual toggles do not cancel the existing sunrise/sunset timers: the next
+scheduled transition takes effect normally, using the saved manual levels.
+Location stays in the private `~/.config/night-filter.conf`; it is neither
+returned by status nor displayed in the panel.
+
+After a full overlay install, deploy just this panel with
+`scripts/install-noctalia-audio-overlay.py --display-panel-only`. This atomically
+updates the installed QML without rebuilding unrelated overrides, issuing
+compositor commands, or explicitly restarting the shell. Quickshell's file
+watcher picks up the update. Hyprland shader application requires the real
+Hyprland session; an owned headless Sway check can prove native controls and
+backend commands, but cannot prove Hyprland's final filtered pixels.
+
 ## Noctalia group colors
 
 `config/noctalia/user-templates.toml` registers the native

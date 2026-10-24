@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""Hyprland night filter: manual levels plus the existing sunrise/sunset schedule."""
+
+import argparse
+import contextlib
+import datetime as dt
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+HOME = Path.home()
+STATE = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "night-filter"
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config")) / "night-filter.conf"
+SHADER = Path(os.environ.get("NIGHT_FILTER_SHADER", HOME / "workspace/.files/config/hyprland/shaders/night.frag"))
+if not SHADER.is_file():
+    SHADER = Path(__file__).resolve().parents[1] / "config/hyprland/shaders/night.frag"
+SLOTS = (STATE / "night-a.frag", STATE / "night-b.frag")
+DEFAULTS = {"blue_light": 100, "darkness": 45}
+
+
+def run(*args):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"{args[0]} failed")
+    return result.stdout.strip()
+
+
+def atomic_write(path, text):
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as out:
+        temporary = Path(out.name)
+        try:
+            out.write(text)
+            out.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def saved_levels():
+    try:
+        values = json.loads((STATE / "settings.json").read_text())
+        if all(type(values.get(k)) is int and 0 <= values[k] <= maximum
+               for k, maximum in (("blue_light", 100), ("darkness", 90))):
+            return {k: values[k] for k in DEFAULTS}
+    except (OSError, ValueError, TypeError):
+        pass
+    return DEFAULTS.copy()
+
+
+def snapshot():
+    values = saved_levels()
+    current = json.loads(run("hyprctl", "-j", "getoption", "decoration:screen_shader"))["str"]
+    owned = current in (str(SHADER), *(str(p) for p in SLOTS))
+    if owned and current != str(SHADER):
+        # Read the active shader, not a desired-state flag: external changes win.
+        try:
+            shader_text = Path(current).read_text()
+        except OSError:
+            # Hyprland may still hold a loaded shader after its file is removed.
+            shader_text = ""
+        match = re.search(r"^// night-filter levels: (\d+) (\d+)$", shader_text, re.M)
+        if match:
+            blue, darkness = map(int, match.groups())
+            if 0 <= blue <= 100 and 0 <= darkness <= 90:
+                values = {"blue_light": blue, "darkness": darkness}
+    elif owned:
+        values = DEFAULTS.copy()
+    foreign = not owned and current not in ("", "[[EMPTY]]")
+    return dict(values, enabled=owned, available=True, foreign_shader=foreign,
+                error="Another screen shader is active; night mode will not replace it." if foreign else ""), current
+
+
+def apply(values, current):
+    if current not in ("", "[[EMPTY]]", str(SHADER), *(str(p) for p in SLOTS)):
+        raise RuntimeError("Another screen shader is active; night mode will not replace it.")
+    target = SLOTS[1] if current == str(SLOTS[0]) else SLOTS[0]
+    text = SHADER.read_text()
+    text = text.replace("const float BLUE_LIGHT = 1.0;", f"const float BLUE_LIGHT = {values['blue_light'] / 100:.2f};")
+    text = text.replace("const float DIM = 0.55;", f"const float DIM = {1 - values['darkness'] / 100:.2f};")
+    text = text.replace("#version 300 es", f"#version 300 es\n// night-filter levels: {values['blue_light']} {values['darkness']}", 1)
+    atomic_write(target, text)
+    # Alternate paths so Hyprland must reload even when it caches a shader path.
+    run("hyprctl", "keyword", "decoration:screen_shader", str(target))
+
+
+def switch(enabled):
+    state, current = snapshot()
+    if enabled:
+        apply(saved_levels(), current)
+    elif state["enabled"]:
+        run("hyprctl", "keyword", "decoration:screen_shader", "[[EMPTY]]")
+    # Never clear a shader owned by another tool.
+
+
+def location():
+    values = {k: os.environ.get(k, "") for k in ("NIGHT_LAT", "NIGHT_LON")}
+    if CONF.is_file():
+        for line in CONF.read_text().splitlines():
+            parts = shlex.split(line, comments=True)
+            if parts and parts[0] == "export":
+                parts = parts[1:]
+            if len(parts) == 1 and "=" in parts[0]:
+                key, value = parts[0].split("=", 1)
+                if key in values and not values[key]:
+                    values[key] = value
+    if not all(values.values()):
+        with urllib.request.urlopen("https://ipinfo.io/loc", timeout=8) as response:
+            lat, lon = response.read(256).decode().strip().split(",")
+        values = {"NIGHT_LAT": lat, "NIGHT_LON": lon}
+        CONF.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(CONF, f"NIGHT_LAT={lat}\nNIGHT_LON={lon}\n")
+    return float(values["NIGHT_LAT"]), float(values["NIGHT_LON"])
+
+
+def sun_times():
+    lat, lon = location()
+    today = dt.date.today()
+    g = 2 * math.pi / 365 * (today.timetuple().tm_yday - 1)
+    eqt = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g)
+                    - 0.014615 * math.cos(2*g) - 0.040849 * math.sin(2*g))
+    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g)
+            - 0.006758 * math.cos(2*g) + 0.000907 * math.sin(2*g)
+            - 0.002697 * math.cos(3*g) + 0.00148 * math.sin(3*g))
+    la = math.radians(lat)
+    ha = math.degrees(math.acos(math.cos(math.radians(90.833)) / (math.cos(la)*math.cos(decl))
+                                - math.tan(la)*math.tan(decl)))
+    utc_mid = dt.datetime.combine(today, dt.time(), tzinfo=dt.timezone.utc)
+    def local(minutes):
+        return (utc_mid + dt.timedelta(minutes=minutes)).astimezone().strftime("%H:%M")
+    return local(720 - 4*(lon + ha) - eqt), local(720 - 4*(lon - ha) - eqt)
+
+
+def schedule():
+    rise, sunset = sun_times()
+    now = dt.datetime.now().strftime("%H:%M")
+    switch(now < rise or now >= sunset)
+    for unit in ("night-filter-sunset", "night-filter-sunrise"):
+        for verb, suffix in (("stop", ".timer"), ("reset-failed", ".service")):
+            with contextlib.suppress(RuntimeError):
+                run("systemctl", "--user", verb, unit + suffix)
+    for time, name, action in ((sunset, "sunset", "on"), (rise, "sunrise", "off")):
+        if now < time:
+            run("systemd-run", "--user", "--quiet", "--unit", f"night-filter-{name}",
+                f"--on-calendar={dt.date.today()} {time}", str(Path(__file__).resolve()), action)
+    return f"sunrise {rise}, sunset {sunset}; filter {'on' if snapshot()[0]['enabled'] else 'off'}"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", nargs="?", default="status", choices=(
+        "on", "off", "toggle", "status", "schedule", "set-blue-light", "set-darkness"))
+    parser.add_argument("value", nargs="?", type=int)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    maximum = 90 if args.command == "set-darkness" else 100
+    if args.command.startswith("set-"):
+        if args.value is None or not 0 <= args.value <= maximum:
+            parser.error(f"{args.command} requires a percentage from 0 to {maximum}")
+    elif args.value is not None:
+        parser.error("this command takes no value")
+    STATE.mkdir(parents=True, exist_ok=True)
+    error = ""
+    message = None
+    with (STATE / "lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            if args.command == "schedule":
+                message = schedule()
+            elif args.command in ("on", "off", "toggle"):
+                switch(args.command == "on" or (args.command == "toggle" and not snapshot()[0]["enabled"]))
+            elif args.command.startswith("set-"):
+                state, current = snapshot()
+                levels = {k: state[k] for k in DEFAULTS}
+                levels["blue_light" if args.command == "set-blue-light" else "darkness"] = args.value
+                if state["enabled"]:
+                    apply(levels, current)
+                atomic_write(STATE / "settings.json", json.dumps(levels) + "\n")
+            state, _ = snapshot()
+        except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            error = str(exc)
+            try:
+                state, _ = snapshot()
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired):
+                state = dict(saved_levels(), enabled=False, available=False, foreign_shader=False)
+            state["error"] = error
+        if args.json:
+            print(json.dumps(state))
+        elif error:
+            print(f"night-filter: {error}", file=sys.stderr)
+        elif message:
+            print(message)
+        elif args.command == "status":
+            print("on" if state["enabled"] else "off")
+    return 1 if error else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

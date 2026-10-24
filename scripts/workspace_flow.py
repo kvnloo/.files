@@ -2454,6 +2454,24 @@ def commit_next_action(
     }
 
 
+def rerank_topk(db: Any, state: dict[str, Any], topk: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Learned re-ranker (workspace_rerank); engine top-k passes through if it is absent or not promoted."""
+    if os.environ.get("WORKSPACE_RERANK", "1") == "0":
+        return topk
+    try:
+        import workspace_rerank
+    except Exception:
+        return topk
+    return workspace_rerank.apply(
+        db,
+        state,
+        topk,
+        candidates_fn=_candidate_contexts,
+        operator_fn=_operator_family,
+        top_k=PRED_TOP_K,
+    )
+
+
 def on_context_event(
     db: Any,
     *,
@@ -2513,6 +2531,7 @@ def on_context_event(
         # PREDICT — always
         topk, latency_ms = predict_next_context_v0(db, state)
         topk = boost_inspect_result(db, state, topk)
+        topk = rerank_topk(db, state, topk)
         pred = record_shadow_prediction(
             db,
             state=state,
