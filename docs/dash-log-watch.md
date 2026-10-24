@@ -96,6 +96,13 @@ unreadable policy source produces `invariant_unavailable`, not a clean pass.
 Only the finding count crosses the model projection; paths/source text stay
 local. This check does not change limits, pause jobs or remediate anything.
 
+The watchdog does not wait for the Store lock. It sends pings only while the
+last completed scan is at most 90 seconds old, with the same startup grace.
+A blocked scan cannot renew that deadline. After the deadline, the watcher
+withholds pings so systemd can restart it. `status.json` records
+`scan_completed_at`; status and heartbeat checks use that completion timestamp,
+not process liveness or the start of an unfinished scan.
+
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's

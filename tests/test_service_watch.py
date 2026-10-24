@@ -461,6 +461,50 @@ class Contracts(unittest.TestCase):
                 daemon.join(3)
             self.assertFalse(daemon.is_alive())
 
+    def test_watchdog_requires_recent_completed_scan_without_store_lock(self):
+        self.watch.scan_watchdog_at = 100
+        with self.watch.store.lock, \
+                patch.object(self.watch.stop, 'wait', side_effect=[False, False, True]), \
+                patch.object(sw.time, 'monotonic', side_effect=[189, 191]), \
+                patch.object(sw, 'notify_systemd') as notify:
+            self.watch.watchdog(.01)
+        self.assertEqual(notify.call_args_list[0].args, ('WATCHDOG=1',))
+        self.assertNotIn('WATCHDOG=1', notify.call_args_list[1].args[0])
+        self.assertIn('stale', notify.call_args_list[1].args[0])
+
+    def test_stalled_scan_cannot_refresh_watchdog_completion_anchor(self):
+        entered, release = threading.Event(), threading.Event()
+        self.watch.scan_freshness_seconds = .05
+        def stalled_scan():
+            entered.set()
+            release.wait(3)
+        daemon = threading.Thread(target=self.watch.serve,
+                                  kwargs={'watchdog_interval': .01})
+        stale = threading.Event()
+        calls = []
+        def notify(value):
+            calls.append(value)
+            if value.startswith('STATUS='):
+                stale.set()
+        with patch.object(self.watch, 'scan', stalled_scan), \
+                patch.object(self.watch, 'worker', lambda: self.watch.stop.wait()), \
+                patch.object(sw, 'notify_systemd', notify):
+            daemon.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertTrue(stale.wait(2))
+                self.assertFalse(release.is_set())
+                self.assertLessEqual(self.watch.scan_watchdog_at,
+                                     time.monotonic() - .05)
+                self.assertFalse((self.watch.store.root / 'status.json').exists())
+            finally:
+                self.watch.stop.set()
+                release.set()
+                daemon.join(3)
+        self.assertFalse(daemon.is_alive())
+        stale_index = next(i for i, value in enumerate(calls) if value.startswith('STATUS='))
+        self.assertNotIn('WATCHDOG=1', calls[stale_index:])
+
     def test_stalled_journal_read_has_real_wall_deadline(self):
         proc = subprocess.Popen([sys.executable, '-c',
                                  'import json,time; print(json.dumps({"MESSAGE":"synthetic"}),flush=True); time.sleep(5)'],
