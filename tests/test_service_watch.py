@@ -63,6 +63,29 @@ class Contracts(unittest.TestCase):
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'unknown'}, {}, time.time())[0]['code'], 'invariant_unavailable')
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'file_freshness', 'path': str(self.root / 'missing'), 'max_age_seconds': 1}, {}, time.time())[0]['code'], 'invariant_unavailable')
 
+    def test_phone_caps_invariant_red_green_and_unavailable(self):
+        invariant = {'kind': 'phone_caps', 'root': str(self.root)}
+        cases = [
+            (3, {'gate': 'O10', 'checked': ['fleet'], 'status': 'refused', 'findings': [{'rule': 'registry-phone-cap'}]}, ['phone_resource_caps']),
+            (0, {'gate': 'O10', 'checked': ['fleet'], 'status': 'ok', 'findings': []}, []),
+            (2, {}, ['invariant_unavailable']),
+            (0, {'gate': 'O10', 'checked': [], 'status': 'ok', 'findings': []}, ['invariant_unavailable']),
+            (3, {'gate': 'O10', 'checked': ['fleet'], 'status': 'refused', 'findings': [{'rule': 'scan-unavailable'}]}, ['invariant_unavailable']),
+        ]
+        for code, report, expected in cases:
+            result = subprocess.CompletedProcess([], code, json.dumps(report), '')
+            with patch.object(sw.subprocess, 'run', return_value=result) as run:
+                events = self.watch.invariant('user', 'fixture.service', invariant, {}, time.time())
+            self.assertEqual([e['code'] for e in events], expected)
+            self.assertEqual(run.call_args[0][0], ['z0-guard', 'phone-caps', '--root', str(self.root)])
+            self.assertEqual(run.call_args.kwargs['env']['Z0_GUARD_O10'], 'enforce')
+
+    def test_phone_caps_recurring_root_follows_installed_fleet(self):
+        with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
+            self.watch.phone_caps_invariant()
+        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
+        record.assert_called_once_with('user', 'service-watch.service', [])
+
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []
         def fake(argv, timeout=15):
@@ -103,10 +126,10 @@ class Contracts(unittest.TestCase):
     def test_restarts_in_window_not_lifetime_and_no_remediation(self):
         self.watch.last_scan = time.time()
         self.watch.units = {('user', 'fixture.service'): {'health_invariant': {'kind': 'systemd'}}}
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2], [])
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 

@@ -86,6 +86,16 @@ First-start journal lookback is two minutes; `service-watch seed` streams the
 last seven days (bounded to three minutes per journal) and historical tick
 receipts, recording partial/unavailable coverage explicitly.
 
+The recurring `phone_caps` deterministic invariant calls
+`z0-guard phone-caps --root ROOT` in enforce mode. ROOT follows the resolved
+installed `fleet` executable's checkout (or the watcher checkout if absent).
+Inventory `health_invariant: {"kind": "phone_caps", "root": "/path/to/files"}`
+can select an explicit checkout. Resource-cap findings produce the severe
+finite code `phone_resource_caps`; a missing scanner, invalid response or
+unreadable policy source produces `invariant_unavailable`, not a clean pass.
+Only the finding count crosses the model projection; paths/source text stay
+local. This check does not change limits, pause jobs or remediate anything.
+
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
