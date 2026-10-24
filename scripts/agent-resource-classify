@@ -56,14 +56,20 @@ DESKTOP = {'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell', 'systemd', 'dbus-b
            'Xwayland', 'hypridle', 'qs', 'Discord', 'tern',
            'kitty', 'alacritty', 'wezterm-gui', 'foot', 'gnome-terminal-', 'konsole'}
 CORE_SCOPE = 'hermes-core.scope'
+WORKLOADS_SCOPE = 'agent-workloads-v2.scope'
 
 def _bus(*args):
     return subprocess.run(['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
                            'org.freedesktop.systemd1.Manager', *args], capture_output=True, text=True, timeout=15)
 
 def rescue(data):
-    """Move protected processes that an older version routed into the agent scope back out."""
-    stuck = [pid for pid, (_, name, cg) in data.items() if name in PROTECTED and '/agent.slice/' in cg]
+    """Move protected processes that an older version swept into the shared workloads scope back out.
+
+    Only the sweep scope counts. A control process in its own agent-<name>-*.scope
+    (scripts/agent-launch) or in a service placed with Slice=agent.slice (the Hermes
+    gateway) is where it belongs; pulling it out every tick undid that placement and
+    left omp uncapped in hermes-core.scope."""
+    stuck = [pid for pid, (_, name, cg) in data.items() if name in PROTECTED and cg.endswith('/' + WORKLOADS_SCOPE)]
     if not stuck:
         return []
     owners = {}
@@ -81,9 +87,11 @@ def rescue(data):
         loose.append(pid)
     if loose:
         if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', CORE_SCOPE]).returncode:
-            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '3',
+            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '5',
+                 # Rescued control processes must not escape every memory limit.
                  'Description', 's', 'Hermes control processes (kept out of agent-workloads)',
-                 'Slice', 's', 'app.slice', 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
+                 'Slice', 's', 'app.slice', 'MemoryMax', 't', str(5 << 30), 'MemorySwapMax', 't', str(1 << 30),
+                 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
         else:
             _bus('AttachProcessesToUnit', 'ssau', CORE_SCOPE, '', str(len(loose)), *map(str, loose))
     return stuck
@@ -99,7 +107,7 @@ def main():
         print(json.dumps({'rescued': rescued}))
     if not pids:
         return
-    unit = 'agent-workloads-v2.scope'
+    unit = WORKLOADS_SCOPE
     check = subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit])
     if check.returncode:
         args = ['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
