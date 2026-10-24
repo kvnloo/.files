@@ -15,4 +15,4 @@ sysctl -q -p /etc/sysctl.d/99-zz-groot-memory.conf
 udevadm control --reload
 total_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
 echo $((total_kb * 1024 / 2)) > /sys/block/zram0/mem_limit
-echo "applied: swappiness=$(sysctl -n vm.swappiness) wsf=$(sysctl -n vm.watermark_scale_factor) dirty_bytes=$(sysctl -n vm.dirty_bytes) zram mem_limit=$(cat /sys/block/zram0/mem_limit)"
+echo "applied: swappiness=$(sysctl -n vm.swappiness) wsf=$(sysctl -n vm.watermark_scale_factor) dirty_bytes=$(sysctl -n vm.dirty_bytes) zram mem_limit=$(zramctl --noheadings --output MEM-LIMIT /dev/zram0)"
