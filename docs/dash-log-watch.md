@@ -96,6 +96,13 @@ unreadable policy source produces `invariant_unavailable`, not a clean pass.
 Only the finding count crosses the model projection; paths/source text stay
 local. This check does not change limits, pause jobs or remediate anything.
 
+The watchdog does not wait for the Store lock. It sends pings only while the
+last completed scan is at most 90 seconds old, with the same startup grace.
+A blocked scan cannot renew that deadline. After the deadline, the watcher
+withholds pings so systemd can restart it. `status.json` records
+`scan_completed_at`; status and heartbeat checks use that completion timestamp,
+not process liveness or the start of an unfinished scan.
+
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
@@ -203,6 +210,11 @@ removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
 LIVE checkouts are never removed. The classifier lives in
 `scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
 external ops-plane dispatcher.
+The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
+It also scans the agent configuration roots and `/workspace/hermes-home`.
+Installed plugin, extension, and skill directories are live code sources.
+Unreadable link inventories block removals. A verified archive does not permit
+removing a checkout that still serves an installed link.
 Every removal, including SAFE linked worktrees and standalone clones, requires a
 verified local bundle receipt first. Linked worktrees share an immutable full
 base bundle per common Git store; WIP delta bundles preserve each checkout's
@@ -210,6 +222,9 @@ additional state without duplicating the complete history. The manifest's
 `restore_command` records both base and delta restoration when needed. A base
 clone remains when needed by LIVE linked worktrees. Archive errors prevent the
 affected removal and remain visible in the operational records.
+Absorbed submodules use a `.git` file without being linked worktrees. The reaper
+preserves their Git state in a verified bundle before removing their directory.
+It retains any common object store that still serves another linked checkout.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.

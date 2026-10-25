@@ -1,5 +1,6 @@
 """Behavioral coverage for preservation and the shared reaper classifier."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -81,6 +82,96 @@ class ReaperBehavior(unittest.TestCase):
                 row = self.inspect(refs)
                 self.assertEqual(row['class'], 'LIVE')
                 self.assertTrue(any(reason in evidence for evidence in row['live_reasons']))
+
+    def test_installed_skill_link_under_home_keeps_old_checkout_live(self):
+        self.age(self.repo)
+        home = self.base / 'home'
+        links = home / '.agents/skills'
+        links.mkdir(parents=True)
+        target = self.repo / 'skills/abab-meta-research'
+        (links / 'abab-meta-research').symlink_to(target, target_is_directory=True)
+        refs, errors = reaper.symlink_references(home=home, extra_roots=[])
+        self.assertEqual(errors, [])
+        row = self.inspect(refs)
+        self.assertEqual(row['class'], 'LIVE')
+        self.assertTrue(any('home-symlink:' in reason for reason in row['live_reasons']))
+        self.assertIn(str(target), refs)
+        argv = ['worktree-reaper', '--apply', '--root', str(self.root),
+                '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(reaper, 'references', return_value=(refs, errors)), \
+                patch.object(reaper.os, 'nice'):
+            self.assertEqual(reaper.main(), 0)
+        self.assertTrue(self.repo.exists())
+        self.assertEqual(list(self.archive.glob('*.bundle')), [])
+
+    def test_arbitrary_home_link_and_external_profile_link_are_live(self):
+        self.age(self.repo)
+        home = self.base / 'home'
+        outside = self.base / 'hermes-home'
+        for root, relative in ((home, 'custom/deep/active'),
+                               (outside, 'profiles/clean/skills/active')):
+            link = root / relative
+            link.parent.mkdir(parents=True)
+            link.symlink_to(self.repo / 'missing-after-removal', target_is_directory=True)
+        refs, errors = reaper.symlink_references(home=home, extra_roots=[outside])
+        self.assertEqual(errors, [])
+        self.assertEqual(len(refs[str(self.repo / 'missing-after-removal')]), 2)
+        self.assertEqual(self.inspect(refs)['class'], 'LIVE')
+
+    def test_installed_plugin_checkout_is_live_without_symlinks(self):
+        home = self.base / 'home'
+        plugins = home / '.omp/agent/extensions'
+        plugins.mkdir(parents=True)
+        child = plugins / 'owned'
+        self.git(self.repo, 'clone', str(self.repo), str(child))
+        self.age(child)
+        refs, errors = reaper.symlink_references(home=home, extra_roots=[])
+        self.assertEqual(errors, [])
+        row = reaper.inspect(str(child), [str(home)], refs, time.time())
+        self.assertEqual(row['class'], 'LIVE')
+        self.assertTrue(any('installed-code-directory:' in reason for reason in row['live_reasons']))
+
+    @unittest.skipIf(os.geteuid() == 0, 'requires ordinary-user directory permissions')
+    def test_unreadable_link_inventory_blocks_all_removals(self):
+        self.age(self.repo)
+        home = self.base / 'home'
+        blocked = home / '.hermes/private'
+        blocked.mkdir(parents=True)
+        blocked.chmod(0)
+        try:
+            refs, errors = reaper.symlink_references(home=home, extra_roots=[])
+        finally:
+            blocked.chmod(0o700)
+        self.assertTrue(errors)
+        argv = ['worktree-reaper', '--apply', '--root', str(self.root),
+                '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(reaper, 'references', return_value=(refs, errors)), \
+                patch.object(reaper.os, 'nice'):
+            self.assertEqual(reaper.main(), 1)
+        self.assertTrue(self.repo.exists())
+        self.assertEqual(list(self.archive.glob('*.bundle')), [])
+
+    def test_pause_during_archive_prevents_current_removal(self):
+        self.age(self.repo)
+        preserve = reaper.preserve
+        def archive_then_pause(*args):
+            result = preserve(*args)
+            (self.out / 'PAUSED').write_text('incident pause\n')
+            return result
+        argv = ['worktree-reaper', '--apply', '--root', str(self.root),
+                '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(reaper, 'references', return_value=({}, [])), \
+                patch.object(reaper, 'preserve', archive_then_pause), \
+                patch.object(reaper.os, 'nice'):
+            self.assertEqual(reaper.main(), 0)
+        self.assertTrue(self.repo.exists())
+        self.assertEqual(len(list(self.archive.glob('*.bundle'))), 1)
+        rows = [json.loads(line) for line in (self.out / 'manifest.jsonl').read_text().splitlines()]
+        self.assertTrue(any(row['event'] == 'removals_paused' for row in rows))
+        self.assertFalse(any(row['event'] == 'removed' for row in rows))
 
     def test_clean_local_only_clone_is_wip_not_discardable(self):
         self.age(self.repo)
@@ -170,6 +261,30 @@ class ReaperBehavior(unittest.TestCase):
         self.assertFalse(self.repo.exists())
         self.assertEqual(len(list(self.archive.glob('*.bundle'))), 1)
         self.assertTrue((self.out / 'REPORT.md').is_file())
+
+    def test_apply_archives_absorbed_submodule_before_removing_directory(self):
+        source = self.base / 'submodule-source'
+        self.git(self.repo, 'clone', str(self.repo), str(source))
+        self.git(self.repo, '-c', 'protocol.file.allow=always', 'submodule',
+                 'add', str(source), 'dependency')
+        child = self.repo / 'dependency'
+        self.age(child)
+        argv = ['worktree-reaper', '--apply', '--root', str(child),
+                '--output', str(self.out), '--archive', str(self.archive)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(reaper, 'references', return_value=({}, [])), \
+                patch.object(reaper.os, 'nice'):
+            self.assertEqual(reaper.main(), 0)
+        self.assertFalse(child.exists())
+        self.assertTrue(self.repo.exists())
+        rows = [json.loads(line) for line in (self.out / 'manifest.jsonl').read_text().splitlines()]
+        archived = next(row for row in rows if row['event'] == 'archived')
+        self.assertLess(next(i for i, row in enumerate(rows) if row['event'] == 'archived'),
+                        next(i for i, row in enumerate(rows) if row['event'] == 'removed'))
+        restored = self.base / 'restored-submodule'
+        self.git(self.repo, 'clone', archived['bundle'], str(restored))
+        self.git(restored, 'checkout', archived['archive_branch'])
+        self.assertEqual((restored / 'file.txt').read_text(), 'original\n')
 
 
 if __name__ == '__main__':

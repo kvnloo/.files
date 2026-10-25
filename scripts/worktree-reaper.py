@@ -119,6 +119,42 @@ def active_guard_references():
     return {os.path.realpath(path): {reason} for path, reason in ACTIVE_GUARD_SOURCES.items()}
 
 
+def symlink_references(home=None, extra_roots=None):
+    """Read link metadata only, including dangling installed-code links."""
+    home = Path.home() if home is None else Path(home)
+    if extra_roots is None:
+        extra_roots = [home / name for name in
+                       ('.agents', '.claude', '.codex', '.config', '.omp', '.hermes')]
+        extra_roots.append(Path('/workspace/hermes-home'))
+    refs = collections.defaultdict(set)
+    errors = []
+    visited = set()
+    installed = {'plugins', 'plugin-data', 'extensions', 'managed-extensions',
+                 'managed-skills', 'skills'}
+    for root in [home, *extra_roots]:
+        root = Path(root)
+        canonical = os.path.realpath(root)
+        if canonical in visited or not root.exists():
+            continue
+        visited.add(canonical)
+        def failed(error):
+            errors.append('installed-link inventory: ' + str(error))
+        for base, dirs, files in os.walk(root, followlinks=False, onerror=failed):
+            location = Path(base)
+            if location.name in installed or (
+                    any(part in installed for part in location.parts) and
+                    ('.git' in dirs or '.git' in files)):
+                refs[os.path.realpath(base)].add('installed-code-directory:' + str(location))
+            for name in [*dirs, *files]:
+                link = location / name
+                try:
+                    if link.is_symlink():
+                        refs[os.path.realpath(link)].add('home-symlink:' + str(link))
+                except OSError as error:
+                    failed(error)
+    return refs, errors
+
+
 def references():
     refs = collections.defaultdict(set)
     errors = []
@@ -134,12 +170,10 @@ def references():
         refs[target].update(reasons)
     for target, reasons in active_guard_references().items():
         refs[target].update(reasons)
-    for root in ['/home/kvn/.local/bin', '/home/kvn/.config/systemd/user']:
-        for base, dirs, files in os.walk(root, followlinks=False):
-            for name in [*dirs, *files]:
-                link = Path(base) / name
-                if link.is_symlink():
-                    add(str(link.resolve()), f'deployment-symlink:{link}')
+    installed_refs, installed_errors = symlink_references()
+    for target, reasons in installed_refs.items():
+        refs[target].update(reasons)
+    errors.extend(installed_errors)
     # Read every process link we are allowed to inspect, never process contents.
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():
@@ -534,6 +568,9 @@ def main():
             # A durable verified archive receipt always precedes removal.
             archive = preserve(row, args.output, args.archive)
             actions.append({'event': 'archived', **archive})
+            if (args.output / 'PAUSED').exists():
+                emit(args.output, 'removals_paused', reason='operator PAUSED marker before removal')
+                break
             fresh, issues = references()
             reasons = live_reasons(row['path'], fresh)
             if issues or reasons:
@@ -545,9 +582,12 @@ def main():
             if newest_mtime(row['path'], time.time()-DAY) > time.time()-DAY:
                 raise RuntimeError('Working files changed during archival')
             emit(args.output, 'remove_intent', path=row['path'], size_bytes=size, parent_repo=row['parent_repo'], remote=row['remote'], branch=row['branch'])
-            if row['plain_clone']:
+            # Absorbed submodules also use a .git file, but are not linked
+            # worktrees. Their Git directory is their common object store.
+            gitdir = text(row['path'], 'rev-parse', '--absolute-git-dir')
+            if row['plain_clone'] or os.path.realpath(gitdir) == row['parent_repo']:
                 linked = text(row['path'], 'worktree', 'list', '--porcelain').splitlines()
-                others = [l[9:] for l in linked if l.startswith('worktree ') and os.path.realpath(l[9:]) != row['path'] and os.path.exists(l[9:])]
+                others = [l[9:] for l in linked if l.startswith('worktree ') and os.path.realpath(l[9:]) not in {row['path'], row['parent_repo']} and os.path.exists(l[9:])]
                 if others:
                     raise RuntimeError('Primary clone still owns linked worktrees: ' + str(others))
                 shutil.rmtree(row['path'])
