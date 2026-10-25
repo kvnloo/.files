@@ -53,6 +53,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(json.loads(payload)['artifact-leases.py'], 'core source')
         self.assertIn('worktree-reaper.py', json.loads(payload))
         self.assertNotIn('--apply', argv[-1])
+        self.assertIn('timeout 110s', argv[-1])
+        self.assertIn('HUP INT TERM', argv[-1])
 
     def test_configured_pressure_is_not_cap(self):
         config = json.loads((c.ROOT / 'config/fleet/artifact-leases.json').read_text())

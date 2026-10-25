@@ -149,3 +149,18 @@ def test_omp_unknown_owner_and_retained_mount_are_kept(tmp_path):
     (path / '.omp-isolation-owner.json').unlink()
     (path / '.omp-retained-backend.json').write_text('{\"backend\": 1}')
     assert not inspect(root, path)['eligible']
+
+
+def test_report_never_scans_home_or_descendants(tmp_path):
+    root, path, _ = artifact(tmp_path)
+    args = argparse.Namespace(node='s22', output=str(tmp_path / 'report'), enroll=False, apply=False)
+    with patch.dict(leases.ROOTS, {'s22': [str(root)]}), \
+            patch.object(leases, 'local_references', side_effect=AssertionError('HOME scan')), \
+            patch.object(leases, 'size_bytes', side_effect=AssertionError('deep traversal')):
+        leases.run(args)
+    report = json.loads((tmp_path / 'report/report.json').read_text())
+    assert report['unknown_size_count'] == 1
+    assert report['items'][0]['bytes'] is None
+    assert report['items'][0]['live'] == 'UNKNOWN'
+    assert not report['items'][0]['eligible']
+    assert (tmp_path / 'report/items/0.json').exists()

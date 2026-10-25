@@ -287,12 +287,39 @@ def inspect(path, node, refs, errors, now):
     return row
 
 
+def inventory_report(args, out):
+    """Bounded metadata only: never collect HOME references or grant eligibility."""
+    rows = []
+    # Groot does no descendant traversal; remote size collection is separate.
+    for index, path in enumerate(candidates(args.node)):
+        try:
+            metadata = path.lstat()
+            row = {'path': str(path), 'bytes': None, 'metadata_bytes': metadata.st_blocks * 512,
+                   'size_status': 'UNKNOWN', 'live': 'UNKNOWN', 'eligible': False,
+                   'reasons': ['report-only: recursive size and liveness not evaluated']}
+        except OSError as exc:
+            row = {'path': str(path), 'bytes': None, 'size_status': 'UNKNOWN',
+                   'live': 'UNKNOWN', 'eligible': False, 'reasons': [str(exc)]}
+        atomic_json(out / 'items' / (str(index) + '.json'), row)
+        rows.append(row)
+    report = {'schema': 'z0.artifact-reap.v1', 'node': args.node,
+              'timestamp': time.time(), 'apply': False, 'mode': 'bounded-report',
+              'would_reap_bytes': 0, 'removed_bytes': 0, 'known_bytes': 0,
+              'unknown_size_count': len(rows), 'reference_errors': ['liveness not evaluated'],
+              'items': rows, 'actions': []}
+    atomic_json(out / 'report.json', report)
+    print(json.dumps(report, sort_keys=True))
+    return 0
+
+
 def run(args):
     reaper = backend()
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=True)
     lock = (out / 'LOCK').open('a')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    if not args.apply and not args.enroll:
+        return inventory_report(args, out)
     lifecycle_lock = None
     if args.apply and args.node == 'groot':
         # Serialize with #63's still-active archive-first incident actor.
