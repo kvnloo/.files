@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily fetched fleet source retention
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

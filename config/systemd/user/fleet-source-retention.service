@@ -1,0 +1,11 @@
+[Unit]
+Description=Archive expired fetched fleet sources while retaining receipts
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/lib/host-storage/current/scripts/fleet-source-retention.py --apply
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=20min

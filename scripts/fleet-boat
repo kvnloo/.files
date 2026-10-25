@@ -187,7 +187,8 @@ def run(args):
         return 75
     state = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
     jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
-    runs = state / "runs"
+    from fleet_paths import runs_dir
+    runs = runs_dir()
     runs.mkdir(parents=True, exist_ok=True)
     dest = runs / jid
     dest.mkdir()

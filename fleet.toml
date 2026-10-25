@@ -12,9 +12,16 @@ system_services = ["docker.service", "tailscaled.service", "tern-remote.service"
 system_timers = ["tern-remote-refresh.timer"]
 system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service"]
-user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "zer0-storage-autotier.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
+
+[hosts.desktop.storage]
+release_root = "/mnt/zer0models/releases"
+fleet_policy = "config/fleet/storage.toml"
+root_reserve_gib = 20
+root_admission_floor_gib = 15
+source_retention_days = 7
 
 # Policy-only immutable release; discovery runs admitted workers outside the timer.
 [hosts.desktop.policy_pipeline]

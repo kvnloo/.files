@@ -1,0 +1,11 @@
+schema = 1
+root_reserve_gib = 20
+# Only idle, unopened caches/toolchains. The mover verifies copies and leaves
+# compatibility symlinks. Never include .actual or active release trees.
+idle_cache_globs = [
+  ".npm/_cacache",
+  ".cargo/registry",
+  "go/pkg/mod",
+  ".gradle/caches",
+  ".elan/toolchains",
+]

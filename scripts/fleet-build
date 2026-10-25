@@ -26,7 +26,7 @@
 #                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
 #                    Oversized Kueue requests exit 75; never fall back to groot.
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
-#   --out DIR        put fetched files in DIR (default: ~/.local/state/fleet/runs/<job>/)
+#   --out DIR        put fetched files in DIR (default: configured fleet bulk spool/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
 #   --public         reviewed public source; allow Boat overflow before queueing
 #   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
@@ -238,13 +238,13 @@ if [ $rc -eq 75 ]; then
   echo "fleet-build: no worker has room now (exit 75). Retry later or lower --mem; do not queue it on groot." >&2
 fi
 if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
-  state=${FLEET_STATE:-$HOME/.local/state/fleet}
+  runs=$(python3 "$(dirname "$FLEET")/fleet_paths.py")
   mkdir -p "$out"
   lease_receipts=()
   for f in "${fetch[@]}"; do lease_receipts+=(--keep-receipt "$(basename "$f")"); done
   python3 "$(dirname "$FLEET")/artifact_lease.py" "$out" --owner "$jid" --node "$(hostname)" --kind spool "${lease_receipts[@]}"
   for f in "${fetch[@]}"; do
-    p="$state/runs/$jid/$pre$f"
+    p="$runs/$jid/$pre$f"
     [ -e "$p" ] && cp -a "$p" "$out/" && echo "fleet-build: $f -> $out/$(basename "$f")" >&2
   done
 fi

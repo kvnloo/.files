@@ -508,7 +508,8 @@ def cmd_run(args):
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
-    logdir = STATE / "runs"
+    from fleet_paths import runs_dir
+    logdir = runs_dir()
     logdir.mkdir(parents=True, exist_ok=True)
     log = logdir / f"{jid}-{n['name']}.log"
     print(f"fleet: job {jid} -> {n['name']} (load {p['load1']}/{p['ncpu']} cpu, "
