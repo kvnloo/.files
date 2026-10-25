@@ -20,7 +20,7 @@ TTL = 7 * 86400
 SIDECAR = '.artifact-lease.json'
 # Roots are policy, not caller-controlled command-line arguments.
 ROOTS = {
-    'groot': ['/mnt/zer0models/z0-wt', '/mnt/zer0models/worktrees', '/home/kvn/.local/state/fleet/jobs', '/home/kvn/.local/state/fleet/runs', '/home/kvn/.omp/wt'],
+    'groot': ['/mnt/zer0models/z0-wt', '/mnt/zer0models/worktrees', '/home/kvn/.local/state/fleet/jobs', '/home/kvn/.local/state/fleet/runs', '/mnt/zer0models/host-offload/home_kvn_.local_state_fleet_runs', '/home/kvn/.omp/wt'],
     'mbp': ['/home/kvn/.local/state/fleet/kueue', '/home/agentjob/jobs', '/home/kvn/jobs', '/home/kvn/.omp/wt'],
     's22': ['/root/fleet-jobs', '/root/edge-probe-s22', '/root/slm-opt', '/root/.cache/pip', '/root/.omp/wt'],
     's25': ['/root/fleet-jobs', '/root/edge-probe-s25', '/root/slm-opt', '/root/.cache/pip', '/root/.omp/wt'],

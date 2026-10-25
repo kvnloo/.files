@@ -20,6 +20,8 @@ OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
              '50-IOWeight.conf', '50-IOReadBandwidthMax.conf', '50-IOWriteBandwidthMax.conf')
 LINKS = {
     'scripts/agent-launch': '.local/bin/agent-launch',
+    'scripts/bws-env-exec': '.local/bin/bws-env-exec',
+    'config/bws-consumers.json': '.local/share/files-bws/consumers.json',
     'scripts/agent-resource-classify': '.local/bin/agent-resource-classify',
     'scripts/omp': '.local/bin/omp',
     'scripts/omp-hud': '.local/bin/omp-hud',
