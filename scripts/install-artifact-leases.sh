@@ -23,6 +23,5 @@ for unit in artifact-leases.service artifact-leases.timer; do
 done
 ln -sfn "$dest" "$base/current"
 systemctl --user daemon-reload
-systemctl --user disable --now worktree-reaper.timer
 systemctl --user enable --now artifact-leases.timer
 printf 'Activated artifact-leases.timer source=%s backups=%s\n' "$sha" "$backup"

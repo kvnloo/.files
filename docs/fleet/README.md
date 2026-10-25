@@ -967,8 +967,10 @@ Unavailable guest/native lanes retain the other lane's receipt and mark the
 report incomplete; incomplete reports produce a nonzero controller result.
 Repeatable `--node s22 --node s25` restricts a real apply to those nodes.
 
-The enabled `artifact-leases.timer` checks every five minutes. `--monitor`
-runs each node hourly otherwise and immediately on a check below 10% free
+The report-only `artifact-leases.timer` checks every five minutes. It targets
+groot, MBP and S22 only; S25 is excluded pending its separate cleanup review.
+It neither enrolls leases nor deletes artifacts. `--monitor` runs each node
+hourly otherwise and immediately on a check below 10% free
 space. **10% is explicit configuration, not measured calibration and not a
 resource cap.** Pressure does not shorten leases or override live/unknown
 protection; expired-oldest removal remains the core's ordering policy.
@@ -982,10 +984,10 @@ bash scripts/install-artifact-leases.sh --activate
 ```
 
 The installer reads committed source into an immutable SHA directory, backs
-up owned unit links, disables the old age-only `worktree-reaper.timer` mutation
-schedule, and enables the lease timer. The classifier, archive/report behavior
+up owned unit links, and enables the report-only lease timer. It leaves
+`worktree-reaper.timer` unchanged. The classifier, archive/report behavior
 and immutable worktree-reaper live links remain intact. It does not restart
-phone services. Do not run it during sibling edits.
+phone services. Deletion mode requires a separate review and authorization.
 For a read-only four-node receipt after authorization to run the core:
 
 ```sh
