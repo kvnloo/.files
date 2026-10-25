@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Install the tracked ctx resource drop-in without replacing its generated unit."""
+from __future__ import annotations
+import argparse
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+
+RELATIVE = 'config/systemd/user/ctx.service.d/50-resource-policy.conf'
+DESTINATION = '.config/systemd/user/ctx.service.d/50-resource-policy.conf'
+OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
+             '50-CPUWeight.conf', '50-IOWeight.conf')
+
+
+def stamp_release(source: Path, home: Path) -> Path:
+    data = (source / RELATIVE).read_bytes()
+    mode = (source / RELATIVE).stat().st_mode & 0o777
+    digest = hashlib.sha256(f'{RELATIVE}\0{mode}\0{len(data)}\0'.encode() + data).hexdigest()
+    root = home / '.local/lib/files-live'
+    root.mkdir(parents=True, exist_ok=True)
+    release = root / digest
+    if not release.exists():
+        staging = Path(tempfile.mkdtemp(prefix='.ctx-policy-', dir=root))
+        try:
+            target = staging / RELATIVE
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            target.chmod(mode)
+            os.rename(staging, release)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+    target = release / RELATIVE
+    if target.read_bytes() != data or target.stat().st_mode & 0o777 != mode:
+        raise ValueError(f'content-stamped release mismatch: {target}')
+    return release
+
+
+def install(source: Path, home: Path, apply: bool) -> int:
+    source = source.resolve(strict=True)
+    if not (source / RELATIVE).is_file():
+        raise ValueError(f'missing tracked source: {RELATIVE}')
+    if not apply:
+        print('DRY RUN: would back up exact ctx overrides, link stamped resource policy and daemon-reload; no restart')
+        return 0
+    release = stamp_release(source, home)
+    backup_root = home / '.local/state/ctx-policy/backups'
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix='apply-', dir=backup_root))
+    control = home / '.config/systemd/user.control/ctx.service.d'
+    target = home / DESTINATION
+    replacements = [(control / name, backup / 'user.control' / name) for name in OVERRIDES]
+    replacements.append((target, backup / DESTINATION))
+    # Preserve all replaced files before touching any live configuration.
+    for path, saved in replacements:
+        if path.exists() or path.is_symlink():
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, saved, follow_symlinks=False)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(target.name + '.new')
+    temporary.symlink_to(release / RELATIVE)
+    os.replace(temporary, target)
+    for name in OVERRIDES:
+        path = control / name
+        if path.exists() or path.is_symlink():
+            path.unlink()
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    print(f'APPLIED: ctx policy release={release}; backups={backup}; no services restarted')
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
+    args = parser.parse_args()
+    return install(args.source, Path.home(), args.apply)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
