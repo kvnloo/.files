@@ -72,6 +72,25 @@ stop an independently running host process during Kueue eviction.
 Host builds remain in protected `lanes`. Existing legacy jobs stay protected
 there; do not move running jobs into the borrowing benchmark queue.
 
+For `--class test` with no explicit node or `--node auto`, direct `pytest`,
+`python3 -m pytest`, and `python3 -m unittest` jobs may overflow to the existing
+phone Python guest lane when MBP's owned CPU/memory quota cannot fit the request.
+This happens before submission, not after replaying a timed-out job. Shell
+commands, builds, Bend proofs, explicit MBP choices, and explicit memory requests
+above 1GiB stay on MBP. An unspecified 3GiB default remains part of the MBP quota
+check but is not a measured phone requirement or a phone resource cap (O10).
+Phone selection reuses authenticated guest health and exact source-size disk
+admission. Both phone nodes expose the `test` class. The durable receipt records
+the placement reason, observed free MBP quota, and selected phone; no phone caps
+are applied. Exit 137 is retained with a SIGKILL reason, not silently retried or
+asserted to prove OOM without guest evidence. Request explicit memory above
+1GiB to keep a memory-heavy suite on MBP.
+
+`--wait 600` returns 75 if initial admission has not happened in ten minutes;
+`--timeout` controls runtime, not that wait. Use `--wait -1` for indefinite
+observation. Returning 75 after a Job ID was assigned detaches; it does not
+delete that queued Job. Explicitly cancel your own Job before moving its work.
+
 Observer interruption (SIGINT, SIGTERM or SIGHUP) detaches without cancelling
 the Job or removing its stage. Resume observation with `fleet-build --attach JOB`;
 this never submits or replays the command. Use `fleet kill mbp JOB` for explicit

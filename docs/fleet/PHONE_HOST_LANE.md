@@ -161,8 +161,10 @@ is job-local. No system Python packages, Android settings or app state change.
 
 Logs are `~/.local/state/fleet/runs/<job>-<registry-node>.log` on the controller.
 They include command, exit/status, venv setup, command and total elapsed times,
-and guest uptime before source transfer and after execution. A kernel boot-ID
-change, uptime reset/insufficient coverage, or changed PRoot tracer PID/start
+and guest uptime before source transfer and after execution. Uptime comes from
+the kernel `CLOCK_BOOTTIME` clock: Omalauncher's `/proc/uptime` can be a frozen
+startup snapshot, not a live clock. A kernel boot-ID change, uptime
+reset/insufficient coverage, or changed PRoot tracer PID/start
 identity makes the result `guest_restarted` (exit76), even if pytest exited0.
 Missing final lifetime evidence is `guest_unavailable` (exit255), never success.
 The retained source and executor spool are available for diagnosis; no job is

@@ -16,6 +16,7 @@ import time
 import uuid
 import socket
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
+from fleet_source import source_snapshot
 
 
 def checked(argv, **kwargs):
@@ -40,6 +41,7 @@ def workload_evicted(workload):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src')
+    parser.add_argument('--src-include', action='append', default=[])
     parser.add_argument('--attach', metavar='JOB', help='observe an existing job without submitting or replaying it')
     parser.add_argument('--no-src', action='store_true')
     parser.add_argument('--node')
@@ -189,27 +191,14 @@ def main():
         checked(remote(f'mkdir -p {qstage}/src {qstage}/tmp && chmod 700 {qstage}'))
         checked(remote(artifact_lease_command(qstage, name, 'mbp', 'spool', ['exit', 'stdout', 'stderr'])))
         src = Path(args.src).resolve()
-        if args.no_src:
-            sender = tar = None
-        elif (src / '.git').exists():
-            files = checked(['git', '-C', str(src), 'ls-files', '-co', '--exclude-standard', '-z'], capture_output=True).stdout
-            tar = subprocess.Popen(['tar', '-C', str(src), '--null', '-T', '-', '-czf', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
-            tar.stdout.close()
-            try:
-                tar.stdin.write(files)
-            except BrokenPipeError:
-                pass
-            tar.stdin.close()
-        else:
-            tar = subprocess.Popen(['tar', '-C', str(src), '-czf', '-', '.'], stdout=subprocess.PIPE)
-            sender = subprocess.Popen(remote(f'tar -xzf - -C {qstage}/src'), stdin=tar.stdout)
-            tar.stdout.close()
-        if sender is not None:
-            sender.wait()
-            tar.wait()
-            if sender.returncode or tar.returncode:
-                raise RuntimeError(f'source transfer failed: tar={tar.returncode}, receiver={sender.returncode}')
+        source_metadata = None
+        if not args.no_src:
+            with source_snapshot(src, args.src_include) as (archive, source_metadata):
+                (runs / f'{name}.json').write_text(json.dumps({
+                    'job_id': name, 'phase': 'staging', 'stage': stage,
+                    'source_snapshot': source_metadata}, indent=2) + '\n')
+                with archive.open('rb') as stream:
+                    checked(remote(f'tar -xzf - -C {qstage}/src'), stdin=stream)
         for source, dest in inputs:
             with open(source, 'rb') as stream:
                 checked(remote(f'mkdir -p {qstage}/src/{shlex.quote(str(dest.parent))} && cat > {qstage}/src/{shlex.quote(str(dest))}'), stdin=stream)
@@ -256,6 +245,8 @@ def main():
             'stage': stage, 'cpus': args.cpus, 'memory': memory,
             'command': args.cmd, 'host': args.host, 'timeout': args.timeout,
             'fetch': args.fetch, 'out': args.out, 'keep': args.keep,
+            'placement': json.loads(os.environ.get('FLEET_TEST_PLACEMENT') or 'null'),
+            'source_snapshot': source_metadata,
         }, indent=2) + '\n')
         checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
         created = True

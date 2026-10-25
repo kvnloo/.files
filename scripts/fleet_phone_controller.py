@@ -138,9 +138,16 @@ def run(state, node, jid, spec, ssh, output):
                 output(logs[printed:])
                 printed = len(logs)
             terminal = job["state"] in TERMINAL
-            record = update_record(path, {"state": job["state"], "checked": time.time(), "availability": "ready", "terminal": terminal})
+            result = job.get("exit")
+            exit_code = 128 - result if isinstance(result, int) and result < 0 else result
+            termination_reason = job.get("reason")
+            if exit_code == 137 and not termination_reason:
+                termination_reason = "SIGKILL/exit137; possible OOM, not confirmed by guest"
+            record = update_record(path, {"state": job["state"], "checked": time.time(), "availability": "ready",
+                                          "terminal": terminal, "exit": exit_code,
+                                          "termination_reason": termination_reason})
             if terminal:
-                return 0 if job["state"] == "succeeded" else job.get("exit", 255) if job["state"] == "failed" else 255
+                return 0 if job["state"] == "succeeded" else exit_code if job["state"] == "failed" and exit_code is not None else 255
             time.sleep(5)  # measured job status, never lifecycle survival
     except Blocked:
         update_record(path, {"availability": "unavailable", "checked": time.time()})

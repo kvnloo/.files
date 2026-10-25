@@ -4,12 +4,16 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+from fleet_source import source_files
 
 
 SNAPSHOT = r'''
 import json
+import time
 from pathlib import Path
-uptime = float(Path('/proc/uptime').read_text().split()[0])
+# Omalauncher bind-mounts a startup snapshot over /proc/uptime. Read the
+# kernel clock directly so an unchanged proc fixture cannot imply a restart.
+uptime = time.clock_gettime(time.CLOCK_BOOTTIME)
 tracer = int(next(line.split()[1] for line in Path('/proc/self/status').read_text().splitlines()
                   if line.startswith('TracerPid:')))
 # Kernel uptime alone does not detect a PRoot guest restart on the same Android boot.
@@ -62,27 +66,13 @@ def snapshot(ssh):
     return value
 
 
-def tree_bytes(source):
-    return sum((Path(root) / name).lstat().st_size
-               for root, directories, files in os.walk(source, followlinks=False)
-               for name in [*files, *(d for d in directories if (Path(root) / d).is_symlink())])
 
-
-def staging_bytes(source, no_source=False, inputs=()):
+def staging_bytes(source, no_source=False, inputs=(), includes=()):
     """Count the source bytes that the existing transfer will actually select."""
     total = 0
     if not no_source:
         source = Path(source).resolve()
-        if (source / '.git').exists():
-            selected = subprocess.run(
-                ['git', '-C', str(source), 'ls-files', '-co', '--exclude-standard', '-z'],
-                capture_output=True, check=True).stdout
-            paths = (source / os.fsdecode(name) for name in selected.split(b'\0') if name)
-            # Git can select a submodule directory. Tar recurses into it too.
-            total = sum(tree_bytes(path) if path.is_dir() and not path.is_symlink()
-                        else path.lstat().st_size for path in paths)
-        else:
-            total = tree_bytes(source)
+        total = sum((source / os.fsdecode(name)).lstat().st_size for name in source_files(source, includes))
     for item in inputs:
         filename, separator, relative = item.rpartition(':')
         target = Path(relative)

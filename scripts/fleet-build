@@ -22,6 +22,7 @@
 #   --checkpoint-safe        certify bench resumes atomic checkpoints after preemption
 #   --attach JOB     reattach to an existing MBP job; never replay its command
 #   --bend-tools     stage ~/.bend/{bin,bend2,bendtt}, excluding check.json (MBP only)
+#   --src-include PATH_OR_GLOB  repeatable relative payload selection; default full source
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
 #                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
 #                    Oversized Kueue requests exit 75; never fall back to groot.
@@ -53,6 +54,7 @@ mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 priority_class=""; checkpoint_safe=0
 attach=""
+src_includes=()
 bend_tools=0; bend_stage=""; err=""
 trap '[ -z "$err" ] || rm -f -- "$err"; [ -z "$bend_stage" ] || rm -rf -- "$bend_stage"' EXIT
 while [ $# -gt 0 ]; do
@@ -79,6 +81,7 @@ while [ $# -gt 0 ]; do
     --timeout) timeout=$2; shift 2 ;;
     --wait) wait_s=$2; shift 2 ;;
     --src) src=$2; shift 2 ;;
+    --src-include) src_includes+=("$2"); shift 2 ;;
     --out) out=$2; shift 2 ;;
     --fetch) fetch+=("$2"); shift 2 ;;
     --input) inputs+=("$2"); shift 2 ;;
@@ -90,7 +93,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ -n "$attach" ]; then
-  [ $# -eq 0 ] && [ -z "$src$mem$cpus$timeout$priority_class$jdk" ] && [ ${#inputs[@]} -eq 0 ] && [ "$mode" = build ] && [ "$bend_tools" = 0 ] || {
+  [ $# -eq 0 ] && [ -z "$src$mem$cpus$timeout$priority_class$jdk" ] && [ ${#inputs[@]} -eq 0 ] && [ ${#src_includes[@]} -eq 0 ] && [ "$mode" = build ] && [ "$bend_tools" = 0 ] || {
     echo "fleet-build: --attach observes an existing job; submission options/commands are not allowed" >&2; exit 2;
   }
   case $node in ""|mbp|k3s-mbp|mbp-host) ;; *) echo "fleet-build: --attach is an MBP Kueue operation" >&2; exit 2 ;; esac
@@ -113,6 +116,7 @@ if [ "$bend_tools" = 1 ]; then
 fi
 if [ "$node" = avrea ]; then
   [ "$local_data" = 0 ] || { echo "fleet-build: --local-data cannot use Avrea" >&2; exit 2; }
+  [ ${#src_includes[@]} -eq 0 ] || { echo "fleet-build: --src-include selects local snapshots, not Avrea's exact Git commits" >&2; exit 2; }
   [ ${#inputs[@]} -eq 0 ] && [ "$keep" = 0 ] && [ -z "$jdk" ] && [ "$mode" = build ] && [ -z "$mem" ] && [ -z "$cpus" ] || {
     echo "fleet-build: Avrea uses public exact commits and --runner; local input/keep/JDK/mode/resource flags are host-only." >&2; exit 2;
   }
@@ -132,6 +136,21 @@ if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi
 
+# Automatic test overflow is decided before creating any Job, never by replaying
+# a command after an admission timeout. Explicit worker choices remain binding.
+[ "$node" != auto ] || node=""
+unset FLEET_TEST_PLACEMENT
+if [ -z "$node" ] && [ "$priority_class" = test ] && [ "$mode" != android ] && [ "$bend_tools" = 0 ]; then
+  placement_args=()
+  [ -z "$mem" ] || placement_args+=(--mem "$mem" --mem-explicit)
+  [ -z "$cpus" ] || placement_args+=(--cpus "$cpus")
+  if placement=$(python3 "$(dirname "$FLEET")/fleet_test_placement.py" "${placement_args[@]}" -- "$@"); then
+    node=phones
+    # These describe the MBP request only. Android owns phone resources (O10).
+    mem=""; cpus=""
+  fi
+  export FLEET_TEST_PLACEMENT="$placement"
+fi
 # Pure-Python phone jobs use the existing leased guest executor, never native adb.
 # Do not carry build-class defaults or artificial resource caps into this lane.
 python_guest=0
@@ -158,6 +177,7 @@ case $here/ in "$src"/*) rel=${here#"$src"}; rel=${rel#/} ;; *) rel="" ;; esac
 rel=${rel:-.}
 
 args=(run --src "$src")
+for include in "${src_includes[@]}"; do args+=(--src-include "$include"); done
 [ "$guest" = 0 ] || args+=(--guest)
 [ "$python_guest" = 0 ] || args+=(--python-venv)
 case $mode in
@@ -166,6 +186,7 @@ case $mode in
   light)   args+=(--tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
   phone)   args+=(--arch arm64 --tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem") ;;
 esac
+[ "$python_guest" = 0 ] || [ "$priority_class" != test ] || args+=(--class test)
 [ -n "$node" ] && args+=(--node "$node")
 [ -n "$timeout" ] && args+=(--timeout "$timeout")
 [ "$keep" = 0 ] || args+=(--keep)

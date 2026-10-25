@@ -43,6 +43,7 @@ from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
 import fleet_phone_python as phone_python
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
+from fleet_source import source_snapshot
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -400,7 +401,8 @@ def cmd_run(args):
     if python_guest and args.node in (None, "auto"):
         try:
             staging_size = phone_python.staging_bytes(
-                args.src or os.getcwd(), args.no_src, getattr(args, "input", []) or [])
+                args.src or os.getcwd(), args.no_src, getattr(args, "input", []) or [],
+                getattr(args, "src_include", []) or [])
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             die(f"cannot measure source staging bytes: {exc}")
     def queued_mbp():
@@ -415,9 +417,9 @@ def cmd_run(args):
         for option in ("no_src", "keep"):
             if getattr(args, option):
                 argv += ["--" + option.replace("_", "-")]
-        for option in ("fetch", "input"):
-            for value in getattr(args, option) or []:
-                argv += ["--" + option, value]
+        for option in ("fetch", "input", "src_include"):
+            for value in getattr(args, option, []) or []:
+                argv += ["--" + option.replace("_", "-"), value]
         return subprocess.run(argv + ["--", *args.cmd]).returncode
     if args.node in ("mbp", "mbp-host", "k3s-mbp"):
         return queued_mbp()
@@ -433,9 +435,9 @@ def cmd_run(args):
         for option in ("no_src", "keep"):
             if getattr(args, option):
                 argv += ["--" + option.replace("_", "-")]
-        for option in ("fetch", "input"):
-            for value in getattr(args, option) or []:
-                argv += ["--" + option, value]
+        for option in ("fetch", "input", "src_include"):
+            for value in getattr(args, option, []) or []:
+                argv += ["--" + option.replace("_", "-"), value]
         return subprocess.run(argv + ["--", *args.cmd]).returncode
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
@@ -501,9 +503,9 @@ def cmd_run(args):
             argv += ["--no-src"]
         elif args.src:
             argv += ["--src", args.src]
-        for option in ("fetch", "input"):
-            for value in getattr(args, option) or []:
-                argv += ["--" + option, value]
+        for option in ("fetch", "input", "src_include"):
+            for value in getattr(args, option, []) or []:
+                argv += ["--" + option.replace("_", "-"), value]
         return subprocess.run(argv + ["--", *args.cmd]).returncode
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
@@ -526,25 +528,17 @@ def cmd_run(args):
                        f"# guest_before={json.dumps(before, sort_keys=True)}\n")
     subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
     subprocess.run(ssh + [artifact_lease_command(jdir, jid, n["name"], "spool", ["exit", "stdout", "stderr"])], check=True)
+    source_metadata = None
     if not args.no_src:
         src = Path(args.src or os.getcwd()).resolve()
-        if (src / ".git").exists():
-            files = subprocess.run(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"],
-                                   capture_output=True, check=True).stdout
-            tar = subprocess.Popen(["tar", "-C", str(src), "--null", "-T", "-", "-czf", "-"],
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
-            tar.stdin.write(files); tar.stdin.close(); tar.stdout.close()
-            send.wait(); tar.wait()
-        else:
-            tar = subprocess.Popen(["tar", "-C", str(src), "-czf", "-", "."], stdout=subprocess.PIPE)
-            send = subprocess.Popen(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=tar.stdout)
-            tar.stdout.close(); send.wait(); tar.wait()
-        # Both ends must succeed: a sender that hits "Cannot stat" (e.g. a checkout
-        # switching under it) still yields a valid gzip the receiver accepts, so
-        # checking only the receiver would run tests on a partial or mixed tree.
-        if send.returncode or tar.returncode:
-            die(f"source transfer failed (local tar exit {tar.returncode}, remote tar exit {send.returncode})")
+        with source_snapshot(src, getattr(args, 'src_include', []) or []) as (archive, source_metadata):
+            (logdir / f"{jid}.json").write_text(json.dumps(
+                {"job_id": jid, "node": n["name"], "phase": "staging",
+                 "source_snapshot": source_metadata}, indent=2) + "\n")
+            with archive.open('rb') as stream:
+                subprocess.run(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=stream, check=True)
+    (logdir / f"{jid}.json").write_text(json.dumps(
+        {"job_id": jid, "node": n["name"], "source_snapshot": source_metadata}, indent=2) + "\n")
     # Exact artifact inputs are staged only AFTER health admission, never by
     # recursively scanning a render store. Relative destinations cannot escape src.
     for item in getattr(args, 'input', []) or []:
@@ -562,6 +556,12 @@ def cmd_run(args):
         spec = {"argv": phone_python.command(args.cmd, before["pip_cache"]) if python_guest else args.cmd,
                 "cwd": f"{jdir}/src", "timeout": args.timeout,
                 "idempotent": args.idempotent, "max_attempts": 3 if args.idempotent else 1}
+        receipt_metadata = {"source_snapshot": source_metadata}
+        if os.environ.get("FLEET_TEST_PLACEMENT"):
+            placement = json.loads(os.environ["FLEET_TEST_PLACEMENT"])
+            receipt_metadata["placement"] = {**placement, "selected_node": n["name"]}
+        phone_controller.update_record(
+            phone_controller.records(STATE, n["name"]) / f"{jid}.json", receipt_metadata)
         if args.mem is not None:
             spec["mem_mb"] = mb(args.mem)
         with open(log, "a" if python_guest else "w") as lf:
@@ -882,6 +882,7 @@ def main():
     r.add_argument("--node"); r.add_argument("--class", dest="cls"); r.add_argument("--arch")
     r.add_argument("--tolerate", action="append"); r.add_argument("--mem"); r.add_argument("--cpus")
     r.add_argument("--timeout", type=int, default=3600); r.add_argument("--src"); r.add_argument("--no-src", action="store_true")
+    r.add_argument("--src-include", action="append", default=[], metavar="PATH_OR_GLOB")
     r.add_argument("--fetch", action="append"); r.add_argument("--keep", action="store_true")
     r.add_argument("--input", action="append", default=[], metavar="FILE:RELATIVE_PATH",
                    help="stage an exact artifact under job src after health admission (no directory scans)")

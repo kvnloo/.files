@@ -99,7 +99,7 @@ nodes:
     ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
     ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
-    classes: [phone]
+    classes: [phone, test]
     capabilities: [android-native, adb-host-lane]
     guest_capabilities: [python, git, java, node, bun, go, rust, cargo, gcc, proot-host-lane]
     taints: []
@@ -127,7 +127,7 @@ nodes:
     ssh_user: root
     ssh_port: 8022
     arch: arm64
-    classes: [phone]
+    classes: [phone, test]
     capabilities: [android-native, adb-host-lane]
     guest_capabilities: [python, git, node, bun, go, rust, cargo, gcc, proot-host-lane]
     taints: []

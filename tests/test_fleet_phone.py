@@ -485,6 +485,21 @@ class ControllerTests(TempHome):
                 self.assertTrue(record["terminal"])
                 self.assertEqual(record["availability"], "ready")
 
+    def test_sigkill_exit_is_normalized_and_retained_without_inventing_oom(self):
+        for raw_exit in (-9, 137):
+            with self.subTest(raw_exit=raw_exit):
+                jid = "killed-" + str(abs(raw_exit))
+                responses = [{"state": "queued", "lease": "TOKEN"},
+                             {"state": "failed", "exit": raw_exit}, "killed log\n"]
+                with patch.object(controller, "transport", side_effect=responses):
+                    result = controller.run(self.state, "phone", jid, {"argv": ["python3"]},
+                                            ["ssh", "host"], lambda _: None)
+                self.assertEqual(result, 137)
+                record = common.read(controller.records(self.state, "phone") / f"{jid}.json")
+                self.assertEqual(record["exit"], 137)
+                self.assertIn("SIGKILL", record["termination_reason"])
+                self.assertIn("not confirmed", record["termination_reason"])
+
     def test_completion_racing_expired_lease_uses_read_only_terminal_evidence(self):
         responses = [{"state": "queued", "lease": "TOKEN"}, {"state": "queued", "expires": 0},
                      common.Blocked("terminal lease"), {"state": "succeeded"}, "done\n"]
