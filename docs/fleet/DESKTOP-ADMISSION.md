@@ -121,6 +121,12 @@ not a fabricated effective unit. Device latency directives are checked against
 the real unit cgroup's `io.latency`, not a nonexistent scalar systemctl property.
 External observations share a 120-second deadline; exhausted observations are
 unknown instead of monopolizing the reporting timer.
+Stamp provenance follows enablement symlink chains into the content-addressed
+home library or the approved physical `/mnt/zer0models/releases/files-live`
+root; mutable checkout targets remain drift. Generated declarations require
+`install="generated"` and a tracked offline `generator="scripts/NAME --render UNIT"`.
+Rendered bytes are compared to live bytes; missing or failing generators are
+unknown, never an exemption. The stamped closure includes the generator source.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory
