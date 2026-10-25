@@ -56,6 +56,11 @@ no `MemoryHigh` reclaim throttle. `OOMPolicy=stop` and a bounded restart rate
 prevent a partial daemon or rapid crash loop. This budget is a desktop safety
 ceiling, not a guarantee that every corpus fits. Do not raise it without a
 measured refresh peak and host headroom.
+Refreshes run with `Nice=10` and `IOSchedulingClass=idle` so foreground work
+takes priority. The host's mq-deadline scheduler honors this I/O class;
+`IOWeight` alone does not provide that protection. After a policy restart,
+check `ionice -p "$(systemctl --user show ctx -p MainPID --value)"` and confirm
+refresh `processed_bytes` still advances before accepting idle scheduling.
 
 The older single-preparation-worker drop-in remains staged and is not installed
 by this policy: ctx 2.2.8 already defaults to one preparation worker. Its
