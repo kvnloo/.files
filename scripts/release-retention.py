@@ -73,6 +73,11 @@ def references():
                 parts = line.split(None, 5)
                 if len(parts) == 6 and parts[5].startswith('/'):
                     refs.add(parts[5].removesuffix(' (deleted)'))
+            for descriptor in (proc / 'fd').iterdir():
+                try:
+                    refs.add(os.readlink(descriptor).removesuffix(' (deleted)'))
+                except FileNotFoundError:
+                    pass
         except (FileNotFoundError, ProcessLookupError):
             pass
         except (OSError, PermissionError) as exc:
