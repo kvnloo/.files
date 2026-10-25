@@ -37,3 +37,43 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-dash-services"
 reason = "Minimal non-secret Metro proxy routing preserves installed phone launch URL."
+
+[[user]]
+live = "~/.config/systemd/user/host-drift.service"
+source = "config/systemd/user/host-drift.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Report-only bounded drift audit; docs/fleet/DESKTOP-ADMISSION.md."
+
+[[user]]
+live = "~/.config/systemd/user/host-drift.timer"
+source = "config/systemd/user/host-drift.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Automatic 30-minute drift reporting; docs/fleet/DESKTOP-ADMISSION.md."
+
+[[user]]
+live = "~/.config/z0-guard/state.json"
+source = "config/host/z0-guard-state.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Bind law I to identified current host drift receipt; z0intelligence PR227."
+
+[[user]]
+live = "~/.local/bin/host-drift"
+source = "scripts/host-drift"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Immutable checker closure; docs/fleet/DESKTOP-ADMISSION.md."
+
+[[user]]
+live = "~/.local/bin/service-watch"
+source = "scripts/service-watch.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Keep heartbeat and alert helper on stamped source; 2026-10-24 timeout incident."
