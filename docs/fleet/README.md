@@ -953,9 +953,19 @@ result with a per-node error receipt, never permission to delete.
 
 Native Android has no Python requirement. Its shell inventory covers only
 `/data/local/tmp/fleet-jobs/*` and `/data/local/tmp/edge-probe-*`, excludes
-symlink entries, reports unknown process visibility and keeps all entries.
-Native `--apply` is an explicit safe no-op with zero would-reap bytes, not a
-claim that lease expiry or complete `/proc` visibility was established.
+symlink entries, inspects lease sidecars and probes process stat/cwd visibility.
+Any denied process read is explicit unknown visibility; all native entries stay
+KEEP. Native `--apply` is an explicit safe no-op with zero would-reap bytes, not
+a claim that lease expiry or complete live-reference classification was established.
+
+Phone reports nest `guest` (the same Python core over strict SSH) and `native`
+inventory, summing would-reap bytes. S25 guest is pinned to
+`root@100.104.42.85`, Python hostname `localhost`, home `/root`.
+S22 alias `s22` timed out during identity discovery; its null hostname is
+deliberately failclosed pending an observed identity and config update.
+Unavailable guest/native lanes retain the other lane's receipt and mark the
+report incomplete; incomplete reports produce a nonzero controller result.
+Repeatable `--node s22 --node s25` restricts a real apply to those nodes.
 
 The enabled `artifact-leases.timer` checks every five minutes. `--monitor`
 runs each node hourly otherwise and immediately on a check below 10% free

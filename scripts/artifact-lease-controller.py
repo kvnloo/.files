@@ -46,6 +46,25 @@ def native_inventory(node, apply):
     script = '''set -f
 printf 'IDENTITY\\t%s\\t%s\\n' "$(getprop ro.serialno)" "$(getprop ro.product.model)"
 printf 'SPACE\\t'; df -Pk /data/local/tmp | tail -n 1
+visibility=observed
+for proc in /proc/[0-9]*; do
+  [ -d "$proc" ] || continue
+  if ! cat "$proc/stat" >/dev/null 2>&1 || ! readlink "$proc/cwd" >/dev/null 2>&1; then
+    visibility=unknown
+    printf 'PROC_DENIED\\t%s\\n' "$proc"
+    break
+  fi
+done
+printf 'PROC_VISIBILITY\\t%s\\n' "$visibility"
+inspect_lease() {
+  if [ -f "$1/.artifact-lease.json" ] && [ ! -L "$1/.artifact-lease.json" ]; then
+    printf 'LEASE\\t%s\\t' "$1"
+    head -c 16384 "$1/.artifact-lease.json"
+    printf '\\n'
+  else
+    printf 'LEASE_MISSING_OR_UNREADABLE\\t%s\\n' "$1"
+  fi
+}
 for root in /data/local/tmp/fleet-jobs /data/local/tmp/edge-probe-*; do
   [ -d "$root" ] && [ ! -L "$root" ] || continue
   case "$root" in /data/local/tmp/fleet-jobs)
@@ -53,9 +72,11 @@ for root in /data/local/tmp/fleet-jobs /data/local/tmp/edge-probe-*; do
       [ -d "$item" ] && [ ! -L "$item" ] || continue
       bytes=$(du -sk "$item" 2>/dev/null) || exit 1
       printf 'KEEP\\t%s\\t%s\\n' "$item" "$bytes"
+      inspect_lease "$item"
     done;;
   *) bytes=$(du -sk "$root" 2>/dev/null) || exit 1
-     printf 'KEEP\\t%s\\t%s\\n' "$root" "$bytes";;
+     printf 'KEEP\\t%s\\t%s\\n' "$root" "$bytes"
+     inspect_lease "$root";;
   esac
 done
 '''
@@ -65,16 +86,29 @@ done
     first = raw.splitlines()[0].split('\t')
     if first != ['IDENTITY', node['serial'], node['model']]:
         raise RuntimeError('Android identity changed')
+    visibility = next((line.split('\t', 1)[1] for line in raw.splitlines()
+                       if line.startswith('PROC_VISIBILITY\t')), 'unknown')
     return {'schema': 'z0.artifact-native-inventory.v1', 'identity': node['serial'],
             'transport': serial, 'mode': 'safe-noop-apply' if apply else 'dry-run',
-            'proc_visibility': 'unknown', 'decision': 'KEEP',
-            'reason': 'native inventory only; unknown live/process visibility; no deletion authority',
+            'proc_visibility': visibility, 'decision': 'KEEP',
+            'reason': 'native lease inventory has no verified deletion classifier; denied visibility is unknown',
             'would_reap_bytes': 0, 'inventory': raw.splitlines()[1:]}
 
 
 def execute(name, node, apply, enroll, source):
     if node['transport'] == 'adb':
-        return native_inventory(node, apply)
+        try:
+            native = native_inventory(node, apply)
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            native = {'availability': 'unavailable', 'error': str(exc), 'would_reap_bytes': 0}
+        try:
+            guest = execute(name, node['guest'], apply, enroll, source)
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            guest = {'availability': 'unavailable', 'error': str(exc), 'would_reap_bytes': 0}
+        return {'schema': 'z0.artifact-phone-report.v1', 'node': name,
+                'native': native, 'guest': guest,
+                'complete': all(part.get('availability') != 'unavailable' for part in (guest, native)),
+                'would_reap_bytes': native['would_reap_bytes'] + guest['would_reap_bytes']}
     # Keep receipts on each node; ship core and its existing #63 classifier together.
     wrapper = '''import contextlib,getpass,io,json,pathlib,socket,sys,tempfile
 expected=json.loads(sys.argv[1])
@@ -124,6 +158,7 @@ def main():
     p.add_argument('--apply', action='store_true')
     p.add_argument('--enroll', action='store_true')
     p.add_argument('--monitor', action='store_true')
+    p.add_argument('--node', choices=['groot', 'mbp', 's22', 's25'], action='append')
     a = p.parse_args()
     if not a.output.is_absolute():
         p.error('--output must be absolute')
@@ -135,14 +170,26 @@ def main():
         source = (ROOT / 'scripts/artifact-leases.py').read_text()
         failed = False
         for name, node in config['nodes'].items():
+            if a.node and name not in a.node:
+                continue
             state = a.output / (name + '.last-run')
             try:
-                free = pressure(node)
+                try:
+                    free = pressure(node)
+                    if node['transport'] == 'adb' and node['guest']['hostname'] is not None:
+                        free = min(free, pressure(node['guest']))
+                except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+                    if node['transport'] != 'adb':
+                        raise
+                    # A failed pressure probe must not hide the other phone lane.
+                    free = None
                 due = not state.exists() or time.time() - state.stat().st_mtime >= config['hourly_seconds']
-                pressured = free < config['pressure_free_percent']
-                if a.monitor and not due and not pressured:
+                pressured = free is not None and free < config['pressure_free_percent']
+                if a.monitor and free is not None and not due and not pressured:
                     continue
                 result = execute(name, node, a.apply, a.enroll, source)
+                if result.get('complete') is False:
+                    failed = True
                 result['controller'] = {'node': name, 'free_percent': free, 'pressure': pressured,
                                         'threshold_basis': config['pressure_threshold_basis']}
                 target = a.output / (name + '.json')

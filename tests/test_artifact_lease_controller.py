@@ -60,6 +60,25 @@ class ControllerTests(unittest.TestCase):
         self.assertIn('not measured calibration or a resource cap', config['pressure_threshold_basis'])
         self.assertEqual(set(config['nodes']), {'groot', 'mbp', 's22', 's25'})
 
+    def test_observed_native_visibility_is_not_canned_unknown(self):
+        node = {'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'}
+        with patch.object(c, 'native_transport', return_value='transport'), patch.object(c, 'run', return_value='IDENTITY\tR5CY93G2WNH\tSM-S938U\nPROC_VISIBILITY\tobserved\n'):
+            self.assertEqual(c.native_inventory(node, False)['proc_visibility'], 'observed')
+
+    def test_guest_report_is_aggregated(self):
+        node = {'transport': 'adb', 'guest': {'transport': 'ssh', 'host': 's22', 'hostname': 'localhost', 'user': 'root'}}
+        with patch.object(c, 'native_inventory', return_value={'would_reap_bytes': 0}), patch.object(c, 'run', return_value='{"would_reap_bytes": 42}'):
+            report = c.execute('s22', node, False, False, 'core')
+        self.assertEqual(report['would_reap_bytes'], 42)
+        self.assertTrue(report['complete'])
+
+    def test_unavailable_guest_retains_native_inventory(self):
+        node = {'transport': 'adb', 'guest': {'transport': 'ssh', 'host': 's22', 'hostname': None, 'user': 'root'}}
+        with patch.object(c, 'native_inventory', return_value={'would_reap_bytes': 0}), patch.object(c, 'run', side_effect=RuntimeError('offline')):
+            report = c.execute('s22', node, False, False, 'core')
+        self.assertFalse(report['complete'])
+        self.assertEqual(report['native']['would_reap_bytes'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()
