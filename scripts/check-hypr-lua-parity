@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from hypr_lua_semantics import extract
+from hypr_lua_semantics import extract, rule_values
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "config/hyprland/lua"
@@ -59,6 +59,8 @@ def main():
         candidate = args.lua_root / name
         source = candidate if candidate.exists() else DEFAULT / name
         body = source.read_text()
+        if name == "rules.lua" and rule_values(body) != rule_values((DEFAULT / name).read_text()):
+            failures.append("rules.lua: ordered native rule semantics differ")
         for token in tokens:
             if token not in body:
                 failures.append(f"{name}: missing {token}")

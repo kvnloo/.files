@@ -40,7 +40,7 @@ def effective_repository_scalars():
     repeated = {
         "monitor", "workspace", "windowrule", "layerrule", "env", "exec-once",
         "exec", "bind", "binde", "bindm", "bindl", "bindel", "bindr", "unbind",
-        "bezier", "animation", "gesture", "preset", "spatialoverview-gesture",
+        "bezier", "animation", "gesture", "spatialoverview-gesture",
         "submap", "plugin",
     }
 
@@ -69,6 +69,8 @@ def effective_repository_scalars():
                         if target.is_file():
                             visit(target)
                         break
+                continue
+            if key == "preset" and stack == ["plugin", "hyprglass"]:
                 continue
             if key in repeated or key.startswith("$") or "device" in stack:
                 continue

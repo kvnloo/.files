@@ -63,6 +63,22 @@ def config_values(text: str) -> dict[str, str]:
     return found
 
 
+def rule_values(text: str) -> list[tuple[str, dict]]:
+    """Parse ordered native rule tables, including duplicate match identities."""
+    tokens = _tokens(text)
+    found = []
+    at = 0
+    while at + 4 < len(tokens):
+        if (tokens[at] == "hl" and tokens[at + 1] == "."
+                and tokens[at + 2] in {"window_rule", "layer_rule"}
+                and tokens[at + 3:at + 5] == ["(", "{"]):
+            api = tokens[at + 2]
+            table, at = _table(tokens, at + 4)
+            found.append((api, table))
+        at += 1
+    return found
+
+
 def typed(value: str) -> str:
     value = value.strip()
     if value in {"true", "false"}:
