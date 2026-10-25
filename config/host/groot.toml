@@ -1224,8 +1224,8 @@ live = "~/.config/systemd/user/zer0-storage-autotier.service"
 source = "config/systemd/user/zer0-storage-autotier.service"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-host-storage.sh"
+reason = "Supersede dirty chiefstaff checkout with the approved stamped .files storage release."
 migration_sha256 = "0d4256e67fcba44648b6dfb1b25653cf95945c81ecfd7c8faf6b6438ad18235d"
 
 [[user]]
@@ -1233,8 +1233,8 @@ live = "~/.config/systemd/user/zer0-storage-autotier.timer"
 source = "config/systemd/user/zer0-storage-autotier.timer"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-host-storage.sh"
+reason = "Preserve the existing storage reserve schedule under its dedicated owner."
 migration_sha256 = "285c24f631734febbcd05668d5bc3d9abf2b74371c30309f393e64f8466c48e3"
 
 [[user]]
@@ -2871,8 +2871,8 @@ live = "~/.config/systemd/user/timers.target.wants/zer0-storage-autotier.timer"
 source = "config/systemd/user/zer0-storage-autotier.timer"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-host-storage.sh"
+reason = "Enable the approved managed storage reserve timer."
 migration_sha256 = "285c24f631734febbcd05668d5bc3d9abf2b74371c30309f393e64f8466c48e3"
 
 [[user]]
@@ -4372,3 +4372,99 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-model-identity.sh"
 reason = "Keep the approved daily identity backstop enabled."
+
+[[user]]
+live = "~/.config/zer0/storage.toml"
+source = "config/zer0/storage.toml"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Managed root reserve and verified idle bulk allowlist."
+
+[[user]]
+live = "~/.config/systemd/user/fleet-source-retention.service"
+source = "config/systemd/user/fleet-source-retention.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Archive expired fetched sources without deleting bytes or receipts."
+
+[[user]]
+live = "~/.config/systemd/user/fleet-source-retention.timer"
+source = "config/systemd/user/fleet-source-retention.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Daily conservative fetched-source retention."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/fleet-source-retention.timer"
+source = "config/systemd/user/fleet-source-retention.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Enable approved fetched-source retention schedule."
+
+[[user]]
+live = "~/.config/systemd/user/release-retention.service"
+source = "config/systemd/user/release-retention.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Reversibly offload unused release trees while keeping live and rollback releases."
+
+[[user]]
+live = "~/.config/systemd/user/release-retention.timer"
+source = "config/systemd/user/release-retention.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Daily conservative immutable-release offload."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/release-retention.timer"
+source = "config/systemd/user/release-retention.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Enable approved reversible release offload schedule."
+
+[[user]]
+live = "~/.local/bin/fleet"
+source = "scripts/fleet"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Fleet transports write large outputs to configured mounted bulk storage."
+
+[[user]]
+live = "~/.local/bin/fleet-build"
+source = "scripts/fleet-build"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Build wrapper shares the configured transport spool."
+
+[[user]]
+live = "~/.local/bin/fleet-kueue"
+source = "scripts/fleet-kueue"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Admitted MBP result spool belongs on bulk storage."
+
+[[user]]
+live = "~/.local/bin/fleet-boat"
+source = "scripts/fleet-boat"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "Boat result spool belongs on bulk storage."
+
+[[user]]
+live = "~/.local/bin/fleet-adb"
+source = "scripts/fleet-adb"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-storage.sh"
+reason = "ADB fetch defaults share the configured bulk spool."
