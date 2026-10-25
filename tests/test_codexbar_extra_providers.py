@@ -1,11 +1,14 @@
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO = Path(__file__).resolve().parents[1]
-WRAPPER = Path.home() / ".local" / "bin" / "codexbar"
+WRAPPER = REPO / "scripts" / "codexbar"
 EXTRA = REPO / "scripts" / "codexbar-extra-providers.py"
 
 
@@ -31,7 +34,18 @@ def wrapper_usage(provider: str) -> list[dict]:
     return payload
 
 
-def test_live_groq_and_cerebras_are_missing_keys():
+@pytest.fixture
+def isolated_provider_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in tuple(os.environ):
+        if name.startswith(("CODEXBAR_", "HERMES_", "XDG_")) or name in {
+            "GROQ_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY",
+            "NOUS_API_KEY", "VERCEL_AI_GW_KEY", "VERCEL_API_KEY", "BWS_BIN",
+        }:
+            monkeypatch.delenv(name, raising=False)
+
+
+def test_live_groq_and_cerebras_are_missing_keys(isolated_provider_env):
     for provider, env_name in (
         ("groq", "GROQ_API_KEY"),
         ("cerebras", "CEREBRAS_API_KEY"),
@@ -45,6 +59,7 @@ def test_live_groq_and_cerebras_are_missing_keys():
         assert "credits" not in row
 
 
+@pytest.mark.live_system
 def test_live_nous_is_free_plan_with_zero_credits():
     row = wrapper_usage("nous")[0]
     assert row["provider"] == "nous"
