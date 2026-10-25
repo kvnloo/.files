@@ -57,6 +57,11 @@ def omp_auth_db(tmp_path, monkeypatch):
             "INSERT INTO auth_credentials VALUES (?, ?, ?)",
             ("openrouter", "api_key", json.dumps({"key": "sk-or-fixture-key"})),
         )
+    runtime = tmp_path / "runtime"
+    scope = runtime / "bws-secrets"
+    scope.mkdir(parents=True)
+    (scope / "codexbar.env").write_text("")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
     return db
 
 
@@ -112,6 +117,33 @@ def test_env_sh_loads_omp_openrouter_key(omp_auth_db):
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "loaded"
+
+
+def test_env_sh_prefers_scoped_vault_key_over_native_login(omp_auth_db):
+    scope = Path(os.environ["XDG_RUNTIME_DIR"]) / "bws-secrets/codexbar.env"
+    scope.write_text('OPENROUTER_API_KEY="vault-fixture"\n')
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1"; [[ "$OPENROUTER_API_KEY" == vault-fixture ]]',
+         "vault-check", str(REPO / "scripts/codexbar-env.sh")],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_runtime_credential_is_data_not_shell_program(omp_auth_db):
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    marker = runtime / "must-not-exist"
+    scope = runtime / "bws-secrets/codexbar.env"
+    scope.write_text('OPENROUTER_API_KEY="$(touch ' + str(marker) + ')"\n')
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1"; [[ "$OPENROUTER_API_KEY" == *touch* ]]',
+         "data-check", str(REPO / "scripts/codexbar-env.sh")],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    assert result.stdout == ""
 
 
 @pytest.mark.live_system
