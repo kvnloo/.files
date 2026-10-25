@@ -1,12 +1,15 @@
 import importlib.util
 import json
+import os
 import sqlite3
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO = Path(__file__).resolve().parents[1]
-WRAPPER = Path.home() / ".local" / "bin" / "codexbar"
+WRAPPER = REPO / "scripts" / "codexbar"
 OMP_DB = Path.home() / ".omp" / "agent" / "agent.db"
 OMP_MODELS = Path.home() / ".omp" / "agent" / "models.db"
 CREDENTIALS = REPO / "scripts" / "codexbar_credentials.py"
@@ -34,6 +37,30 @@ def wrapper_usage(provider: str) -> list[dict]:
     return payload
 
 
+@pytest.fixture
+def omp_auth_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for name in tuple(os.environ):
+        if name.startswith(("CODEXBAR_", "HERMES_", "XDG_")) or name in {
+            "GROQ_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY",
+            "NOUS_API_KEY", "VERCEL_AI_GW_KEY", "VERCEL_API_KEY", "BWS_BIN",
+        }:
+            monkeypatch.delenv(name, raising=False)
+    db = tmp_path / ".omp" / "agent" / "agent.db"
+    db.parent.mkdir(parents=True)
+    with sqlite3.connect(db) as con:
+        con.execute(
+            "CREATE TABLE auth_credentials "
+            "(provider TEXT, credential_type TEXT, data TEXT)"
+        )
+        con.execute(
+            "INSERT INTO auth_credentials VALUES (?, ?, ?)",
+            ("openrouter", "api_key", json.dumps({"key": "sk-or-fixture-key"})),
+        )
+    return db
+
+
+@pytest.mark.live_system
 def test_omp_stores_openrouter_key_but_not_cerebras_or_groq():
     con = sqlite3.connect(f"file:{OMP_DB}?mode=ro", uri=True)
     rows = {
@@ -47,6 +74,7 @@ def test_omp_stores_openrouter_key_but_not_cerebras_or_groq():
     assert "groq" not in rows
 
 
+@pytest.mark.live_system
 def test_omp_catalog_lists_cerebras_models_without_a_login():
     con = sqlite3.connect(f"file:{OMP_MODELS}?mode=ro", uri=True)
     blob = con.execute(
@@ -59,15 +87,15 @@ def test_omp_catalog_lists_cerebras_models_without_a_login():
     assert "gpt-oss-120b" in ids
 
 
-def test_loader_exports_omp_openrouter_and_skips_missing_cerebras():
+def test_loader_exports_omp_openrouter_and_skips_missing_cerebras(omp_auth_db):
     creds = load_credentials()
-    exported = creds.omp_api_keys(OMP_DB)
+    exported = creds.omp_api_keys(omp_auth_db)
     assert exported["OPENROUTER_API_KEY"].startswith("sk-or-")
     assert "CEREBRAS_API_KEY" not in exported
     assert "GROQ_API_KEY" not in exported
 
 
-def test_env_sh_loads_omp_openrouter_key():
+def test_env_sh_loads_omp_openrouter_key(omp_auth_db):
     env_script = REPO / "scripts" / "codexbar-env.sh"
     result = subprocess.run(
         [
@@ -86,6 +114,7 @@ def test_env_sh_loads_omp_openrouter_key():
     assert result.stdout.strip() == "loaded"
 
 
+@pytest.mark.live_system
 def test_live_wrapper_openrouter_uses_omp_key():
     row = wrapper_usage("openrouter")[0]
     assert row["provider"] == "openrouter"
@@ -99,7 +128,7 @@ def test_live_wrapper_openrouter_uses_omp_key():
     assert 0 <= left <= 100
 
 
-def test_live_wrapper_cerebras_and_groq_still_missing_keys():
+def test_live_wrapper_cerebras_and_groq_still_missing_keys(omp_auth_db):
     for provider, env_name in (
         ("cerebras", "CEREBRAS_API_KEY"),
         ("groq", "GROQ_API_KEY"),
