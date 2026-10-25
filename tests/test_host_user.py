@@ -99,6 +99,36 @@ class UserLayerTests(unittest.TestCase):
         self.assertEqual(mask.resolve(), Path('/dev/null'))
 
 
+    @patch.object(installer.subprocess, 'run')
+    def test_upgrade_accepts_intact_previous_stamp_but_rejects_tampering(self, run):
+        run.return_value = self.response
+        self.assertEqual(installer.install_user_layer(self.source, self.home, True), 0)
+        old_target = self.live.resolve()
+        (self.source / self.unit).write_text('next tracked declaration')
+        self.assertEqual(installer.install_user_layer(self.source, self.home, True), 0)
+        self.assertNotEqual(self.live.resolve(), old_target)
+        self.assertEqual(self.live.read_text(), 'next tracked declaration')
+        self.live.resolve().write_text('operator changed a stamped file')
+        (self.source / self.unit).write_text('third tracked declaration')
+        with self.assertRaisesRegex(ValueError, 'live file changed'):
+            installer.install_user_layer(self.source, self.home, True)
+
+    @patch.object(installer.subprocess, 'run')
+    def test_explicit_obsolete_file_is_backed_up_and_removed(self, run):
+        run.return_value = self.response
+        obsolete = self.home / '.config/systemd/user/obsolete.service'
+        obsolete.write_text('retired declaration')
+        digest = hashlib.sha256(obsolete.read_bytes()).hexdigest()
+        manifest = self.source / 'config/host/groot.toml'
+        manifest.write_text('user_retired_files=[{live=\"~/.config/systemd/user/obsolete.service\",sha256=' +
+                            json.dumps(digest) + '}]' + chr(10) + manifest.read_text())
+        self.assertEqual(installer.install_user_layer(self.source, self.home, True), 0)
+        self.assertFalse(obsolete.exists())
+        saved = list((self.home / '.local/state/host-user/backups').glob('*/retired/**/obsolete.service'))
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0].read_text(), 'retired declaration')
+
+
 class OomRankingTests(unittest.TestCase):
     def test_fake_proc_protects_mainpids_controls_and_reused_pids(self):
         loader = importlib.machinery.SourceFileLoader(

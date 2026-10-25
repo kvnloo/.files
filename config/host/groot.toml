@@ -1,5 +1,12 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json"]
+user_retired_files = [
+  { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
+  { live = "~/.config/systemd/user/dash-metro-qualified-8212.service", sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
+  { live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf", sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea", reason = "Superseded by canonical dash-bridge.service." },
+  { live = "~/.config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf", sha256 = "bdac16c8e3cf2b102d9056adfb77855cfcdb76b776b4e2bbf5b4c02105098c76", reason = "Superseded by canonical dash-bridge.service; captured environment retired." },
+  { live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf", sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d", reason = "Superseded by canonical dash-metro.service." },
+]
 user_control_cleanup = [
   { live = "~/.config/systemd/user.control/session.slice.d/50-CPUWeight.conf", sha256 = "1874a8f0d15364fee9d6453aa719e6ce79f3ee7da231ae5a730cee8b0cbf731d" },
   { live = "~/.config/systemd/user.control/session.slice.d/50-IOWeight.conf", sha256 = "f5330f3d1517adbc8a3e32f8f664924393069574848ca7ec025803a47a3f1344" },
@@ -211,24 +218,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "253437117ba7013bb29f7352e33e223cd503a0441bb9825df05ef967b3763bc6"
-
-[[user]]
-live = "~/.config/systemd/user/dash-metro-native-8108.service"
-source = "config/systemd/user/dash-metro-native-8108.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76"
-
-[[user]]
-live = "~/.config/systemd/user/dash-metro-qualified-8212.service"
-source = "config/systemd/user/dash-metro-qualified-8212.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860"
 
 [[user]]
 live = "~/.config/systemd/user/dev.cribble.agent.sync.service"
@@ -1537,24 +1526,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "244f4a7f86b55633f08f11ec5712e82a0909a0923a0590cfea23997a2382162c"
 
 [[user]]
-live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf"
-source = "config/systemd/user/dash-bridge-4747.service.d/identity.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea"
-
-[[user]]
-live = "~/.config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf"
-source = "config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "bdac16c8e3cf2b102d9056adfb77855cfcdb76b776b4e2bbf5b4c02105098c76"
-
-[[user]]
 live = "~/.config/systemd/user/dash-log-watch.service.d/90-service-watch.conf"
 source = "config/systemd/user/dash-log-watch.service.d/90-service-watch.conf"
 scope = "user"
@@ -1562,15 +1533,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "b287e6027c06c1162595432d524be7647da48eec617cd5c87da82c5cd819a0c9"
-
-[[user]]
-live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf"
-source = "config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d"
 
 [[user]]
 live = "~/.config/systemd/user/dbus-:1.1-org.freedesktop.secrets@0.service.d/90-service-watch.conf"
