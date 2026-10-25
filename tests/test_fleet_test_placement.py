@@ -78,6 +78,13 @@ class WrapperPlacementTests(unittest.TestCase):
             self.assertNotIn('--cpus', result['argv'])
             self.assertEqual(result['placement']['selected_lane'], 'phones')
 
+    def test_explicit_source_includes_survive_both_dispatch_paths(self):
+        for node in ([], ['--node', 'mbp']):
+            result = self.dispatch([*node, '--src-include', 'scripts/', '--src-include', 'tests/test_x.py'])
+            values = [result['argv'][index + 1] for index, value in enumerate(result['argv'])
+                      if value == '--src-include']
+            self.assertEqual(values, ['scripts/', 'tests/test_x.py'])
+
     def test_explicit_mbp_and_large_memory_requests_are_honored(self):
         for options in (['--node', 'mbp'], ['--mem', '2G']):
             result = self.dispatch(options)

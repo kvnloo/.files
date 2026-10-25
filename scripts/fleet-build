@@ -103,6 +103,7 @@ if [ -n "$attach" ]; then
   for f in "${fetch[@]}"; do attach_args+=(--fetch "$f"); done
   exec python3 "$(dirname "$FLEET")/fleet-kueue" "${attach_args[@]}"
 fi
+[ "$node" != auto ] || node=""
 if [ "$bend_tools" = 1 ]; then
   case $node in ""|mbp|k3s-mbp|mbp-host) ;; *) echo "fleet-build: --bend-tools is an MBP operation" >&2; exit 2 ;; esac
   [ "$mode" != phone ] && [ "$public" = 0 ] || { echo "fleet-build: Bend tools cannot route to phones/public overflow" >&2; exit 2; }
@@ -138,7 +139,6 @@ fi
 
 # Automatic test overflow is decided before creating any Job, never by replaying
 # a command after an admission timeout. Explicit worker choices remain binding.
-[ "$node" != auto ] || node=""
 unset FLEET_TEST_PLACEMENT
 if [ -z "$node" ] && [ "$priority_class" = test ] && [ "$mode" != android ] && [ "$bend_tools" = 0 ]; then
   placement_args=()

@@ -269,6 +269,7 @@ class GuestExecutionTests(unittest.TestCase):
                                        fetch=[], input=[], guest=True, python_venv=True)
                 probe = {'ts': time.time(), 'load1': 0, 'ncpu': 8, 'mem_available_mb': 0}
                 with patch.object(fleet, 'STATE', Path(tmp)), \
+                     patch('fleet_paths.runs_dir', return_value=Path(tmp) / 'runs'), \
                      patch.object(fleet, 'k8s_nodes', return_value={}), \
                      patch.object(fleet, 'probe_python_guest', return_value=probe), \
                      patch.object(fleet.subprocess, 'run'), \

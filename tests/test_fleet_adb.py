@@ -1,11 +1,13 @@
 """Native phone public behavior, with host transport doubles (no live device)."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import runpy
 import subprocess
 import sys
 import tempfile
+import tarfile
 import unittest
 from unittest import mock
 
@@ -186,6 +188,39 @@ class NativeLaneTests(unittest.TestCase):
         self.assertEqual(facts["status"], "guest_down")
         self.assertTrue(facts["online"])
         self.assertEqual(facts["guest_recovery"], "owner_busy")
+
+    def test_native_source_push_uses_included_immutable_snapshot_and_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            (source / "keep.py").write_text("captured")
+            (source / "other.py").write_text("excluded")
+            (source / ".git").write_text("not metadata to transport")
+            runs = root / "state/runs"
+            pushed = {}
+            device = mock.Mock(hardware="fixture")
+            device.probe.return_value = {"power": {"batteries": [{"pct": 50}], "on_ac": True}}
+            def push(path, destination):
+                if destination.endswith("/source.tar.gz"):
+                    with Path(path).open("rb") as stream:
+                        pushed["sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
+                    with tarfile.open(path, "r:gz") as archive:
+                        pushed["names"] = archive.getnames()
+                        pushed["content"] = archive.extractfile("keep.py").read()
+            device.push.side_effect = push
+            args = argparse.Namespace(argv=["true"], timeout=30, no_src=False, src=str(source),
+                                      src_include=["keep.py"], input=[], fetch=[], dest=None)
+            namespace = ADB["run"].__globals__
+            with mock.patch("fleet_paths.runs_dir", return_value=runs), \
+                 mock.patch.dict(namespace, {"runs_dir": lambda: runs,
+                                            "identity": lambda *a: {"pid": 1, "start": "owned", "boot": "boot"}}):
+                self.assertEqual(ADB["run"](device, args), 0)
+            receipt = json.loads(next(runs.glob("*.json")).read_text())
+            self.assertEqual(pushed["names"], ["keep.py"])
+            self.assertEqual(pushed["content"], b"captured")
+            self.assertEqual(receipt["source_snapshot"]["sha256"], pushed["sha256"])
+            self.assertEqual(receipt["source_snapshot"]["includes"], ["keep.py"])
 
 if __name__ == "__main__":
     unittest.main()

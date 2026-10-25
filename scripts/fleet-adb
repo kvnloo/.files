@@ -334,7 +334,6 @@ finish $?
     if args.fetch:
         while status(device, job)["state"] == "running":
             time.sleep(0.5)
-        from fleet_paths import runs_dir
         fetch(device, job, args.fetch, Path(args.dest) if args.dest else runs_dir() / job)
         result = status(device, job)
         return result["exit_code"] if result["exit_code"] is not None else 255
@@ -379,7 +378,6 @@ def main():
             if args.fetch or args.action == "fetch":
                 if not args.fetch:
                     raise RuntimeError("fetch requires --fetch PATH")
-                from fleet_paths import runs_dir
                 fetch(device, args.job, args.fetch, Path(args.dest) if args.dest else runs_dir() / args.job)
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
         detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)
