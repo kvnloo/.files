@@ -1,6 +1,6 @@
 [Unit]
 Description=Refresh source-linked agent state packet atomically
-ConditionPathIsExecutable=%h/.local/lib/z0-state-packet/current/bin/generate-packet
+ConditionFileIsExecutable=%h/.local/lib/z0-state-packet/current/bin/generate-packet
 
 [Service]
 Type=oneshot

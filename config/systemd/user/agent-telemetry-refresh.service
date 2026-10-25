@@ -1,0 +1,14 @@
+[Unit]
+Description=Refresh rate-limit catalog and agent outcome ledger (offline, local traces only)
+Documentation=file:///mnt/zer0models/workspace/zer0/data/operations/agent-outcomes/README.md
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/zer0models/workspace/zer0/data/operations/agent-outcomes/tools/refresh.sh
+Environment=TMPDIR=/mnt/zer0models/tmp/agent-telemetry-refresh
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=60%
+MemoryHigh=infinity
+MemoryMax=2500M
+TimeoutStartSec=50min

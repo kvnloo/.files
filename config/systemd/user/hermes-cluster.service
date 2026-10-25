@@ -1,0 +1,17 @@
+[Unit]
+Description=Hermes Agent Cluster (main node)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HERMES_HOME=%h/.hermes
+WorkingDirectory=%h/.hermes/plugins/hermes-agent-cluster
+ExecStart=%h/.hermes/hermes-agent/venv/bin/python -m hermes_cluster.serve --config %h/.hermes/cluster.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:%h/.hermes/logs/hermes-cluster.log
+StandardError=append:%h/.hermes/logs/hermes-cluster.log
+
+[Install]
+WantedBy=default.target

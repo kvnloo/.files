@@ -1,0 +1,15 @@
+[Unit]
+Description=Tern remote sessions
+Documentation=https://stencil.so
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/home/kvn/.local/bin/tern remote serve --user --access /home/kvn/.config/tern/access.toml --authorized-keys /home/kvn/.ssh/authorized_keys
+Restart=on-failure
+RestartSec=2
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=default.target

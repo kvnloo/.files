@@ -1,0 +1,18 @@
+[Unit]
+Description=LumenFold final case-study Tailnet origin
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/experiments/miniature-transformation-ad-lab
+ExecStart=/usr/bin/python tools/range_http_server.py --directory outputs/final-case-study --port 9153
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/workspace/zer0/experiments/miniature-transformation-ad-lab
+
+[Install]
+WantedBy=default.target

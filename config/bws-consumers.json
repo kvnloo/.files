@@ -1,0 +1,149 @@
+{
+  "scopes": {
+    "z0intelligence": {
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-root": {
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "HERMES_DASHBOARD_OIDC_CLIENT_SECRET": "HERMES_ROOT__HERMES_DASHBOARD_OIDC_CLIENT_SECRET",
+      "CEREBRAS_API_KEY": "CEREBRAS_API_KEY",
+      "GITHUB_TOKEN": "GITHUB_TOKEN",
+      "GOOGLE_API_KEY": "GOOGLE_API_KEY",
+      "HERMES_CUSTOM_API_GROQ_COM_API_KEY": "HERMES_CUSTOM_API_GROQ_COM_API_KEY",
+      "OPENCODE_ZEN_API_KEY": "OPENCODE_ZEN_API_KEY",
+      "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
+      "BOAT_API_KEY": "BOAT_API_KEY",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-chiefstaff": {
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENROUTER_API_KEY": "HERMES_CHIEFSTAFF__OPENROUTER_API_KEY",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "A2A_PEER_TOKENS": "HERMES_CHIEFSTAFF__A2A_PEER_TOKENS",
+      "DISCORD_BOT_TOKEN": "DISCORD_BOT_TOKEN",
+      "HERMES_CUSTOM_API_GROQ_COM_API_KEY": "HERMES_CUSTOM_API_GROQ_COM_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "MBP_A2A_TOKEN": "HERMES_CHIEFSTAFF__MBP_A2A_TOKEN",
+      "HERMES_CUSTOM_API_CEREBRAS_AI_API_KEY": "HERMES_CHIEFSTAFF__HERMES_CUSTOM_API_CEREBRAS_AI_API_KEY",
+      "OPENCODE_ZEN_API_KEY": "OPENCODE_ZEN_API_KEY",
+      "GOOGLE_API_KEY": "GOOGLE_API_KEY",
+      "GITHUB_TOKEN": "GITHUB_TOKEN",
+      "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY",
+      "JEV_API_KEY": "JEV_API_KEY",
+      "FISH_API_KEY": "FISH_API_KEY"
+    },
+    "hermes-clean": {
+      "ANTHROPIC_TOKEN": "HERMES_CLEAN__ANTHROPIC_TOKEN",
+      "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-intake": {
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "OPENROUTER_API_KEY": "HERMES_INTAKE__OPENROUTER_API_KEY",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-jev-provider-bench": {
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENROUTER_API_KEY": "HERMES_JEV_PROVIDER_BENCH__OPENROUTER_API_KEY",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY"
+    },
+    "hermes-loo": {
+      "FISH_API_KEY": "FISH_API_KEY",
+      "CEREBRAS_API_KEY": "CEREBRAS_API_KEY"
+    },
+    "hermes-memory-lab": {
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENROUTER_API_KEY": "HERMES_MEMORY_LAB__OPENROUTER_API_KEY",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-rippletern": {
+      "ANTHROPIC_TOKEN": "HERMES_RIPPLETERN__ANTHROPIC_TOKEN",
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "hermes-telegram": {
+      "ANTHROPIC_TOKEN": "ANTHROPIC_TOKEN",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENROUTER_API_KEY": "HERMES_TELEGRAM__OPENROUTER_API_KEY",
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY"
+    },
+    "boat": {
+      "BOAT_API_KEY": "BOAT_API_KEY"
+    },
+    "hermes-jev-cu-bench": {
+      "TYPESAFE_API_KEY": "TYPESAFE_API_KEY"
+    },
+    "codexbar": {
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "CEREBRAS_API_KEY": "CEREBRAS_API_KEY",
+      "GOOGLE_API_KEY": "GOOGLE_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENCODE_ZEN_API_KEY": "OPENCODE_ZEN_API_KEY",
+      "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
+      "VERCEL_AI_GW_KEY": "AI_GATEWAY_API_KEY"
+    }
+  },
+  "units": {
+    "hermes-gateway.service": "hermes-root",
+    "hermes-cluster.service": "hermes-root",
+    "hermes-web.service": "hermes-root",
+    "garden-room-hermes-gateway.service": "hermes-clean",
+    "garden-room-hermes.service": "hermes-clean",
+    "z0live-hermes.service": "hermes-clean",
+    "hermes-gateway-chiefstaff.service": "hermes-chiefstaff",
+    "hermes-gateway-intake.service": "hermes-intake",
+    "z0intelligence.service": "z0intelligence",
+    "boat-reaper.service": "boat"
+  },
+  "retired_dotenv": {
+    ".hermes/profiles/chiefstaff/.env": {
+      "BWS_ACCESS_TOKEN": "HERMES_CHIEFSTAFF__RETIRED_BWS_ACCESS_TOKEN"
+    },
+    ".hermes/profiles/jev-cu-bench/.env": {
+      "BWS_ACCESS_TOKEN": "HERMES_JEV_CU_BENCH__RETIRED_BWS_ACCESS_TOKEN"
+    },
+    ".omp/agent/.env": {
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "CEREBRAS_API_KEY": "CEREBRAS_API_KEY",
+      "GOOGLE_API_KEY": "GOOGLE_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "HERMES_CUSTOM_API_GROQ_COM_API_KEY": "HERMES_CUSTOM_API_GROQ_COM_API_KEY",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENCODE_ZEN_API_KEY": "OPENCODE_ZEN_API_KEY",
+      "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
+      "VERCEL_AI_GW_KEY": "AI_GATEWAY_API_KEY",
+      "BOAT_API_KEY": "BOAT_API_KEY"
+    },
+    ".config/codexbar/secrets.env": {
+      "AI_GATEWAY_API_KEY": "AI_GATEWAY_API_KEY",
+      "CEREBRAS_API_KEY": "CEREBRAS_API_KEY",
+      "GOOGLE_API_KEY": "GOOGLE_API_KEY",
+      "GROQ_API_KEY": "GROQ_API_KEY",
+      "NVIDIA_API_KEY": "NVIDIA_API_KEY",
+      "OPENCODE_ZEN_API_KEY": "OPENCODE_ZEN_API_KEY",
+      "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
+      "VERCEL_AI_GW_KEY": "AI_GATEWAY_API_KEY"
+    }
+  },
+  "retired_provider_json": {
+    ".config/codexbar/config.json": {
+      "openrouter": {
+        "apiKey": "OPENROUTER_API_KEY"
+      }
+    }
+  }
+}

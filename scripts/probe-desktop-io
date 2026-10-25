@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Bounded, read-only O_DIRECT probe. Run one reader per owned systemd slice."""
+import argparse
+import json
+import mmap
+import os
+from pathlib import Path
+import random
+import time
+
+p = argparse.ArgumentParser(description=__doc__)
+p.add_argument('file', type=Path)
+p.add_argument('--seconds', type=float, default=6)
+p.add_argument('--background', action='store_true')
+a = p.parse_args()
+if not 0 < a.seconds <= 30:
+    p.error('--seconds must be in (0,30]')
+size = a.file.stat().st_size // 4096 * 4096
+block = 1024 * 1024 if a.background else 4096
+if size < block:
+    p.error('fixture too small')
+fd = os.open(a.file, os.O_RDONLY | os.O_DIRECT)
+buffer = mmap.mmap(-1, block)
+latencies = []
+bytes_read = 0
+rng = random.Random(210)
+psi = Path(f'/sys/fs/cgroup/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/session.slice/io.pressure')
+psi_before = psi.read_text()
+start = time.monotonic()
+try:
+    while time.monotonic() - start < a.seconds:
+        offset = rng.randrange((size - block) // 4096 + 1) * 4096
+        before = time.monotonic()
+        bytes_read += os.preadv(fd, [buffer], offset)
+        latencies.append((time.monotonic() - before) * 1000)
+        if not a.background:
+            time.sleep(0.01)
+finally:
+    os.close(fd)
+    buffer.close()
+latencies.sort()
+print(json.dumps({'seconds': time.monotonic() - start, 'read_bytes': bytes_read,
+                  'samples': len(latencies), 'p50_ms': latencies[len(latencies)//2],
+                  'p95_ms': latencies[min(len(latencies)-1, int(len(latencies)*.95))],
+                  'p99_ms': latencies[min(len(latencies)-1, int(len(latencies)*.99))],
+                  'max_ms': max(latencies), 'session_io_psi_before': psi_before,
+                  'session_io_psi_after': psi.read_text()}))

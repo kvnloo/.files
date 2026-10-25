@@ -1,0 +1,12 @@
+[Unit]
+Description=Cribble token usage sync
+
+[Service]
+Type=oneshot
+ExecStart="/usr/bin/node" "/home/kvn/.local/lib/node_modules/cribble-agent/index.js" "sync" "--background" "--days" "7" "--ccusage-timeout-ms" "900000"
+WorkingDirectory=/home/kvn/.local/lib/node_modules/cribble-agent
+Environment=NO_COLOR=1
+Environment="CRIBBLE_CLAUDE_CONFIG_DIRS=/home/kvn/.claude,/home/kvn/.claude-home,/home/kvn/.claude-work"
+Nice=10
+IOSchedulingClass=idle
+UMask=0077

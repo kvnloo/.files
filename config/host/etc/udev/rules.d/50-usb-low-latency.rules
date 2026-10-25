@@ -1,0 +1,12 @@
+# Input devices: keep powered
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{product}=="*Mouse*", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{product}=="*Keyboard*", TEST=="power/control", ATTR{power/control}="on"
+
+# Wooting 60HE
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="31e3", ATTR{idProduct}=="1312", TEST=="power/control", ATTR{power/control}="on"
+
+# Topping DX5 DAC
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="152a", ATTR{idProduct}=="8750", TEST=="power/control", ATTR{power/control}="on"
+
+# Blue Snowball mic
+ACTION=="add|change", SUBSYSTEM=="usb", ATTR{idVendor}=="0d8c", ATTR{idProduct}=="0005", TEST=="power/control", ATTR{power/control}="on"

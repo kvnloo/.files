@@ -10,7 +10,8 @@ Environment=PYTHONPATH=%h/.local/lib/z0int-policy/current/src
 ExecStart=/bin/sh -ec 'python -m z0int.policy.autoeval tick && python -m z0int.cli policy ingest && python -m z0int.cli policy compile'
 UMask=0077
 Nice=15
-MemoryMax=256M
+MemoryMax=192M
+MemorySwapMax=64M
 CPUQuota=15%
 TasksMax=32
 TimeoutStartSec=5min

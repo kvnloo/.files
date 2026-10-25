@@ -1,0 +1,11 @@
+[Unit]
+Description=O9 gateway-restart watch every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=z0-guard-gateway-watch.service
+
+[Install]
+WantedBy=timers.target

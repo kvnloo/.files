@@ -1,0 +1,17 @@
+{
+  "source_commit": "db111c5",
+  "worker": "s25/omarchy-phone",
+  "job_id": "20261024-232659-264b",
+  "command": ["python3", "tests/test_host_system.py"],
+  "tests_run": 11,
+  "test_seconds": 1.402,
+  "test_result": "OK",
+  "command_exit": 0,
+  "fleet_envelope_exit": 76,
+  "fleet_envelope_status": "guest_restarted",
+  "fleet_lifecycle_success": false,
+  "log": "/home/kvn/.local/state/fleet/runs/20261024-232659-264b-omarchy-phone.log",
+  "policy": {"zram_size": "ram", "zram_resident_limit": "ram / 2", "compression": "zstd", "priority": 200, "overcommit_memory": 1},
+  "not_exercised": ["root activation", "root service restarts", "next-manager OOM default", "k3s reserve restart"],
+  "supersedes": "groot-system-test-receipt.json for corrected zram/overcommit policy"
+}

@@ -30,7 +30,7 @@ stop_noctalia() {
 start_waybar() {
   stop_noctalia
   stop_waybar
-  systemd-run --user --unit=waybar-session --collect waybar >/dev/null
+  systemd-run --user --unit=waybar-session --slice=session.slice --collect waybar >/dev/null
   printf 'waybar\n' > "$STATE_FILE"
   notify "Waybar"
 }
@@ -49,7 +49,7 @@ start_noctalia() {
   stop_waybar
   stop_noctalia
   "$ROOT/scripts/install-noctalia-audio-overlay.py" >/dev/null
-  systemd-run --user --unit=noctalia-shell --collect "${command[@]}" >/dev/null
+  systemd-run --user --unit=noctalia-shell --slice=session.slice --collect "${command[@]}" >/dev/null
   # Noctalia recreates its wallpaper layer on start, above a running live wallpaper. Put the engine back on top.
   ( sleep 8; "$ROOT/scripts/wallpaper-mode.sh" guard ) >/dev/null 2>&1 &
   printf 'noctalia\n' > "$STATE_FILE"

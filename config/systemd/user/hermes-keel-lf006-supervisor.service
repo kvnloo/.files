@@ -1,0 +1,23 @@
+[Unit]
+Description=Hermes Keel narrow LF-006 external supervisor
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /workspace/zer0/oss/hermes-keel/supervisor/gateway_restart_supervisor.py --socket=%t/hermes-keel/lf006.sock --db=/workspace/hermes-home/kanban/boards/zer0-company/kanban.db --board=zer0-company --receipts=%h/.local/state/hermes-keel/lf006-receipts.jsonl
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t/hermes-keel %h/.local/state/hermes-keel /workspace/hermes-home/kanban/boards/zer0-company
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

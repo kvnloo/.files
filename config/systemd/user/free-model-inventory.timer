@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule daily zero-cost model inventory
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=free-model-inventory.service
+
+[Install]
+WantedBy=timers.target

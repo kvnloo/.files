@@ -1,0 +1,21 @@
+[Unit]
+Description=z0live phone voice broker and persistent Hermes bridge
+After=network-online.target z0live-hermes.service
+Wants=z0live-hermes.service
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/z0live
+Environment=Z0LIVE_DATA=/mnt/zer0models/workspace/zer0/data/z0live
+Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+EnvironmentFile=-/mnt/zer0models/workspace/zer0/data/z0live/service.env
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/z0live/bin/z0live serve
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStopSec=45
+
+[Install]
+WantedBy=default.target

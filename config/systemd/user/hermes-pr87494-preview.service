@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes PR 87494 exact 4ba38d476 private synthetic preview
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/oss/hermes-agent/.worktrees/t_865bad0a
+Environment=HERMES_HOME=/workspace/zer0/oss/hermes-agent/.worktrees/t_865bad0a/.preview/home-isolated
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m uvicorn desktop_preview:app --app-dir /workspace/zer0/oss/hermes-agent/.worktrees/t_865bad0a/.preview --host 127.0.0.1 --port 9142
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

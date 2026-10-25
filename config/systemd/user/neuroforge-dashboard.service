@@ -1,0 +1,25 @@
+[Unit]
+Description=Neuroforge loopback redacted activity dashboard
+ConditionPathIsMountPoint=/mnt/zer0models
+ConditionPathIsDirectory=/mnt/zer0models/sft-svlm/data/telemetry/activity/state/analytics
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/sft-svlm/data/telemetry/activity/runtime
+ExecStart=/mnt/zer0models/sft-svlm/data/telemetry/activity/runtime/.venv/bin/python /mnt/zer0models/sft-svlm/data/telemetry/activity/runtime/nf_server.py --port 18765 --allow-origin http://127.0.0.1:5173 --allow-origin http://localhost:5173
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+LimitCORE=0
+Nice=10
+CPUQuota=10%
+MemoryMax=128M
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+Environment=TMPDIR=/mnt/zer0models/sft-svlm/data/neuroforge/lanes/c/tmp
+StandardOutput=append:/mnt/zer0models/sft-svlm/data/neuroforge/lanes/c/dashboard.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

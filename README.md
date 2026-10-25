@@ -47,6 +47,39 @@ wrapper alongside `agent-launch`. The wrapper runs Tern's managed
 `~/.local/share/tern/omp/bin/omp` through `agent-launch omp`; no global Bun OMP
 package is required. Point launchers at `~/.local/bin/omp`, not `~/.bun/bin/omp`.
 
+## Scoped Bitwarden credentials
+
+`scripts/install-bws-secrets --apply --migrate-env` installs content-stamped
+launchers and service drop-ins from `config/bws-consumers.json`. The manifest
+contains names only. `bws-env-exec` reuses the Hermes GNOME Keyring bootstrap,
+fetches BWS values through captured pipes (never process arguments), and injects
+only the selected consumer's allowlist. Direct Hermes entrypoints and pane
+launches share the same per-profile scope. Native OMP keeps its own private
+login store; it does not need the redundant TypeSafe environment variable.
+
+`bws-secrets-sync.service` now writes only mode-0600 consumer environment files
+under the mode-0700 `$XDG_RUNTIME_DIR/bws-secrets/`, not persistent config or
+dotenv files. A consumer service requires a successful refresh before startup.
+The installer verifies exact vault equality before removing mapped dotenv
+entries, preserves other lines, and keeps mode-0600 **secret-containing** backups
+under `~/.local/state/secret-migration/`. Only the owner may authorize deleting
+those backups. Existing agents and desktop processes are not restarted.
+
+CodexBar loads its runtime scope before native subscription-login fallbacks.
+The old dotenv/config-writing synchronizer and plaintext template are removed;
+verified legacy OMP-agent and CodexBar dotenv copies are retired during cutover.
+
+Profiles migrated to the explicit allowlist stop using Hermes' bulk-project
+source, so unrelated vault credentials are not injected. Bootstrap access
+tokens belong in the existing keyring, not dotenv files. Missing vault access
+fails closed; run `~/.hermes/bin/hermes-store-bws-token.sh` to restore the
+machine-account token. Do not paste credentials into a command or a ticket.
+
+`scripts/install-bws-secrets --render UNIT` prints the exact generated drop-in
+using only the tracked consumer map. It performs no vault or network access
+and emits no credential values. The host manifest records these drop-ins as
+`install = "generated"` with that command as their reproducible generator.
+
 ## Agent state packet freshness
 
 `scripts/install-state-packet-timer.sh --activate` installs content-stamped user
@@ -57,6 +90,15 @@ It publishes `~/.local/state/z0int/STATE-PACKET.md` atomically.
 OMP, Hermes and Claude Code replace packets older than two hours with a
 one-line stale warning. Unit replacements have backups under
 `~/.local/state/z0int/startup-packet-unit-backups/`.
+
+Socket-activated memory MCP instances use a pinned source release and
+`CollectMode=inactive-or-failed`; client disconnects are handled by the server,
+not hidden with a successful-exit-status override. Telemetry snapshot scratch
+is `/mnt/zer0models/tmp/agent-telemetry-refresh`, on the same Btrfs filesystem as
+the large OpenCode database so reflink snapshots do not become full cross-volume
+copies. New artifact controller releases live under
+`/mnt/zer0models/releases/artifact-leases/<commit>` with home-directory aliases;
+existing running releases are not moved.
 
 ## What this repo configures
 

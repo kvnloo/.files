@@ -1,0 +1,20 @@
+[Unit]
+Description=Neuroforge loopback game (no GUI)
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/neuroforge
+Environment=TMPDIR=/mnt/zer0models/sft-svlm/data/neuroforge/game/tmp
+Environment=PORT=5179
+ExecStart=/usr/bin/env -u DISPLAY -u WAYLAND_DISPLAY -u SWAYSOCK -u DBUS_SESSION_BUS_ADDRESS -u HYPRLAND_INSTANCE_SIGNATURE /mnt/zer0models/sft-svlm/data/neuroforge/game/runtime/node-26.7.0-linux-x64/bin/node packages/game/server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+LimitCORE=0
+MemoryMax=768M
+StandardOutput=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/game.log
+StandardError=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/game.log
+
+[Install]
+WantedBy=default.target

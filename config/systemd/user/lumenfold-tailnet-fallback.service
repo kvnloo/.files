@@ -1,0 +1,20 @@
+[Unit]
+Description=LumenFold original-only Tailnet IPv4 fallback
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/experiments/miniature-transformation-ad-lab
+ExecStart=/usr/bin/python tools/range_http_server.py --directory outputs/final-case-study --bind 100.113.138.100 --port 9160
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/workspace/zer0/experiments/miniature-transformation-ad-lab
+RestrictAddressFamilies=AF_INET
+
+[Install]
+WantedBy=default.target

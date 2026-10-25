@@ -1,0 +1,19 @@
+[Unit]
+Description=Authenticated Grok-to-Hermes Streamable HTTP MCP bridge
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/services/hermes-grok-mcp
+ExecStart=/home/kvn/.local/bin/dotenvx run --strict -f /home/kvn/.hermes/secrets/grok-mcp.env -fk /home/kvn/.config/dotenvx/grok-mcp.keys -- /home/kvn/.hermes/hermes-agent/venv/bin/python /workspace/zer0/services/hermes-grok-mcp/bridge.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/kvn/.hermes
+
+[Install]
+WantedBy=default.target

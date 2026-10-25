@@ -1,0 +1,33 @@
+# Tern's remote service: logs clients in as local users and serves their
+# session daemons over QUIC (UDP 8376, and iroh through iroh.stencil.so).
+# Written by `tern remote install`. A stop or restart (SIGTERM) tells
+# connected clients, which reconnect at once.
+[Unit]
+Description=Tern remote sessions
+Documentation=https://stencil.so
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=exec
+ExecStart=/home/kvn/.local/bin/tern remote serve
+Restart=on-failure
+RestartSec=2
+# Bad arguments (exit status 2) do not fix themselves by restarting.
+RestartPreventExitStatus=2
+# Logins need root: setuid, PAM sessions and utmp.
+User=root
+# Users' session daemons outlive the service (as tmux outlives sshd).
+KillMode=process
+# Every login's session daemon, and so every user's shell, is a child of
+# this service: sandboxing it (ProtectSystem=, ProtectHome=, PrivateTmp=,
+# NoNewPrivileges=, CapabilityBoundingSet=, SystemCall*=) would confine
+# users' sessions too, as it would sshd's. What is set here hardens the
+# service itself and passes a normal login umask on.
+UMask=0022
+SyslogIdentifier=tern-remote
+
+[Install]
+WantedBy=multi-user.target
