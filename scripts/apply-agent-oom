@@ -11,6 +11,8 @@ import tempfile
 import tomllib
 
 GIB = 1024 ** 3
+GROOT_HOME = Path('/home/kvn')
+BULK_RELEASES = Path('/mnt/zer0models/releases/files-live')
 # Stale `systemctl set-property` overrides for properties the tracked drop-ins own.
 # Left behind, they silently replace tracked values (2026-10-24: MemorySwapMax=2G
 # and ManagedOOMMemoryPressure=kill survived in user.control after the fix).
@@ -52,6 +54,14 @@ def stamp_release(source: Path, home: Path, files=None) -> Path:
         digest.update(data)
     root = home / '.local/lib/files-live'
     root.mkdir(parents=True, exist_ok=True)
+    alias = root / digest.hexdigest()
+    bulk = BULK_RELEASES
+    # Existing root-backed stamps remain untouched until release retention.
+    if home == GROOT_HOME and not alias.exists():
+        if not os.path.ismount('/mnt/zer0models'):
+            raise ValueError('bulk release storage is not mounted')
+        bulk.mkdir(parents=True, exist_ok=True)
+        root = bulk
     release = root / digest.hexdigest()
     if not release.exists():
         staging = Path(tempfile.mkdtemp(prefix='.agent-oom-', dir=root))
@@ -69,6 +79,8 @@ def stamp_release(source: Path, home: Path, files=None) -> Path:
         target = release / rel
         if target.read_bytes() != data or target.stat().st_mode & 0o777 != mode:
             raise ValueError(f'content-stamped release mismatch: {target}')
+    if alias != release and not alias.exists():
+        alias.symlink_to(release, target_is_directory=True)
     return release
 
 
@@ -124,10 +136,16 @@ def intact_installed_release(live: Path, home: Path, relative: Path, verified: d
     if not live.is_symlink():
         return False
     target = live.resolve()
-    library = home / '.local/lib/files-live'
-    try:
-        parts = target.relative_to(library).parts
-    except ValueError:
+    libraries = [home / '.local/lib/files-live']
+    if home == GROOT_HOME:
+        libraries.append(BULK_RELEASES)
+    for library in libraries:
+        try:
+            parts = target.relative_to(library).parts
+            break
+        except ValueError:
+            continue
+    else:
         return False
     if len(parts) < 2 or len(parts[0]) != 64 or Path(*parts[1:]) != relative:
         return False

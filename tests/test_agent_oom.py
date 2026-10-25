@@ -33,6 +33,37 @@ class InstallerTests(unittest.TestCase):
             (self.control / name).write_text('old cap\n')
         (self.control / 'unrelated.conf').write_text('keep\n')
 
+    def test_new_groot_stamp_uses_bulk_bytes_and_home_alias(self):
+        bulk = Path(self.tmp.name) / 'bulk'
+        with patch.object(installer, 'GROOT_HOME', self.home), patch.object(installer, 'BULK_RELEASES', bulk), patch.object(installer.os.path, 'ismount', return_value=True):
+            release = installer.stamp_release(self.source, self.home)
+        self.assertEqual(release.parent, bulk)
+        alias = self.home / '.local/lib/files-live' / release.name
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(alias.resolve(), release)
+
+    def test_intact_prior_bulk_stamp_is_upgradeable(self):
+        bulk = Path(self.tmp.name) / 'bulk'
+        relative = Path('scripts/agent-launch')
+        with patch.object(installer, 'GROOT_HOME', self.home), patch.object(installer, 'BULK_RELEASES', bulk), patch.object(installer.os.path, 'ismount', return_value=True):
+            release = installer.stamp_release(self.source, self.home)
+            live = self.home / 'probe'
+            live.symlink_to(release / relative)
+            (self.source / relative).write_text('new source')
+            replacement = installer.stamp_release(self.source, self.home)
+            self.assertNotEqual(replacement, release)
+            self.assertTrue(installer.intact_installed_release(live, self.home, relative, {}))
+
+    def test_tampered_bulk_stamp_cannot_authorize_upgrade(self):
+        bulk = Path(self.tmp.name) / 'bulk'
+        relative = Path('scripts/agent-launch')
+        with patch.object(installer, 'GROOT_HOME', self.home), patch.object(installer, 'BULK_RELEASES', bulk), patch.object(installer.os.path, 'ismount', return_value=True):
+            release = installer.stamp_release(self.source, self.home)
+            live = self.home / 'probe'
+            live.symlink_to(release / relative)
+            (release / relative).write_text('tampered')
+            self.assertFalse(installer.intact_installed_release(live, self.home, relative, {}))
+
     def response(self, current=1, swap=0, code=0):
         return subprocess.CompletedProcess([], code, f'MemoryCurrent={current}\nMemorySwapCurrent={swap}\n', '')
 
