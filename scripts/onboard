@@ -160,6 +160,7 @@ run_core_links() {
   onboard_link "$repo/config/awatcher/config.toml" "$HOME/.config/awatcher/config.toml"
   onboard_link "$repo/config/zed/settings.json" "$HOME/.config/zed/settings.json"
   onboard_link "$repo/config/tern/settings.json" "$HOME/.config/tern/settings.json"
+  onboard_link "$repo/config/tern/hosts.names" "$HOME/.config/tern/hosts.names"
 
   # Searchable desktop actions for Noctalia/Rofi application launchers.
   if [[ -d "$repo/config/applications" ]]; then
@@ -203,7 +204,7 @@ run_core_links() {
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh theme \
-             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py; do
+             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py tern-hosts-sync; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"
       command_name="${command_name%.py}"
@@ -223,7 +224,7 @@ run_core_links() {
   for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service \
     dash-log-watch.service service-watch.service service-watch-failure@.service uniichat-luna.service \
     service-watch-heartbeat.service service-watch-heartbeat.timer z0int-policy.service z0int-policy.timer \
-    workspace-copilot-rerank.service workspace-copilot-rerank.timer; do
+    workspace-copilot-rerank.service workspace-copilot-rerank.timer tern-hosts-sync.service tern-hosts-sync.timer; do
     [[ -e "$repo/config/systemd/user/$unit" ]] && \
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
   done
