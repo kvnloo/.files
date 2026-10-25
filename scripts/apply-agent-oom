@@ -10,12 +10,20 @@ import subprocess
 import tempfile
 
 GIB = 1024 ** 3
-OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf')
+# Stale `systemctl set-property` overrides for properties the tracked drop-ins own.
+# Left behind, they silently replace tracked values (2026-10-24: MemorySwapMax=2G
+# and ManagedOOMMemoryPressure=kill survived in user.control after the fix).
+OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
+             '50-ManagedOOMMemoryPressure.conf', '50-ManagedOOMMemoryPressureLimit.conf',
+             '50-ManagedOOMMemoryPressureDurationUSec.conf', '50-CPUQuota.conf', '50-CPUWeight.conf',
+             '50-IOWeight.conf', '50-IOReadBandwidthMax.conf', '50-IOWriteBandwidthMax.conf')
 LINKS = {
     'scripts/agent-launch': '.local/bin/agent-launch',
+    'scripts/agent-resource-classify': '.local/bin/agent-resource-classify',
     'scripts/omp-hud': '.local/bin/omp-hud',
     'config/zsh/agent-scopes.zsh': '.config/zsh/agent-scopes.zsh',
     'config/systemd/user/agent.slice': '.config/systemd/user/agent.slice',
+    'config/systemd/user/agent.slice.d/50-interactive-budget.conf': '.config/systemd/user/agent.slice.d/50-interactive-budget.conf',
     'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': '.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
 }
 

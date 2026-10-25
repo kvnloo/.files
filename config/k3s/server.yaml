@@ -15,9 +15,14 @@ write-kubeconfig-mode: "0600"
 node-label:
   - "z0.dev/role=server"
   - "z0.dev/gpu=rtx3080ti"
-# The desktop also runs Hyprland, ollama and llama.cpp; keep room for them.
+# groot's host budgets are not pods, so the kubelet must not offer their memory to
+# the scheduler. Reserved = agent.slice MemoryMax (10Gi, agent.slice.d/
+# 60-oomd-desktop-guard.conf) + z0-farm-llama MemoryHigh (6Gi) + desktop/session 4Gi.
+# Allocatable ~2.4Gi covers control-plane pods (~0.8Gi requested) and small GPU
+# jobs; bigger GPU work admits through groot-admit. tests/test_k3s_host_reservation.py
+# fails when a host budget grows past this reservation.
 kubelet-arg:
-  - "system-reserved=cpu=2,memory=4Gi"
+  - "system-reserved=cpu=2,memory=20Gi"
   - "eviction-hard=memory.available<1Gi"
 # Images and cluster state live here, not on the root disk.
 data-dir: "@K3S_DATA@"

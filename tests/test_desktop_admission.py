@@ -96,6 +96,32 @@ class Admission(unittest.TestCase):
         cg = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/render.scope'
         self.assertEqual(classifier.select({1:(0,'agent-batch',cg),2:(1,'gpu-worker',cg)}),[1,2])
 
+    def test_failed_workload_scope_is_reset_and_recreated(self):
+        # A failed transient scope stays loaded; StartTransientUnit alone then fails forever.
+        calls = []
+        def run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=3 if 'is-active' in argv else 0, stdout='', stderr='')
+        with patch.object(classifier.subprocess, 'run', side_effect=run):
+            classifier.place('w.scope', [('Slice', 's', 'agent.slice')], [41, 42])
+        self.assertEqual(calls[1], ['systemctl', '--user', 'reset-failed', 'w.scope'])
+        start = calls[2]
+        self.assertIn('StartTransientUnit', start)
+        i = start.index('w.scope')
+        self.assertEqual(start[i:i + 3], ['w.scope', 'fail', '3'])
+        self.assertEqual(start[start.index('OOMPolicy'):start.index('OOMPolicy') + 3], ['OOMPolicy', 's', 'continue'])
+        self.assertEqual(start[-4:], ['2', '41', '42', '0'])
+
+    def test_active_workload_scope_attaches_without_restart(self):
+        calls = []
+        def run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stdout='', stderr='')
+        with patch.object(classifier.subprocess, 'run', side_effect=run):
+            classifier.place('w.scope', [('Slice', 's', 'agent.slice')], [41])
+        self.assertEqual(len(calls), 2)
+        self.assertIn('AttachProcessesToUnit', calls[1])
+
     def test_offline_tailnet_self_does_not_crash_health(self):
         with patch.object(fleet.subprocess,'run',return_value=types.SimpleNamespace(stdout='{"Self":{"TailscaleIPs":[]},"Peer":{}}')):
             self.assertEqual(fleet.tailnet_online(),{})

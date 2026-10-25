@@ -7,7 +7,4 @@ CPUWeight=80
 IOAccounting=yes
 IOWeight=50
 MemoryAccounting=yes
-# Throttle the fleet before it can reclaim the compositor and foreground apps.
-MemoryHigh=10G
-# Disk swap is an emergency tier, not unbounded working memory for agents.
-MemorySwapMax=24G
+# Memory and swap limits live only in agent.slice.d/60-oomd-desktop-guard.conf.
