@@ -75,6 +75,8 @@ class CtxPolicyTests(unittest.TestCase):
         self.assertEqual(bytes_value(service['MemoryMax']), 5 * 1024 ** 3)
         self.assertEqual(bytes_value(service['MemorySwapMax']), 2 * 1024 ** 3)
         self.assertEqual(service['MemoryHigh'], 'infinity')
+        self.assertEqual(service.getint('Nice'), 10)
+        self.assertEqual(service['IOSchedulingClass'], 'idle')
         self.assertEqual(service['OOMPolicy'], 'stop')
         self.assertEqual(service['Restart'], 'on-failure')
         self.assertEqual(service.getint('RestartSteps'), 3)
