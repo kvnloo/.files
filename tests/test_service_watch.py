@@ -35,6 +35,22 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_healthy_heartbeat_never_opens_incident_database(self):
+        (self.root / 'status.json').write_text(json.dumps({'scan_completed_at': time.time()}))
+        with patch.object(sw, 'Watch', side_effect=AssertionError('must not open database')), \
+             patch.object(sys, 'argv', ['service-watch', '--state', str(self.root), 'heartbeat']):
+            self.assertEqual(sw.main(), 0)
+
+    def test_missing_malformed_future_and_stale_heartbeat_are_adverse(self):
+        path = self.root / 'status.json'
+        self.assertTrue(sw.heartbeat_stale(path, now=1000))
+        for content in ('{', '{}', '[]', '{"scan_completed_at":true}',
+                        '{"scan_completed_at":1001}', '{"scan_completed_at":879}'):
+            path.write_text(content)
+            self.assertTrue(sw.heartbeat_stale(path, now=1000), content)
+        path.write_text('{"scan_completed_at":880}')
+        self.assertFalse(sw.heartbeat_stale(path, now=1000))
+
     def test_host_drift_uses_existing_notification_dedupe(self):
         receipt = self.root / '.local/state/host-drift/latest.json'
         receipt.parent.mkdir(parents=True)

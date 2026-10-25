@@ -907,6 +907,19 @@ def notify_systemd(value):
             sock.connect(('\0' + address[1:]) if address.startswith('@') else address)
             sock.sendall(value.encode())
 
+def heartbeat_stale(path, now=None):
+    """A healthy heartbeat must never wait for the incident database writer."""
+    try:
+        status = json.loads(Path(path).read_text())
+        stamp = status['scan_completed_at']
+        if type(stamp) not in (int, float):
+            return True
+        age = (time.time() if now is None else now) - stamp
+        return not 0 <= age <= 120
+    except (OSError, ValueError, KeyError, TypeError):
+        return True
+
+
 
 def main():
     os.umask(0o077)
@@ -933,6 +946,8 @@ def main():
             raise SystemExit('Unknown incident ID')
         print(json.dumps({'unit': row[0], 'scope': row[1], **json.loads(row[2])}, indent=2))
         return 0
+    if args.action == 'heartbeat' and not heartbeat_stale(args.state / 'status.json'):
+        return 0
     watch = Watch(args.state, args.inventory, args.checkout_threshold,
                   args.checkout_roots, args.reaper_status)
     if args.action == 'host-drift':
@@ -957,9 +972,7 @@ def main():
             raise SystemExit('Invalid unit')
         watch.record(args.scope, args.target, [event('failed')])
     elif args.action == 'heartbeat':
-        status = json.loads((args.state / 'status.json').read_text()) if (args.state / 'status.json').exists() else {}
-        if time.time() - status.get('scan_completed_at', 0) > 120:
-            watch.record('user', 'service-watch.service', [event('heartbeat_stale')])
+        watch.record('user', 'service-watch.service', [event('heartbeat_stale')])
     elif args.action == 'seed':
         watch.discover()
         watch.loop_invariants(seed=True)

@@ -97,6 +97,15 @@ No watched desktop, gateway or agent service is restarted.
 The installer also links the tracked, stamped `config/host/z0-guard-state.json`
 to the default guard inventory. Its `host_drift` binding enables law I against
 this receipt; code activation is separate from the live z0intelligence service.
+The same installer stamps ServiceWatch's heartbeat/failure helper and units.
+A healthy heartbeat reads only its status receipt, without opening the incident
+database. Missing, malformed, stale or future heartbeats still alert through
+the normal store. Tiny reporting helpers retain nice/idle IO and hard memory
+limits, but not the old 5%/10% CPU throttles; their 90-second deadline no longer
+expires before SQLite's 30-second lock wait plus notification work. The retained
+2026-10-24 23:05–23:06 journal showed both the heartbeat and its failure handler
+timing out at the old 20-second deadline. This fixes the avoidable reporting
+path contention; it does not prove unlimited IO-stall resilience.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory

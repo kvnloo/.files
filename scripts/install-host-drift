@@ -12,6 +12,8 @@ import tomllib
 
 CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-watch.py',
            'config/systemd/user/host-drift.service', 'config/systemd/user/host-drift.timer',
+           'config/systemd/user/service-watch-failure@.service',
+           'config/systemd/user/service-watch-heartbeat.service',
            'config/host/groot.toml', 'config/host/z0-guard-state.json')
 
 
@@ -54,9 +56,11 @@ def install(source, home, apply):
         if path.read_bytes() != data or path.stat().st_mode & 0o777 != mode:
             raise ValueError(f'stamp mismatch: {path}')
     links = {home / '.local/bin/host-drift': release / 'scripts/host-drift',
+             home / '.local/bin/service-watch': release / 'scripts/service-watch.py',
              home / '.config/z0-guard/state.json': release / 'config/host/z0-guard-state.json',
              base / 'current': release}
-    for unit in ('host-drift.service', 'host-drift.timer'):
+    for unit in ('host-drift.service', 'host-drift.timer', 'service-watch-failure@.service',
+                 'service-watch-heartbeat.service'):
         links[home / '.config/systemd/user' / unit] = release / 'config/systemd/user' / unit
     backup = home / '.local/state/host-drift/backups' / digest.hexdigest()
     for dest, target in links.items():
