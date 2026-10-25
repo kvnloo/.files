@@ -204,7 +204,19 @@ message. A nonzero SSH exit is a transport failure, not JSON to parse. Empty
 or malformed output also rejects that node without an exception in the
 scheduler. Diagnostics preserve known SSH failure causes without raw stderr.
 
-Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. Guest reconciliation occurs through the explicit guest API, not default adb-only `fleet health`. No UI wake or app reopening is invoked.
+Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. Guest reconciliation occurs through the explicit guest API, not default adb-only `fleet health`.
+
+The native adb health probe checks Omalauncher's foreground `LinuxService`.
+Missing service reports `guest_down`, while preserving Android's native online
+telemetry. Recovery holds `/tmp/<phone>-ui.lock` and launches only with complete
+owner-idle evidence: at least 60 seconds since user activity, a same-boot
+agent-opened foreground ledger entry newer than that activity, idle telephony,
+and normal audio mode. Missing evidence or a busy lock refuses UI interaction.
+Launches are recorded in `/tmp/<phone>-agent-opened.json` before `monkey`;
+`/tmp/<phone>-guest-restore.json` bounds recovery to two attempts per boot.
+No wake key, settings changes, resource caps, or payload replay is performed.
+All fleet-adb subprocesses detach stdin, including hardware discovery, so a
+probe inside a read loop cannot consume its caller's remaining devices.
 
 Recovery checks boot ID + PID start time, live runner/child and surviving process-group descendants. Live/ambiguous executions cannot be re-leased. Dead non-idempotent executions become `needs-confirmation`, never speculative retries. `fleet run --idempotent` (or explicit spec `idempotent:true,max_attempts:3`) permits bounded retry of the **same ID** only after confirmed interruption/drain. Exactly-once arbitrary side effects cannot be guaranteed across a crash between an external effect and durable completion; idempotent jobs must implement their own effect dedupe using `FLEET_JOB_ID`. A late heartbeat from an expired token cannot renew a replacement generation. Offline cancellation is durable controller intent and is delivered on rejoin without renewing that job.
 
