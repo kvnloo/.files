@@ -45,7 +45,22 @@ Do not resume an old in-memory delivery parent locally: its imported functions p
 
 This is owned-workflow admission, not a same-user security sandbox: a user/admin can deliberately bypass wrappers or create workloads in other namespaces. Kube-system/control-plane services are not throttled by this policy. Health labels are observations, not continuous thermal guarantees for already-running jobs. Prefix limits protect native Hermes scopes only while its systemd backend is available; classifier recovery is best-effort for other launch paths. No sustained no-lag claim follows from a short probe.
 
-The ctx single-preparation-worker drop-in is staged separately because its ExecStart uses `env -i` and the shared service restart belongs to the parent/operator. Validate the post-restart environment and active preparation worker count; do not assume an Environment= directive survived env -i.
+The ctx resource policy is owned by `config/systemd/user/ctx.service.d/50-resource-policy.conf`.
+Install it with `python3 scripts/apply-ctx-policy --apply` from the intended
+integration tree. The installer backs up and removes only its five exact
+`user.control` property overrides, links an immutable content-stamped drop-in,
+and reloads systemd without restarting ctx. It leaves ctx's generated unit,
+supervisor environment, source databases and indexing mode untouched.
+The hard ceiling remains 5 GiB resident/cgroup memory plus 2 GiB swap; there is
+no `MemoryHigh` reclaim throttle. `OOMPolicy=stop` and a bounded restart rate
+prevent a partial daemon or rapid crash loop. This budget is a desktop safety
+ceiling, not a guarantee that every corpus fits. Do not raise it without a
+measured refresh peak and host headroom.
+
+The older single-preparation-worker drop-in remains staged and is not installed
+by this policy: ctx 2.2.8 already defaults to one preparation worker. Its
+`ExecStart` override is not needed for the resource fix. Preserve the generated
+`env -i` launch contract rather than installing that redundant override.
 
 ## Foreground activation gate (do not call this complete early)
 
