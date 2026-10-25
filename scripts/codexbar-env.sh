@@ -1,18 +1,45 @@
 #!/usr/bin/env bash
 # Load CodexBar provider credentials for the Linux CLI wrapper.
-# Priority: existing env > secrets.env > Crush refs > Hermes auth > OMP agent.db
-# > Bitwarden Secrets Manager for any of those still unset.
-# Vault values stay in this process. Do not write them to secrets.env or config.json.
+# Provider API keys come only from the per-consumer BWS runtime scope.
+# Native OAuth/login stores remain available for subscription providers.
 
 set -u
 
-_secrets_file="${CODEXBAR_SECRETS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/codexbar/secrets.env}"
-if [[ -f "$_secrets_file" ]]; then
-  # shellcheck disable=SC1090
-  set -a
-  source "$_secrets_file"
-  set +a
+_vault_file="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bws-secrets/codexbar.env"
+if [[ ! -r "$_vault_file" ]]; then
+  printf '%s\n' 'codexbar: missing BWS runtime scope; start bws-secrets-sync.service' >&2
+  return 1
 fi
+# Parse, never source: credential values are data, not shell programs.
+_vault_ready=""
+while IFS= read -r _vault_line; do
+  if [[ "$_vault_line" == __BWS_SCOPE_READY__ ]]; then
+    _vault_ready=1
+  else
+    export "$_vault_line"
+  fi
+done < <(python3 - "$_vault_file" <<'PY'
+import re, shlex, sys
+from pathlib import Path
+try:
+    entries = []
+    for line in Path(sys.argv[1]).read_text().splitlines():
+        name, _, value = line.partition("=")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
+            raise ValueError("invalid scoped environment name")
+        words = shlex.split(value)
+        if len(words) != 1:
+            raise ValueError("invalid scoped environment value")
+        entries.append(name + "=" + words[0])
+    for entry in entries:
+        print(entry)
+    print("__BWS_SCOPE_READY__")
+except Exception:
+    print("codexbar: invalid BWS runtime scope", file=sys.stderr)
+    raise SystemExit(1)
+PY
+)
+[[ "$_vault_ready" == 1 ]] || return 1
 
 _crush_file="${CODEXBAR_CRUSH_PROVIDERS:-${XDG_DATA_HOME:-$HOME/.local/share}/crush/providers.json}"
 if [[ -f "$_crush_file" ]] && command -v python3 >/dev/null 2>&1; then
@@ -116,58 +143,4 @@ if [[ -f "$_omp_loader" ]] && command -v python3 >/dev/null 2>&1; then
   done < <(python3 "$_omp_loader")
 fi
 
-# Fill provider keys the local stores do not have. The Vercel gateway secret is
-# stored as AI_GATEWAY_API_KEY; CodexBar's extra fetcher reads VERCEL_AI_GW_KEY.
-_bws_bootstrap="${HERMES_KEYRING_BOOTSTRAP:-$HOME/.hermes/bin/hermes-keyring-bootstrap.sh}"
-_bws_bin="${BWS_BIN:-$HOME/.hermes/bin/bws}"
-if [[ -x "$_bws_bootstrap" && -x "$_bws_bin" ]] && {
-  [[ -z "${GROQ_API_KEY:-}" ]] || [[ -z "${CEREBRAS_API_KEY:-}" ]] || {
-    [[ -z "${VERCEL_AI_GW_KEY:-}" ]] && [[ -z "${VERCEL_API_KEY:-}" ]]
-  }
-}; then
-  while IFS= read -r _bws_line; do
-    [[ "$_bws_line" == *=* ]] || continue
-    _bws_key="${_bws_line%%=*}"
-    _bws_value="${_bws_line#*=}"
-    [[ -n "$_bws_key" && -n "$_bws_value" ]] || continue
-    if [[ -z "${!_bws_key:-}" ]]; then
-      export "${_bws_key}=${_bws_value}"
-    fi
-  done < <(
-    eval "$("$_bws_bootstrap" 2>/dev/null || true)"
-    [[ -n "${BWS_ACCESS_TOKEN:-}" ]] || exit 0
-    "$_bws_bin" secret list \
-      "${HERMES_BWS_PROJECT_ID:-ef35bed4-fc4f-42ab-a21f-b4bf013919b7}" \
-      --server-url "${HERMES_BWS_SERVER_URL:-https://vault.bitwarden.com}" \
-      --output json 2>/dev/null | python3 -c '
-import json, sys
-try:
-    items = json.loads(sys.stdin.read() or "[]")
-except Exception:
-    raise SystemExit(0)
-vault = {}
-for item in items if isinstance(items, list) else []:
-    if not isinstance(item, dict):
-        continue
-    key = item.get("key") or item.get("name")
-    value = item.get("value")
-    if key and isinstance(value, str) and value.strip() and "\n" not in value and "\r" not in value:
-        vault[key] = value.strip()
-aliases = (
-    ("GROQ_API_KEY", "GROQ_API_KEY"),
-    ("CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),
-    ("AI_GATEWAY_API_KEY", "VERCEL_AI_GW_KEY"),
-    ("VERCEL_AI_GW_KEY", "VERCEL_AI_GW_KEY"),
-    ("VERCEL_API_KEY", "VERCEL_AI_GW_KEY"),
-)
-emitted = set()
-for src, dest in aliases:
-    if dest in emitted or src not in vault:
-        continue
-    emitted.add(dest)
-    print(f"{dest}={vault[src]}")
-'
-  )
-fi
-unset _bws_bootstrap _bws_bin _bws_line _bws_key _bws_value
-unset _secrets_file _crush_file _hermes_auth _script_dir _omp_loader
+unset _vault_file _vault_line _vault_ready _crush_file _hermes_auth _script_dir _omp_loader
