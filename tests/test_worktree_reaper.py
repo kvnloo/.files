@@ -196,6 +196,42 @@ class ReaperBehavior(unittest.TestCase):
             self.assertTrue(errors)
             self.assertEqual(receipt['unreadable_foreign_owner'], [])
 
+    def test_link_index_refreshes_added_nested_links_and_retargets(self):
+        home = self.base / 'home'
+        home.mkdir()
+        index = reaper.LinkIndex()
+        with patch.object(reaper, 'LINK_INDEX', index):
+            self.assertEqual(reaper.symlink_references(home, [])[0], {})
+            nested = home / 'new/deep'
+            nested.mkdir(parents=True)
+            link = nested / 'active'
+            link.symlink_to(self.repo / 'first')
+            refs, errors = reaper.symlink_references(home, [])
+            self.assertEqual(errors, [])
+            self.assertIn(str(self.repo / 'first'), refs)
+            link.unlink()
+            link.symlink_to(self.repo / 'second')
+            refs, errors = reaper.symlink_references(home, [])
+            self.assertEqual(errors, [])
+            self.assertNotIn(str(self.repo / 'first'), refs)
+            self.assertIn(str(self.repo / 'second'), refs)
+            link.unlink()
+            self.assertEqual(reaper.symlink_references(home, [])[0], {})
+
+    def test_link_index_does_not_enumerate_unchanged_directories(self):
+        home = self.base / 'home'
+        home.mkdir()
+        (home / 'active').symlink_to(self.repo)
+        (home / 'ordinary-file').write_text('not link metadata')
+        index = reaper.LinkIndex()
+        with patch.object(reaper, 'LINK_INDEX', index):
+            initial = reaper.symlink_references(home, [])
+            cached = index.directories[str(home)]
+            self.assertNotIn(('ordinary-file', False), cached[1])
+            with patch.object(reaper.os, 'scandir', side_effect=AssertionError('rescanned unchanged directory')):
+                self.assertEqual(reaper.symlink_references(home, []), initial)
+            self.assertIs(index.directories[str(home)], cached)
+
     def test_pause_during_archive_prevents_current_removal(self):
         self.age(self.repo)
         preserve = reaper.preserve

@@ -224,6 +224,14 @@ external ops-plane dispatcher.
 The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
 It also scans the agent configuration roots and `/workspace/hermes-home`.
 Installed plugin, extension, and skill directories are live code sources.
+The shared `symlink_references(home=None, extra_roots=None, out=None)` collector
+builds one process-local link index. It retains only directory and symlink names,
+not regular-file inventories. Each recheck validates directory identity, timestamps
+and accessibility, rescans changed directories, and resolves current link targets.
+New nested links and retargeted links therefore invalidate cleanup decisions.
+`installed-link-scan-latest.json` records completion and errors without dumping the
+index into tool output. Run HOME scans outside the orchestrator scope in a bounded
+background slice; archive and removal checks reuse the same process-local index.
 Unreadable link inventories block removals, except `EACCES` on a foreign-owned
 directory with no group/other read or execute bits. The scan receipt records
 that exclusion as `unreadable_foreign_owner`. A traversable directory such as

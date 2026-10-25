@@ -121,6 +121,52 @@ def active_guard_references():
     return {os.path.realpath(path): {reason} for path, reason in ACTIVE_GUARD_SOURCES.items()}
 
 
+class LinkIndex:
+    """Index only directories and links; revalidate stamps and link targets."""
+
+    def __init__(self):
+        self.directories = {}
+
+    def walk(self, root, onerror):
+        pending = [os.fspath(root)]
+        while pending:
+            base = pending.pop()
+            try:
+                metadata = os.stat(base, follow_symlinks=False)
+                if not stat.S_ISDIR(metadata.st_mode):
+                    continue
+                stamp = (metadata.st_dev, metadata.st_ino, metadata.st_mtime_ns,
+                         metadata.st_ctime_ns, metadata.st_mode)
+                cached = self.directories.get(base)
+                if cached is None or cached[0] != stamp:
+                    with os.scandir(base) as entries:
+                        names = [(entry.name, entry.is_dir(follow_symlinks=False))
+                                 for entry in entries
+                                 if entry.is_dir(follow_symlinks=False)
+                                 or entry.is_symlink() or entry.name == '.git']
+                    # A concurrent entry change invalidates the snapshot.
+                    after = os.stat(base, follow_symlinks=False)
+                    if (after.st_dev, after.st_ino, after.st_mtime_ns,
+                            after.st_ctime_ns, after.st_mode) != stamp:
+                        raise OSError(errno.EAGAIN, 'directory changed during link scan', base)
+                    self.directories[base] = (stamp, names)
+                else:
+                    # Check current ancestor/ACL permissions without enumerating
+                    # millions of unchanged regular files again.
+                    if not os.access(base, os.R_OK | os.X_OK, effective_ids=True):
+                        raise PermissionError(errno.EACCES, 'link inventory inaccessible', base)
+                    names = cached[1]
+                dirs = [name for name, directory in names if directory]
+                files = [name for name, directory in names if not directory]
+                yield base, dirs, files
+                pending.extend(os.path.join(base, name) for name in dirs)
+            except OSError as error:
+                onerror(error)
+
+
+LINK_INDEX = LinkIndex()
+
+
 def symlink_references(home=None, extra_roots=None, out=None):
     """Read link metadata only, including dangling installed-code links."""
     home = Path.home() if home is None else Path(home)
@@ -155,7 +201,7 @@ def symlink_references(home=None, extra_roots=None, out=None):
                 except OSError:
                     pass
             errors.append('installed-link inventory: ' + str(error))
-        for base, dirs, files in os.walk(root, followlinks=False, onerror=failed):
+        for base, dirs, files in LINK_INDEX.walk(root, failed):
             location = Path(base)
             if location.name in installed or (
                     any(part in installed for part in location.parts) and
@@ -169,8 +215,12 @@ def symlink_references(home=None, extra_roots=None, out=None):
                 except OSError as error:
                     failed(error)
     if out is not None:
-        emit(out, 'installed_link_scan', reference_targets=len(refs),
-             unreadable_foreign_owner=ignored, errors=errors)
+        receipt = emit(out, 'installed_link_scan', reference_targets=len(refs),
+                       indexed_directories=len(LINK_INDEX.directories),
+                       unreadable_foreign_owner=ignored, errors=errors)
+        temporary = out / 'installed-link-scan-latest.json.tmp'
+        temporary.write_text(json.dumps(receipt, indent=2) + '\n')
+        temporary.replace(out / 'installed-link-scan-latest.json')
     return refs, errors
 
 
@@ -488,7 +538,7 @@ def report(out, rows, actions, before, after, errors, mode):
     lines += ['', '## Errors / deferred actions', ''] + (['- ' + str(e) for e in errors] or ['None.'])
     (out / 'REPORT.md').write_text('\n'.join(lines) + '\n')
     emit(out, 'summary', **summary)
-    print(json.dumps(summary, indent=2), flush=True)
+    (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
 
 
 def lease_allows_reaping(path, now):
@@ -522,7 +572,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     if (args.apply or args.daily) and (args.output / 'PAUSED').exists():
         paused = emit(args.output, 'removals_paused', reason='operator PAUSED marker')
-        print(json.dumps(paused), flush=True)
+        (args.output / 'status.json').write_text(json.dumps(paused) + '\n')
         return 0
     args.archive.mkdir(parents=True, exist_ok=True)
     lock = (args.archive / '.reaper.lock').open('a')
@@ -551,7 +601,6 @@ def main():
             row = inspect(path, roots, refs, now)
             rows.append(row)
             emit(args.output, 'inventory_checkpoint', **row)
-            print(json.dumps({'inventory': path, 'class': row['class'], 'dirty': row['dirty_count'], 'untracked': row['untracked_count']}), flush=True)
         except Exception as e:
             errors.append({'path': path, 'inventory_error': str(e)})
             emit(args.output, 'inventory_error', path=path, error=str(e))
