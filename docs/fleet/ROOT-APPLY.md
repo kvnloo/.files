@@ -266,3 +266,21 @@ move its archived basename back to the exact source path from its command,
 for example `sudo mv -n -- "$review/locale.gen.pacnew" /etc/locale.gen.pacnew`.
 Apply that same inverse to any of the other eight paths as required.
 
+## Optional: restore NVIDIA vibrance on driver 615.71.09
+
+Do not disable `nvibrant.service`: Kevin uses its existing `870 870 870 870` settings for gaming. The installed system package is `nvibrant-bin 1.2.1-1` (`/usr/bin/nvibrant`), whose bundled fallback for 610.43 fails `AllocDevice ioctl` on the installed 615.71.09 driver. This is not a boot-ordering diagnosis.
+
+Upstream [v1.3.0](https://github.com/Tremeschin/nvibrant/releases/tag/v1.3.0), released 2026-09-10, explicitly adds [driver 615.71.09 support](https://nvibrant.tremeschin.com/changelog/#v1.3.0). The [AUR package](https://aur.archlinux.org/packages/nvibrant-bin) is currently `1.3.0-1`. Because the installed package is root-owned, no agent performed this upgrade or claimed a successful vibrance application.
+
+Kevin may review the AUR package and run this optional package upgrade (only this package, not a system-wide upgrade):
+
+```sh
+paru -S --needed nvibrant-bin
+pacman -Q nvibrant-bin
+systemctl --user start nvibrant.service
+journalctl --user -u nvibrant.service -n 30 --no-pager
+systemctl --user show nvibrant.service -p Result -p ExecMainStatus
+```
+
+Expected: `nvibrant-bin 1.3.0-1` or a later reviewed release supporting this exact driver, the unit exits 0 and its output reports application of the existing vibrance values, with no unsupported-driver fallback or ioctl failure. Only after that proof, clear the old failed state with `systemctl --user reset-failed nvibrant.service`. No driver upgrade, reboot, desktop restart, or vibrance-value change is authorized here.
+
