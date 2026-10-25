@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Expose loopback-only Metro to the tailnet without a wildcard listener."""
+import asyncio
+import os
+
+async def relay(reader, writer):
+    upstream = None
+    try:
+        remote, upstream = await asyncio.open_connection('localhost', 18212)
+        async def copy(source, destination):
+            while data := await source.read(65536):
+                destination.write(data)
+                await destination.drain()
+            if destination.can_write_eof():
+                destination.write_eof()
+        tasks = [asyncio.create_task(copy(reader, upstream)), asyncio.create_task(copy(remote, writer))]
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    except (OSError, asyncio.CancelledError):
+        pass
+    finally:
+        writer.close()
+        if upstream:
+            upstream.close()
+
+async def main():
+    server = await asyncio.start_server(relay, os.environ['REACT_NATIVE_PACKAGER_HOSTNAME'], 8212)
+    async with server:
+        await server.serve_forever()
+
+if __name__ == '__main__':
+    asyncio.run(main())

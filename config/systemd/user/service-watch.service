@@ -21,7 +21,7 @@ ReadOnlyPaths=%h/.omp/agent
 ReadWritePaths=%h/.config/systemd/user /mnt/zer0models/workspace/zer0/data/operations/service-watch
 Environment=PATH=/home/kvn/.bun/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=%h
-MemoryHigh=128M
+MemoryHigh=infinity
 MemoryMax=256M
 CPUQuota=15%
 TasksMax=32

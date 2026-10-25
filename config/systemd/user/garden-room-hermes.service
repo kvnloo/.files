@@ -1,0 +1,17 @@
+[Unit]
+Description=garden_room voice inbox to persistent Hermes live session
+Wants=garden-room-hermes-gateway.service
+After=garden-room-hermes-gateway.service network-online.target
+
+[Service]
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/garden_room
+Environment=GARDEN_HERMES_HOME=/workspace/hermes-home/profiles/clean
+Environment=PYTHONUNBUFFERED=1
+Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/garden_room/tools/hermes_link_worker.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=default.target

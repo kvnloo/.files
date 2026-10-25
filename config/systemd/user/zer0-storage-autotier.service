@@ -1,0 +1,9 @@
+[Unit]
+Description=Tier bulky zer0 data and idle ~/tmp virtualenvs when /workspace or / is low
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/zer0/portfolios/chief-of-staff
+ExecStart=/usr/bin/python /workspace/zer0/portfolios/chief-of-staff/scripts/zer0_storage_autotier.py --apply
+Nice=10
+IOSchedulingClass=idle

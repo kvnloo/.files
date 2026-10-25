@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh rate-limit catalog and agent outcome ledger every 30 minutes
+
+[Timer]
+OnCalendar=*:07/30
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

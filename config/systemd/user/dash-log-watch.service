@@ -18,7 +18,7 @@ Environment=PATH=/home/kvn/.local/bin:/home/kvn/android/sdk/platform-tools:/usr/
 Environment=HERMES_HOME=%h/.hermes/profiles/clean
 Environment=TMPDIR=%h/.hermes/profiles/clean/cache/scratch
 WorkingDirectory=%h
-MemoryHigh=384M
+MemoryHigh=infinity
 MemoryMax=768M
 CPUQuota=25%
 TasksMax=64

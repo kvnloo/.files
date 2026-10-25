@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily zero-cost model inventory and public page research
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/zer0models/z0-wt/salvage/free-lanes
+ExecStart=python3 /mnt/zer0models/workspace/zer0/oss/tools/dsh-env-exec.py --allow OPENROUTER_API_KEY -- python3 /mnt/zer0models/z0-wt/salvage/free-lanes/freelane.py inventory --summarise --authorize-send
+TimeoutStartSec=600
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+Restart=no

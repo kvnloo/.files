@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Quackles memory arbiter every 30 s
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

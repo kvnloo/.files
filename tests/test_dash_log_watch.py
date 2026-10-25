@@ -83,7 +83,7 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
             self.watch.status_pending.cancel()
         self.watch.db.close()
 
-    def event(self, message="TypeError: private", source="dash-metro-native-8108.service", cursor="cursor1"):
+    def event(self, message="TypeError: private", source="dash-metro.service", cursor="cursor1"):
         self.watch.event({"MESSAGE": message, "_SYSTEMD_USER_UNIT": source, "__CURSOR": cursor})
 
     async def flush(self):
@@ -125,14 +125,14 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bridge_routing(self):
         self.watch.set_gate("ACTIVE")
-        self.event("[bridge] failed ECONNRESET", "dash-bridge-4747.service")
+        self.event("[bridge] failed ECONNRESET", "dash-bridge.service")
         await self.flush()
         self.assertEqual(self.calls[0][0], "bridge")
 
     async def test_crosscutting_is_one_not_three(self):
         self.watch.set_gate("ACTIVE")
         self.event()
-        self.event("ECONNRESET", "dash-bridge-4747.service")
+        self.event("ECONNRESET", "dash-bridge.service")
         await self.flush()
         self.assertEqual([seat for seat, _ in self.calls], ["correlation"])
 
@@ -190,10 +190,10 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
             active -= 1
         self.watch.review = hold
         self.watch.set_gate("ACTIVE")
-        for code, source in (("TypeError:", "dash-metro-native-8108.service"),
-                             ("ECONNREFUSED", "dash-bridge-4747.service"),
-                             ("OutOfMemoryError", "dash-metro-native-8108.service"),
-                             ("ReferenceError:", "dash-metro-native-8108.service")):
+        for code, source in (("TypeError:", "dash-metro.service"),
+                             ("ECONNREFUSED", "dash-bridge.service"),
+                             ("OutOfMemoryError", "dash-metro.service"),
+                             ("ReferenceError:", "dash-metro.service")):
             self.event(code, source)
             await self.watch.flush_task
             await asyncio.sleep(0)
@@ -211,7 +211,7 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
             for number, message in enumerate(samples):
                 self.watch.event({"MESSAGE": message, "__CURSOR": str(number)}, source=source)
         self.assertEqual(len(self.watch.pending), 24)
-        self.assertEqual(self.watch.counts["backpressure"], 16)
+        self.assertEqual(self.watch.counts["backpressure"], len(samples) * len(w.UNITS) - 24)
         await self.flush()
 
     async def test_track_devices_wire_framing_and_loss(self):
@@ -279,7 +279,7 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(os.stat(Path(self.tmp.name) / "status.json").st_mode & 0o777, 0o600)
         other = w.Watch(self.config, self.tmp.name, fixture=True)
         other.set_gate("ACTIVE")
-        other.event({"MESSAGE": "TypeError:", "_SYSTEMD_USER_UNIT": "dash-metro-native-8108.service"})
+        other.event({"MESSAGE": "TypeError:", "_SYSTEMD_USER_UNIT": "dash-metro.service"})
         self.assertEqual(other.pending, [])
         self.assertEqual(other.counts["deduplicated"], 1)
         other.db.close()

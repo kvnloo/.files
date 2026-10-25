@@ -1,0 +1,11 @@
+[Unit]
+Description=Check zer0 hot/cold storage tier every 30 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+Persistent=true
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

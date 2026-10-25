@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes Dashboard loopback proxy for Tailscale Serve
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /workspace/hermes-home/scripts/hermes-dashboard-tailnet-proxy.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

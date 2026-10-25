@@ -1,0 +1,17 @@
+[Unit]
+Description=Private Pokemon Field OS frozen preview f85e3ae295feec02
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/experiments/pokemon/.worktrees/pokedex-field-os-repair
+ExecStart=/home/kvn/.local/share/fnm/node-versions/v26.5.0/installation/bin/node tools/pokedex-field-os/serve-release.mjs /mnt/zer0models/pokemon-iac/devices/pokedex/field-os/r03/build d89d8807e496c33ea81696b9c63b0e4d5486e460f360e6cc6080854fa27fe0c4
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

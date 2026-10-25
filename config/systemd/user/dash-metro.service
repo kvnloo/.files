@@ -1,0 +1,21 @@
+[Unit]
+Description=Dash installed development client JavaScript on tailnet 8212
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/lib/dash/app-current/app
+EnvironmentFile=%h/.config/dash-services/metro.env
+ExecStartPre=%h/.local/lib/dash-services/current/dash-wait-tailnet
+ExecStart=%h/.bun/bin/bun node_modules/expo/bin/cli start --dev-client --localhost --port 18212
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+OOMPolicy=continue
+# Measured startup/manifest peak 615993344 bytes; 2GiB headroom, no MemoryHigh.
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target

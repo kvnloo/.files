@@ -1,0 +1,3 @@
+#!/bin/sh
+# Direct and pane-launched Hermes share the same per-profile vault allowlist.
+exec "$HOME/.local/bin/bws-env-exec" --scope hermes -- "$HOME/.hermes/hermes-agent/.hermes/bin/hermes" "$@"

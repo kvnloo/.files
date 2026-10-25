@@ -293,4 +293,141 @@ No bulk-disk journal mount or data migration is introduced.
 `journalctl --disk-usage` and `systemd-analyze cat-config systemd/journald.conf`
 for verification. The latter must show the later host file with1G/2G/30day.
 There is **no** manual journal vacuum operation and no journal deletion.
+## Groot user-layer configuration audit (2026-10-25 UTC)
+
+`scripts/inventory-host-user` is a read-only, bounded inventory of configured
+units/drop-ins, enabled links/timers, lingering, manager overrides, environment
+paths, service executable provenance, resource properties and per-cgroup memory/IO
+PSI. It never exports environment values or full command arguments. Run it in a
+1 GiB `background.slice` scope with idle CPU/IO scheduling; retain JSON outside git.
+The initial observation had 428 configured paths and 298 loaded services/scopes/
+slices. These are time-bounded counts, not a claim that every service is healthy.
+Linger was enabled. `user@1000.service` used packaged delegate/login-barrier
+drop-ins; no local user manager configuration drop-in was present.
+
+`config/host/groot.toml` records kept declarations and their installer. Existing
+activation is preserved, including inactive services and timers: adoption does
+not approve their historical purpose or start them. Native `.local/bin` binaries
+remain application-managed; `config/host/user-executables.json` records observed
+hashes/paths, not reproducible binary builds. Stamped helpers include their local
+import/config closure. Dunst's existing `/dev/null` mask is preserved.
+
+Install from the intended merged tree:
+
+```sh
+python3 scripts/apply-agent-oom --user-layer
+python3 scripts/apply-agent-oom --user-layer --apply
+```
+
+This reuses the agent installer's content-stamped release implementation. It
+backs up replaced paths and exact inventoried unleased `user.control` files,
+rejects changed files/controls rather than overwriting a possible new lease,
+atomically links declarations, and daemon-reloads without restarting any service.
+Backups live under `~/.local/state/host-user/backups/`. There is no recursive
+control-directory deletion. The legacy ctx controls were already removed by its
+own installer before this snapshot.
+
+| Setting | Initial live value | Kept/corrected declaration | Evidence |
+| --- | --- | --- | --- |
+| session CPUWeight / MemoryLow | 1000 / 4 GiB, untracked user.control | CPUWeight=1000, MemoryMin=MemoryLow=7 GiB | Session lifetime peak 6,346,428,416 B (5.91 GiB), ~18% protection margin; requires matching protected ancestor chain |
+| session IOWeight | 1000, untracked, ineffective on mq-deadline | Remove override; `/dev/sdb` latency target 10 ms | Controlled direct-read trial below |
+| agent telemetry / Dash watcher / service watcher MemoryHigh | 1500 / 384 / 128 MiB | infinity; retain existing hard caps | House rule: no reclaim throttle; ctx livelock diagnosis |
+| farm MemoryHigh / MemoryMax | 6 / 8 GiB | infinity / 8 GiB | Peak 3,126,669,312 B; preserve established hard budget, remove soft throttle |
+| dormant Hermes batch/heavy/interactive slices MemoryHigh | 8 / 10 / 4 GiB | infinity, unchanged hard caps | Same no-MemoryHigh rule, not new activations |
+| T3 agents MemoryHigh / MemoryMax | 18,639,716,352 / 20,787,200,000 B, runtime | infinity / 4 GiB | Aggregate peak 1,229,709,312 B; parent-selected >3x headroom; initialization can overwrite until upstream fix |
+| Multi-session OOMPolicy | hermes-core and hermes-web stop; gateway and T3 continue | Flag stop as blast-radius risk; do not silently change lifecycle | Inventory includes exact OOMPolicy for every loaded service/scope |
+| Large unbounded groups | app and background slices, gateway/core, Noctalia, Ollama GPU | Explicitly reported, not guessed caps | Lifetime peaks must not be summed across parent/child groups |
+
+Noctalia's peak was 930,508,800 B; T3 server 1,818,808,320 B; Hermes web
+311,656,448 B (below the inventory's 512 MiB large-working-set flag). Chrome
+scopes are listed individually. The agent aggregate's historical 14,181,822,464 B
+peak exceeds its *current* 10 GiB hard cap; that is a pre-change historical peak,
+not proof that the kernel is currently ignoring its cap. Caps and peaks may
+reflect different policy periods. z0int-policy's separate failed 256 MiB budget
+is owned by CapacityAutoEval; this installer does not invent a replacement.
+Unbounded groups keep any global sufficient-memory guarantee unknown.
+
+### Scheduler-independent desktop IO protection
+
+With mq-deadline, plain `io.weight` does not provide proportional IO service
+unless an effective weight-capable controller (BFQ/io.cost) is configured.
+The delegated kernel `io.latency` interface accepted `8:16 target=10000`.
+`IODeviceLatencyTargetSec=/dev/sdb 10ms` protects session.slice against sibling
+background/app/agent traffic without hard bandwidth caps or scheduler changes.
+No unmeasured target was added to another device.
+
+`scripts/probe-desktop-io` uses only O_DIRECT reads against an existing 153 MiB
+archive on the SSD. Two owned transient services run concurrently: random 1 MiB
+background reads and paced 4 KiB session probes, each for six seconds/64 MiB RAM.
+Same fixture and fixed random seed were used with target zero and then 10 ms:
+
+| Measurement | Target off | Target 10 ms |
+| --- | ---: | ---: |
+| session p50 | 3.98 ms | 3.24 ms |
+| session p95 | 18.70 ms | 11.99 ms |
+| session p99 | 39.70 ms | 17.81 ms |
+| background bytes | 834,666,496 | 730,857,472 |
+| session full PSI total delta | 122,604 us | 67,493 us |
+
+Receipts: `/tmp/files-io-before.json`, `/tmp/files-io-after.json`; background and
+session PSI windows differ slightly at service startup. This short uncontrolled
+host-load A/B is evidence of working controller admission and observed improvement,
+not a sustained desktop latency guarantee or isolated causal benchmark.
+
+### Upstream, secrets and OOM ranking boundaries
+
+T3's installed service launches the packaged
+`~/.t3/runtime/versions/0.1.2/t3`, not a local development checkout.
+Its current source hardcodes runtime memory limits at initialization
+([upstream issue 24708](https://github.com/pingdotgg/t3code/issues/24708)).
+The manifest marks this `drift=owned-upstream`; an upstream-owned conflict is
+still nonclean. The tracked T3 service sets the proposed
+`T3CODE_AGENT_MEMORY_POLICY=inherit` seam for patched builds; old builds ignore it.
+No T3 server restart or upgrade is performed here.
+
+`TYPESAFE_API_KEY` was found globally exported by a private environment.d file
+whose mode was already 0600. Its value is not tracked. The manifest's explicit
+private exception remains unknown rather than claiming secret-source verification.
+Actual name-based consumers found were OMP's `typesafe-jev/index.ts` and z0int's
+`functions/jev.py`; no tracked user unit/helper directly named the variable.
+Consumer-scoped BWS/`dsh-env-exec.py --allow TYPESAFE_API_KEY` injection is the
+proposed replacement, requiring its separately authorized owner.
+
+The classifier raises routed workload processes and Hermes-gateway descendants
+to `oom_score_adj=800`, never lowering an already-higher score. Service MainPIDs,
+recognized agent controls, browser/compositor/audio processes are excluded.
+PID start-time identity and ownership are rechecked before each write. Scope
+drop-ins cannot set service-only `OOMScoreAdjust`: the real mechanisms are
+agent-launch's inherited process score and the classifier's recovery sweep.
+`memory.min` is reclaim protection, **not immunity from global OOM selection**;
+existing desktop processes need the root owner's separately planned lifecycle
+to inherit a lower base score. No compositor/gateway/harness restart is authorized.
+
+The two dangling `zer0-voice-maxine-full.service` links are backed up and retired:
+the never-tracked experiment was superseded by `zer0-voice-direct` (PM commit
+8fe26d0). This removes only broken symlinks, not voice data or PipeWire config.
+Both direct voice and its watchdog were disabled/inactive when explicitly queried;
+neither is started by this installer.
+
+### Desktop placement: next login, not a live desktop restart
+
+| Component | Observed current slice | Declared next-start slice |
+| --- | --- | --- |
+| Noctalia (also its notification/launcher surfaces) | app.slice | session.slice |
+| Alternate Waybar transient service | not active in snapshot | session.slice |
+| HyprCaffeine idle inhibitor | app.slice | session.slice |
+| GTK desktop portal | app.slice | session.slice |
+| Base/Hyprland desktop portals, compositor, PipeWire | session.slice | unchanged |
+| Chrome interactive scope | app.slice | gap: packaged desktop entry, no tracked Chrome launcher |
+
+The existing bar-mode launcher also explicitly requests session.slice for
+future Noctalia/Waybar services. Four service drop-ins stage the same placement
+independent of existing launcher paths. A daemon-reload can expose the new
+configured Slice while a running service's actual cgroup remains app.slice;
+only its next owned start/login moves it. No desktop service is restarted here.
+Clipboard watchers are launched directly by the tracked compositor autostart,
+not by separate app.slice units. UWSM is present, but the active Lua entrypoint
+does not use the separate `config/binds.lua` browser shortcut. No user-local
+Chrome desktop entry or tracked Chrome launcher was found, so this change does
+not claim future Chrome placement is fixed.
 

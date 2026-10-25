@@ -1,0 +1,12 @@
+[Unit]
+Description=garden_room planner (phone app + Hermes chat portal)
+After=network-online.target
+
+[Service]
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/garden_room
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/garden_room/server.py --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

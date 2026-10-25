@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh model identities when published weights or registry change
+
+[Path]
+PathChanged=/workspace/z0-farm/models
+PathChanged=/workspace/z0-farm/models/router
+PathChanged=%h/.z0int/config/serving.json
+Unit=z0int-model-identity.service
+
+[Install]
+WantedBy=default.target

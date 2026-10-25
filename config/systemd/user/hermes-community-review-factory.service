@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes community-manager continuous factory v6 tick (GitHub read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=10
+WorkingDirectory=/workspace/hermes-home/profiles/community-manager/community-factory/v2-src
+Environment=HERMES_HOME=/workspace/hermes-home/profiles/community-manager
+Environment=PATH=/workspace/hermes-home/hermes-agent/venv/bin:/usr/bin:/home/kvn/.local/bin:/usr/local/bin
+ExecStart=/usr/bin/python3 /workspace/hermes-home/profiles/community-manager/community-factory/v2-src/tick.py --state-db /workspace/hermes-home/profiles/community-manager/community-factory/factory-state.db --kanban-db /home/kvn/.hermes/kanban/boards/hermes-agent/kanban.db
+StandardOutput=journal
+StandardError=journal

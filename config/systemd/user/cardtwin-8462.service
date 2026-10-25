@@ -1,0 +1,20 @@
+[Unit]
+Description=CardTwin exact approved candidate e7ec755 on loopback 8462
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/deployments/cardtwin-8462
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8462
+Environment=CARDTWIN_APP_REVISION=e7ec75560052d67556346cdb5088899f2c2c32f6
+Environment=CARDTWIN_ASSET_REVISION=3f2086e98077115993f15d22d7c507219a50bce0
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

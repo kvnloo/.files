@@ -1,0 +1,20 @@
+[Unit]
+Description=Neuroforge read-only Anki bridge (disposable practice, no GUI)
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/neuroforge
+Environment=TMPDIR=/mnt/zer0models/sft-svlm/data/neuroforge/anki/tmp
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/env -u DISPLAY -u WAYLAND_DISPLAY -u SWAYSOCK -u DBUS_SESSION_BUS_ADDRESS -u HYPRLAND_INSTANCE_SIGNATURE /mnt/zer0models/sft-svlm/data/neuroforge/anki/venv/bin/python packages/anki/neuroforge_anki.py serve --collection /mnt/zer0models/sft-svlm/data/neuroforge/anki/disposable/practice-v1/collection.anki2 --port 18766 --allow-origin http://127.0.0.1:5179
+Restart=on-failure
+RestartSec=5
+UMask=0077
+LimitCORE=0
+MemoryMax=768M
+StandardOutput=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/anki-bridge.log
+StandardError=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/anki-bridge.log
+
+[Install]
+WantedBy=default.target

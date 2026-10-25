@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily safe synchronization of kvnloo GitHub forks
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=1d
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

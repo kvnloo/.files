@@ -1,0 +1,19 @@
+[Unit]
+Description=z0live native Hermes API-only host (no messaging/schedulers)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/z0live
+Environment=HERMES_HOME=/workspace/hermes-home/profiles/clean
+Environment=TERMINAL_CWD=/mnt/zer0models/workspace/zer0/products/z0live
+Environment=Z0LIVE_DATA=/mnt/zer0models/workspace/zer0/data/z0live
+Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/z0live/desktop/hermes_host.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

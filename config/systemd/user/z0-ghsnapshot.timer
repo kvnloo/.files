@@ -1,0 +1,10 @@
+[Unit]
+Description=z0 factory: GitHub snapshot every 30 minutes (mostly 304s after the first)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
