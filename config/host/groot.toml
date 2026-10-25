@@ -22,6 +22,14 @@ user_retired_links = [
 ]
 
 [[user]]
+live = "~/.omp/agent/extensions/sqlite-tool-guard/index.ts"
+source = "config/omp/sqlite-tool-guard/index.ts"
+scope = "user"
+install = "symlink-stamped"
+owner = "z0intelligence/omp-extensions/sqlite-tool-guard"
+reason = "Pinned deployment artifact from z0intelligence commit 307aa48 (PR230), SHA256 2a4cdc6cb2e22988fc5e7d56bb0571f3b1294f1f6c1c2125d1cf1e350a6bf452. Temporary POSIX-lock safety hook pending OMP15586 process isolation. Track index.ts through the extension directory link using existing regular-file drift semantics; installing does not reload existing sessions."
+
+[[user]]
 live = "~/.config/systemd/user/agent-resource-classify.service"
 source = "config/systemd/user/agent-resource-classify.service"
 scope = "user"
