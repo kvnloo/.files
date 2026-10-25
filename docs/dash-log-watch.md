@@ -176,8 +176,13 @@ from the policy-only immutable release at `~/.local/lib/z0int-policy/current`.
 The approved fleet declaration enables it. It first runs
 `python -m z0int.policy.autoeval tick`, then `python -m z0int.cli policy`
 ingest and compile only on success,
-with a five-minute wall limit and bounded resources. Discovery reads
-`$Z0INT_HOME/config/choice-ladder.json`; absent configuration is a no-op.
+with a five-minute wall limit and bounded resources. The tick only reads cached
+identities; uncached weights report `identity_pending` with capacity zero.
+`z0int-model-identity.service` populates stat-keyed digests and metadata at nice
+19 / idle I/O priority, separately from policy compilation. Its path unit
+watches model directories and the serving registry; a daily timer is the
+backstop. Discovery reads `$Z0INT_HOME/config/choice-ladder.json`; absent
+configuration is a no-op.
 Configured missing or near-expiry model scopes enqueue separate transient user
 services so evaluation survives completion of the timer's oneshot. Those
 workers use Kueue `bench` admission or the configured `groot-admit` CUDA lane;
