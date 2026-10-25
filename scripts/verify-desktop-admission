@@ -31,9 +31,13 @@ cases.append(('nodename-bypass-denied',p,False))
 p=copy.deepcopy(base);p['spec']['nodeSelector']={'kubernetes.io/hostname':'mbp','z0.dev/cpu-admit':'true'}
 p['spec']['containers'][0]['resources']={'requests':{'cpu':'4','memory':'10441814016'},'limits':{'cpu':'4','memory':'10441814016'}}
 full_lane=('full-mbp-lane-preserved',p,True)
+p=copy.deepcopy(p);p['spec']['nodeName']='groot';p['spec']['nodeSelector']['z0.dev/gpu']='rtx3080ti'
+p['spec']['containers'][0]['resources']['limits']['nvidia.com/gpu']='1'
+p['spec']['containers'][0]['resources']['requests']['nvidia.com/gpu']='1'
+full_lane_bypass=('full-lane-gpu-nodename-bypass-denied',p,False)
 results=[]
 for namespace in ('factory', 'lanes', 'fleet-mbp', 'z0'):
-    for name,pod,allow in cases + ([full_lane] if namespace == 'fleet-mbp' else []):
+    for name,pod,allow in cases + ([full_lane,full_lane_bypass] if namespace == 'fleet-mbp' else []):
         pod=copy.deepcopy(pod)
         pod['metadata']['namespace']=namespace
         if namespace in ('factory', 'lanes'):
