@@ -1,0 +1,246 @@
+# Managed groot host paths. Optional stage selects separately approved oomd operation.
+
+[[system]]
+live = "/etc/fstab"
+source = "config/host/etc/fstab"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/kernel/cmdline"
+source = "config/host/etc/kernel/cmdline"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/modprobe.d/nvidia.conf"
+source = "config/host/etc/modprobe.d/nvidia.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/security/limits.d/20-audio.conf"
+source = "config/host/etc/security/limits.d/20-audio.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/security/limits.d/99-custom.conf"
+source = "config/host/etc/security/limits.d/99-custom.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/security/limits.d/99-pipewire.conf"
+source = "config/host/etc/security/limits.d/99-pipewire.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/security/limits.d/99-realtime-privileges.conf"
+source = "config/host/etc/security/limits.d/99-realtime-privileges.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/sysctl.d/99-groot.conf"
+source = "config/host/etc/sysctl.d/99-groot.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/-.slice.d/99-host-oomd.conf"
+source = "config/host/etc/systemd/system/-.slice.d/99-host-oomd.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+stage = "oomd"
+
+[[system]]
+live = "/etc/systemd/system/containerd.service.d/10-z0-storage.conf"
+source = "config/host/etc/systemd/system/containerd.service.d/10-z0-storage.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/docker.service.d/10-z0-storage.conf"
+source = "config/host/etc/systemd/system/docker.service.d/10-z0-storage.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/k3s.service.d/10-z0-storage.conf"
+source = "config/host/etc/systemd/system/k3s.service.d/10-z0-storage.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/keyd-layers.service"
+source = "config/host/etc/systemd/system/keyd-layers.service"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/keyd-layers.socket"
+source = "config/host/etc/systemd/system/keyd-layers.socket"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/mnt-zer0models.mount"
+source = "config/host/etc/systemd/system/mnt-zer0models.mount"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/ollama.service.d/model-store.conf"
+source = "config/host/etc/systemd/system/ollama.service.d/model-store.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/system.slice.d/99-host-oomd.conf"
+source = "config/host/etc/systemd/system/system.slice.d/99-host-oomd.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+stage = "oomd"
+
+[[system]]
+live = "/etc/systemd/system/tern-remote-refresh.service"
+source = "config/host/etc/systemd/system/tern-remote-refresh.service"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/tern-remote-refresh.timer"
+source = "config/host/etc/systemd/system/tern-remote-refresh.timer"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/tern-remote.service"
+source = "config/host/etc/systemd/system/tern-remote.service"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/systemd/system/user-1000.slice.d/99-host-oomd.conf"
+source = "config/host/etc/systemd/system/user-1000.slice.d/99-host-oomd.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+stage = "oomd"
+
+[[system]]
+live = "/etc/systemd/system/user.slice.d/99-host-oomd.conf"
+source = "config/host/etc/systemd/system/user.slice.d/99-host-oomd.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+stage = "oomd"
+
+[[system]]
+live = "/etc/systemd/system/user@1000.service.d/99-host-oomd.conf"
+source = "config/host/etc/systemd/system/user@1000.service.d/99-host-oomd.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+stage = "oomd"
+
+[[system]]
+live = "/etc/systemd/zram-generator.conf"
+source = "config/host/etc/systemd/zram-generator.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/udev/rules.d/30-zram.rules"
+source = "config/host/etc/udev/rules.d/30-zram.rules"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/udev/rules.d/50-usb-low-latency.rules"
+source = "config/host/etc/udev/rules.d/50-usb-low-latency.rules"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/udev/rules.d/51-gcadapter.rules"
+source = "config/host/etc/udev/rules.d/51-gcadapter.rules"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
+
+[[system]]
+live = "/etc/default/earlyoom"
+source = "config/host/etc/default/earlyoom"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve package backup deviation observed 2026-10-24; DESKTOP-ADMISSION.md system audit"
+
+[[system]]
+live = "/etc/default/atop"
+source = "config/host/etc/default/atop"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve package backup deviation observed 2026-10-24; DESKTOP-ADMISSION.md system audit"
+
+[[system]]
+live = "/etc/mkinitcpio.conf"
+source = "config/host/etc/mkinitcpio.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Preserve package backup deviation observed 2026-10-24; DESKTOP-ADMISSION.md system audit"

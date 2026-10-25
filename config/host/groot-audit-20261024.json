@@ -1,0 +1,2889 @@
+{
+  "observed_at": "2026-10-25T03:46:09.561433+00:00",
+  "root_changes_applied": false,
+  "package_integrity": {
+    "qkk_returncode": 1,
+    "elapsed_seconds": 349.85,
+    "log": "/tmp/groot-system-pacman-qkk.log",
+    "backup_deviations": [
+      {
+        "package": "atop",
+        "path": "/etc/default/atop",
+        "status": "modified"
+      },
+      {
+        "package": "audit",
+        "path": "/etc/libaudit.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "bash-completion",
+        "path": "/etc/bash_completion.d/000_bash_completion_compat.bash",
+        "status": "missing"
+      },
+      {
+        "package": "bind",
+        "path": "/etc/named.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "bind",
+        "path": "/var/named/127.0.0.zone",
+        "status": "unreadable"
+      },
+      {
+        "package": "bind",
+        "path": "/var/named/localhost.zone",
+        "status": "unreadable"
+      },
+      {
+        "package": "bind",
+        "path": "/var/named/localhost.ip6.zone",
+        "status": "unreadable"
+      },
+      {
+        "package": "cachyos-mirrorlist",
+        "path": "/etc/pacman.d/cachyos-mirrorlist",
+        "status": "modified"
+      },
+      {
+        "package": "cachyos-v3-mirrorlist",
+        "path": "/etc/pacman.d/cachyos-v3-mirrorlist",
+        "status": "modified"
+      },
+      {
+        "package": "cachyos-v4-mirrorlist",
+        "path": "/etc/pacman.d/cachyos-v4-mirrorlist",
+        "status": "modified"
+      },
+      {
+        "package": "cups",
+        "path": "/etc/cups/cupsd.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "cups",
+        "path": "/etc/cups/snmp.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "cups",
+        "path": "/etc/cups/cups-files.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "earlyoom",
+        "path": "/etc/default/earlyoom",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/crypttab",
+        "status": "unreadable"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/fstab",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/group",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/gshadow",
+        "status": "unreadable"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/hosts",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/passwd",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/resolv.conf",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/shadow",
+        "status": "unreadable"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/shells",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/subgid",
+        "status": "modified"
+      },
+      {
+        "package": "filesystem",
+        "path": "/etc/subuid",
+        "status": "modified"
+      },
+      {
+        "package": "fwupd",
+        "path": "/etc/fwupd/fwupd.conf",
+        "status": "unreadable"
+      },
+      {
+        "package": "glibc",
+        "path": "/etc/locale.gen",
+        "status": "modified"
+      },
+      {
+        "package": "google-cloud-cli-gsutil",
+        "path": "/etc/profile.d/google-cloud-cli-gsutil.sh",
+        "status": "missing"
+      },
+      {
+        "package": "mkinitcpio",
+        "path": "/etc/mkinitcpio.conf",
+        "status": "modified"
+      },
+      {
+        "package": "pacman",
+        "path": "/etc/pacman.conf",
+        "status": "modified"
+      },
+      {
+        "package": "pacman-mirrorlist",
+        "path": "/etc/pacman.d/mirrorlist",
+        "status": "modified"
+      },
+      {
+        "package": "plymouth",
+        "path": "/etc/plymouth/plymouthd.conf",
+        "status": "modified"
+      },
+      {
+        "package": "ppp",
+        "path": "/etc/ppp/chap-secrets",
+        "status": "missing"
+      },
+      {
+        "package": "ppp",
+        "path": "/etc/ppp/pap-secrets",
+        "status": "missing"
+      },
+      {
+        "package": "scx-scheds",
+        "path": "/etc/default/scx",
+        "status": "missing"
+      },
+      {
+        "package": "shadow",
+        "path": "/etc/default/useradd",
+        "status": "unreadable"
+      },
+      {
+        "package": "sudo",
+        "path": "/etc/sudoers",
+        "status": "unreadable"
+      },
+      {
+        "package": "tpm2-tss",
+        "path": "/etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json",
+        "status": "modified"
+      },
+      {
+        "package": "tpm2-tss",
+        "path": "/etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json",
+        "status": "modified"
+      },
+      {
+        "package": "ufw",
+        "path": "/etc/ufw/ufw.conf",
+        "status": "modified"
+      },
+      {
+        "package": "ufw",
+        "path": "/etc/ufw/user.rules",
+        "status": "modified"
+      },
+      {
+        "package": "ufw",
+        "path": "/etc/ufw/user6.rules",
+        "status": "modified"
+      }
+    ],
+    "permission_denied_is_unknown": true
+  },
+  "upgrade_leftovers": {
+    "files": [
+      "/etc/locale.gen.pacnew",
+      "/etc/mkinitcpio.conf.pacnew",
+      "/etc/pacman.d/cachyos-mirrorlist.pacnew",
+      "/etc/pacman.d/cachyos-v3-mirrorlist.pacnew",
+      "/etc/pacman.d/cachyos-v4-mirrorlist.pacnew",
+      "/etc/pacman.d/mirrorlist.pacnew",
+      "/etc/resolv.conf.pacnew",
+      "/etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json.pacnew",
+      "/etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json.pacnew"
+    ],
+    "inaccessible": [
+      {
+        "path": "/etc/pacman.d/gnupg/private-keys-v1.d",
+        "error": "[Errno 13] Permission denied: '/etc/pacman.d/gnupg/private-keys-v1.d'"
+      },
+      {
+        "path": "/etc/pacman.d/gnupg/openpgp-revocs.d",
+        "error": "[Errno 13] Permission denied: '/etc/pacman.d/gnupg/openpgp-revocs.d'"
+      },
+      {
+        "path": "/etc/pacman.d/gnupg/crls.d",
+        "error": "[Errno 13] Permission denied: '/etc/pacman.d/gnupg/crls.d'"
+      },
+      {
+        "path": "/etc/audit/plugins.d",
+        "error": "[Errno 13] Permission denied: '/etc/audit/plugins.d'"
+      },
+      {
+        "path": "/etc/credstore",
+        "error": "[Errno 13] Permission denied: '/etc/credstore'"
+      },
+      {
+        "path": "/etc/credstore.encrypted",
+        "error": "[Errno 13] Permission denied: '/etc/credstore.encrypted'"
+      },
+      {
+        "path": "/etc/cryptsetup-keys.d",
+        "error": "[Errno 13] Permission denied: '/etc/cryptsetup-keys.d'"
+      },
+      {
+        "path": "/etc/sudoers.d",
+        "error": "[Errno 13] Permission denied: '/etc/sudoers.d'"
+      },
+      {
+        "path": "/etc/polkit-1/rules.d",
+        "error": "[Errno 13] Permission denied: '/etc/polkit-1/rules.d'"
+      },
+      {
+        "path": "/etc/NetworkManager/system-connections",
+        "error": "[Errno 13] Permission denied: '/etc/NetworkManager/system-connections'"
+      },
+      {
+        "path": "/etc/cups/ssl",
+        "error": "[Errno 13] Permission denied: '/etc/cups/ssl'"
+      },
+      {
+        "path": "/etc/cni/net.d",
+        "error": "[Errno 13] Permission denied: '/etc/cni/net.d'"
+      }
+    ]
+  },
+  "sysctl_files_and_effective": {
+    "vm.swappiness": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "100"
+        },
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "180"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "150"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "150"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "180"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "180"
+      },
+      "live": "180"
+    },
+    "vm.vfs_cache_pressure": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "50"
+        },
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "50"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "50"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "50"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "50"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "50"
+      },
+      "live": "50"
+    },
+    "vm.dirty_bytes": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "268435456"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "268435456"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "268435456"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "268435456"
+      },
+      "live": "0"
+    },
+    "vm.page-cluster": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "0"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "0"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "0"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "0"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "0"
+      },
+      "live": "0"
+    },
+    "vm.dirty_background_bytes": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "67108864"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "67108864"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "67108864"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "67108864"
+      },
+      "live": "0"
+    },
+    "vm.dirty_writeback_centisecs": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "1500"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+        "value": "1500"
+      },
+      "live": "1500"
+    },
+    "kernel.nmi_watchdog": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "0"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+        "value": "0"
+      },
+      "live": "0"
+    },
+    "kernel.unprivileged_userns_clone": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "1"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+        "value": "1"
+      },
+      "live": "1"
+    },
+    "kernel.printk": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "3 3 3 3"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+        "value": "3 3 3 3"
+      },
+      "live": "3\t3\t3\t3"
+    },
+    "kernel.kptr_restrict": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "2"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+        "value": "2"
+      },
+      "live": "2"
+    },
+    "net.core.netdev_max_backlog": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "4096"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "65536"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "65536"
+      },
+      "live": "65536"
+    },
+    "fs.file-max": {
+      "assignments": [
+        {
+          "file": "/usr/lib/sysctl.d/70-cachyos-settings.conf",
+          "value": "2097152"
+        },
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "2097152"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "2097152"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "2097152"
+      },
+      "live": "2097152"
+    },
+    "fs.nr_open": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "2097152"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "2097152"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "2097152"
+      },
+      "live": "2097152"
+    },
+    "fs.inotify.max_user_watches": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "524288"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "524288"
+      },
+      "live": "524288"
+    },
+    "fs.inotify.max_user_instances": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "512"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "512"
+      },
+      "live": "512"
+    },
+    "vm.max_map_count": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "1048576"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "1048576"
+      },
+      "live": "1048576"
+    },
+    "vm.dirty_ratio": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "10"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "20"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "20"
+      },
+      "live": "20"
+    },
+    "vm.dirty_background_ratio": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "5"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "10"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "10"
+      },
+      "live": "10"
+    },
+    "net.core.somaxconn": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "65535"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "65535"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "65535"
+      },
+      "live": "65535"
+    },
+    "net.core.rmem_max": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "134217728"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "134217728"
+      },
+      "live": "134217728"
+    },
+    "net.core.wmem_max": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "134217728"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "134217728"
+      },
+      "live": "134217728"
+    },
+    "net.ipv4.tcp_fastopen": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "3"
+        },
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "3"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "3"
+      },
+      "live": "3"
+    },
+    "net.ipv4.tcp_max_syn_backlog": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "65535"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "65535"
+      },
+      "live": "65535"
+    },
+    "net.ipv4.conf.all.rp_filter": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "2"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "2"
+      },
+      "live": "1"
+    },
+    "net.ipv4.conf.default.rp_filter": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "2"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "2"
+      },
+      "live": "1"
+    },
+    "kernel.pid_max": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "4194304"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "4194304"
+      },
+      "live": "4194304"
+    },
+    "kernel.threads-max": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-custom.conf",
+          "value": "4194304"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-custom.conf",
+        "value": "4194304"
+      },
+      "live": "4194304"
+    },
+    "vm.watermark_scale_factor": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "125"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "125"
+        },
+        {
+          "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+          "value": "200"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-zz-groot-memory.conf",
+        "value": "200"
+      },
+      "live": "200"
+    },
+    "vm.overcommit_memory": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "1"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "0"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+        "value": "0"
+      },
+      "live": "1"
+    },
+    "vm.overcommit_ratio": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "100"
+        },
+        {
+          "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+          "value": "100"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-z-memory-latency.conf",
+        "value": "100"
+      },
+      "live": "100"
+    },
+    "kernel.sched_latency_ns": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "24000000"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "24000000"
+      },
+      "live": "ABSENT/UNREADABLE"
+    },
+    "kernel.sched_min_granularity_ns": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "3000000"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "3000000"
+      },
+      "live": "ABSENT/UNREADABLE"
+    },
+    "kernel.sched_wakeup_granularity_ns": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "4000000"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "4000000"
+      },
+      "live": "ABSENT/UNREADABLE"
+    },
+    "kernel.sched_migration_cost_ns": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "5000000"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "5000000"
+      },
+      "live": "ABSENT/UNREADABLE"
+    },
+    "kernel.sched_autogroup_enabled": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "0"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "0"
+      },
+      "live": "0"
+    },
+    "net.ipv4.tcp_congestion_control": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "bbr"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "bbr"
+      },
+      "live": "bbr"
+    },
+    "net.ipv4.tcp_tw_reuse": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "1"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "1"
+      },
+      "live": "1"
+    },
+    "net.ipv4.tcp_fin_timeout": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "10"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "10"
+      },
+      "live": "10"
+    },
+    "net.ipv4.tcp_slow_start_after_idle": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "0"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "0"
+      },
+      "live": "0"
+    },
+    "net.ipv4.tcp_no_metrics_save": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "1"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "1"
+      },
+      "live": "1"
+    },
+    "net.ipv4.ip_local_port_range": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "10000 65535"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "10000 65535"
+      },
+      "live": "10000\t65535"
+    },
+    "net.netfilter.nf_conntrack_max": {
+      "assignments": [
+        {
+          "file": "/etc/sysctl.d/99-performance-tuning.conf",
+          "value": "1048576"
+        }
+      ],
+      "expected_file_winner": {
+        "file": "/etc/sysctl.d/99-performance-tuning.conf",
+        "value": "1048576"
+      },
+      "live": "655360"
+    }
+  },
+  "scoped_file_inventory": {
+    "/etc/fstab": {
+      "sha256": "b06d2070d01ce6cac16866157a93e143ae4ab734e09373c30bf8324a75092f1f",
+      "link": null
+    },
+    "/etc/systemd/zram-generator.conf": {
+      "sha256": "dd57ccda6681c4224862b900aca2fbd1dbd136624331c16a34fe3d4774e35278",
+      "link": null
+    },
+    "/etc/systemd/oomd.conf": {
+      "sha256": "c4aafc5d01251d260a578a4a2bbf345a12aff281902bcfe77413f41e93f6a93c",
+      "link": null
+    },
+    "/etc/systemd/system.conf": {
+      "sha256": "b18682e8b608db995eb2fcf2d2f4d1451493f3c1e0014adb62d5decb3268225d",
+      "link": null
+    },
+    "/etc/systemd/user.conf": {
+      "sha256": "bc49fb1e16bdbfc1fda1a10a69b8042323527738fc5b36c01db826516db6e376",
+      "link": null
+    },
+    "/etc/systemd/journald.conf": {
+      "sha256": "995877ef4f574eb64057eb1d64c5c4e5badfa62a9fa21a686a37c51aa9f67857",
+      "link": null
+    },
+    "/etc/systemd/logind.conf": {
+      "sha256": "be618cd8e6f4d07004303494eab1df0ff0d22e030422f304f5d7f19f915fd452",
+      "link": null
+    },
+    "/proc/cmdline": {
+      "sha256": "cd08649dd9608333317391d59d763523eb129ba4c9209c2ab5f28033d5f8fbf0",
+      "link": null
+    },
+    "/etc/sysctl.d/99-custom.conf": {
+      "sha256": "be6961d70367889ef1dc462829f31d6064f1afe3557403f97817ad9fc192ece3",
+      "link": null
+    },
+    "/etc/sysctl.d/99-custom.conf.pre-migration-20260215-213905": {
+      "sha256": "b2abcd6b3f9f940f95f7007e4c2f0c07c65fc5691330128cbdda159248e586fc",
+      "link": null
+    },
+    "/etc/sysctl.d/99-performance-tuning.conf": {
+      "sha256": "697d72a72cbfbc79bdfc1d2411c4bf5516f43e383a95bd695b5e809075264cf0",
+      "link": null
+    },
+    "/etc/sysctl.d/99-z-memory-latency.conf": {
+      "sha256": "6814f338dded0cab5761e34a1bc6d8d4a5bcccb851e6f69a9fa830cb64e1b4df",
+      "link": null
+    },
+    "/etc/sysctl.d/50-cursor.conf": {
+      "sha256": "0a25d31b7a1cf9877ee6aa055f7e4e0b0b5b49abb387971e40ea0d99f6474297",
+      "link": null
+    },
+    "/etc/sysctl.d/99-zz-groot-memory.conf": {
+      "sha256": "3be8d8d2d731da114aef064d3577c8b609431ebba8f231044eaa2aeade118227",
+      "link": null
+    },
+    "/etc/udev/rules.d/60-io-scheduler.rules": {
+      "sha256": "a9a8ad6f7ce3c9a704e3e0985ea0277691bc0c1cd2b6d39e76d3242144eca07e",
+      "link": null
+    },
+    "/etc/udev/rules.d/60-ioscheduler.rules": {
+      "sha256": "dfb9fbde3e137bdeb54a8b716b8e48fb94ef201380b3b1a2fd20e058cadc76df",
+      "link": null
+    },
+    "/etc/udev/rules.d/50-usb-low-latency.rules": {
+      "sha256": "9a1a8985e1278984202b4694a1041c93b1627289e7b3dfeee48f6d6411c497ab",
+      "link": null
+    },
+    "/etc/udev/rules.d/51-gcadapter.rules": {
+      "sha256": "ffd763e857f2ca504effbfb65cfab694a98a27f169e16a3e13096c135a76bbf6",
+      "link": null
+    },
+    "/etc/udev/rules.d/30-zram.rules": {
+      "sha256": "1f60dd8c7528b9ffd0122d46262241447b983f0d5d176856691d2507c4ea73e4",
+      "link": null
+    },
+    "/etc/systemd/system/dbus-org.freedesktop.resolve1.service": {
+      "sha256": "6e66096d01f2b41865f2ee25334d595316d425ea433f03e5eef9870676f8b58a",
+      "link": "/usr/lib/systemd/system/systemd-resolved.service"
+    },
+    "/etc/systemd/system/dbus-org.freedesktop.nm-dispatcher.service": {
+      "sha256": "e86d594be2c988cd0ef049a9422127295b7ae98d1f1f5923cd6d2d3ba8ba9070",
+      "link": "/usr/lib/systemd/system/NetworkManager-dispatcher.service"
+    },
+    "/etc/systemd/system/dbus-org.freedesktop.Avahi.service": {
+      "sha256": "0b6c15cd0d7e32119d29582b82475bc00231d1058f2856accd0317da6f7fb79a",
+      "link": "/usr/lib/systemd/system/avahi-daemon.service"
+    },
+    "/etc/systemd/system/dbus-org.freedesktop.timesync1.service": {
+      "sha256": "f15bf67f875fc9d766acc4aa4ba9303824991aaf595b0122c20ba580f0d8b758",
+      "link": "/usr/lib/systemd/system/systemd-timesyncd.service"
+    },
+    "/etc/systemd/system/dbus-org.bluez.service": {
+      "sha256": "242690cc022f4cf2cc115e59f4d5f990d4855f198b38e053ea90a508d961e360",
+      "link": "/usr/lib/systemd/system/bluetooth.service"
+    },
+    "/etc/systemd/system/display-manager.service": {
+      "sha256": "23e5a90063dcba8791c78afd8ddfd1b4d3cc7526185d619e97d497d46a91d385",
+      "link": "/usr/lib/systemd/system/sddm.service"
+    },
+    "/etc/systemd/system/autovt@.service": {
+      "sha256": "1ad6c472588f703549caa35f3fd51076e30c49492497aecb8f8a8b19026965d1",
+      "link": "/usr/lib/systemd/system/getty@.service"
+    },
+    "/etc/systemd/system/mnt-zer0models.mount": {
+      "sha256": "86dcc9a241d727941635120c74a55d741105208445211f1dfc12ef4b02301302",
+      "link": null
+    },
+    "/etc/systemd/system/tern-remote.service": {
+      "sha256": "2c3eb23ad17868f0ac9739ffa12742298f0ecbda469ac3368d3997c9e7b74115",
+      "link": null
+    },
+    "/etc/systemd/system/tern-remote-refresh.service": {
+      "sha256": "c88416087f46fc5595e60e6682687cc0c965b42d66b9dc66b0897a929adcb8b4",
+      "link": null
+    },
+    "/etc/systemd/system/tern-remote-refresh.timer": {
+      "sha256": "27a72eed76b917bd36f98f72e06647bc5d3a6f239564d4cd76c5ab2ef96af2e2",
+      "link": null
+    },
+    "/etc/systemd/system/keyd-layers.socket": {
+      "sha256": "b22c4a263e6f53e5c2aeaf00437f725baf263db7410c07b3130428b7802c309e",
+      "link": null
+    },
+    "/etc/systemd/system/keyd-layers.service": {
+      "sha256": "d6fd9ad8923884e415fee07c6cd81f6c9f98a7aa10c109b0a7f169268e070f10",
+      "link": null
+    },
+    "/etc/systemd/system/k3s.service.env": {
+      "error": "[Errno 13] Permission denied: '/etc/systemd/system/k3s.service.env'"
+    },
+    "/etc/systemd/system/k3s.service": {
+      "sha256": "adb161a79a851f710cb20acac0721e02c65b67c815fa86f6075a3be7b5997d96",
+      "link": null
+    },
+    "/etc/systemd/system/getty.target.wants/getty@tty1.service": {
+      "sha256": "1ad6c472588f703549caa35f3fd51076e30c49492497aecb8f8a8b19026965d1",
+      "link": "/usr/lib/systemd/system/getty@.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/remote-fs.target": {
+      "sha256": "ea2eeaa585de8819d99d82ebb0230651f2b8e63f07a6f169a25b0cbbfe1fc37a",
+      "link": "/usr/lib/systemd/system/remote-fs.target"
+    },
+    "/etc/systemd/system/multi-user.target.wants/NetworkManager.service": {
+      "sha256": "88ce1c482df3d17da91ecebb6efed91105cacce81e2debeb433b2d3b4a1b4baa",
+      "link": "/usr/lib/systemd/system/NetworkManager.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/avahi-daemon.service": {
+      "sha256": "0b6c15cd0d7e32119d29582b82475bc00231d1058f2856accd0317da6f7fb79a",
+      "link": "/usr/lib/systemd/system/avahi-daemon.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/ufw.service": {
+      "sha256": "fdface6f4690e4748fbbd5661c02e1967a8750fdb23581d35516174017a3fe39",
+      "link": "/usr/lib/systemd/system/ufw.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/docker.service": {
+      "sha256": "a12d90fd03761bf79659a185c4a2c40e08934d7ada9e05130e64bd5eb4d634aa",
+      "link": "/usr/lib/systemd/system/docker.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/tailscaled.service": {
+      "sha256": "b975caad21103ab3086998b56e0003181e7473819921226bb22d243a4df7e7f6",
+      "link": "/usr/lib/systemd/system/tailscaled.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/ollama.service": {
+      "sha256": "24871ffd940212e04e9bd3c334cfd4e3c4e845b374c5d0ed369fd32496b05fdb",
+      "link": "/usr/lib/systemd/system/ollama.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/cronie.service": {
+      "sha256": "45fec8706a219ee08c0a74a6418ddde0cbef6dfd3ab791cc55001c257d3ab4b3",
+      "link": "/usr/lib/systemd/system/cronie.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/cachyos-iw-set-regdomain.path": {
+      "sha256": "80d34913c895b2bfc62db6661bd65b0a7b48418f1a6c9d41fbc715b6b3864fbf",
+      "link": "/usr/lib/systemd/system/cachyos-iw-set-regdomain.path"
+    },
+    "/etc/systemd/system/multi-user.target.wants/cpupower.service": {
+      "sha256": "d520417626aae81e7d7ae7f65c7c09064a9cd04d7cd7b73a3fd3847d310386a3",
+      "link": "/usr/lib/systemd/system/cpupower.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/scx_loader.service": {
+      "sha256": "2905be87c6b1524b63c2cfb1fc6f3263046c5cb0b352547f29969a5ec8d3de0a",
+      "link": "/usr/lib/systemd/system/scx_loader.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/irqbalance.service": {
+      "sha256": "7506c49380368f96d7453f4365d60c14154e4ed2109ec53821496b49040ad794",
+      "link": "/usr/lib/systemd/system/irqbalance.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/earlyoom.service": {
+      "sha256": "8758ddb55bde2177239b26ab193db4a6ab07f7570a1742826d2b0765d346dbd2",
+      "link": "/usr/lib/systemd/system/earlyoom.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/sshd.service": {
+      "sha256": "25aea12c4c7fcc3636cae75b3b3cdb1c1bf513659b1e62b8ed67e02afeefc1b4",
+      "link": "/usr/lib/systemd/system/sshd.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/mnt-zer0models.mount": {
+      "sha256": "86dcc9a241d727941635120c74a55d741105208445211f1dfc12ef4b02301302",
+      "link": "/etc/systemd/system/mnt-zer0models.mount"
+    },
+    "/etc/systemd/system/multi-user.target.wants/atopacct.service": {
+      "sha256": "bf3d396f8b0e4fe7006f57183f886eab3ddb66f846aef16af475dc440cac5532",
+      "link": "/usr/lib/systemd/system/atopacct.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/atop.service": {
+      "sha256": "7ae7b99d55e99754422a168149354cd4f25a25c23d2d8907e33bc984b1344c55",
+      "link": "/usr/lib/systemd/system/atop.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/tern-remote.service": {
+      "sha256": "2c3eb23ad17868f0ac9739ffa12742298f0ecbda469ac3368d3997c9e7b74115",
+      "link": "/etc/systemd/system/tern-remote.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/keyd.service": {
+      "sha256": "fc35500919415604d5ec906107f84728a1a62f5ee26cdf922b784e49b299627a",
+      "link": "/usr/lib/systemd/system/keyd.service"
+    },
+    "/etc/systemd/system/multi-user.target.wants/k3s.service": {
+      "sha256": "adb161a79a851f710cb20acac0721e02c65b67c815fa86f6075a3be7b5997d96",
+      "link": "/etc/systemd/system/k3s.service"
+    },
+    "/etc/systemd/system/sockets.target.wants/systemd-userdbd.socket": {
+      "sha256": "7a011e63f1ba8f65330200f8b9779dbad97bc0004eb389e7a1b4228079ea1adf",
+      "link": "/usr/lib/systemd/system/systemd-userdbd.socket"
+    },
+    "/etc/systemd/system/sockets.target.wants/systemd-resolved-varlink.socket": {
+      "sha256": "0218dde6db19ec0dd6154a5c1fd88c2b38d838ba8bfb3540d67127d31311238d",
+      "link": "/usr/lib/systemd/system/systemd-resolved-varlink.socket"
+    },
+    "/etc/systemd/system/sockets.target.wants/systemd-resolved-monitor.socket": {
+      "sha256": "14ae6557490263b4a29299cb7cbcc26014a75436b3477287f9fb937992b5b8b8",
+      "link": "/usr/lib/systemd/system/systemd-resolved-monitor.socket"
+    },
+    "/etc/systemd/system/sockets.target.wants/avahi-daemon.socket": {
+      "sha256": "53aa111dadc10bba319e0346e399c607a80ae6ffcded55f3cd3102c6d71995b0",
+      "link": "/usr/lib/systemd/system/avahi-daemon.socket"
+    },
+    "/etc/systemd/system/sockets.target.wants/keyd-layers.socket": {
+      "sha256": "b22c4a263e6f53e5c2aeaf00437f725baf263db7410c07b3130428b7802c309e",
+      "link": "/etc/systemd/system/keyd-layers.socket"
+    },
+    "/etc/systemd/system/sysinit.target.wants/systemd-resolved.service": {
+      "sha256": "6e66096d01f2b41865f2ee25334d595316d425ea433f03e5eef9870676f8b58a",
+      "link": "/usr/lib/systemd/system/systemd-resolved.service"
+    },
+    "/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service": {
+      "sha256": "f15bf67f875fc9d766acc4aa4ba9303824991aaf595b0122c20ba580f0d8b758",
+      "link": "/usr/lib/systemd/system/systemd-timesyncd.service"
+    },
+    "/etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service": {
+      "sha256": "8a816455b4711821c740bfa676e14b5275dde2d8897bfc96b0c93557df1cb7f6",
+      "link": "/usr/lib/systemd/system/NetworkManager-wait-online.service"
+    },
+    "/etc/systemd/system/timers.target.wants/fstrim.timer": {
+      "sha256": "699161252ffaa35a0272aae055e51332df694ff4d28c39f8b666d47ecced3397",
+      "link": "/usr/lib/systemd/system/fstrim.timer"
+    },
+    "/etc/systemd/system/timers.target.wants/cachyos-rate-mirrors.timer": {
+      "sha256": "e9f368a137bc20c54beea4ca349400e9a5903860cb830b5658a219546e5085f0",
+      "link": "/usr/lib/systemd/system/cachyos-rate-mirrors.timer"
+    },
+    "/etc/systemd/system/timers.target.wants/atop-rotate.timer": {
+      "sha256": "e2dfe9d25a1fccc1b1df94ddc08046835df3f11b8b13aedfb37572cc32c525a4",
+      "link": "/usr/lib/systemd/system/atop-rotate.timer"
+    },
+    "/etc/systemd/system/timers.target.wants/tern-remote-refresh.timer": {
+      "sha256": "27a72eed76b917bd36f98f72e06647bc5d3a6f239564d4cd76c5ab2ef96af2e2",
+      "link": "/etc/systemd/system/tern-remote-refresh.timer"
+    },
+    "/etc/systemd/system/bluetooth.target.wants/bluetooth.service": {
+      "sha256": "242690cc022f4cf2cc115e59f4d5f990d4855f198b38e053ea90a508d961e360",
+      "link": "/usr/lib/systemd/system/bluetooth.service"
+    },
+    "/etc/systemd/system/ollama.service.d/model-store.conf": {
+      "sha256": "5c3b784aa084a65783eab41f5cfb1fd50f0fdc5ba020d1675fab465024faf805",
+      "link": null
+    },
+    "/etc/systemd/system/containerd.service.d/10-z0-storage.conf": {
+      "sha256": "ba91188f8bb51a924ba69aaa327347d04780c0a98a37f1aa88c34ee0ba828182",
+      "link": null
+    },
+    "/etc/systemd/system/docker.service.d/10-z0-storage.conf": {
+      "sha256": "63ca331fe12a946d092e226bc6b4ddc3dd2d1c7c0dea4723dd8a0503352ce31f",
+      "link": null
+    },
+    "/etc/systemd/system/k3s.service.d/10-z0-storage.conf": {
+      "sha256": "81b896a9234f249ecf0d2b2aefa6d53a57321bfbadc9beb51408699ce237fceb",
+      "link": null
+    },
+    "/etc/modprobe.d/nvidia.conf": {
+      "sha256": "d5894dcc590a8e87ea321e2614db1e56b909408be317246a87f479a72e929f4c",
+      "link": null
+    },
+    "/etc/security/limits.d/99-pipewire.conf": {
+      "sha256": "7218015f083e077d2d99efc49c3e3e9cfad758a956170e4b7cf5b0630bebcfd7",
+      "link": null
+    },
+    "/etc/security/limits.d/99-custom.conf": {
+      "sha256": "7b33fc1abb8b5c76266843d79718dd455b7099b80c104cfef2d8000aa189b0e9",
+      "link": null
+    },
+    "/etc/security/limits.d/99-realtime-privileges.conf": {
+      "sha256": "18f6c7bba83cbb9e437a5a36423ac4f4bf280569ba9352d74a7574139ece91e8",
+      "link": null
+    },
+    "/etc/security/limits.d/20-audio.conf": {
+      "sha256": "839335ba19d676345847e9420a0bbd284b4511f292f929d625dc4b76b65fe018",
+      "link": null
+    },
+    "/sys/block/zram0/mm_stat": {
+      "sha256": "60133e2274f2edad9f0e91e7429122f690c67af533bcbc9ffc71aa14d50c6edd",
+      "link": null
+    },
+    "/sys/block/zram0/io_stat": {
+      "sha256": "b2a4f073f2ecca438c5b85d9a1aff7741df2f585988e35a0c368dbc405780001",
+      "link": null
+    },
+    "/sys/block/zram0/mem_limit": {
+      "error": "[Errno 13] Permission denied: '/sys/block/zram0/mem_limit'"
+    },
+    "/sys/block/zram0/disksize": {
+      "sha256": "5167151e420d1eeaf20febb9f0f470e62199f3a27f997584df66f96ce2308846",
+      "link": null
+    },
+    "/sys/block/sda/queue/scheduler": {
+      "sha256": "e4760dae23ffae2dd612cf2a4bbae662c2a63953d28ce593b568663d3f14da9a",
+      "link": null
+    },
+    "/sys/block/sda/queue/nr_requests": {
+      "sha256": "913f5d1da2feaf4deeccc9e55cbb350a20f12b3f507e87be85dbb77fdd3cb9bc",
+      "link": null
+    },
+    "/sys/block/sdb/queue/scheduler": {
+      "sha256": "e4760dae23ffae2dd612cf2a4bbae662c2a63953d28ce593b568663d3f14da9a",
+      "link": null
+    },
+    "/sys/block/sdb/queue/nr_requests": {
+      "sha256": "913f5d1da2feaf4deeccc9e55cbb350a20f12b3f507e87be85dbb77fdd3cb9bc",
+      "link": null
+    },
+    "/sys/block/nvme0n1/queue/scheduler": {
+      "sha256": "8c2e2c3b0d61e678e97a6f755febe5a5914fd490a1a46dc68f0e87272270a5cf",
+      "link": null
+    },
+    "/sys/block/nvme0n1/queue/nr_requests": {
+      "sha256": "f16c302d5d30e1d3fbe955cf4f637f58a871adeba597922e3baad0aeeb13f656",
+      "link": null
+    }
+  },
+  "measurements": {
+    "lsblk -J -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,ROTA,SCHED": {
+      "returncode": 0,
+      "stdout": "{\n   \"blockdevices\": [\n      {\n         \"name\": \"sda\",\n         \"type\": \"disk\",\n         \"size\": \"465.8G\",\n         \"fstype\": null,\n         \"mountpoints\": [],\n         \"rota\": false,\n         \"sched\": \"mq-deadline\",\n         \"children\": [\n            {\n               \"name\": \"sda1\",\n               \"type\": \"part\",\n               \"size\": \"16M\",\n               \"fstype\": null,\n               \"mountpoints\": [],\n               \"rota\": false,\n               \"sched\": \"mq-deadline\"\n            },{\n               \"name\": \"sda2\",\n               \"type\": \"part\",\n               \"size\": \"365.7G\",\n               \"fstype\": \"ntfs\",\n               \"mountpoints\": [],\n               \"rota\": false,\n               \"sched\": \"mq-deadline\"\n            },{\n               \"name\": \"sda3\",\n               \"type\": \"part\",\n               \"size\": \"100G\",\n               \"fstype\": \"ntfs\",\n               \"mountpoints\": [],\n               \"rota\": false,\n               \"sched\": \"mq-deadline\"\n            }\n         ]\n      },{\n         \"name\": \"sdb\",\n         \"type\": \"disk\",\n         \"size\": \"3.6T\",\n         \"fstype\": null,\n         \"mountpoints\": [],\n         \"rota\": false,\n         \"sched\": \"mq-deadline\",\n         \"children\": [\n            {\n               \"name\": \"sdb1\",\n               \"type\": \"part\",\n               \"size\": \"1G\",\n               \"fstype\": \"vfat\",\n               \"mountpoints\": [],\n               \"rota\": false,\n               \"sched\": \"mq-deadline\"\n            },{\n               \"name\": \"sdb2\",\n               \"type\": \"part\",\n               \"size\": \"3.6T\",\n               \"fstype\": \"btrfs\",\n               \"mountpoints\": [\n                   \"/var/lib/containerd\", \"/mnt/zer0models\"\n               ],\n               \"rota\": false,\n               \"sched\": \"mq-deadline\"\n            }\n         ]\n      },{\n         \"name\": \"sdc\",\n         \"type\": \"disk\",\n         \"size\": \"2.7T\",\n         \"fstype\": null,\n         \"mountpoints\": [],\n         \"rota\": true,\n         \"sched\": \"bfq\",\n         \"children\": [\n            {\n               \"name\": \"sdc1\",\n               \"type\": \"part\",\n               \"size\": \"100M\",\n               \"fstype\": \"vfat\",\n               \"mountpoints\": [],\n               \"rota\": true,\n               \"sched\": \"bfq\"\n            },{\n               \"name\": \"sdc2\",\n               \"type\": \"part\",\n               \"size\": \"16M\",\n               \"fstype\": null,\n               \"mountpoints\": [],\n               \"rota\": true,\n               \"sched\": \"bfq\"\n            },{\n               \"name\": \"sdc3\",\n               \"type\": \"part\",\n               \"size\": \"2.7T\",\n               \"fstype\": \"ntfs\",\n               \"mountpoints\": [],\n               \"rota\": true,\n               \"sched\": \"bfq\"\n            },{\n               \"name\": \"sdc4\",\n               \"type\": \"part\",\n               \"size\": \"509M\",\n               \"fstype\": \"ntfs\",\n               \"mountpoints\": [],\n               \"rota\": true,\n               \"sched\": \"bfq\"\n            }\n         ]\n      },{\n         \"name\": \"sdd\",\n         \"type\": \"disk\",\n         \"size\": \"31.6G\",\n         \"fstype\": null,\n         \"mountpoints\": [],\n         \"rota\": true,\n         \"sched\": \"bfq\",\n         \"children\": [\n            {\n               \"name\": \"sdd1\",\n               \"type\": \"part\",\n               \"size\": \"31.6G\",\n               \"fstype\": \"vfat\",\n               \"mountpoints\": [],\n               \"rota\": true,\n               \"sched\": \"bfq\"\n            }\n         ]\n      },{\n         \"name\": \"zram0\",\n         \"type\": \"disk\",\n         \"size\": \"23.4G\",\n         \"fstype\": \"swap\",\n         \"mountpoints\": [\n             \"[SWAP]\"\n         ],\n         \"rota\": false,\n         \"sched\": null\n      },{\n         \"name\": \"nvme0n1\",\n         \"type\": \"disk\",\n         \"size\": \"465.8G\",\n         \"fstype\": null,\n         \"mountpoints\": [],\n         \"rota\": false,\n         \"sched\": \"kyber\",\n         \"children\": [\n            {\n               \"name\": \"nvme0n1p1\",\n               \"type\": \"part\",\n               \"size\": \"132G\",\n               \"fstype\": \"xfs\",\n               \"mountpoints\": [\n                   \"/var/lib/kubelet/pods/653011b7-09d0-4e1f-965f-e54baeeb0bde/volume-subpaths/manager-config/manager/2\", \"/\"\n               ],\n               \"rota\": false,\n               \"sched\": \"kyber\"\n            },{\n               \"name\": \"nvme0n1p3\",\n               \"type\": \"part\",\n               \"size\": \"331.8G\",\n               \"fstype\": \"xfs\",\n               \"mountpoints\": [\n                   \"/workspace\"\n               ],\n               \"rota\": false,\n               \"sched\": \"kyber\"\n            },{\n               \"name\": \"nvme0n1p4\",\n               \"type\": \"part\",\n               \"size\": \"2G\",\n               \"fstype\": \"vfat\",\n               \"mountpoints\": [\n                   \"/boot\"\n               ],\n               \"rota\": false,\n               \"sched\": \"kyber\"\n            }\n         ]\n      }\n   ]\n}\n",
+      "stderr": ""
+    },
+    "swapon --show --bytes": {
+      "returncode": 0,
+      "stdout": "NAME       TYPE             SIZE        USED PRIO\n/dev/zram0 partition 25081933824 10799022080  200\n",
+      "stderr": ""
+    },
+    "systemctl status fstrim.timer systemd-oomd.service earlyoom.service --no-pager": {
+      "returncode": 0,
+      "stdout": "\u25cf fstrim.timer - Discard unused filesystem blocks once a week\n     Loaded: loaded (/usr/lib/systemd/system/fstrim.timer; enabled; preset: disabled)\n     Active: active (waiting) since Sat 2026-10-24 12:03:46 CDT; 10h ago\n Invocation: 12c11f69ed9b4567b25452ee7f58382b\n    Trigger: Mon 2026-10-26 01:34:47 CDT; 1 day 2h left\n   Triggers: \u25cf fstrim.service\n       Docs: man:fstrim\n\nNotice: journal has been rotated since unit was started, output may be incomplete.\n\n\u25cf systemd-oomd.service - Userspace Out-Of-Memory (OOM) Killer\n     Loaded: loaded (/usr/lib/systemd/system/systemd-oomd.service; disabled; preset: disabled)\n     Active: active (running) since Sat 2026-10-24 12:03:46 CDT; 10h ago\n Invocation: 448e61214256463b82e9ffaa65649a7c\nTriggeredBy: \u25cf systemd-oomd.socket\n       Docs: man:systemd-oomd.service(8)\n             man:org.freedesktop.oom1(5)\n   Main PID: 997 (systemd-oomd)\n     Status: \"Processing requests...\"\n      Tasks: 1 (limit: 629145)\n     Memory: 776K (min: 64M, low: 64M, peak: 4M, swap: 576K, swap peak: 652K)\n        CPU: 36.669s\n     CGroup: /system.slice/systemd-oomd.service\n             \u2514\u2500997 /usr/lib/systemd/systemd-oomd\n\nNotice: journal has been rotated since unit was started, output may be incomplete.\n\n\u25cf earlyoom.service - Early OOM Daemon\n     Loaded: loaded (/usr/lib/systemd/system/earlyoom.service; enabled; preset: disabled)\n     Active: active (running) since Sat 2026-10-24 12:03:46 CDT; 10h ago\n Invocation: 4db1cc127380401d9100524b307a5a62\n       Docs: man:earlyoom(1)\n             https://github.com/rfjakob/earlyoom\n   Main PID: 893 (earlyoom)\n      Tasks: 1 (limit: 10)\n     Memory: 1.1M (max: 50M, available: 48.8M, peak: 5.1M, swap: 4K, swap peak: 4K)\n        CPU: 2.772s\n     CGroup: /system.slice/earlyoom.service\n             \u2514\u2500893 /usr/bin/earlyoom -r 0 -m 5 -s 65 -n --avoid \"^(systemd|systemd-.*|Hyprland|Xwayland|Xorg|sddm|kitty|alacritty|tmux|waybar|dunst|pipewire|wireplumber|dbus.*|NetworkManager|sshd)\\$\" --prefer \"^(chromium|chrome|electron|zen-bin|Isolated Web Co|Web Content|node|python.*)\\$\"\n\nNotice: journal has been rotated since unit was started, output may be incomplete.\n",
+      "stderr": ""
+    },
+    "oomctl --no-pager": {
+      "returncode": 0,
+      "stdout": "Dry Run: no\nSwap Used Limit: 90.00%\nDefault Memory Pressure Limit: 60.00%\nDefault Memory Pressure Duration: 30s\nSystem Context:\n\tMemory: Used: 19.6G, Total: 23.3G\n\tSwap: Used: 10G, Total: 23.3G\nSwap Monitored CGroups:\n\tPath: /system.slice\n\t\tSwap Usage: 0B\n\tPath: /user.slice/user-1000.slice\n\t\tSwap Usage: 0B\nMemory Pressure Monitored CGroups:\n\tPath: /system.slice\n\t\tMemory Pressure Limit: 80.00%\n\t\tMemory Pressure Duration: 30s\n\t\tPressure: Avg10: 0.02, Avg60: 0.09, Avg300: 0.12, Total: 46s\n\t\tCurrent Memory Usage: 1.1G\n\t\tMemory Min: 0B\n\t\tMemory Low: 0B\n\t\tPgscan: 109753072\n\t\tLast Pgscan: 109753072\n\tPath: /user.slice/user-1000.slice\n\t\tMemory Pressure Limit: 80.00%\n\t\tMemory Pressure Duration: 30s\n\t\tPressure: Avg10: 0.07, Avg60: 0.60, Avg300: 1.88, Total: 59min 18s\n\t\tCurrent Memory Usage: 13.2G\n\t\tMemory Min: 0B\n\t\tMemory Low: 0B\n\t\tPgscan: 8428661963\n\t\tLast Pgscan: 8428456355\n",
+      "stderr": ""
+    },
+    "bootctl status --no-pager": {
+      "returncode": 1,
+      "stdout": "System:\n      Firmware: n/a (n/a)\n Firmware Arch: x64\n   Secure Boot: disabled\n  TPM2 Support: yes\n  Measured UKI: no\n   Measured OS: no\n  Boot into FW: supported\n Platform Lang: en_US.UTF-8\n\nCurrent Boot Loader:\n        Product: Limine 12.9.0\n       Features: \u2717 Boot counting\n                 \u2713 Menu timeout control\n                 \u2713 One-shot menu timeout control\n                 \u2713 Default entry control\n                 \u2713 One-shot entry control\n                 \u2717 Support for XBOOTLDR partition\n                 \u2717 Support for passing random seed to OS\n                 \u2717 Load drop-in drivers\n                 \u2717 Support Type #1 sort-key field\n                 \u2717 Support @saved pseudo-entry\n                 \u2717 Support Type #1 devicetree field\n                 \u2717 Enroll SecureBoot keys\n                 \u2717 Retain SHIM protocols\n                 \u2713 Menu can be disabled\n                 \u2717 Multi-Profile UKIs are supported\n                 \u2717 Loader reports network boot URL\n                 \u2717 Support Type #1 uki field\n                 \u2717 Support Type #1 uki-url field\n                 \u2717 Loader reports active TPM2 PCR banks\n                 \u2717 Loader reports firmware keyboard layout\n                 \u2717 Loader measures SMBIOS information\n      Partition: /dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85\n  Current Entry: CachyOS.linux-cachyos\n\nRandom Seed:\n System Token: set\n       Exists: Can't access /boot/loader/random-seed (Permission denied)\n\nAvailable Boot Loaders on ESP:\n          ESP: /boot (/dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85)\n         File: (can't access /boot: Permission denied)\n\nBoot Loaders Listed in EFI Variables:\n        Title: Limine\n           ID: 0x0003\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85\n         File: \u2514\u2500/boot//EFI/LIMINE/LIMINE_X64.EFI\n\n        Title: UEFI OS\n           ID: 0x0006\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85\n         File: \u2514\u2500/boot//EFI/BOOT/BOOTX64.EFI\n\n        Title: Linux Boot Manager\n           ID: 0x0005\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85\n         File: \u2514\u2500/boot//EFI/SYSTEMD/SYSTEMD-BOOTX64.EFI\n\n        Title: Fallback Linux Boot Manager\n           ID: 0x0001\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/11878bd8-0fee-471e-90b7-3c18db40fa85\n         File: \u2514\u2500/boot//EFI/systemd/systemd-boot-fallbackx64.efi\n\n        Title: Windows Boot Manager\n           ID: 0x0000\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/6cd2a880-960d-4ecf-bed5-f60fe424430b\n         File: \u2514\u2500/boot//EFI/MICROSOFT/BOOT/BOOTMGFW.EFI\n\n        Title: Ubuntu\n           ID: 0x0002\n       Status: active, boot-order\n    Partition: /dev/disk/by-partuuid/5ec52ebe-1d11-4c43-93e1-7b351bcb1091\n         File: \u2514\u2500/boot//EFI/UBUNTU/SHIMX64.EFI\n\n",
+      "stderr": "Failed to read \"/boot/EFI/systemd\": Permission denied\nFailed to open '/boot/loader/loader.conf': Permission denied\n"
+    },
+    "iostat -dx 1 3": {
+      "returncode": 0,
+      "stdout": "Linux 7.2.9-1-cachyos (groot) \t10/24/2026 \t_x86_64_\t(20 CPU)\n\nDevice            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util\nnvme0n1       2514.26  57085.01     9.07   0.36    0.37    22.70   85.67   7285.53     7.41   7.96    3.77    85.04    0.00      0.00     0.00   0.00    0.00     0.00    4.24    3.56    1.26  26.24\nsda              0.00      0.17     0.00   0.00    1.19    33.53    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdb           1984.24  89736.81   214.55   9.76    2.31    45.22  213.34  12360.66   203.69  48.84    7.54    57.94   10.96  17998.37     0.00   0.00    7.45  1641.45   22.91    1.86    6.31  51.43\nsdc              0.01      0.75     0.00   0.00   22.36   126.28    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdd              0.00      0.08     0.00   0.00    2.21    26.63    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nzram0         3841.44  15365.78     0.00   0.00    0.01     4.00 4941.31  19964.89     0.00   0.00    0.02     4.04    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.12  10.10\n\n\nDevice            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util\nnvme0n1       2261.00 291868.00    46.00   1.99    0.30   129.09  284.00   9677.00     4.00   1.39    0.97    34.07    0.00      0.00     0.00   0.00    0.00     0.00    6.00    4.17    0.98  43.20\nsda              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdb           1492.00  82780.00   315.00  17.43    8.81    55.48  914.00  59816.00   639.00  41.15   15.27    65.44   84.00  10652.00     0.00   0.00    9.43   126.81   39.00    6.72   28.15  99.40\nsdc              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdd              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nzram0         4363.00  17452.00     0.00   0.00    0.01     4.00 2353.00   9412.00     0.00   0.00    0.04     4.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.14   9.70\n\n\nDevice            r/s     rkB/s   rrqm/s  %rrqm r_await rareq-sz     w/s     wkB/s   wrqm/s  %wrqm w_await wareq-sz     d/s     dkB/s   drqm/s  %drqm d_await dareq-sz     f/s f_await  aqu-sz  %util\nnvme0n1       3006.00 294979.00    19.00   0.63    0.26    98.13   70.00    728.00     2.00   2.78    0.11    10.40    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.79  43.40\nsda              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdb           1543.00  76832.00   262.00  14.52    8.10    49.79  232.00  20280.00   260.00  52.85   13.94    87.41  106.00  16000.00     0.00   0.00    6.89   150.94   30.00    6.20   16.65  98.90\nsdc              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nsdd              0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.00   0.00\nzram0          739.00   2956.00     0.00   0.00    0.02     4.00  169.00    676.00     0.00   0.00    0.04     4.00    0.00      0.00     0.00   0.00    0.00     0.00    0.00    0.00    0.02   3.30\n\n\n",
+      "stderr": ""
+    }
+  },
+  "memory": {
+    "physical_bytes": 25082167296,
+    "disjoint_capped_bytes": 75017682944,
+    "disjoint_caps": [
+      {
+        "Id": "service-watch.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/service-watch.service",
+        "MemoryCurrent": "23457792",
+        "MemoryMax": "268435456",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "z0-farm-llama.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0-farm-llama.service",
+        "MemoryCurrent": "928018432",
+        "MemoryMax": "8589934592",
+        "MemorySwapMax": "536870912",
+        "manager": "user"
+      },
+      {
+        "Id": "neuroforge-anki-bridge.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-anki-bridge.service",
+        "MemoryCurrent": "614400",
+        "MemoryMax": "805306368",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "app-t3code-agents.slice",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-t3code.slice/app-t3code-agents.slice",
+        "MemoryCurrent": "262144",
+        "MemoryMax": "20787200000",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "neuroforge-game.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-game.service",
+        "MemoryCurrent": "2101248",
+        "MemoryMax": "805306368",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "ctx.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ctx.service",
+        "MemoryCurrent": "5368504320",
+        "MemoryMax": "5368709120",
+        "MemorySwapMax": "2147483648",
+        "manager": "user"
+      },
+      {
+        "Id": "agent.slice",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice",
+        "MemoryCurrent": "5026680832",
+        "MemoryMax": "10737418240",
+        "MemorySwapMax": "2147483648",
+        "manager": "user"
+      },
+      {
+        "Id": "agent-telemetry-refresh.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/agent-telemetry-refresh.service",
+        "MemoryCurrent": "762134528",
+        "MemoryMax": "2621440000",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "z0-ghcache.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0-ghcache.service",
+        "MemoryCurrent": "2940928",
+        "MemoryMax": "268435456",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "dash-log-watch.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/dash-log-watch.service",
+        "MemoryCurrent": "2473984",
+        "MemoryMax": "805306368",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "neuroforge-dashboard.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-dashboard.service",
+        "MemoryCurrent": "614400",
+        "MemoryMax": "134217728",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "z0int-policy-identity-warm.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/background.slice/z0int-policy-identity-warm.service",
+        "MemoryCurrent": "268341248",
+        "MemoryMax": "268435456",
+        "MemorySwapMax": "infinity",
+        "manager": "user"
+      },
+      {
+        "Id": "docker-f106224921a3c76dbe14c3831eae020d0fcff80f444d6e2cd648a67500978cc2.scope",
+        "LoadState": "loaded",
+        "ControlGroup": "/system.slice/docker-f106224921a3c76dbe14c3831eae020d0fcff80f444d6e2cd648a67500978cc2.scope",
+        "MemoryCurrent": "28053504",
+        "MemoryMax": "2147483648",
+        "MemorySwapMax": "2147483648",
+        "manager": "system"
+      },
+      {
+        "Id": "earlyoom.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/system.slice/earlyoom.service",
+        "MemoryCurrent": "1159168",
+        "MemoryMax": "52428800",
+        "MemorySwapMax": "infinity",
+        "manager": "system"
+      },
+      {
+        "Id": "docker-7daa5b1d314800562ea72f25752c72c2cb24b281af6904a10609ad8584464622.scope",
+        "LoadState": "loaded",
+        "ControlGroup": "/system.slice/docker-7daa5b1d314800562ea72f25752c72c2cb24b281af6904a10609ad8584464622.scope",
+        "MemoryCurrent": "97812480",
+        "MemoryMax": "536870912",
+        "MemorySwapMax": "536870912",
+        "manager": "system"
+      },
+      {
+        "Id": "kubepods.slice",
+        "LoadState": "loaded",
+        "ControlGroup": "/kubepods.slice",
+        "MemoryCurrent": "226402304",
+        "MemoryMax": "20787200000",
+        "MemorySwapMax": "infinity",
+        "manager": "system"
+      },
+      {
+        "Id": "polkit.service",
+        "LoadState": "loaded",
+        "ControlGroup": "/system.slice/polkit.service",
+        "MemoryCurrent": "2797568",
+        "MemoryMax": "33554432",
+        "MemorySwapMax": "33554432",
+        "manager": "system"
+      }
+    ],
+    "all_groups": {
+      "user": [
+        {
+          "Id": "session.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice",
+          "MemoryCurrent": "301740032",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dconf.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/dconf.service",
+          "MemoryCurrent": "217088",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "-.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service",
+          "MemoryCurrent": "13501509632",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "xdg-document-portal.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/xdg-document-portal.service",
+          "MemoryCurrent": "856064",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-drive-web-proxy.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-drive-web-proxy.service",
+          "MemoryCurrent": "483328",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "mode-border.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/mode-border.service",
+          "MemoryCurrent": "475136",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice",
+          "MemoryCurrent": "7859335168",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "browser-bypass-dsp.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/browser-bypass-dsp.service",
+          "MemoryCurrent": "3514368",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-web.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-web.service",
+          "MemoryCurrent": "44351488",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "wireplumber.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/wireplumber.service",
+          "MemoryCurrent": "5378048",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-com.google.Chrome-2442893.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.google.Chrome-2442893.scope",
+          "MemoryCurrent": "47853568",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-worker-proc_f04bc6d36b77.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/hermes-worker-proc_f04bc6d36b77.scope",
+          "MemoryCurrent": "475136",
+          "MemoryMax": "4294967296",
+          "MemorySwapMax": "536870912"
+        },
+        {
+          "Id": "agent-workloads-v2.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/agent-workloads-v2.scope",
+          "MemoryCurrent": "1493352448",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tern-queue-loop@s22.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/tern-queue-loop@s22.service",
+          "MemoryCurrent": "1126400",
+          "MemoryMax": "629145600",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "gnome-keyring-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/gnome-keyring-daemon.service",
+          "MemoryCurrent": "6135808",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-dbus\\x2d:1.11504\\x2dorg.a11y.atspi.Registry.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.11504\\x2dorg.a11y.atspi.Registry.slice",
+          "MemoryCurrent": "458752",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "noctalia-shell.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/noctalia-shell.service",
+          "MemoryCurrent": "127856640",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "service-watch.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/service-watch.service",
+          "MemoryCurrent": "23457792",
+          "MemoryMax": "268435456",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0-farm-llama.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0-farm-llama.service",
+          "MemoryCurrent": "928018432",
+          "MemoryMax": "8589934592",
+          "MemorySwapMax": "536870912"
+        },
+        {
+          "Id": "neuroforge-anki-bridge.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-anki-bridge.service",
+          "MemoryCurrent": "614400",
+          "MemoryMax": "805306368",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-t3code-agents.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-t3code.slice/app-t3code-agents.slice",
+          "MemoryCurrent": "262144",
+          "MemoryMax": "20787200000",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dbus-broker.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/dbus-broker.service",
+          "MemoryCurrent": "692224",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "neuroforge-game.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-game.service",
+          "MemoryCurrent": "2101248",
+          "MemoryMax": "805306368",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0live.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0live.service",
+          "MemoryCurrent": "5398528",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "awatcher.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/awatcher.service",
+          "MemoryCurrent": "4214784",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "run-p3922773-i8100091.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/background.slice/run-p3922773-i8100091.scope",
+          "MemoryCurrent": "9359360",
+          "MemoryMax": "1073741824",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-t3code.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-t3code.slice",
+          "MemoryCurrent": "311296",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-cluster.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-cluster.service",
+          "MemoryCurrent": "5062656",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-graphical.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-graphical.slice",
+          "MemoryCurrent": "18198528",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "ctx.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ctx.service",
+          "MemoryCurrent": "5368504320",
+          "MemoryMax": "5368709120",
+          "MemorySwapMax": "2147483648"
+        },
+        {
+          "Id": "init.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/init.scope",
+          "MemoryCurrent": "11161600",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "agentsview-sync.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/agentsview-sync.service",
+          "MemoryCurrent": "7589888",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-core.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-core.scope",
+          "MemoryCurrent": "1253376",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "agent.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice",
+          "MemoryCurrent": "5026680832",
+          "MemoryMax": "10737418240",
+          "MemorySwapMax": "2147483648"
+        },
+        {
+          "Id": "app-o8@autostart.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-graphical.slice/app-o8@autostart.service",
+          "MemoryCurrent": "17125376",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "at-spi-dbus-bus.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/at-spi-dbus-bus.service",
+          "MemoryCurrent": "675840",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "wayland-wm@hyprland.desktop.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/wayland-wm@hyprland.desktop.service",
+          "MemoryCurrent": "250482688",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0intelligence.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0intelligence.service",
+          "MemoryCurrent": "19488768",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-gateway.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-gateway.service",
+          "MemoryCurrent": "291794944",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dbus-:1.56-org.a11y.atspi.Registry@0.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.56\\x2dorg.a11y.atspi.Registry.slice/dbus-:1.56-org.a11y.atspi.Registry@0.service",
+          "MemoryCurrent": "397312",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "xdg-desktop-portal-hyprland.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/xdg-desktop-portal-hyprland.service",
+          "MemoryCurrent": "405504",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0live-hermes.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0live-hermes.service",
+          "MemoryCurrent": "5591040",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "rax200-inspector.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/rax200-inspector.service",
+          "MemoryCurrent": "405504",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-intake-progress-watch.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-intake-progress-watch.service",
+          "MemoryCurrent": "6664192",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tmux-spawn-35240a0f-c94f-41f6-8465-56a09b3f30d6.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-35240a0f-c94f-41f6-8465-56a09b3f30d6.scope",
+          "MemoryCurrent": "3858432",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "agent-hermes-1417006-1792892065.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/agent-hermes-1417006-1792892065.scope",
+          "MemoryCurrent": "223354880",
+          "MemoryMax": "6442450944",
+          "MemorySwapMax": "536870912"
+        },
+        {
+          "Id": "ollama-gguf.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/ollama-gguf.service",
+          "MemoryCurrent": "1482752",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "wayland-session-bindpid@622972.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/background.slice/wayland-session-bindpid@622972.service",
+          "MemoryCurrent": "77824",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "garden-room-hermes-gateway.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/garden-room-hermes-gateway.service",
+          "MemoryCurrent": "7864320",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "background.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/background.slice",
+          "MemoryCurrent": "313765888",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "buildkit-workspace.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/buildkit-workspace.service",
+          "MemoryCurrent": "2170880",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-dbus\\x2d:1.56\\x2dorg.a11y.atspi.Registry.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.56\\x2dorg.a11y.atspi.Registry.slice",
+          "MemoryCurrent": "446464",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-dbus\\x2d:1.1\\x2dorg.gnome.keyring.SystemPrompter.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.1\\x2dorg.gnome.keyring.SystemPrompter.slice",
+          "MemoryCurrent": "53248",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "taildrop-portal.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/taildrop-portal.service",
+          "MemoryCurrent": "520192",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "agent-telemetry-refresh.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/agent-telemetry-refresh.service",
+          "MemoryCurrent": "762134528",
+          "MemoryMax": "2621440000",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tern-queue-loop@s25.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/tern-queue-loop@s25.service",
+          "MemoryCurrent": "872448",
+          "MemoryMax": "629145600",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dbus-:1.1-org.freedesktop.secrets@0.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.1\\x2dorg.freedesktop.secrets.slice/dbus-:1.1-org.freedesktop.secrets@0.service",
+          "MemoryCurrent": "258048",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-t3code-agents-628ad9cbf002.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-t3code.slice/app-t3code-agents.slice/app-t3code-agents-628ad9cbf002.slice",
+          "MemoryCurrent": "212992",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tmux-spawn-4ee3b051-1083-4d74-b0db-0b4109fcc230.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-4ee3b051-1083-4d74-b0db-0b4109fcc230.scope",
+          "MemoryCurrent": "3350528",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "uniichat-luna.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/uniichat-luna.service",
+          "MemoryCurrent": "15777792",
+          "MemoryMax": "1572864000",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-worker-proc_7b11c2c00cdc.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/hermes-worker-proc_7b11c2c00cdc.scope",
+          "MemoryCurrent": "561561600",
+          "MemoryMax": "4294967296",
+          "MemorySwapMax": "536870912"
+        },
+        {
+          "Id": "gvfs-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/gvfs-daemon.service",
+          "MemoryCurrent": "851968",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "pipewire.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service",
+          "MemoryCurrent": "8839168",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tencentdb-memory.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/tencentdb-memory.service",
+          "MemoryCurrent": "1138688",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "garden-room.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/garden-room.service",
+          "MemoryCurrent": "16035840",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dbus-:1.11504-org.a11y.atspi.Registry@0.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.11504\\x2dorg.a11y.atspi.Registry.slice/dbus-:1.11504-org.a11y.atspi.Registry@0.service",
+          "MemoryCurrent": "409600",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hyprcaffeine.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hyprcaffeine.service",
+          "MemoryCurrent": "237568",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-voice-web.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-voice-web.service",
+          "MemoryCurrent": "602112",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "garden-room-hermes.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/garden-room-hermes.service",
+          "MemoryCurrent": "4644864",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0-ghcache.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/z0-ghcache.service",
+          "MemoryCurrent": "2940928",
+          "MemoryMax": "268435456",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "dash-log-watch.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/dash-log-watch.service",
+          "MemoryCurrent": "2473984",
+          "MemoryMax": "805306368",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "t3code.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/t3code.service",
+          "MemoryCurrent": "45318144",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-service\\x2dwatch\\x2dfailure.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-service\\x2dwatch\\x2dfailure.slice",
+          "MemoryCurrent": "262144",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "wan-watch.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/wan-watch.service",
+          "MemoryCurrent": "1781760",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "hermes-dashboard-tailnet-proxy.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-dashboard-tailnet-proxy.service",
+          "MemoryCurrent": "5021696",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "gvfs-metadata.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/gvfs-metadata.service",
+          "MemoryCurrent": "225280",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-z0int\\x2dmemory\\x2dmcp.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-z0int\\x2dmemory\\x2dmcp.slice",
+          "MemoryCurrent": "667648",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "chat-poller.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/chat-poller.service",
+          "MemoryCurrent": "11722752",
+          "MemoryMax": "314572800",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tmux.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux.service",
+          "MemoryCurrent": "299008",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "whisperflow.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/whisperflow.service",
+          "MemoryCurrent": "409600",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "xdg-desktop-portal.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/xdg-desktop-portal.service",
+          "MemoryCurrent": "1228800",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "neuroforge-dashboard.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/neuroforge-dashboard.service",
+          "MemoryCurrent": "614400",
+          "MemoryMax": "134217728",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0int-memory-mcp@214-57363-1826214_6000279-1000.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-z0int\\x2dmemory\\x2dmcp.slice/z0int-memory-mcp@214-57363-1826214_6000279-1000.service",
+          "MemoryCurrent": "327680",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "agent-omp-1826151-1792893538.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/agent.slice/agent-omp-1826151-1792893538.scope",
+          "MemoryCurrent": "2299297792",
+          "MemoryMax": "6442450944",
+          "MemorySwapMax": "1073741824"
+        },
+        {
+          "Id": "xdg-desktop-portal-gtk.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/xdg-desktop-portal-gtk.service",
+          "MemoryCurrent": "1093632",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "workspace-copilot.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/workspace-copilot.service",
+          "MemoryCurrent": "1478656",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "xdg-permission-store.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/xdg-permission-store.service",
+          "MemoryCurrent": "229376",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "pipewire-pulse.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/session.slice/pipewire-pulse.service",
+          "MemoryCurrent": "450560",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-org.kde.kdeconnect.daemon@autostart.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-graphical.slice/app-org.kde.kdeconnect.daemon@autostart.service",
+          "MemoryCurrent": "970752",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "app-dbus\\x2d:1.1\\x2dorg.freedesktop.secrets.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/app-dbus\\x2d:1.1\\x2dorg.freedesktop.secrets.slice",
+          "MemoryCurrent": "307200",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "z0int-policy-identity-warm.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/background.slice/z0int-policy-identity-warm.service",
+          "MemoryCurrent": "268341248",
+          "MemoryMax": "268435456",
+          "MemorySwapMax": "infinity"
+        }
+      ],
+      "system": [
+        {
+          "Id": "atop.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/atop.service",
+          "MemoryCurrent": "52944896",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-6a6c2e9ec98f54df5201393085ac81b0fe239c243b9af47af692211fe85843a8.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podd82446ef_e8d5_4e2a_8477_cf10c752e737.slice/cri-containerd-6a6c2e9ec98f54df5201393085ac81b0fe239c243b9af47af692211fe85843a8.scope",
+          "MemoryCurrent": "16420864",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "dbus-broker.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/dbus-broker.service",
+          "MemoryCurrent": "1880064",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-besteffort-podc9be499c_4f69_4150_a7eb_ec4ab430bfa4.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podc9be499c_4f69_4150_a7eb_ec4ab430bfa4.slice",
+          "MemoryCurrent": "18055168",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "docker-f106224921a3c76dbe14c3831eae020d0fcff80f444d6e2cd648a67500978cc2.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/docker-f106224921a3c76dbe14c3831eae020d0fcff80f444d6e2cd648a67500978cc2.scope",
+          "MemoryCurrent": "28053504",
+          "MemoryMax": "2147483648",
+          "MemorySwapMax": "2147483648"
+        },
+        {
+          "Id": "NetworkManager.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/NetworkManager.service",
+          "MemoryCurrent": "8110080",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-25aa31e29da06d42d2807db7eb485d6e60da7f0c6042704f9019465e1f138d85.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod863a6fe3_da9c_45c0_b476_cee627e4c38f.slice/cri-containerd-25aa31e29da06d42d2807db7eb485d6e60da7f0c6042704f9019465e1f138d85.scope",
+          "MemoryCurrent": "21049344",
+          "MemoryMax": "178257920",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "system-gpg\\x2dagent.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-gpg\\x2dagent.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "docker.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/docker.service",
+          "MemoryCurrent": "32088064",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-oomd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-oomd.service",
+          "MemoryCurrent": "962560",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-systemd\\x2dzram\\x2dsetup.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-systemd\\x2dzram\\x2dsetup.slice",
+          "MemoryCurrent": "16384",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tailscaled.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/tailscaled.service",
+          "MemoryCurrent": "47366144",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "atopacct.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/atopacct.service",
+          "MemoryCurrent": "376832",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "-.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/",
+          "MemoryCurrent": "20341006336",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice",
+          "MemoryCurrent": "1092026368",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "init.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/init.scope",
+          "MemoryCurrent": "8949760",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice",
+          "MemoryCurrent": "194465792",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-978fb5258438519d315cb5d8451cf9688d7abc086baeacdfe47133d97e5114d6.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pode3fc9585_56b9_4a61_843a_fa18ff911ae7.slice/cri-containerd-978fb5258438519d315cb5d8451cf9688d7abc086baeacdfe47133d97e5114d6.scope",
+          "MemoryCurrent": "192512",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "sddm.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/sddm.service",
+          "MemoryCurrent": "22736896",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "docker-3166da4055f6b310fea4ca304e01f74da49f27f64445820e5f56d39c3eb7eef5.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/docker-3166da4055f6b310fea4ca304e01f74da49f27f64445820e5f56d39c3eb7eef5.scope",
+          "MemoryCurrent": "48672768",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "power-profiles-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/power-profiles-daemon.service",
+          "MemoryCurrent": "688128",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-besteffort.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice",
+          "MemoryCurrent": "34762752",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-logind.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-logind.service",
+          "MemoryCurrent": "782336",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable-pod0ef1c5e9_65b7_42ce_953b_a2cfb5dabca3.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod0ef1c5e9_65b7_42ce_953b_a2cfb5dabca3.slice",
+          "MemoryCurrent": "6361088",
+          "MemoryMax": "33554432",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-5ce3780aa23355c47b145aea6ee10b496eebae881c964fdcffeeb9c7394227a3.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod653011b7_09d0_4e1f_965f_e54baeeb0bde.slice/cri-containerd-5ce3780aa23355c47b145aea6ee10b496eebae881c964fdcffeeb9c7394227a3.scope",
+          "MemoryCurrent": "82767872",
+          "MemoryMax": "536870912",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "earlyoom.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/earlyoom.service",
+          "MemoryCurrent": "1159168",
+          "MemoryMax": "52428800",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "bluetooth.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/bluetooth.service",
+          "MemoryCurrent": "229376",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-keyboxd.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-keyboxd.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-2dcea9551c2031f27862680a5fd1c0cd44b4fa7a54ab856f7009dc417a656c0d.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod863a6fe3_da9c_45c0_b476_cee627e4c38f.slice/cri-containerd-2dcea9551c2031f27862680a5fd1c0cd44b4fa7a54ab856f7009dc417a656c0d.scope",
+          "MemoryCurrent": "192512",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "rtkit-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/rtkit-daemon.service",
+          "MemoryCurrent": "360448",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "sshd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/sshd.service",
+          "MemoryCurrent": "409600",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "avahi-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/avahi-daemon.service",
+          "MemoryCurrent": "1585152",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-37f137a36d574d5399ebb4bc064e578dbd4062c96f3c6e5efadd6b44b9baa751.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod16651a8a_3734_4bfb_b4d4_76a6afae5974.slice/cri-containerd-37f137a36d574d5399ebb4bc064e578dbd4062c96f3c6e5efadd6b44b9baa751.scope",
+          "MemoryCurrent": "41857024",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "kubepods-besteffort-podd82446ef_e8d5_4e2a_8477_cf10c752e737.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podd82446ef_e8d5_4e2a_8477_cf10c752e737.slice",
+          "MemoryCurrent": "17772544",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-resolved.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-resolved.service",
+          "MemoryCurrent": "2617344",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "udisks2.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/udisks2.service",
+          "MemoryCurrent": "1855488",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "accounts-daemon.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/accounts-daemon.service",
+          "MemoryCurrent": "716800",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cronie.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/cronie.service",
+          "MemoryCurrent": "3244032",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-modprobe.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-modprobe.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "irqbalance.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/irqbalance.service",
+          "MemoryCurrent": "729088",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-getty.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-getty.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "ollama.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/ollama.service",
+          "MemoryCurrent": "2293760",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-1a067e0fb7ab3de170c3260f993a5f897033eaf03b8242b6096328cd7294a685.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod68c16068_9ae4_408a_9ca6_636001d8a746.slice/cri-containerd-1a067e0fb7ab3de170c3260f993a5f897033eaf03b8242b6096328cd7294a685.scope",
+          "MemoryCurrent": "15699968",
+          "MemoryMax": "67108864",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "docker-7daa5b1d314800562ea72f25752c72c2cb24b281af6904a10609ad8584464622.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/docker-7daa5b1d314800562ea72f25752c72c2cb24b281af6904a10609ad8584464622.scope",
+          "MemoryCurrent": "97812480",
+          "MemoryMax": "536870912",
+          "MemorySwapMax": "536870912"
+        },
+        {
+          "Id": "systemd-journald.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-journald.service",
+          "MemoryCurrent": "8962048",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-65c764b3635e1272a429ebe224044c1e21be4de4fadadd7456aa67d0e24ce104.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podc9be499c_4f69_4150_a7eb_ec4ab430bfa4.slice/cri-containerd-65c764b3635e1272a429ebe224044c1e21be4de4fadadd7456aa67d0e24ce104.scope",
+          "MemoryCurrent": "16994304",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "kubepods-burstable-pod653011b7_09d0_4e1f_965f_e54baeeb0bde.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod653011b7_09d0_4e1f_965f_e54baeeb0bde.slice",
+          "MemoryCurrent": "83423232",
+          "MemoryMax": "536870912",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-gpg\\x2dagent\\x2dbrowser.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-gpg\\x2dagent\\x2dbrowser.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-85874f9d837ef7e72553223499cd576ec1b55e800d031b780c1567944684e172.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podd82446ef_e8d5_4e2a_8477_cf10c752e737.slice/cri-containerd-85874f9d837ef7e72553223499cd576ec1b55e800d031b780c1567944684e172.scope",
+          "MemoryCurrent": "192512",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "containerd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/containerd.service",
+          "MemoryCurrent": "44527616",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-9ea65f1bfa51cfd2f934ac54d6cc8aee205c90ec51e2370335a6af5953195684.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod68c16068_9ae4_408a_9ca6_636001d8a746.slice/cri-containerd-9ea65f1bfa51cfd2f934ac54d6cc8aee205c90ec51e2370335a6af5953195684.scope",
+          "MemoryCurrent": "188416",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-systemd\\x2dcoredump.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-systemd\\x2dcoredump.slice",
+          "MemoryCurrent": "507904",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable-pod863a6fe3_da9c_45c0_b476_cee627e4c38f.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod863a6fe3_da9c_45c0_b476_cee627e4c38f.slice",
+          "MemoryCurrent": "21700608",
+          "MemoryMax": "178257920",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-a232d19fbf28ab5f68e4749b7c708926545298c36fd2cbfee484b793edc3852a.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pode3fc9585_56b9_4a61_843a_fa18ff911ae7.slice/cri-containerd-a232d19fbf28ab5f68e4749b7c708926545298c36fd2cbfee484b793edc3852a.scope",
+          "MemoryCurrent": "22609920",
+          "MemoryMax": "268435456",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "system-gpg\\x2dagent\\x2dextra.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-gpg\\x2dagent\\x2dextra.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "user.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice",
+          "MemoryCurrent": "13646503936",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-406641721afb4075af20e910d2b07977c503aa2cdfe8cbfbd4b790d75e88174a.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod0ef1c5e9_65b7_42ce_953b_a2cfb5dabca3.slice/cri-containerd-406641721afb4075af20e910d2b07977c503aa2cdfe8cbfbd4b790d75e88174a.scope",
+          "MemoryCurrent": "5730304",
+          "MemoryMax": "33554432",
+          "MemorySwapMax": "0"
+        },
+        {
+          "Id": "kubepods.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice",
+          "MemoryCurrent": "226402304",
+          "MemoryMax": "20787200000",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-userdbd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-userdbd.service",
+          "MemoryCurrent": "1265664",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-dirmngr.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-dirmngr.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable-pode3fc9585_56b9_4a61_843a_fa18ff911ae7.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pode3fc9585_56b9_4a61_843a_fa18ff911ae7.slice",
+          "MemoryCurrent": "22953984",
+          "MemoryMax": "268435456",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "session-475.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/session-475.scope",
+          "MemoryCurrent": "380928",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-5933f1c3ff8c131d24864b13c715d03e88178165251b35c267910e5cce17eeb1.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod653011b7_09d0_4e1f_965f_e54baeeb0bde.slice/cri-containerd-5933f1c3ff8c131d24864b13c715d03e88178165251b35c267910e5cce17eeb1.scope",
+          "MemoryCurrent": "188416",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-udevd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-udevd.service",
+          "MemoryCurrent": "2670592",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "wpa_supplicant.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/wpa_supplicant.service",
+          "MemoryCurrent": "360448",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "systemd-timesyncd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/systemd-timesyncd.service",
+          "MemoryCurrent": "503808",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "tern-remote.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/tern-remote.service",
+          "MemoryCurrent": "11169792",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "keyd-layers.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/keyd-layers.service",
+          "MemoryCurrent": "1126400",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "upower.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/upower.service",
+          "MemoryCurrent": "552960",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "keyd.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/keyd.service",
+          "MemoryCurrent": "37449728",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable-pod68c16068_9ae4_408a_9ca6_636001d8a746.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod68c16068_9ae4_408a_9ca6_636001d8a746.slice",
+          "MemoryCurrent": "16306176",
+          "MemoryMax": "67108864",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-750362a78f7b4e3062b40138e6b90f5c8f8519ca633f28adad0f9522d1407507.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podc9be499c_4f69_4150_a7eb_ec4ab430bfa4.slice/cri-containerd-750362a78f7b4e3062b40138e6b90f5c8f8519ca633f28adad0f9522d1407507.scope",
+          "MemoryCurrent": "192512",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "kubepods-burstable-pod16651a8a_3734_4bfb_b4d4_76a6afae5974.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod16651a8a_3734_4bfb_b4d4_76a6afae5974.slice",
+          "MemoryCurrent": "42143744",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "user-1000.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice",
+          "MemoryCurrent": "13655801856",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "session-595.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/session-595.scope",
+          "MemoryCurrent": "2445312",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-2f920db2b75f67082e64b8df657a285fcb53a7bad21c8f680494cc7fe4256bae.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod0ef1c5e9_65b7_42ce_953b_a2cfb5dabca3.slice/cri-containerd-2f920db2b75f67082e64b8df657a285fcb53a7bad21c8f680494cc7fe4256bae.scope",
+          "MemoryCurrent": "196608",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "cri-containerd-c342135cc8ac5fb8e1316b9c42859807b2f334878ee49eff9adc0d97a02e1c65.scope",
+          "LoadState": "loaded",
+          "ControlGroup": "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod16651a8a_3734_4bfb_b4d4_76a6afae5974.slice/cri-containerd-c342135cc8ac5fb8e1316b9c42859807b2f334878ee49eff9adc0d97a02e1c65.scope",
+          "MemoryCurrent": "188416",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-systemd\\x2dfsck.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-systemd\\x2dfsck.slice",
+          "MemoryCurrent": "53248",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "polkit.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/polkit.service",
+          "MemoryCurrent": "2797568",
+          "MemoryMax": "33554432",
+          "MemorySwapMax": "33554432"
+        },
+        {
+          "Id": "k3s.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/k3s.service",
+          "MemoryCurrent": "503619584",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "user@1000.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service",
+          "MemoryCurrent": "13534068736",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "system-gpg\\x2dagent\\x2dssh.slice",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/system-gpg\\x2dagent\\x2dssh.slice",
+          "MemoryCurrent": "0",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        },
+        {
+          "Id": "scx_loader.service",
+          "LoadState": "loaded",
+          "ControlGroup": "/system.slice/scx_loader.service",
+          "MemoryCurrent": "3665920",
+          "MemoryMax": "infinity",
+          "MemorySwapMax": "infinity"
+        }
+      ]
+    },
+    "not_reservations": true,
+    "global_oom_still_reachable": true
+  },
+  "unknown": [
+    "/boot generated Limine configuration (permission denied)",
+    "root-only credential/env files (names/hashes only in sudo --audit)"
+  ],
+  "sources": [
+    "https://wiki.cachyos.org/features/cachyos_settings/",
+    "https://docs.kernel.org/admin-guide/sysctl/vm.html",
+    "operations/groot-oom/SYSTEM-OOMD.md"
+  ]
+}

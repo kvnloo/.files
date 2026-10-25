@@ -45,42 +45,9 @@ fi
 log "Creating cpupower systemd service..."
 systemctl enable --now cpupower.service 2>/dev/null || true
 
-# -----------------------------------------------------------------------------
-# 2. Sysctl VM / scheduler / network tuning for 16 GB RAM + AI agents
-# -----------------------------------------------------------------------------
-log "Applying sysctl tuning..."
-cat > /etc/sysctl.d/99-performance-tuning.conf <<'EOF'
-# VM tuning for 16 GB RAM + heavy zram/agent workloads
-vm.swappiness = 150
-vm.vfs_cache_pressure = 50
-vm.watermark_scale_factor = 125
-vm.page-cluster = 0
-vm.dirty_bytes = 268435456
-vm.dirty_background_bytes = 67108864
-vm.overcommit_memory = 0
-vm.overcommit_ratio = 100
-
-# scx_flow owns task placement; stale CFS latency sysctls no longer exist on EEVDF kernels.
-kernel.sched_autogroup_enabled = 0
-
-# Network throughput and low latency
-net.core.somaxconn = 65535
-net.core.netdev_max_backlog = 65536
-net.ipv4.tcp_congestion_control = bbr
-net.ipv4.tcp_fastopen = 3
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_fin_timeout = 10
-net.ipv4.tcp_slow_start_after_idle = 0
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.ip_local_port_range = 10000 65535
-net.netfilter.nf_conntrack_max = 1048576
-
-# File descriptors
-fs.file-max = 2097152
-fs.nr_open = 2097152
-EOF
-
-sysctl --system >/dev/null
+# System policy has one owner. This also retires obsolete sysctl and scheduler
+# rules; zram is staged only, never resized during this live tuning operation.
+python3 "$(dirname "$(readlink -f "$0")")/apply-host-system" --apply
 
 # Load tcp_bbr if available
 modprobe tcp_bbr 2>/dev/null || warn "tcp_bbr module not available"
@@ -114,20 +81,6 @@ if ! command -v irqbalance >/dev/null 2>&1; then
 fi
 systemctl enable --now irqbalance.service 2>/dev/null || true
 
-# -----------------------------------------------------------------------------
-# 5. I/O scheduler udev rules
-# -----------------------------------------------------------------------------
-log "Ensuring NVMe I/O scheduler is 'none'..."
-cat > /etc/udev/rules.d/60-ioscheduler.rules <<'EOF'
-# NVMe: use none (multi-queue native)
-ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none", ATTR{queue/nr_requests}="1024"
-# SSD: use mq-deadline
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
-# HDD: use bfq
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
-EOF
-udevadm control --reload-rules
-udevadm trigger --subsystem-match=block
 
 # -----------------------------------------------------------------------------
 # 6. USB autosuspend rules for input + DAC

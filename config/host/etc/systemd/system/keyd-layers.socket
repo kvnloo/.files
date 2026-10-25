@@ -1,0 +1,11 @@
+[Unit]
+Description=Read-only keyd layer state for kvn
+
+[Socket]
+ListenStream=/run/keyd-layers.sock
+SocketUser=kvn
+SocketGroup=kvn
+SocketMode=0600
+
+[Install]
+WantedBy=sockets.target
