@@ -62,4 +62,4 @@ spec:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [factory, lanes, z0]
+          values: [factory, lanes, fleet-mbp, z0]
