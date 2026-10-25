@@ -1,0 +1,15 @@
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a device; this may
+# be used with UUID= as a more robust way to name devices that works even if
+# disks are added and removed. See fstab(5).
+#
+# <file system>             <mount point>  <type>  <options>  <dump>  <pass>
+UUID=DBCE-C10E                            /boot          vfat    defaults,umask=0077 0 2
+UUID=9e575c2d-52cc-41ec-8b3f-15afd8191c81 /              xfs     defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota 0 1
+UUID=f70404dd-c13b-4070-8d7c-d6d5e91db153 /workspace     xfs     defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota 0 2
+tmpfs                                     /tmp           tmpfs   defaults,noatime,mode=1777 0 0
+
+# NVMe overflow swap (pri 50) after zram (pri 200); HDD emergency swap retired 2026-10-23.
+# retired 2026-10-23, zram only: /workspace/.swap/nvme.swap	none	swap	defaults,nofail,pri=50	0	0
+/mnt/zer0models/containerd /var/lib/containerd none bind,x-systemd.requires-mounts-for=/mnt/zer0models 0 0

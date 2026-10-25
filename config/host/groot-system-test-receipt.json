@@ -1,0 +1,19 @@
+{
+  "source_commit": "da69660",
+  "input": "immutable git archive of config/host, scripts/apply-host-system, tests/test_host_system.py",
+  "worker": "s25/omarchy-phone",
+  "placement_authority": "Parent redirected pure-Python tests from saturated MBP to uncapped S25",
+  "job_id": "20261024-231754-3194",
+  "command": ["python3", "tests/test_host_system.py"],
+  "tests_run": 11,
+  "test_seconds": 0.769,
+  "test_result": "OK",
+  "command_exit": 0,
+  "fleet_envelope_status": "guest_restarted",
+  "fleet_envelope_exit": 76,
+  "fleet_lifecycle_success": false,
+  "log": "/home/kvn/.local/state/fleet/runs/20261024-231754-3194-omarchy-phone.log",
+  "covered": ["dry-run no writes", "exact render and diff", "backup retention", "fake-root idempotence", "separate oomd stage", "symlink escape refusal", "secret-safe audit", "earlyoom anchored regex", "root reclaim reserve and staged OOM ranking", "unbounded budget disclosure", "journal retention values"],
+  "not_exercised": ["real root deployment", "live oomd empty monitored set", "real root memory.min propagation", "earlyoom/journald restart", "zram reboot", "k3s reserve activation"],
+  "cancelled_queued_mbp_jobs": ["fleet-mbp-1065fd58584e430a", "fleet-mbp-48bb4db2cb084533", "fleet-mbp-ff43adc90e62413b"]
+}
