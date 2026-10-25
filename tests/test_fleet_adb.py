@@ -21,6 +21,7 @@ class NativeLaneTests(unittest.TestCase):
         calls = []
         def transport(argv, **kwargs):
             args = argv[3:]
+            self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL)
             calls.append(args)
             if args == ["devices", "-l"]:
                 text = "List of devices attached\n" + "\n".join(f"{s} device" for s in connected)
@@ -100,6 +101,91 @@ class NativeLaneTests(unittest.TestCase):
                 ADB["kill"](device, "owned-job")
         self.assertEqual(device.shell.call_count, 1)
 
+    def test_guest_service_requires_foreground_linux_service(self):
+        device = Device.__new__(Device)
+        for text, expected in [("LinuxService isForeground=true", True),
+                               ("LinuxService isForeground=false", False),
+                               ("OtherService isForeground=true", False)]:
+            device.shell = mock.Mock(return_value=text)
+            self.assertEqual(device.guest_running(), expected)
+
+    def restore(self, *, facts=None, ledger=True, running=None, attempts=0):
+        device = Device.__new__(Device)
+        device.node = "s22"
+        device.guest_running = mock.Mock(side_effect=running or [False, True])
+        facts = facts or ("120.0 0\nboot-a\nmLastUserActivityTime=1000\n"
+                          "topResumedActivity=ActivityRecord{a u0 com.agent/.Main}\n"
+                          "mCallState=0\nmMode=MODE_NORMAL\n")
+        device.shell = mock.Mock(return_value=facts)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            if ledger:
+                (root / "s22-agent-opened.json").write_text(json.dumps({
+                    "com.agent": {"boot_id": "boot-a", "opened_uptime_ms": 2000}}))
+            (root / "s22-guest-restore.json").write_text(json.dumps({
+                "boot_id": "boot-a", "attempts": attempts}))
+            with mock.patch.dict(Device.restore_guest.__globals__,
+                                 Path=lambda p: root / Path(p).name), \
+                    mock.patch("builtins.open", mock.mock_open()), \
+                    mock.patch("fcntl.flock"), mock.patch("time.sleep"):
+                result = device.restore_guest()
+            saved = json.loads((root / "s22-guest-restore.json").read_text())
+            opened = json.loads((root / "s22-agent-opened.json").read_text()) if ledger else {}
+        return result, device.shell, saved, opened
+
+    def test_idle_guest_restore_records_attempt_and_agent_open(self):
+        result, shell, saved, opened = self.restore()
+        self.assertEqual(result, "restored")
+        self.assertEqual(saved["attempts"], 1)
+        self.assertEqual(opened["dev.omalauncher"]["boot_id"], "boot-a")
+        self.assertEqual(shell.call_args.args[0],
+                         "monkey -p dev.omalauncher -c android.intent.category.LAUNCHER 1")
+
+    def test_guest_restore_fails_closed_for_owner_call_and_missing_evidence(self):
+        base = ("120.0 0\nboot-a\nmLastUserActivityTime=1000\n"
+                "topResumedActivity=ActivityRecord{a u0 com.agent/.Main}\n"
+                "mCallState=0\nmMode=MODE_NORMAL\n")
+        for facts, ledger, expected in [
+                (base, False, "owner_busy"),
+                (base.replace("=1000", "=119000"), True, "owner_busy"),
+                (base.replace("mCallState=0", "mCallState=2"), True, "in_call"),
+                (base.replace("MODE_NORMAL", "MODE_IN_COMMUNICATION"), True, "in_call"),
+                ("unknown", True, "restore_evidence_unavailable")]:
+            with self.subTest(expected=expected):
+                result, shell, saved, _ = self.restore(facts=facts, ledger=ledger)
+                self.assertEqual(result, expected)
+                self.assertEqual(shell.call_count, 1)
+                self.assertEqual(saved["attempts"], 0)
+
+    def test_guest_restore_is_bounded_across_ticks(self):
+        result, shell, saved, _ = self.restore(attempts=2)
+        self.assertEqual(result, "retry_exhausted")
+        self.assertEqual(shell.call_count, 1)
+        result, shell, saved, _ = self.restore(running=[False] * 7)
+        self.assertEqual(result, "retry_exhausted")
+        self.assertEqual(saved["attempts"], 2)
+        self.assertEqual(sum("monkey" in c.args[0] for c in shell.call_args_list), 2)
+
+    def test_guest_restore_respects_ui_lock(self):
+        device = Device.__new__(Device)
+        device.node = "s22"
+        device.shell = mock.Mock()
+        with mock.patch("builtins.open", mock.mock_open()), \
+                mock.patch("fcntl.flock", side_effect=BlockingIOError):
+            self.assertEqual(device.restore_guest(), "ui_busy")
+        device.shell.assert_not_called()
+
+    def test_probe_reports_guest_down_without_hiding_native_availability(self):
+        device = Device.__new__(Device)
+        device.serial, device.hardware = "usb", "RFCTA1RZAQY"
+        device.shell = mock.Mock(side_effect=["level: 50\nscale: 100",
+                                              "Thermal Status: 0", "0.1 0.2 0.3", "0-7"])
+        device.guest_running = mock.Mock(return_value=False)
+        device.restore_guest = mock.Mock(return_value="owner_busy")
+        facts = device.probe()
+        self.assertEqual(facts["status"], "guest_down")
+        self.assertTrue(facts["online"])
+        self.assertEqual(facts["guest_recovery"], "owner_busy")
 
 if __name__ == "__main__":
     unittest.main()

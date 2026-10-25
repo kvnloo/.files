@@ -29,7 +29,7 @@ SERIAL=""
 if [ "${1:-}" = -s ]; then SERIAL=$2; shift 2; fi
 ACTION=${1:-status}
 PKGS="dev.omalauncher com.tailscale.ipn"
-a() { if [ -n "$SERIAL" ]; then adb -s "$SERIAL" shell "$@"; else adb shell "$@"; fi; }
+a() { if [ -n "$SERIAL" ]; then adb -s "$SERIAL" shell "$@" </dev/null; else adb shell "$@" </dev/null; fi; }
 q() { a "$@" 2>/dev/null | tr -d '\r'; }
 
 state=$HOME/.local/state/fleet/android-harden
