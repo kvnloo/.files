@@ -119,7 +119,8 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 23)
         split = argv.index('--')
         self.assertEqual(argv[split + 1:], [str(base / 'command with spaces'), 'one two', 'literal;$value'])
-        for prop in ('MemoryHigh=infinity', 'MemoryMax=6G', 'MemorySwapMax=1G', 'ManagedOOMPreference=none'):
+        for prop in ('MemoryHigh=infinity', 'MemoryMax=6G', 'MemorySwapMax=1G', 'ManagedOOMPreference=none',
+                     'OOMPolicy=continue'):
             self.assertIn('--property=' + prop, argv)
         self.assertIn('--slice=agent.slice', argv)
 

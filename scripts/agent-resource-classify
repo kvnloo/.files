@@ -62,6 +62,21 @@ def _bus(*args):
     return subprocess.run(['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
                            'org.freedesktop.systemd1.Manager', *args], capture_output=True, text=True, timeout=15)
 
+def place(unit, props, pids):
+    """Attach to a running scope, or (re)create it.
+
+    A scope that ended `failed` stays loaded, and StartTransientUnit then refuses the
+    name forever ("already loaded"); 2026-10-24 that failed every 10 s tick for hours.
+    OOMPolicy=continue: one OOM-killed workload must not stop every other one."""
+    pids = [str(p) for p in pids]
+    if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit]).returncode == 0:
+        return _bus('AttachProcessesToUnit', 'ssau', unit, '', str(len(pids)), *pids)
+    subprocess.run(['systemctl', '--user', 'reset-failed', unit], capture_output=True, timeout=15)
+    props = [*props, ('OOMPolicy', 's', 'continue')]
+    flat = [x for prop in props for x in prop]
+    return _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', unit, 'fail', str(len(props) + 1), *flat,
+                'PIDs', 'au', str(len(pids)), *pids, '0')
+
 def rescue(data):
     """Move protected processes that an older version swept into the shared workloads scope back out.
 
@@ -86,14 +101,10 @@ def rescue(data):
             continue
         loose.append(pid)
     if loose:
-        if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', CORE_SCOPE]).returncode:
-            _bus('StartTransientUnit', 'ssa(sv)a(sa(sv))', CORE_SCOPE, 'fail', '5',
-                 # Rescued control processes must not escape every memory limit.
-                 'Description', 's', 'Hermes control processes (kept out of agent-workloads)',
-                 'Slice', 's', 'app.slice', 'MemoryMax', 't', str(5 << 30), 'MemorySwapMax', 't', str(1 << 30),
-                 'PIDs', 'au', str(len(loose)), *map(str, loose), '0')
-        else:
-            _bus('AttachProcessesToUnit', 'ssau', CORE_SCOPE, '', str(len(loose)), *map(str, loose))
+        # Rescued control processes must not escape every memory limit.
+        place(CORE_SCOPE, [('Description', 's', 'Hermes control processes (kept out of agent-workloads)'),
+                           ('Slice', 's', 'app.slice'), ('MemoryMax', 't', str(5 << 30)),
+                           ('MemorySwapMax', 't', str(1 << 30))], loose)
     return stuck
 
 def main():
@@ -108,17 +119,10 @@ def main():
     if not pids:
         return
     unit = WORKLOADS_SCOPE
-    check = subprocess.run(['systemctl', '--user', 'is-active', '--quiet', unit])
-    if check.returncode:
-        args = ['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
-                'org.freedesktop.systemd1.Manager', 'StartTransientUnit', 'ssa(sv)a(sa(sv))',
-                unit, 'fail', '4', 'Description', 's', 'Isolated coding-agent workloads',
-                'Slice', 's', 'agent.slice', 'Delegate', 'b', 'true', 'PIDs', 'au', str(len(pids)), *map(str,pids), '0']
-        subprocess.run(args, check=True, timeout=15)
-    else:
-        subprocess.run(['busctl', '--user', 'call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
-                        'org.freedesktop.systemd1.Manager', 'AttachProcessesToUnit', 'ssau',
-                        unit, '', str(len(pids)), *map(str,pids)], check=True, timeout=15)
+    result = place(unit, [('Description', 's', 'Isolated coding-agent workloads'),
+                          ('Slice', 's', 'agent.slice'), ('Delegate', 'b', 'true')], pids)
+    if result.returncode:
+        raise SystemExit(f'agent-resource-classify: placing {pids} in {unit} failed: {result.stderr.strip()}')
     for pid in pids:
         try:
             os.setpriority(os.PRIO_PROCESS, pid, 10)

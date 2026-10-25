@@ -51,6 +51,10 @@ disown
 # --scope keeps the terminal as the controlling tty; --collect drops the unit after exit.
 # No per-scope MemoryHigh: throttling one harness stalls it and all of its
 # in-process subagents instead of failing the one tool that is too big.
+# OOMPolicy=continue: the default (DefaultOOMPolicy=stop) makes systemd stop the
+# WHOLE scope, harness included, after the kernel kills any one child. Measured
+# 2026-10-24 on systemd 262: stop -> harness SIGTERM; continue -> harness lives.
 exec systemd-run --user --scope --quiet --collect --slice=agent.slice --unit="$unit" \
   --property=MemoryHigh=infinity --property=MemoryMax=6G --property=MemorySwapMax=1G --property=ManagedOOMPreference=none \
+  --property=OOMPolicy=continue \
   --description="coding agent: $name" -- "$@"
