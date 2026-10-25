@@ -25,16 +25,31 @@ not the fleet hardware capability class. Priorities are 1000, 100 and 10.
 Without an override, commands containing pytest select test; requests consuming
 the entire live CPU quota select bench; other commands select build. Pytest
 takes precedence over the all-CPU rule. Receipts in
-`~/.local/state/fleet/runs/<job>.json` record the selected class.
+`~/.local/state/fleet/runs/<job>.json` record the selected class and queue.
 
 ### What Kueue does vs what we configure
 
-Kueue already orders waiting workloads by priority and handles eviction,
-quota release and readmission. We configure WorkloadPriorityClasses and
-`lanes.spec.preemption.withinClusterQueue: LowerPriority` in
-`config/k3s/kueue/queues.yaml`. There is no custom scheduler or runtime LLM
-decision. BestEffortFIFO still lets fitting jobs advance within a priority.
-CPU and memory quotas are unchanged.
+Kueue orders waiting workloads by priority and handles cohort borrowing,
+reclamation, eviction and readmission. We configure WorkloadPriorityClasses and
+two ClusterQueues in cohort `mbp-lanes` in `config/k3s/kueue/queues.yaml`:
+
+| Queue | Owned quota | Preemption |
+| --- | --- | --- |
+| `lanes` (test/build/legacy) | 4 CPU, 10441814016 bytes | `withinClusterQueue: Never`, `reclaimWithinCohort: Any` |
+| `bench-lanes` (checkpoint-safe bench only) | zero; borrows up to the existing lanes budget | no within-queue eviction or reclaim rights |
+
+Tests/builds/legacy workloads are never within-queue eviction targets.
+Only benches borrow capacity and are reclaimable when its owner needs it.
+The cohort's total CPU/memory budget is unchanged, not duplicated.
+Priority orders waiting tests ahead of waiting builds; it does not interrupt
+an unsafe running build. There is no custom scheduler or runtime LLM decision.
+BestEffortFIFO still permits fitting jobs to advance within a priority.
+
+We rejected v0.20's alpha `PreemptionConfig` victim selectors: enabling an alpha
+feature on the only production queue was an unnecessary stability risk.
+Stable cohort borrowing/reclamation expresses the required protection.
+Kubernetes PriorityClass `preemptionPolicy: Never` would not protect a victim;
+it prevents a workload from initiating preemption, not from being evicted.
 
 Benchmarks must opt in with `--checkpoint-safe`. This is a caller contract,
 not automatic checkpointing: write completed units atomically beneath the
@@ -44,15 +59,18 @@ the pod at any point; do not rely solely on a SIGTERM handler. The source stage
 survives eviction and the submitter reconnects to the replacement pod.
 `--wait` bounds initial admission only; after admission, Kueue controls subsequent
 eviction/readmission without a client wait timer deleting checkpoints.
-Cancellation stops the Job but retains an unfinished checkpoint-safe source
-stage; its exact path remains in the JSON receipt for recovery.
+If an observer exits during eviction, retain the Job and stage for Kueue's
+readmission lifecycle; the JSON receipt records the exact recovery path.
+Pod termination (including exit 137) is not Job completion: check Workload
+Evicted/requeued status before honoring terminal Job conditions. Never delete
+an evicted Job or its source merely because its old container terminated.
 Unmodified, non-resumable benchmarks are rejected instead of silently losing
 progress or pretending that Kubernetes checkpoints arbitrary processes.
 Use explicit `--class build` for all-CPU builds, not to disguise benchmarks.
-Host-scope build/bench execution is rejected: a reservation pod cannot safely
+Host-scope bench execution is rejected: a reservation pod cannot safely
 stop an independently running host process during Kueue eviction.
-Existing jobs retain their original priority; do not relabel running legacy
-benchmarks that have not met the checkpoint contract.
+Host builds remain in protected `lanes`. Existing legacy jobs stay protected
+there; do not move running jobs into the borrowing benchmark queue.
 
 ## Devices (2026-10-20)
 

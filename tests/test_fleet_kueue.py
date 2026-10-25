@@ -31,13 +31,21 @@ class WorkloadClassTests(unittest.TestCase):
 
 
 class PreemptionLifecycleTests(unittest.TestCase):
-    def exercise(self, jobs, *, checkpoint=True, interrupt_after=None, clock=(0,)):
+    def exercise(self, jobs, *, checkpoint=True, interrupt_after=None, clock=(0,),
+                 job_class='bench', workloads=(), pods=()):
         """Drive the real submitter with only external transports replaced."""
         namespace = runpy.run_path(str(pathlib.Path(__file__).parents[1] / 'scripts/fleet-kueue'))
         main = namespace['main']
         requests = []
         self.last_requests = requests
         states = iter(jobs)
+        workload_states = iter(workloads)
+        pod_states = iter(pods)
+        if workloads:
+            for job in jobs:
+                job['spec'].setdefault('template', {}).setdefault('metadata', {})['annotations'] = {
+                    'kueue.x-k8s.io/workload': 'owned-workload'}
+        self.manifests = []
         sleeps = 0
 
         def checked(argv, **kwargs):
@@ -49,8 +57,13 @@ class PreemptionLifecycleTests(unittest.TestCase):
                         {'name': 'memory', 'nominalQuota': '10441814016'}]}]}]}}
             elif 'get' in argv and 'job' in argv:
                 value = next(states)
+            elif 'get' in argv and 'workload' in argv:
+                value = next(workload_states)
             elif 'get' in argv and 'pods' in argv:
-                value = {'items': []}
+                value = {'items': next(pod_states, [])}
+            elif 'create' in argv:
+                self.manifests.append(json.loads(kwargs['input']))
+                return SimpleNamespace(stdout='')
             elif 'id -u' in argv[-1]:
                 return SimpleNamespace(stdout='/home/agentjob\n1001\n1001\n')
             else:
@@ -70,15 +83,21 @@ class PreemptionLifecycleTests(unittest.TestCase):
         self.last_stderr = stderr
         with tempfile.TemporaryDirectory() as state:
             argv = ['fleet-kueue', '--src', state, '--no-src', '--keep',
-                    '--priority-class', 'bench', '--cpus', '4', '--wait', '2']
+                    '--priority-class', job_class, '--cpus', '4', '--wait', '2']
             if checkpoint:
                 argv += ['--checkpoint-safe']
             argv += ['--', 'python3', 'benchmark.py']
+            process = SimpleNamespace(stdout=io.BytesIO(), returncode=0,
+                                      wait=mock.Mock(return_value=0), terminate=mock.Mock(),
+                                      poll=mock.Mock(return_value=0))
             replacements = {
                 'checked': checked,
                 'runpy': SimpleNamespace(run_path=lambda path: fleet),
                 'time': SimpleNamespace(monotonic=monotonic, sleep=sleep),
                 'signal': SimpleNamespace(SIGTERM=15, signal=lambda *args: None),
+                'subprocess': SimpleNamespace(Popen=lambda *args, **kwargs: process,
+                                              PIPE=-1, STDOUT=-2,
+                                              TimeoutExpired=TimeoutError),
             }
             with mock.patch.dict(main.__globals__, replacements), \
                     mock.patch.dict(os.environ, {'FLEET_STATE': state}), \
@@ -112,7 +131,10 @@ class PreemptionLifecycleTests(unittest.TestCase):
         result, requests, stderr, receipts, clock = self.exercise([
             {'spec': {'suspend': False}},
             {'spec': {'suspend': True}},
-        ], interrupt_after=2)
+        ], interrupt_after=2, workloads=[
+            {'status': {'admission': {'clusterQueue': 'bench-lanes'}}},
+            {'status': {'conditions': [{'type': 'Evicted', 'status': 'True'}]}},
+        ])
         self.assertEqual(result, 130)
         self.assertEqual(clock.call_count, 1)
         self.assertEqual(len(receipts), 1)
@@ -121,7 +143,7 @@ class PreemptionLifecycleTests(unittest.TestCase):
         self.assertIn('receipt ', stderr)
         self.assertIn(receipts[0]['job_id'] + '.json', stderr)
         self.assertFalse(any('rm -rf' in str(argv) for argv in requests))
-        self.assertTrue(any('delete' in argv and 'job' in argv for argv in requests))
+        self.assertFalse(any('delete' in argv and 'job' in argv for argv in requests))
 
     def test_unsafe_bench_is_rejected_before_job_creation(self):
         with self.assertRaises(SystemExit) as error:
@@ -129,3 +151,89 @@ class PreemptionLifecycleTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
         self.assertIn('bench requires --checkpoint-safe', self.last_stderr.getvalue())
         self.assertFalse(any('create' in argv for argv in self.last_requests))
+
+    def test_eviction_wins_over_stale_failed_job_condition(self):
+        stale_failed = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Failed', 'status': 'True', 'reason': 'BackoffLimitExceeded'}]}}
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        result, requests, _, receipts, _ = self.exercise([
+            {'spec': {'suspend': False}}, stale_failed, complete,
+        ], workloads=[
+            {'status': {'admission': {'clusterQueue': 'bench-lanes'}}},
+            {'status': {'conditions': [{'type': 'Evicted', 'status': 'True'},
+                                       {'type': 'Requeued', 'status': 'True'}]}},
+            {'status': {'admission': {'clusterQueue': 'bench-lanes'},
+                        'conditions': [{'type': 'Evicted', 'status': 'False'},
+                                       {'type': 'Requeued', 'status': 'True'},
+                                       {'type': 'Finished', 'status': 'True'}]}},
+        ])
+        self.assertEqual(result, 0)
+        self.assertEqual(receipts[0]['queue'], 'bench-lanes')
+        self.assertFalse(any('delete' in argv for argv in requests))
+
+    def test_exit_137_without_job_terminal_condition_waits_for_controller(self):
+        terminated = {'metadata': {'name': 'owned-pod'}, 'status': {
+            'phase': 'Failed', 'containerStatuses': [
+                {'state': {'terminated': {'exitCode': 137}}}]}}
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        result, _, _, _, _ = self.exercise([
+            {'spec': {'suspend': False}}, complete,
+        ], pods=[[terminated], []])
+        self.assertEqual(result, 0)
+
+    def test_unsafe_build_remains_in_protected_queue(self):
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        result, _, _, receipts, _ = self.exercise([complete], checkpoint=False, job_class='build')
+        self.assertEqual(result, 0)
+        self.assertEqual(receipts[0]['queue'], 'lanes')
+        self.assertEqual(self.manifests[0]['metadata']['labels']['kueue.x-k8s.io/queue-name'], 'lanes')
+
+    def test_checkpoint_safe_bench_uses_borrowing_queue(self):
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        self.exercise([complete])
+        self.assertEqual(self.manifests[0]['metadata']['labels']['kueue.x-k8s.io/queue-name'], 'bench-lanes')
+
+    def test_legacy_unsafe_build_eviction_preserves_job_and_stage(self):
+        result, requests, stderr, _, _ = self.exercise([
+            {'spec': {'suspend': False}}, {'spec': {'suspend': False}},
+        ], checkpoint=False, job_class='build', interrupt_after=2, workloads=[
+            {'status': {'admission': {'clusterQueue': 'lanes'}}},
+            {'status': {'conditions': [{'type': 'Evicted', 'status': 'True'}]}},
+        ])
+        self.assertEqual(result, 130)
+        self.assertIn('retained checkpoint stage', stderr)
+        self.assertFalse(any('delete' in argv or 'rm -rf' in str(argv) for argv in requests))
+
+    def test_stale_job_failure_after_readmission_is_not_terminal(self):
+        failed = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Failed', 'status': 'True', 'reason': 'BackoffLimitExceeded'}]}}
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        result, _, _, _, _ = self.exercise([failed, complete], workloads=[
+            {'status': {'admission': {'clusterQueue': 'bench-lanes'},
+                        'conditions': [{'type': 'Requeued', 'status': 'True'}]}},
+            {'status': {'conditions': [{'type': 'Finished', 'status': 'True'}]}},
+        ])
+        self.assertEqual(result, 0)
+
+
+class ProtectedCohortPolicyTests(unittest.TestCase):
+    def test_only_zero_quota_benchmarks_are_reclaimable(self):
+        manifest = (pathlib.Path(__file__).parents[1] / 'config/k3s/kueue/queues.yaml').read_text()
+        documents = manifest.split('---')
+        queues = {name: next(document for document in documents
+                             if 'kind: ClusterQueue' in document and f'  name: {name}' in document.splitlines())
+                  for name in ('lanes', 'bench-lanes')}
+        self.assertIn('cohortName: mbp-lanes', queues['lanes'])
+        self.assertIn('cohortName: mbp-lanes', queues['bench-lanes'])
+        self.assertIn('withinClusterQueue: Never', queues['lanes'])
+        self.assertIn('reclaimWithinCohort: Any', queues['lanes'])
+        self.assertIn('withinClusterQueue: Never', queues['bench-lanes'])
+        self.assertIn('reclaimWithinCohort: Never', queues['bench-lanes'])
+        self.assertIn('cpu, nominalQuota: "0", borrowingLimit: "4"', queues['bench-lanes'])
+        self.assertIn('memory, nominalQuota: "0", borrowingLimit: "10441814016"', queues['bench-lanes'])
+        self.assertNotIn('LowerPriority', queues['lanes'])

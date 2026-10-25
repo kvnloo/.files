@@ -101,6 +101,7 @@ kind: ClusterQueue
 metadata:
   name: lanes
 spec:
+  cohortName: mbp-lanes
   namespaceSelector:
     matchExpressions:
       - key: kubernetes.io/metadata.name
@@ -108,7 +109,8 @@ spec:
         values: [lanes, fleet-mbp]
   queueingStrategy: BestEffortFIFO
   preemption:
-    withinClusterQueue: LowerPriority
+    withinClusterQueue: Never
+    reclaimWithinCohort: Any
   resourceGroups:
     - coveredResources: [cpu, memory]
       flavors:
@@ -116,6 +118,31 @@ spec:
           resources:
             - {name: cpu, nominalQuota: "4"}
             - {name: memory, nominalQuota: "10441814016"}
+---
+# Benchmarks have no owned quota. They borrow only the idle lanes budget;
+# lanes reclaims that borrowing without ever evicting its own builds/tests.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: bench-lanes
+spec:
+  cohortName: mbp-lanes
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values: [lanes, fleet-mbp]
+  queueingStrategy: BestEffortFIFO
+  preemption:
+    withinClusterQueue: Never
+    reclaimWithinCohort: Never
+  resourceGroups:
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: node-mbp
+          resources:
+            - {name: cpu, nominalQuota: "0", borrowingLimit: "4"}
+            - {name: memory, nominalQuota: "0", borrowingLimit: "10441814016"}
 ---
 # z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
 # instead of failing to schedule.
@@ -159,3 +186,13 @@ apiVersion: kueue.x-k8s.io/v1beta2
 kind: LocalQueue
 metadata: {name: z0, namespace: z0}
 spec: {clusterQueue: z0}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: bench-lanes, namespace: lanes}
+spec: {clusterQueue: bench-lanes}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: bench-lanes, namespace: fleet-mbp}
+spec: {clusterQueue: bench-lanes}

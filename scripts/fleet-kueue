@@ -27,6 +27,13 @@ def workload_class(explicit, command, cpus, quota):
     return 'bench' if float(cpus) == quota else 'build'
 
 
+def workload_evicted(workload):
+    conditions = {c['type']: c['status'] for c in workload.get('status', {}).get('conditions', [])}
+    return conditions.get('Evicted') == 'True' or (
+        not workload.get('status', {}).get('admission')
+        and any(conditions.get(key) == 'True' for key in ('Preempted', 'Requeued')))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src', required=True)
@@ -108,14 +115,16 @@ def main():
     priority = workload_class(args.priority_class, args.cmd, args.cpus, quantity(quotas['cpu']))
     if priority == 'bench' and not args.checkpoint_safe:
         parser.error('bench requires --checkpoint-safe: persist atomic checkpoints in the source stage and resume on restart')
-    if args.host and priority != 'test':
-        parser.error('preemptible build/bench jobs cannot use --host; host scopes cannot be safely evicted by Kueue')
+    queue_name = 'bench-lanes' if priority == 'bench' else 'lanes'
+    if args.host and priority == 'bench':
+        parser.error('bench cannot use --host; host scopes cannot be safely evicted by Kueue')
     state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
     runs = state / 'runs'
     runs.mkdir(parents=True, exist_ok=True)
     logpath = runs / f'{name}-mbp.log'
     created = False
     terminal = False
+    was_evicted = False
     logs = None
     rc = 1
 
@@ -176,7 +185,7 @@ def main():
                     cache_setup + 'exec "$@"', 'fleet-kueue', *args.cmd])
         manifest = {
             'apiVersion': 'batch/v1', 'kind': 'Job',
-            'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes',
+            'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': queue_name,
                          'kueue.x-k8s.io/priority-class': priority,
                          'app.kubernetes.io/managed-by': 'fleet-build'}},
             # Host reservations outlive timeout's forced-stop grace, so quota
@@ -199,9 +208,10 @@ def main():
         created = True
         (runs / f'{name}.json').write_text(json.dumps({
             'job_id': name, 'class': priority, 'checkpoint_safe': args.checkpoint_safe,
+            'queue': queue_name,
             'stage': stage, 'cpus': args.cpus, 'memory': memory,
         }, indent=2) + '\n')
-        print(f'fleet: job {name} -> mbp (Kueue lanes); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
+        print(f'fleet: job {name} -> mbp (Kueue {queue_name}); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
         # Zero preserves fleet's fail-fast contract; allow only a short
         # controller reconciliation grace. Indefinite queueing is explicit.
         admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
@@ -210,7 +220,14 @@ def main():
         with logpath.open('wb') as logfile:
             while True:
                 job = json.loads(checked(kube + ['get', 'job', name, '-o', 'json'], capture_output=True).stdout)
-                if job['spec'].get('suspend', False) and admitted:
+                workload_name = job['spec'].get('template', {}).get('metadata', {}).get('annotations', {}).get('kueue.x-k8s.io/workload')
+                workload = (json.loads(checked(kube + ['get', 'workload', workload_name, '-o', 'json'], capture_output=True).stdout)
+                            if workload_name else {})
+                evicted = workload_evicted(workload)
+                was_evicted |= evicted
+                suspended = job['spec'].get('suspend', False) or evicted
+                exit_code = None
+                if suspended and admitted:
                     admitted = False
                     if logs is not None:
                         logs.terminate()
@@ -218,20 +235,24 @@ def main():
                         reader.join(timeout=5)
                         logs = None
                     print(f'fleet: Kueue suspended {name}; preserving checkpoints', file=sys.stderr, flush=True)
-                if not job['spec'].get('suspend', False) and not admitted:
+                if not suspended and not admitted:
                     admitted = True
                     # --wait bounds initial admission, not Kueue's subsequent
                     # checkpoint-safe eviction/readmission lifecycle.
                     admission_deadline = None
                     print(f'fleet: Kueue admitted {name}', file=sys.stderr, flush=True)
-                pods = ([] if job['spec'].get('suspend', False) else
+                pods = ([] if suspended else
                         json.loads(checked(kube + ['get', 'pods', '-l', f'job-name={name}', '-o', 'json'], capture_output=True).stdout)['items'])
                 if pods:
-                    pod = next((p for p in pods if not p['metadata'].get('deletionTimestamp')
-                                and p.get('status', {}).get('phase') != 'Failed'), None)
+                    pod = next((p for p in pods if not p['metadata'].get('deletionTimestamp')), None)
                     if pod is None:
                         time.sleep(2)
                         continue
+                    if logs is not None and pod_name != pod['metadata']['name']:
+                        logs.terminate()
+                        logs.wait()
+                        reader.join(timeout=5)
+                        logs = None
                     pod_name = pod['metadata']['name']
                     statuses = pod.get('status', {}).get('containerStatuses', [])
                     if logs is None and statuses and ('running' in statuses[0]['state'] or (not args.host and 'terminated' in statuses[0]['state'])):
@@ -252,12 +273,25 @@ def main():
                         terminal = True
                         break
                     if statuses and 'terminated' in statuses[0]['state']:
-                        rc = statuses[0]['state']['terminated']['exitCode']
-                        terminal = True
-                        break
+                        exit_code = statuses[0]['state']['terminated']['exitCode']
+                # Pod termination (including 137) is not Job completion. Kueue
+                # owns eviction/readmission; its eviction status wins over
+                # temporarily stale Job conditions during reconciliation.
+                if evicted:
+                    time.sleep(2)
+                    continue
+                finished = not workload_name or any(
+                    c['type'] == 'Finished' and c['status'] == 'True'
+                    for c in workload.get('status', {}).get('conditions', []))
+                complete = any(c['type'] == 'Complete' and c['status'] == 'True'
+                               for c in job.get('status', {}).get('conditions', []))
+                if complete and finished:
+                    rc = 0
+                    terminal = True
+                    break
                 failed = next((c for c in job.get('status', {}).get('conditions', []) if c['type'] == 'Failed' and c['status'] == 'True'), None)
-                if failed:
-                    rc = 124 if failed['reason'] == 'DeadlineExceeded' else 1
+                if failed and finished:
+                    rc = 124 if failed['reason'] == 'DeadlineExceeded' else (exit_code or 1)
                     terminal = True
                     break
                 if not admitted and admission_deadline and time.monotonic() >= admission_deadline:
@@ -305,11 +339,11 @@ def main():
         if logs is not None and logs.poll() is None:
             logs.terminate()
             logs.wait()
-        # Cancellation always stops work before removing its disk source. Retain
-        # completed --keep jobs for inspectability; Kubernetes TTL bounds lifetime.
-        if created and (args.host or not args.keep or not terminal):
+        # An evicted workload belongs to Kueue's readmission lifecycle, not
+        # client cleanup. Preserve both Job and stage if the observer exits.
+        if created and not (was_evicted and not terminal) and (args.host or not args.keep or not terminal):
             checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
-        if args.checkpoint_safe and not terminal:
+        if (args.checkpoint_safe or was_evicted) and not terminal:
             print(f'fleet: retained checkpoint stage {stage}; receipt {runs / (name + ".json")}', file=sys.stderr)
         elif not args.keep or not terminal:
             checked(remote(f'rm -rf -- {qstage}'))
