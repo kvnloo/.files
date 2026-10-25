@@ -22,12 +22,12 @@ stage host-storage "$repo" "$sha"
 dest="/mnt/zer0models/releases/host-storage/$sha"
 backup="$HOME/.local/state/host-storage/unit-backups/$(date -u +%Y%m%dT%H%M%S%NZ)"
 mkdir -p "$backup" "$HOME/.config/zer0" "$HOME/.config/systemd/user"
-for unit in fleet-source-retention.service fleet-source-retention.timer zer0-storage-autotier.service zer0-storage-autotier.timer; do
+for unit in fleet-source-retention.service fleet-source-retention.timer fleet-stage-retention.service fleet-stage-retention.timer zer0-storage-autotier.service zer0-storage-autotier.timer; do
   live="$HOME/.config/systemd/user/$unit"
   if [[ -e $live || -L $live ]]; then cp -a "$live" "$backup/$unit"; fi
   ln -sfn "$dest/config/systemd/user/$unit" "$live"
 done
 ln -sfn "$dest/config/zer0/storage.toml" "$HOME/.config/zer0/storage.toml"
 systemctl --user daemon-reload
-systemctl --user enable --now fleet-source-retention.timer zer0-storage-autotier.timer
+systemctl --user enable --now fleet-source-retention.timer fleet-stage-retention.timer zer0-storage-autotier.timer
 printf 'host-storage=%s backup=%s\n' "$sha" "$backup"

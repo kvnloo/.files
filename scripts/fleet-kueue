@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -17,6 +18,8 @@ import uuid
 import socket
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 from fleet_source import source_snapshot
+from fleet_queue_health import node_blocked
+from fleet_stage_lock import submission_lock
 
 
 def checked(argv, **kwargs):
@@ -36,6 +39,45 @@ def workload_evicted(workload):
     return conditions.get('Evicted') == 'True' or (
         not workload.get('status', {}).get('admission')
         and any(conditions.get(key) == 'True' for key in ('Preempted', 'Requeued')))
+
+
+def save_receipt(path, value):
+    temporary = path.with_suffix('.json.tmp')
+    temporary.write_text(json.dumps(value, indent=2) + '\n')
+    os.replace(temporary, path)
+
+
+def blocked_worker(kube, queue_name):
+    queue = json.loads(checked(kube + ['get', 'clusterqueue', queue_name, '-o', 'json'],
+                               capture_output=True).stdout)
+    if queue.get('spec', {}).get('stopPolicy', 'None') != 'None':
+        return 'MBP queue is held'
+    if any(c['type'] == 'Active' and c['status'] == 'False'
+           for c in queue.get('status', {}).get('conditions', [])):
+        return 'MBP queue is inactive'
+    node = json.loads(checked(kube + ['get', 'node', 'mbp', '-o', 'json'],
+                              capture_output=True).stdout)
+    return 'MBP node is not schedulable' if node_blocked(node) else None
+
+
+def terminal_events(kube, name, pods):
+    events = json.loads(checked(kube + ['get', 'events', '--field-selector',
+        f'involvedObject.kind=Job,involvedObject.name={name}', '-o', 'json'],
+        capture_output=True).stdout)['items']
+    pod_names = {pod['metadata']['name'] for pod in pods}
+    for event in events:
+        related = event.get('related') or {}
+        if related.get('kind') == 'Pod' and related.get('name'):
+            pod_names.add(related['name'])
+        message = event.get('message', '')
+        if event.get('reason') == 'SuccessfulCreate' and message.startswith('Created pod: '):
+            pod_names.add(message.removeprefix('Created pod: ').strip())
+    pod_events = {}
+    for pod_name in sorted(pod_names):
+        pod_events[pod_name] = json.loads(checked(kube + ['get', 'events', '--field-selector',
+            f'involvedObject.kind=Pod,involvedObject.name={pod_name}', '-o', 'json'],
+            capture_output=True).stdout)['items']
+    return {'job': events, 'pods': pod_events}
 
 
 def main():
@@ -157,6 +199,8 @@ def main():
     created = bool(args.attach)
     terminal = False
     terminal_recorded = False
+    fetch_completed = False
+    worker_wait_deadline = None
     logs = None
     rc = 1
     detach_code = 130
@@ -254,12 +298,35 @@ def main():
         print(f'fleet: job {name} -> mbp (Kueue {queue_name}); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
     try:
         if not args.attach:
-            submit()
+            reported_hold = False
+            while True:
+                blocked = blocked_worker(kube, queue_name)
+                if blocked:
+                    if not reported_hold:
+                        print(f'fleet: {blocked}; waiting before source staging', file=sys.stderr, flush=True)
+                        reported_hold = True
+                    if args.wait == 0:
+                        return 75
+                    if args.wait != -1:
+                        if worker_wait_deadline is None:
+                            worker_wait_deadline = time.monotonic() + args.wait
+                        elif time.monotonic() >= worker_wait_deadline:
+                            return 75
+                    time.sleep(2)
+                    continue
+                with submission_lock():
+                    # Retention cannot remove referenced caches while the source
+                    # stage and its Kubernetes owner are being published.
+                    if blocked_worker(kube, queue_name):
+                        continue
+                    submit()
+                break
         else:
             print(f'fleet: attached {name}; observing existing job only', file=sys.stderr, flush=True)
         # Zero preserves fleet's fail-fast contract; allow only a short
         # controller reconciliation grace. Indefinite queueing is explicit.
-        admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
+        admission_deadline = (None if args.wait == -1 else worker_wait_deadline
+                              if worker_wait_deadline is not None else time.monotonic() + (args.wait or 5))
         admitted = False
         pod_name = None
         with logpath.open('ab' if args.attach else 'wb') as logfile:
@@ -369,38 +436,50 @@ def main():
                 reader.join(timeout=5)
             logfile.write(f'\n# exit {rc}\n'.encode())
         if terminal:
-            receipt = runs / f'{name}.json'
-            evidence = json.loads(receipt.read_text()) if receipt.exists() else {'job_id': name}
-            evidence['terminal'] = {'exit_code': rc, 'job': job, 'workload': workload, 'pods': pods}
-            temporary = receipt.with_suffix('.json.tmp')
-            temporary.write_text(json.dumps(evidence, indent=2) + '\n')
-            os.replace(temporary, receipt)
-            terminal_recorded = True
-            reasons = [s['state']['terminated'].get('reason', 'Unknown')
-                       for p in pods for s in p.get('status', {}).get('containerStatuses', [])
-                       if 'terminated' in s.get('state', {})]
-            print(f'fleet: terminal evidence {receipt}; container reasons: {reasons}', file=sys.stderr)
-            for value in args.fetch:
-                dest = runs / name
-                dest.mkdir(exist_ok=True)
-                create_artifact_lease(dest, name, socket.gethostname(), 'spool', args.fetch)
-                tar = subprocess.Popen(remote(f'tar -C {qstage} -czf - {shlex.quote(value)}'), stdout=subprocess.PIPE)
-                receive = subprocess.Popen(['tar', '-xzf', '-', '-C', str(dest)], stdin=tar.stdout)
-                tar.stdout.close()
-                receive.wait()
-                tar.wait()
-                if receive.returncode or tar.returncode:
-                    raise RuntimeError(f'artifact fetch failed: {value}')
-                if args.out:
-                    output = Path(args.out)
-                    output.mkdir(parents=True, exist_ok=True)
-                    create_artifact_lease(output, name, socket.gethostname(), 'spool', [Path(item).name for item in args.fetch])
-                    artifact = dest / value
-                    target = output / artifact.name
-                    if artifact.is_dir():
-                        shutil.copytree(artifact, target, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(artifact, target)
+            with submission_lock():
+                receipt = runs / f'{name}.json'
+                evidence = json.loads(receipt.read_text()) if receipt.exists() else {'job_id': name}
+                evidence['terminal'] = {'exit_code': rc, 'job': job, 'workload': workload, 'pods': pods,
+                                        'events': terminal_events(kube, name, pods)}
+                evidence['fetch_completed'] = False
+                completed = evidence.setdefault('completed_at', time.time())
+                policy = node.get('stage_retention', {})
+                hours = float(policy.get('keep_hours' if args.keep else 'completed_hours', 72 if args.keep else 24))
+                if not math.isfinite(hours) or hours <= 0:
+                    raise ValueError('stage retention hours must be finite and positive')
+                evidence.setdefault('retention_until', completed + hours * 3600)
+                if args.keep:
+                    evidence.setdefault('keep_until', completed + hours * 3600)
+                save_receipt(receipt, evidence)
+                terminal_recorded = True
+                reasons = [s['state']['terminated'].get('reason', 'Unknown')
+                           for p in pods for s in p.get('status', {}).get('containerStatuses', [])
+                           if 'terminated' in s.get('state', {})]
+                print(f'fleet: terminal evidence {receipt}; container reasons: {reasons}', file=sys.stderr)
+                for value in args.fetch:
+                    dest = runs / name
+                    dest.mkdir(exist_ok=True)
+                    create_artifact_lease(dest, name, socket.gethostname(), 'spool', args.fetch)
+                    tar = subprocess.Popen(remote(f'tar -C {qstage} -czf - {shlex.quote(value)}'), stdout=subprocess.PIPE)
+                    receive = subprocess.Popen(['tar', '-xzf', '-', '-C', str(dest)], stdin=tar.stdout)
+                    tar.stdout.close()
+                    receive.wait()
+                    tar.wait()
+                    if receive.returncode or tar.returncode:
+                        raise RuntimeError(f'artifact fetch failed: {value}')
+                    if args.out:
+                        output = Path(args.out)
+                        output.mkdir(parents=True, exist_ok=True)
+                        create_artifact_lease(output, name, socket.gethostname(), 'spool', [Path(item).name for item in args.fetch])
+                        artifact = dest / value
+                        target = output / artifact.name
+                        if artifact.is_dir():
+                            shutil.copytree(artifact, target, dirs_exist_ok=True)
+                        else:
+                            shutil.copy2(artifact, target)
+                evidence['fetch_completed'] = True
+                save_receipt(receipt, evidence)
+                fetch_completed = True
         print(f'fleet: job {name} on mbp exited {rc}', file=sys.stderr)
         return rc
     except KeyboardInterrupt:
@@ -414,13 +493,15 @@ def main():
             logs.terminate()
             logs.wait()
         # Controller loss is detach, never an implicit remote cancellation.
-        if created and terminal and terminal_recorded and (args.host or not args.keep):
+        if created and terminal and terminal_recorded and fetch_completed and (args.host or not args.keep):
             checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
         if created and not terminal:
             print(f'fleet: detached job {name}; retained checkpoint stage {stage}; '
                   f'receipt {runs / (name + ".json")}; reattach: fleet-build --attach {name}', file=sys.stderr)
-        elif terminal and terminal_recorded and not args.keep:
+        elif terminal and terminal_recorded and fetch_completed and not args.keep:
             checked(remote(f'rm -rf -- {qstage}'))
+        elif terminal and not fetch_completed:
+            print(f'fleet: retained {name} and {stage}; terminal retrieval/receipt not confirmed', file=sys.stderr)
 
 
 if __name__ == '__main__':

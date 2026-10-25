@@ -44,6 +44,7 @@ import fleet_phone_controller as phone_controller
 import fleet_phone_python as phone_python
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 from fleet_source import source_snapshot
+from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -181,6 +182,7 @@ def k8s_nodes():
             "conditions": conds,
             "unschedulable": bool(it["spec"].get("unschedulable")),
             "cordoned_by": it["metadata"].get("annotations", {}).get(ANNOT),
+            "taints": it["spec"].get("taints", []),
         }
     return out
 
@@ -298,6 +300,11 @@ def cmd_health(args):
         name = n["name"]
         bad, warn = judge(n, probes[name], k8s, online, overrides)
         s = state.setdefault(name, {"bad": 0, "good": 0, "paused": False})
+        if name == "mbp":
+            try:
+                reconcile_queue_health(kc, unhealthy=bool(bad))
+            except Exception as exc:
+                bad.append(f"Kueue admission guard: {exc}")
         if bad:
             s["bad"] += 1; s["good"] = 0
         else:
@@ -323,14 +330,33 @@ def cmd_health(args):
             s["paused"] = True
         elif not bad and s["good"] >= strikes and s.get("paused"):
             if mode == "cordon" and kn and kn["unschedulable"] and kn["cordoned_by"] == "fleet-health":
-                kc("uncordon", name)
-                kc("annotate", "node", name, f"{ANNOT}-", "z0.dev/unhealthy-reason-", check=False)
-                action = "uncordoned"
+                try:
+                    ready = name != "mbp" or recovery_ready(kc)
+                except Exception as exc:
+                    ready = False
+                    bad.append(f"Kubernetes recovery gate: {exc}")
+                if ready:
+                    kc("uncordon", name)
+                    kc("annotate", "node", name, f"{ANNOT}-", "z0.dev/unhealthy-reason-", check=False)
+                    action = "uncordoned"
+                else:
+                    bad.append("Kubernetes recovery gate: waiting for Ready, no pressure and no blocking taints")
+                    action = "held"
             elif mode == "pause":
                 action = "resumed"
-            s["paused"] = False
+            if not bad:
+                s["paused"] = False
+        if name == "mbp":
+            try:
+                # Re-read the API after cordon/owned uncordon; stale taints keep Hold.
+                queue_policy = reconcile_queue_health(kc, unhealthy=bool(bad))
+            except Exception as exc:
+                bad.append(f"Kueue admission guard: {exc}")
+                queue_policy = {"error": str(exc)}
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
                "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
+        if name == "mbp":
+            rec["kueue_stop_policy"] = queue_policy
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
             f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
@@ -764,7 +790,9 @@ def cmd_enroll(args):
     for flag, key in (("system-reserved", "system_reserved"), ("kube-reserved", "kube_reserved"),
                       ("eviction-hard", "eviction_hard"), ("eviction-soft", "eviction_soft"),
                       ("eviction-soft-grace-period", "eviction_soft_grace"),
-                      ("eviction-minimum-reclaim", "eviction_minimum_reclaim")):
+                      ("eviction-minimum-reclaim", "eviction_minimum_reclaim"),
+                      ("image-gc-high-threshold", "image_gc_high_threshold"),
+                      ("image-gc-low-threshold", "image_gc_low_threshold")):
         if kl.get(key):
             kargs += ["--kubelet-arg", f"{flag}={kl[key]}"]
     lane = n["lane"]

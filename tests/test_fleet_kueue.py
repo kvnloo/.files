@@ -34,7 +34,8 @@ class WorkloadClassTests(unittest.TestCase):
 
 class PreemptionLifecycleTests(unittest.TestCase):
     def exercise(self, jobs, *, checkpoint=True, interrupt_after=None, clock=(0,),
-                 job_class='bench', workloads=(), pods=(), detach_signal=None, attach=False, host=False):
+                 job_class='bench', workloads=(), pods=(), detach_signal=None, attach=False, host=False,
+                 queue_policy='None', node_state=None, events=None, keep=True, fetch_failure=False, wait=2):
         """Drive the real submitter with only external transports replaced."""
         namespace = runpy.run_path(str(pathlib.Path(__file__).parents[1] / 'scripts/fleet-kueue'))
         main = namespace['main']
@@ -66,6 +67,19 @@ class PreemptionLifecycleTests(unittest.TestCase):
                     'name': 'node-mbp', 'resources': [
                         {'name': 'cpu', 'nominalQuota': '4'},
                         {'name': 'memory', 'nominalQuota': '10441814016'}]}]}]}}
+                value['spec']['stopPolicy'] = queue_policy
+            elif 'get' in argv and 'node' in argv:
+                value = node_state if node_state is not None else {
+                    'spec': {}, 'status': {'conditions': [
+                        {'type': kind, 'status': 'True' if kind == 'Ready' else 'False'}
+                        for kind in ('Ready', 'DiskPressure', 'MemoryPressure', 'PIDPressure')]}}
+            elif 'get' in argv and 'events' in argv:
+                selector = argv[argv.index('--field-selector') + 1]
+                if 'involvedObject.kind=Pod' in selector:
+                    pod_name = selector.split('involvedObject.name=', 1)[1]
+                    value = {'items': (events or {}).get('pods', {}).get(pod_name, [])}
+                else:
+                    value = {'items': (events or {}).get('job', [])}
             elif 'get' in argv and 'job' in argv:
                 if first_attach_read:
                     first_attach_read = False
@@ -101,15 +115,19 @@ class PreemptionLifecycleTests(unittest.TestCase):
         stderr = io.StringIO()
         self.last_stderr = stderr
         with tempfile.TemporaryDirectory() as state:
-            argv = ['fleet-kueue', '--src', state, '--no-src', '--keep',
-                    '--priority-class', job_class, '--cpus', '4', '--wait', '2']
+            argv = ['fleet-kueue', '--src', state, '--no-src',
+                    '--priority-class', job_class, '--cpus', '4', '--wait', str(wait)]
+            if keep:
+                argv += ['--keep']
+            if fetch_failure:
+                argv += ['--fetch', 'src/result.json']
             if checkpoint:
                 argv += ['--checkpoint-safe']
             argv += ['--', 'python3', 'benchmark.py']
             if host:
                 argv.insert(1, '--host')
             if attach:
-                argv = ['fleet-kueue', '--attach', attached_id, '--keep', '--wait', '2']
+                argv = ['fleet-kueue', '--attach', attached_id, '--keep', '--wait', str(wait)]
                 run_dir = pathlib.Path(state, 'runs')
                 run_dir.mkdir()
                 (run_dir / f'{attached_id}.json').write_text(json.dumps({
@@ -118,13 +136,14 @@ class PreemptionLifecycleTests(unittest.TestCase):
                     'job_id': attached_id, 'queue': 'bench-lanes' if job_class == 'bench' else 'lanes',
                 }))
                 (run_dir / f'{attached_id}-mbp.log').write_text('ORIGINAL_LOG\n')
-            process = SimpleNamespace(stdout=io.BytesIO(), returncode=0,
+            process = SimpleNamespace(stdout=io.BytesIO(), returncode=1 if fetch_failure else 0,
                                       wait=mock.Mock(return_value=0), terminate=mock.Mock(),
                                       poll=mock.Mock(return_value=0))
             replacements = {
                 'checked': checked,
                 'runpy': SimpleNamespace(run_path=lambda path: fleet),
-                'time': SimpleNamespace(monotonic=monotonic, sleep=sleep),
+                'time': SimpleNamespace(monotonic=monotonic, sleep=sleep, time=lambda: 100000),
+                'submission_lock': contextlib.nullcontext,
                 'signal': SimpleNamespace(SIGTERM=15, SIGHUP=1,
                                           signal=lambda signum, fn: handlers.__setitem__(signum, fn)),
                 'subprocess': SimpleNamespace(Popen=lambda *args, **kwargs: process,
@@ -134,9 +153,12 @@ class PreemptionLifecycleTests(unittest.TestCase):
             with mock.patch.dict(main.__globals__, replacements), \
                     mock.patch.dict(os.environ, {'FLEET_STATE': state}), \
                     mock.patch('sys.argv', argv), contextlib.redirect_stderr(stderr):
-                result = main()
-            receipts = [json.loads(path.read_text()) for path in pathlib.Path(state, 'runs').glob('*.json')]
-            self.logs = [path.read_text() for path in pathlib.Path(state, 'runs').glob('*-mbp.log')]
+                try:
+                    result = main()
+                finally:
+                    receipts = [json.loads(path.read_text()) for path in pathlib.Path(state, 'runs').glob('*.json')]
+                    self.last_receipts = receipts
+                    self.logs = [path.read_text() for path in pathlib.Path(state, 'runs').glob('*-mbp.log')]
         return result, requests, stderr.getvalue(), receipts, monotonic
 
     def test_sigterm_detaches_without_cancelling_unsafe_build(self):
@@ -270,6 +292,58 @@ class PreemptionLifecycleTests(unittest.TestCase):
         self.assertEqual(receipts[0]['terminal']['job'], failed)
         self.assertEqual(receipts[0]['terminal']['workload'], workload)
         self.assertIn('OOMKilled', stderr)
+
+    def test_unavailable_worker_never_stages_source_or_creates_job(self):
+        for options in ({'queue_policy': 'Hold'}, {'node_state': {'spec': {'unschedulable': True}}}):
+            with self.subTest(options=options):
+                result, requests, stderr, receipts, _ = self.exercise(
+                    [], checkpoint=False, job_class='build', clock=(0, 3), **options)
+                self.assertEqual(result, 75)
+                self.assertIn('waiting before source staging', stderr)
+                self.assertEqual(receipts, [])
+                self.assertFalse(any('create' in argv or 'mkdir -p' in str(argv) for argv in requests))
+
+    def test_indefinite_worker_hold_has_no_deadline_or_remote_stage(self):
+        result, requests, _, receipts, clock = self.exercise(
+            [], queue_policy='Hold', wait=-1, clock=(), interrupt_after=2)
+        self.assertEqual(result, 130)
+        self.assertEqual(clock.call_count, 0)
+        self.assertEqual(receipts, [])
+        self.assertFalse(any('create' in argv for argv in requests))
+
+    def test_deadline_without_remaining_pods_preserves_job_and_scheduling_events(self):
+        failed = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Failed', 'status': 'True', 'reason': 'DeadlineExceeded'}]}}
+        created = {'reason': 'SuccessfulCreate', 'message': 'Created pod: pending-pod'}
+        blocked = {'reason': 'FailedScheduling', 'message': 'node was unschedulable'}
+        result, _, _, receipts, _ = self.exercise([failed], events={
+            'job': [created], 'pods': {'pending-pod': [blocked]}})
+        self.assertEqual(result, 124)
+        self.assertEqual(receipts[0]['terminal']['pods'], [])
+        self.assertEqual(receipts[0]['terminal']['events'],
+                         {'job': [created], 'pods': {'pending-pod': [blocked]}})
+
+    def test_fetch_failure_withholds_job_and_source_cleanup(self):
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        with self.assertRaisesRegex(RuntimeError, 'artifact fetch failed'):
+            self.exercise([complete], checkpoint=False, job_class='build',
+                          keep=False, fetch_failure=True)
+        self.assertFalse(self.last_receipts[0]['fetch_completed'])
+        self.assertFalse(any('delete' in argv or 'rm -rf' in str(argv) for argv in self.last_requests))
+
+    def test_completed_and_debug_retention_have_bounded_expiry(self):
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        for keep, hours in ((False, 24), (True, 72)):
+            with self.subTest(keep=keep):
+                result, _, _, receipts, _ = self.exercise(
+                    [complete], checkpoint=False, job_class='build', keep=keep)
+                self.assertEqual(result, 0)
+                self.assertTrue(receipts[0]['fetch_completed'])
+                self.assertEqual(receipts[0]['retention_until'], 100000 + hours * 3600)
+                if keep:
+                    self.assertEqual(receipts[0]['keep_until'], receipts[0]['retention_until'])
 
     def test_unsafe_build_remains_in_protected_queue(self):
         complete = {'spec': {'suspend': False}, 'status': {'conditions': [

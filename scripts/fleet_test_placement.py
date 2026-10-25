@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from fleet_queue_health import node_blocked
 
 
 def quantity(value, binary_request=False):
@@ -30,7 +31,7 @@ def python_test(command):
         len(command) >= 3 and command[1] == '-m' and command[2] in ('pytest', 'unittest'))
 
 
-def choose(command, memory, cpus, queue, memory_explicit=False):
+def choose(command, memory, cpus, queue, memory_explicit=False, node=None):
     decision = {'policy': 'python-test-capacity-overflow', 'selected_lane': 'mbp',
                 'requested_memory': memory, 'requested_cpus': cpus,
                 'memory_explicit': memory_explicit}
@@ -38,6 +39,18 @@ def choose(command, memory, cpus, queue, memory_explicit=False):
         return {**decision, 'reason': 'not-a-direct-python-test-runner'}
     if memory_explicit and quantity(memory, binary_request=True) > 1024**3:
         return {**decision, 'reason': 'explicit-memory-above-phone-test-scope'}
+    def overflow(reason):
+        return {**decision, 'selected_lane': 'phones', 'reason': reason,
+                'phone_resource_policy': ('overflow: mem unspecified, default not applied on phone (O10)'
+                                          if not memory_explicit else
+                                          'overflow: explicit MBP request recorded, no caps applied on phone (O10)')}
+    policy = queue.get('spec', {}).get('stopPolicy', 'None')
+    if policy != 'None' or any(c['type'] == 'Active' and c['status'] == 'False'
+                               for c in queue.get('status', {}).get('conditions', [])):
+        decision['mbp_stop_policy'] = policy
+        return overflow('mbp-queue-held')
+    if node is not None and node_blocked(node):
+        return overflow('mbp-node-unavailable')
     quota = {r['name']: quantity(r['nominalQuota'])
              for group in queue['spec']['resourceGroups'] for flavor in group['flavors']
              if flavor['name'] == 'node-mbp' for r in flavor['resources']}
@@ -48,10 +61,7 @@ def choose(command, memory, cpus, queue, memory_explicit=False):
             for resource in ('cpu', 'memory')}
     decision['mbp_free'] = {key: str(value) for key, value in free.items()}
     if quantity(cpus) > free['cpu'] or quantity(memory, binary_request=True) > free['memory']:
-        return {**decision, 'selected_lane': 'phones', 'reason': 'mbp-owned-quota-unavailable',
-                'phone_resource_policy': ('overflow: mem unspecified, default not applied on phone (O10)'
-                                          if not memory_explicit else
-                                          'overflow: explicit MBP request recorded, no caps applied on phone (O10)')}
+        return overflow('mbp-owned-quota-unavailable')
     return {**decision, 'reason': 'mbp-owned-quota-available'}
 
 
@@ -74,6 +84,11 @@ def main():
                 'kubectl', '--kubeconfig', str(Path.home()/'.kube/k3s.yaml'),
                 'get', 'clusterqueue', 'lanes', '-o', 'json'], stderr=subprocess.PIPE, timeout=15))
             decision = choose(command, args.mem, args.cpus, queue, args.mem_explicit)
+            if decision['selected_lane'] == 'mbp':
+                node = json.loads(subprocess.check_output([
+                    'kubectl', '--kubeconfig', str(Path.home()/'.kube/k3s.yaml'),
+                    'get', 'node', 'mbp', '-o', 'json'], stderr=subprocess.PIPE, timeout=15))
+                decision = choose(command, args.mem, args.cpus, queue, args.mem_explicit, node)
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
             # Unknown capacity is not authority to move work. Normal Kueue
             # admission remains the owner and exposes its own failure if down.

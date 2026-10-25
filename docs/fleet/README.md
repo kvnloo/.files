@@ -494,6 +494,36 @@ report-only (it hosts the control plane, Kueue and the factory gateway). Phones
 are `pause`d: `fleet run` skips them. Reports: `~/.local/state/fleet/health/<node>.json`
 and `history.jsonl` (bounded). Warnings (pending updates, reboot needed) do not cordon.
 
+For MBP, the same health entrypoint reconciles **both** Kueue ClusterQueues
+`lanes` and `bench-lanes` using native `spec.stopPolicy=Hold`. A cordon,
+NoSchedule/NoExecute taint, non-Ready or unknown node condition, pressure, or
+failed health probe closes admission immediately, without waiting for strikes.
+It reconciles again after health-owned cordon/uncordon; lingering blocking taints
+keep admission held. Hold stops new quota handouts, not already admitted work.
+Only a Hold acquired from `None` by this guard is restored to `None`, after
+health and Kubernetes conditions recover. Pre-existing operator Hold and
+HoldAndDrain are not overridden. Ownership and previous policy are recorded in
+`z0.dev/fleet-health-queue-hold=mbp:None:v1`; to take over a guard-owned Hold,
+remove this annotation while keeping Hold (prefer one atomic API patch).
+Changing to HoldAndDrain also abandons guard ownership. Resource-version tests
+reject concurrent API changes rather than overwrite them.
+
+Run `scripts/fleet health --node mbp` for one reconciliation, with the existing
+KUBECONFIG and permissions to get Nodes and get/patch ClusterQueues. No new flags
+or cluster resources are required. `scripts/fleet install-timer` installs the
+existing two-minute health timer if absent. Queue/API errors make the health
+command fail and are retained in the MBP health report; an unavailable node read
+attempts to hold both queues but never releases a hold. An unavailable API cannot
+be claimed to have stopped admission. Do not force an uncordon to recover queues.
+
+Offline regression command: `python3 tests/test_fleet_queue_health.py`.
+
+MBP's fleet-owned uncordon also re-reads Kubernetes immediately before acting:
+Ready must be True, all pressure conditions False, and no NoSchedule/NoExecute
+taint may remain except Kubernetes' own unschedulable NoSchedule taint.
+Ownership must still be `fleet-health`. Disk space recovery alone does not
+bypass kubelet's DiskPressure hysteresis; failed reads retain the cordon/pause.
+
 Forced test (what the PR verified):
 
 ```sh
@@ -1035,6 +1065,68 @@ resource cap.** Pressure does not shorten leases or override live/unknown
 protection; expired-oldest removal remains the core's ordering policy.
 Timer runs serialize through a controller lock; the core has its own lock.
 
+### MBP worker-stage retention
+
+`scripts/fleet-stage-retention.py` is a separate Groot-controlled actor for
+`/home/agentjob/.local/state/fleet/kueue/fleet-mbp-*` only; it never touches
+Kevin's home, arbitrary jobs, or Groot source archives. No worker Kubernetes
+credentials or sudo are required. Groot needs existing all-namespace read access
+to Jobs, Pods and Kueue Workloads; SSH uses the existing strict registry transport
+as unprivileged `agentjob`. API/SSH failures abort, never authorize deletion.
+
+Generate the explicit bounded plan (default is read-only):
+
+```sh
+python3 scripts/fleet-stage-retention.py --output /mnt/zer0models/tmp/mbp-stage-plan.json
+```
+
+Only expired, valid spool leases with durable terminal **Job** evidence qualify.
+Attempt `exit` files never prove completion. Explicit keeps without expiry or
+with a future/invalid `keep_until`, missing leases,
+host scopes, unfinished Workloads, all queued/suspended/live Jobs and references
+inside their command/env/volume JSON preserve stages.
+New receipts also require `fetch_completed=true` and elapsed `retention_until`
+when present. Expired numeric `keep_until` releases the receipt's keep only;
+lease expiry and every other safeguard remain mandatory. Legacy keeps without
+an expiry remain protected.
+Requested exports must match current Groot fetched content byte-for-byte.
+Symlinks, foreign ownership,
+filesystem crossings, special files and unavailable owner-process visibility
+fail closed. Metadata identity is checked again at the deletion boundary, and
+lease/log/receipt material is archived outside the stage before removal.
+
+After stopping submitters and other cleanup actors, inspect the plan and apply
+within five minutes; this acknowledgement is mandatory because API observation
+alone cannot prevent a concurrent submitter from referencing an old cache:
+
+```sh
+python3 scripts/fleet-stage-retention.py --apply-plan /mnt/zer0models/tmp/mbp-stage-plan.json --submissions-quiesced --output /mnt/zer0models/tmp/mbp-stage-applied.json
+```
+
+Apply re-reads API liveness and fetched content, then removes only unchanged
+identities explicitly listed as `would-delete`. The owned
+`fleet-stage-retention.service`/`.timer` use automatic expired-only retention.
+Provisioning must install these units from its selected immutable source;
+activation and automatic apply require the shared submission/retention lock,
+not a blind timer executing `--submissions-quiesced`. No live installation is
+performed by this change.
+
+Managed Groot submitters use `fleet_stage_lock.submission_lock()` (shared)
+on `~/.local/state/fleet/stage-retention.lock` around stage publication and Job
+creation; retention holds the exclusive side. Provisioning can select:
+
+```sh
+python3 scripts/fleet-stage-retention.py --automatic --output /mnt/zer0models/tmp/mbp-stage-automatic.json
+```
+
+This mode holds that lock across report, explicit identity-plan construction,
+fresh API observation and remote apply. Do not activate it before the producer
+lock integration is deployed. It does not override leases or explicit keeps.
+This protocol coordinates managed Groot producers only; arbitrary manual
+`kubectl` submissions, foreign controllers or uncoordinated SSH writers are
+outside its guarantee and must be quiesced during cleanup.
+
+
 After source settles and the parent authorizes deployment, coordinate the
 deploy window with WorktreeReaper-2, FarmFix and ServiceWatch-2, then run:
 
@@ -1055,6 +1147,50 @@ python3 scripts/artifact-lease-controller.py --output "$HOME/.local/state/artifa
 
 Controller tests (run on MBP together with the settled core tests):
 `python3 -m unittest discover -s tests -p 'test_artifact_lease*.py'`.
+
+### MBP kubelet disk policy and recovery
+
+The MBP registry sets image GC high/low thresholds to 80%/70%, disk eviction
+soft thresholds to 12% available with a two-minute grace, and hard thresholds
+to 10%. Memory thresholds and the 2% minimum disk reclaim margin remain.
+`fleet enroll mbp` forwards those exact kubelet arguments; source edits alone
+do not apply them. Enrollment requires root SSH on the MBP's configured port
+and can restart its k3s agent. It is an owner-operated maintenance action, not
+permission for an agent to change privileged settings.
+
+On the MBP, the owner can inspect inaccessible stores and prune unused images:
+
+```sh
+sudo du -xm --max-depth=1 /var/lib/rancher/k3s/agent /var/lib/kubelet /var/log/pods
+sudo k3s crictl rmi --prune
+```
+
+Then, from Groot using the configured root SSH key:
+
+```sh
+scripts/fleet enroll mbp
+```
+
+Do not lower eviction thresholds or force-uncordon a pressured node. Space
+recovery must first clear kubelet's DiskPressure condition and hysteresis;
+the existing fleet-owned recovery path then uncordons and releases only its
+own Kueue Holds. A completed deadline receipt may have `pods=[]` because the
+Job controller removed an unscheduled Pod. Its durable terminal record now
+includes Job events and those Pods' scheduling events, not just containers.
+
+Kueue submission also checks the queue and live Node before creating a remote
+source stage. A held/unschedulable worker waits under `--wait`, or returns 75
+without staging for `--wait 0`; `--wait -1` waits indefinitely. Direct Python
+test overflow treats a held queue or unavailable Node as unavailable capacity.
+
+New terminal receipts retain confirmed fetch completion and completion-relative
+expiry. `mbp.stage_retention.completed_hours` defaults to 24; debug `--keep`
+expires after `keep_hours` (72). Legacy keeps without an expiry remain protected.
+Fetch failures retain the Job/source and cannot trigger automatic client cleanup.
+After a normal merge, `scripts/install-host-storage.sh --activate` installs the
+stamped producer lock, fleet entrypoints, and hourly automatic stage-retention
+timer together. Do not activate retention against old unlocked producers.
+
 ## Coding-agent launch isolation
 
 Use `agent-launch NAME EXECUTABLE [args...]` for Tern panes and direct shell

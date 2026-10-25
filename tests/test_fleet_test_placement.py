@@ -38,6 +38,19 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(result['mbp_free']['cpu'], '3')
         self.assertEqual(choose(['pytest'], '3G', '2', queue('0', '8Gi'))['selected_lane'], 'phones')
 
+    def test_held_queue_or_cordoned_node_overflows_even_with_free_quota(self):
+        held = queue('0', '0')
+        held['spec']['stopPolicy'] = 'Hold'
+        result = choose(['pytest'], '128M', '1', held)
+        self.assertEqual(result['selected_lane'], 'phones')
+        self.assertEqual(result['reason'], 'mbp-queue-held')
+        node = {'spec': {'unschedulable': True}, 'status': {'conditions': [
+            {'type': kind, 'status': 'True' if kind == 'Ready' else 'False'}
+            for kind in ('Ready', 'DiskPressure', 'MemoryPressure', 'PIDPressure')]}}
+        result = choose(['pytest'], '128M', '1', queue('0', '0'), node=node)
+        self.assertEqual(result['selected_lane'], 'phones')
+        self.assertEqual(result['reason'], 'mbp-node-unavailable')
+
     def test_explicit_memory_above_one_gib_never_overflows(self):
         self.assertEqual(choose(['pytest'], '2G', '1', queue(), True)['reason'],
                          'explicit-memory-above-phone-test-scope')
@@ -50,7 +63,7 @@ class WrapperPlacementTests(unittest.TestCase):
     def dispatch(self, options, command=('python3', '-m', 'unittest')):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for filename in ('fleet-build', 'fleet_test_placement.py'):
+            for filename in ('fleet-build', 'fleet_test_placement.py', 'fleet_queue_health.py'):
                 shutil.copy2(ROOT / 'scripts' / filename, root / filename)
             transport = ('#!' + sys.executable + '\nimport json,os,sys\n'
                          'print(json.dumps({"transport":os.path.basename(sys.argv[0]),"argv":sys.argv[1:],'

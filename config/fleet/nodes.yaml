@@ -77,15 +77,21 @@ nodes:
       # throttling (TjMax 105 C) protects it. 110 sits above anything a probe can
       # report while still requiring a finite reading (missing data still holds).
       max_temp_c: 110
+    stage_retention:
+      completed_hours: 24
+      keep_hours: 72
     kubelet:
       system_reserved: cpu=1,memory=2Gi
       kube_reserved: cpu=500m,memory=1Gi
+      # Reclaim unused images well before the node reaches disk-pressure limits.
+      image_gc_high_threshold: 80
+      image_gc_low_threshold: 70
       eviction_hard: memory.available<1Gi,nodefs.available<10%,imagefs.available<10%
-      eviction_soft: memory.available<1536Mi
-      eviction_soft_grace: memory.available=1m
-      # Default reclaim (= the threshold, 10%) kept DiskPressure set until 20% free on a
-      # 317 GiB btrfs disk; 2% clears it at 12%. Live since 2026-10-22 via the
-      # owner-run drop-in /etc/rancher/k3s/config.yaml.d/60-eviction-reclaim.yaml.
+      eviction_soft: memory.available<1536Mi,nodefs.available<12%,imagefs.available<12%
+      eviction_soft_grace: memory.available=1m,nodefs.available=2m,imagefs.available=2m
+      # Keep a 2% disk recovery margin rather than the default 10% reclaim.
+      # The 466GiB root disk filled with retained fleet stages in October 2026;
+      # source policy is applied only by the owner's root-authorized enrollment.
       eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
   omarchy-phone:
     # Owner's S25 Ultra, native adb lane by default. SSH guest requires --guest.
