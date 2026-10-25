@@ -5,7 +5,7 @@ Documentation=file:///mnt/zer0models/workspace/zer0/data/operations/agent-outcom
 [Service]
 Type=oneshot
 ExecStart=/mnt/zer0models/workspace/zer0/data/operations/agent-outcomes/tools/refresh.sh
-Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+Environment=TMPDIR=/mnt/zer0models/tmp/agent-telemetry-refresh
 Nice=19
 IOSchedulingClass=idle
 CPUQuota=60%
