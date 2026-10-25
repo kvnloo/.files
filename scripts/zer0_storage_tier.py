@@ -119,6 +119,23 @@ def verify_checksum(source: Path, destination: Path) -> None:
         raise RuntimeError(f"checksum verification found {len(changes)} differences; first={changes[:5]}")
 
 
+def remove_verified_backup(backup: Path, destination: Path) -> None:
+    """Reverify detached bytes before changing only backup directory modes."""
+    if backup.is_symlink() or backup.resolve() == destination.resolve():
+        raise RuntimeError("backup must be a detached physical copy")
+    verify_checksum(backup, destination)
+    if tree_stats(backup) != tree_stats(destination):
+        raise RuntimeError("backup file count/byte total mismatch")
+    if backup.is_dir():
+        for root, dirs, _files in os.walk(backup, followlinks=False):
+            directory = Path(root)
+            directory.chmod(directory.stat().st_mode | 0o300)
+            dirs[:] = [name for name in dirs if not (directory / name).is_symlink()]
+        shutil.rmtree(backup)
+    else:
+        backup.unlink()
+
+
 def migrate(source: Path, destination_root: Path, dry_run: bool, source_root: Path | None = None) -> None:
     source = source.resolve() if source.is_symlink() else source.absolute()
     canonical = str(source)
@@ -180,10 +197,7 @@ def migrate(source: Path, destination_root: Path, dry_run: bool, source_root: Pa
             source.unlink()
         backup.rename(source)
         raise
-    if is_dir:
-        shutil.rmtree(backup)
-    else:
-        backup.unlink()
+    remove_verified_backup(backup, destination)
     emit("migrated", source=canonical, destination=str(destination), bytes=size, files=count)
 
 
