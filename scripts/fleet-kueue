@@ -212,7 +212,6 @@ def main():
                 job = json.loads(checked(kube + ['get', 'job', name, '-o', 'json'], capture_output=True).stdout)
                 if job['spec'].get('suspend', False) and admitted:
                     admitted = False
-                    admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
                     if logs is not None:
                         logs.terminate()
                         logs.wait()
@@ -221,6 +220,9 @@ def main():
                     print(f'fleet: Kueue suspended {name}; preserving checkpoints', file=sys.stderr, flush=True)
                 if not job['spec'].get('suspend', False) and not admitted:
                     admitted = True
+                    # --wait bounds initial admission, not Kueue's subsequent
+                    # checkpoint-safe eviction/readmission lifecycle.
+                    admission_deadline = None
                     print(f'fleet: Kueue admitted {name}', file=sys.stderr, flush=True)
                 pods = ([] if job['spec'].get('suspend', False) else
                         json.loads(checked(kube + ['get', 'pods', '-l', f'job-name={name}', '-o', 'json'], capture_output=True).stdout)['items'])
@@ -307,7 +309,9 @@ def main():
         # completed --keep jobs for inspectability; Kubernetes TTL bounds lifetime.
         if created and (args.host or not args.keep or not terminal):
             checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
-        if not args.keep or not terminal:
+        if args.checkpoint_safe and not terminal:
+            print(f'fleet: retained checkpoint stage {stage}; receipt {runs / (name + ".json")}', file=sys.stderr)
+        elif not args.keep or not terminal:
             checked(remote(f'rm -rf -- {qstage}'))
 
 
