@@ -88,6 +88,18 @@ Run `python -m pytest tests -q --run-live-system -m live_system` on the
 configured operator machine to run those checks explicitly.
 Do not copy account credentials or desktop state into a CI runner.
 
+## Hyprland Lua parity
+
+`scripts/build-hypr-lua-static-owners` translates the current legacy entry and
+its repository sources into the static Lua owners. Source order controls
+effective scalar values. Rules, presets, binds, and unbinds retain their order.
+`scripts/build-hypr-lua-inventory` records that conversion for parity checks.
+The test fixtures use temporary homes and generated inventories.
+
+Generation does not select a live configuration or reload the compositor.
+The Lua parity changes in PR #70 require explicit operator approval before
+deployment. The existing live configuration remains unchanged.
+
 ## License
 
 [MIT](LICENSE) © Kevin Rajan (kvnloo)
