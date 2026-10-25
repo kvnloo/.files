@@ -17,6 +17,27 @@ autotier = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(autotier)
 
 
+def test_managed_policy_adds_preserved_idle_caches(tmp_path):
+    policy = tmp_path / "storage.toml"
+    policy.write_text('root_reserve_gib = 20\nidle_cache_globs = [".npm/_cacache", ".cargo/registry"]\n')
+    code = (
+        "import runpy; p=runpy.run_path(" + repr(str(SCRIPT)) + "); "
+        "assert '.cargo/registry' in p['ROOT_TIER_GLOBS']; "
+        "assert p['HOME']/'.npm/_cacache' not in p['ROOT_CACHE_DIRS']; "
+        "assert p['ROOT_RESERVE_GIB']==20"
+    )
+    subprocess.run([sys.executable, "-c", code], env={**os.environ, "ZER0_STORAGE_POLICY": str(policy)}, check=True)
+
+
+def test_managed_policy_rejects_escape(tmp_path):
+    policy = tmp_path / "storage.toml"
+    policy.write_text('idle_cache_globs = ["../user-data"]\n')
+    result = subprocess.run([sys.executable, "-c", "import runpy; runpy.run_path(" + repr(str(SCRIPT)) + ")"],
+                            env={**os.environ, "ZER0_STORAGE_POLICY": str(policy)}, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "home-relative paths" in result.stderr
+
+
 @pytest.fixture(autouse=True)
 def _no_real_prune(monkeypatch):
     """main() calls maybe_prune; never let a test prune the real machine."""

@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tomllib
 
 ROOT = Path("/workspace/zer0")
 HOME = Path("/home/kvn")
@@ -60,6 +61,21 @@ ROOT_GIT_IDLE_DAYS = 7
 ROOT_MIN_MIB = 64
 TOP_USERS = 5
 MOVER = Path(__file__).with_name("zer0_storage_tier.py")
+
+# Host policy is versioned in .files; its absence preserves legacy defaults.
+POLICY_PATH = Path(os.environ.get("ZER0_STORAGE_POLICY", str(HOME / ".config/zer0/storage.toml")))
+if POLICY_PATH.exists():
+    with POLICY_PATH.open("rb") as stream:
+        policy = tomllib.load(stream)
+    ROOT_RESERVE_GIB = int(policy.get("root_reserve_gib", ROOT_RESERVE_GIB))
+    additions = tuple(policy.get("idle_cache_globs", ()))
+    if any(not isinstance(item, str) or Path(item).is_absolute() or ".." in Path(item).parts for item in additions):
+        raise ValueError("idle_cache_globs must be home-relative paths")
+    ROOT_TIER_GLOBS += additions
+    # Managed caches are preserved by the verified mover, not deleted first.
+    ROOT_CACHE_DIRS = tuple(path for path in ROOT_CACHE_DIRS
+                            if path.relative_to(HOME).as_posix() not in additions)
+
 
 # Regenerable-junk prune. Runs before the move phase when / is under its
 # reserve, and once per day regardless. Deletes only things a tool rebuilds.
