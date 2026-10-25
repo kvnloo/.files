@@ -16,12 +16,12 @@ user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.
 nix_profile = "desktop"
 hypr_host = "0"
 
-# Declared but intentionally disabled until the decision-policy CLI is available.
+# Policy-only immutable release; discovery runs admitted workers outside the timer.
 [hosts.desktop.policy_pipeline]
 service = "z0int-policy.service"
 timer = "z0int-policy.timer"
-enabled = false
-source = "/mnt/zer0models/z0-wt/decision-policy"
+enabled = true
+source = "/home/kvn/.local/lib/z0int-policy/current"
 
 
 # Verified upstream release; per-user default explorer, no portal takeover.
