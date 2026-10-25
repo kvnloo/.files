@@ -6,12 +6,17 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 loader = importlib.machinery.SourceFileLoader('host_drift', str(ROOT / 'scripts/host-drift'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 drift = importlib.util.module_from_spec(spec)
 loader.exec_module(drift)
+loader = importlib.machinery.SourceFileLoader('install_host_drift', str(ROOT / 'scripts/install-host-drift'))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+installer = importlib.util.module_from_spec(spec)
+loader.exec_module(installer)
 
 
 class DriftTests(unittest.TestCase):
@@ -117,6 +122,58 @@ class DriftTests(unittest.TestCase):
         report = self.run_audit({'MemoryHigh': '1024', 'MemoryMax': '268435456'})
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['detail']['property'], 'MemoryHigh')
+
+    def test_private_exception_never_claims_verified_content(self):
+        self.live.write_text('private content must not enter output')
+        self.live.chmod(0o600)
+        self.manifest('secret=\"private-exception\"')
+        report = self.run_audit()
+        self.assertEqual(report['status'], 'unknown')
+        self.assertNotIn('private content', json.dumps(report))
+        self.assertEqual(report['drift'], [])
+        self.live.chmod(0o644)
+        self.assertEqual(self.run_audit()['drift'][0]['kind'], 'private_file_permissions')
+
+    def test_mask_is_exact_dev_null_not_an_empty_copy(self):
+        (self.root / self.source).write_text('')
+        self.live.write_text('')
+        self.manifest('mask=true')
+        self.assertEqual(self.run_audit()['drift'][0]['kind'], 'mask_changed')
+        self.live.unlink()
+        self.live.symlink_to('/dev/null')
+        self.assertEqual(self.run_audit()['status'], 'clean')
+
+    def test_owned_upstream_drift_stays_nonclean(self):
+        self.live.write_text('changed')
+        self.manifest('drift=\"owned-upstream\"\\nissue=\"https://example.test/issue/1\"')
+        report = self.run_audit()
+        self.assertEqual(report['status'], 'drift')
+        self.assertEqual(report['drift'][0]['classification'], 'owned-upstream')
+
+
+class InstallerTests(unittest.TestCase):
+    def test_dry_run_and_idempotent_content_stamped_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source, home = base / 'repo', base / 'home'
+            for name in installer.CLOSURE:
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('fixture\\n')
+            (source / 'config/host/groot.toml').write_text('')
+            with patch.object(installer.subprocess, 'check_output', return_value='\\n'.join(installer.CLOSURE)), \
+                 patch.object(installer.subprocess, 'run') as run:
+                self.assertEqual(installer.install(source, home, False), 0)
+                self.assertFalse(home.exists())
+                self.assertFalse(run.called)
+                self.assertEqual(installer.install(source, home, True), 0)
+                target = (home / '.local/bin/host-drift').resolve()
+                self.assertNotEqual(target, source / 'scripts/host-drift')
+                self.assertEqual(len(target.parents[1].name), 64)
+                self.assertTrue((home / '.config/z0-guard/state.json').is_symlink())
+                self.assertEqual(installer.install(source, home, True), 0)
+                self.assertEqual((home / '.local/bin/host-drift').resolve(), target)
+                self.assertNotIn('restart', ' '.join(str(call) for call in run.call_args_list))
 
 
 if __name__ == '__main__':

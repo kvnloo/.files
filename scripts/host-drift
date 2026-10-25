@@ -47,7 +47,8 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
         manifest = tomllib.loads((root / 'config/host/groot.toml').read_text())
         entries = manifest.get('system', []) + manifest.get('user', [])
         if not entries or any(not isinstance(row, dict) or
-                              not all(key in row for key in ('live', 'source', 'scope', 'install', 'owner', 'reason'))
+                              not all(isinstance(row.get(key), str) and row[key] for key in
+                                      ('live', 'source', 'scope', 'install', 'owner', 'reason'))
                               or row['scope'] not in ('system', 'user') for row in entries):
             raise ValueError('manifest requires complete managed path entries')
         entries.sort(key=lambda row: row['live'])
@@ -66,6 +67,13 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
             source = root / rel
             live = Path(entry['live'].replace('~', str(home), 1)).expanduser()
             data = source.read_bytes()
+            if entry.get('secret') == 'private-exception':
+                if not live.exists():
+                    problem('missing_private_file', live, 'private source unavailable; no credential bytes read')
+                elif live.stat().st_mode & 0o777 != 0o600 or live.stat().st_uid != os.getuid():
+                    problem('private_file_permissions', live, 'expected current-user ownership and mode 0600')
+                add(unknown, 'private_source_exception', live, 'tracked nonsecret declaration only; private content provenance not verified')
+                continue
             if live.is_symlink():
                 resolved = live.resolve()
                 if any(part in ('worktrees', 'z0-wt') for part in resolved.parts) or (resolved.parent / '.git').exists():
@@ -75,6 +83,15 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                     if (parent / '.git').exists():
                         problem('checkout_symlink', live, str(resolved))
                         break
+            if entry.get('mask') is True:
+                if not live.is_symlink() or live.resolve() != Path('/dev/null'):
+                    problem('mask_changed', live, 'expected explicit /dev/null systemd mask')
+            elif entry['install'] == 'symlink-stamped':
+                resolved = live.resolve()
+                library = home / '.local/lib'
+                if (not live.is_symlink() or not resolved.is_relative_to(library) or
+                        not any(re.fullmatch(r'[0-9a-f]{64}', part) for part in resolved.relative_to(library).parts)):
+                    problem('unstamped_install', live, 'expected symlink into content-stamped ~/.local/lib release')
             if not live.exists():
                 problem('missing_file', live, rel)
             elif live.read_bytes() != data:

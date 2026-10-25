@@ -74,6 +74,10 @@ and runtime `user.control` drop-ins. Optional manifest `effective` values
 override derived scalar systemd directives when systemd exposes a different
 property representation. Managed paths are processed in lexical drop-in order.
 An `owned-upstream` classification and issue URL explain drift, never exempt it.
+An explicit `mask=true` declaration requires a `/dev/null` unit symlink.
+`secret="private-exception"` verifies only current-user ownership/mode 0600
+and the tracked nonsecret declaration; it never reads credential bytes and
+always reports private-content provenance as unknown.
 
 Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
 snapshot the complete tracked source closure and enable `host-drift.timer`.
@@ -83,6 +87,9 @@ mutable worktree. The timer runs every 30 minutes with Nice 19, idle IO and a
 ServiceWatch records finite drift/unknown counts through its existing incident,
 notification and one-hour dedupe path; inspect the local JSON for exact paths.
 No watched desktop, gateway or agent service is restarted.
+The installer also links the tracked, stamped `config/host/z0-guard-state.json`
+to the default guard inventory. Its `host_drift` binding enables law I against
+this receipt; code activation is separate from the live z0intelligence service.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory
