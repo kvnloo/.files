@@ -78,6 +78,13 @@ An explicit `mask=true` declaration requires a `/dev/null` unit symlink.
 `secret="private-exception"` verifies only current-user ownership/mode 0600
 and the tracked nonsecret declaration; it never reads credential bytes and
 always reports private-content provenance as unknown.
+The optional `[budget]` inventory names `desktop="session.slice"` and bounded
+`groups=[{scope="user",unit="agent.slice"}, ...]`. Every audit compares physical
+RAM minus effective desktop `MemoryMin` with the largest single sibling group's
+effective `MemoryMax`. Named nested children are not double-counted. Missing or
+unbounded non-desktop groups are unknown, never discarded; finite shortfalls
+are drift. This does not claim that summed budgets fit RAM or prevent global
+OOM; memory.min is reclaim protection, not an OOM exemption.
 
 Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
 snapshot the complete tracked source closure and enable `host-drift.timer`.

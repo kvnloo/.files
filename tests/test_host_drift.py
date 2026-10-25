@@ -150,6 +150,25 @@ class DriftTests(unittest.TestCase):
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['classification'], 'owned-upstream')
 
+    def test_continuous_budget_keeps_unbounded_groups_unknown(self):
+        self.manifest('[budget]\ndesktop="session.slice"\ngroups=[{scope="user",unit="agent.slice"}]')
+        maximum = ['60']
+        def run(args):
+            if args[0] == 'git':
+                return self.source
+            unit = args[3]
+            if unit == 'session.slice':
+                return 'MemoryMin=50\nControlGroup=/desktop\n'
+            return f'MemoryMax={maximum[0]}\nControlGroup=/agent\n'
+        def audit():
+            with patch.object(drift.os, 'sysconf', side_effect=[100, 1]):
+                return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run)
+        self.assertEqual(audit()['drift'][0]['kind'], 'desktop_budget')
+        maximum[0] = '50'
+        self.assertEqual(audit()['status'], 'clean')
+        maximum[0] = 'infinity'
+        self.assertEqual(audit()['status'], 'unknown')
+
 
 class InstallerTests(unittest.TestCase):
     def test_dry_run_and_idempotent_content_stamped_install(self):

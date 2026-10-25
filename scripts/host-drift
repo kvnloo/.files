@@ -14,7 +14,7 @@ import time
 import tomllib
 
 SCHEMA = 'host-drift.v1'
-PROPERTIES = {'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
+PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
               'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
               'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
 
@@ -140,6 +140,51 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                     problem('systemd_effective', unit, dict(property=key, expected=value, actual=actual[key]))
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             add(unknown, 'systemd_unavailable', unit, str(exc))
+    budget_observation = None
+    if entries and manifest.get('budget'):
+        try:
+            budget = manifest['budget']
+            desktop = budget['desktop']
+            groups = budget['groups']
+            if not isinstance(groups, list) or not groups or len(groups) > 64:
+                raise ValueError('budget requires 1..64 named sibling groups')
+            def observe(scope, unit):
+                if scope not in ('system', 'user') or not re.fullmatch(r'[A-Za-z0-9_.:@-]+\.(slice|service|scope)', unit):
+                    raise ValueError('invalid budget group')
+                args = ['systemctl', '--user' if scope == 'user' else '--system', 'show', unit,
+                        '-p', 'MemoryMin', '-p', 'MemoryMax', '-p', 'ControlGroup']
+                return dict(line.split('=', 1) for line in run(args).splitlines() if '=' in line)
+            desktop_values = observe('user', desktop)
+            desktop_min = int(desktop_values['MemoryMin'])
+            physical = os.sysconf('SC_PHYS_PAGES') * os.sysconf('SC_PAGE_SIZE')
+            if desktop_min < 0 or physical <= 0:
+                raise ValueError('invalid physical memory or desktop MemoryMin')
+            observed = []
+            for group in groups:
+                values = observe(group['scope'], group['unit'])
+                cgroup = values.get('ControlGroup', '')
+                if not cgroup:
+                    add(unknown, 'budget_group_unavailable', group['unit'], 'no loaded cgroup observation')
+                    continue
+                observed.append((group, values, cgroup))
+            largest = 0
+            for group, values, cgroup in observed:
+                if any(cgroup.startswith(parent + '/') for _, _, parent in observed if parent != cgroup):
+                    continue  # A named parent already owns this nested envelope.
+                maximum = values.get('MemoryMax')
+                if maximum in ('infinity', 'max', None, ''):
+                    add(unknown, 'budget_unbounded', group['unit'], 'non-desktop MemoryMax has no finite bound')
+                    continue
+                maximum = int(maximum)
+                if maximum < 0:
+                    raise ValueError('negative group MemoryMax')
+                largest = max(largest, maximum)
+            budget_observation = dict(physical_bytes=physical, desktop_min_bytes=desktop_min,
+                                      largest_finite_group_bytes=largest, remaining_bytes=physical - desktop_min)
+            if physical - desktop_min < largest:
+                problem('desktop_budget', desktop, budget_observation)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+            add(unknown, 'budget_unavailable', 'budget', str(exc))
     # Only two directory levels: systemd control drop-ins cannot hide deeper.
     for control in (home / '.config/systemd/user.control', runtime / 'systemd/user.control'):
         try:
@@ -199,7 +244,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                 row.update(classification='owned-upstream', issue=entry['issue'])
     # Unknown takes precedence: drift is still retained and alertable.
     status = 'unknown' if unknown else 'drift' if drift else 'clean'
-    return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown,
+    return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown, budget=budget_observation,
                 host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 summary=f'host drift: {len(drift)} drift, {len(unknown)} unknown', executed=False)
 
