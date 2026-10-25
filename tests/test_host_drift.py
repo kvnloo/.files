@@ -134,6 +134,35 @@ class DriftTests(unittest.TestCase):
             self.assertEqual(self.run_audit()['status'], 'clean')
         self.assertEqual(self.run_audit()['drift'][0]['kind'], 'unstamped_install')
 
+    def test_declared_git_stamp_requires_identity_and_exact_source(self):
+        physical = self.base / 'releases'
+        release = physical / 'fixture' / ('c' * 40)
+        target = release / self.source
+        target.parent.mkdir(parents=True)
+        target.write_text('safe\n')
+        self.live.unlink()
+        self.live.symlink_to(target)
+        self.manifest('stamp_name="fixture"', install='symlink-stamped')
+        stamp = release / '.deployment-stamp.json'
+        stamp.write_text(json.dumps({'name': 'fixture', 'source_sha': 'c' * 40}))
+        with patch.object(drift, 'DEPLOYMENT_RELEASE_ROOT', physical):
+            self.assertEqual(self.run_audit()['status'], 'clean')
+            stamp.write_text(json.dumps({'name': 'different', 'source_sha': 'c' * 40}))
+            self.assertIn('unstamped_install', {r['kind'] for r in self.run_audit()['drift']})
+            stamp.unlink()
+            self.assertEqual(self.run_audit()['status'], 'unknown')
+
+    def test_pacnew_deduplicates_and_pending_action_stays_drift(self):
+        candidate = self.live.with_name(self.live.name + '.pacnew')
+        candidate.write_text('package update\n')
+        self.manifest('\n[[pending_action]]\npaths=[' + json.dumps(str(candidate)) +
+                      ']\nowner="Kevin"\ncommand="sudo review-package"\nreason="manual review"')
+        report = self.run_audit()
+        self.assertEqual(report['status'], 'drift')
+        self.assertEqual(len(report['drift']), 1)
+        self.assertEqual(report['drift'][0]['disposition'], 'pending-owner-action')
+        self.assertEqual(report['drift'][0]['command'], 'sudo review-package')
+
     def test_root_slice_is_not_a_dashed_prefix_or_cli_option(self):
         self.live = self.etc / 'systemd/system/-.slice.d/50-policy.conf'
         self.live.parent.mkdir(parents=True)

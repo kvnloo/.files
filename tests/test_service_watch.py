@@ -35,6 +35,163 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_command_shutdown_cancels_owned_process_promptly(self):
+        stop = threading.Event()
+        sw.COMMAND_CONTEXT.stop = stop
+        timer = threading.Timer(.1, stop.set)
+        timer.start()
+        started = time.monotonic()
+        try:
+            with self.assertRaises(sw.ShutdownRequested):
+                sw.command([sys.executable, '-c', 'import time; time.sleep(30)'], 30)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            timer.join()
+            del sw.COMMAND_CONTEXT.stop
+
+    def test_cancelled_journal_preserves_cursor_without_gap_incident(self):
+        self.watch.store.set('cursor:user', 'original')
+        self.watch.units = {('user', 'fixture.service'): {}}
+        proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        sw.COMMAND_CONTEXT.stop = self.watch.stop
+        timer = threading.Timer(.1, self.watch.stop.set)
+        timer.start()
+        try:
+            with patch.object(sw.subprocess, 'Popen', return_value=proc), \
+                 patch.object(self.watch, 'record') as record:
+                with self.assertRaises(sw.ShutdownRequested):
+                    self.watch.journals()
+            self.assertEqual(self.watch.store.get('cursor:user'), 'original')
+            record.assert_not_called()
+            self.assertIsNotNone(proc.poll())
+        finally:
+            timer.join()
+            del sw.COMMAND_CONTEXT.stop
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+    def test_host_drift_identity_is_durable_and_includes_pending_action(self):
+        item = {'path': '/private/root', 'reason': 'unreadable', 'checked_at': 1,
+                'disposition': 'pending-owner-action', 'owner': 'Kevin', 'command': 'inspect locally'}
+        identity = ['host_drift_unknown', sw.host_drift_identity(item)]
+        action = {key: item[key] for key in ('disposition', 'owner', 'command')}
+        with patch.object(self.watch.store, 'notify') as notify:
+            first = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=identity, action=action, triage=False)
+            self.watch.store.db.execute('UPDATE incidents SET ts=0')
+            self.watch.store.db.commit()
+            other = sw.Watch(self.watch.store.root, self.root / 'inventory.json')
+            try:
+                item['checked_at'] = 99999
+                second = other.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=['host_drift_unknown', sw.host_drift_identity(item)],
+                                      action=action, triage=False)
+                self.assertEqual(first, second)
+                self.assertEqual(notify.call_count, 1)
+            finally:
+                other.store.db.close()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['pending_action'], action)
+        self.assertNotIn('/private/root', json.dumps(data))
+
+    def test_shutdown_does_not_mark_interrupted_scan_complete(self):
+        entered = threading.Event()
+        def blocked_scan():
+            entered.set()
+            sw.command([sys.executable, '-c', 'import time; time.sleep(30)'], 30)
+        daemon = threading.Thread(target=self.watch.serve)
+        with patch.object(self.watch, 'scan', blocked_scan), \
+             patch.object(self.watch, 'worker', lambda: self.watch.stop.wait()), \
+             patch.object(self.watch, 'checkout_worker', lambda: self.watch.stop.wait()), \
+             patch.object(sw, 'notify_systemd'):
+            daemon.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.watch.stop.set()
+                daemon.join(2)
+                self.assertFalse(daemon.is_alive())
+                self.assertFalse((self.watch.store.root / 'status.json').exists())
+            finally:
+                self.watch.stop.set()
+                daemon.join(2)
+
+    def test_distinct_host_items_do_not_hide_behind_same_event_code(self):
+        with patch.object(self.watch.store, 'notify'):
+            first = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=['host_drift_unknown', {'path': '/one'}], triage=False)
+            second = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                       identity=['host_drift_unknown', {'path': '/two'}], triage=False)
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 2)
+
+    def test_projection_preserves_host_codes_and_delivers_unknown_class(self):
+        for code in ('host_config_drift', 'host_drift_unknown'):
+            projected = sw.project([sw.event(code)], [])
+            self.assertEqual(projected['evidence'][0]['code'], code)
+            self.assertNotIn('invariant_unavailable', json.dumps(projected))
+        projected = sw.project([{'code': 'future-private-producer-code'}], [])
+        self.assertEqual(projected['evidence'][0]['code'], 'unrecognized')
+        self.assertNotIn('future-private-producer-code', json.dumps(projected))
+        with patch.object(self.watch.store, 'notify') as notify:
+            ident = self.watch.record('user', 'fixture.service',
+                                      [{'code': 'future-private-producer-code', 'severity': 'info'}],
+                                      triage=False)
+            notify.assert_called_once()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertEqual(data['decision']['cause'], 'unrecognized')
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(sw.event('future-private-producer-code')['severity'], 'severe')
+
+    def test_exact_host_drift_set_notifies_once_until_changed(self):
+        receipt = self.root / '.local/state/host-drift/latest.json'
+        receipt.parent.mkdir(parents=True)
+        items = [{'path': '/one', 'detail': 'changed', 'observed_at': 1},
+                 {'path': '/two', 'detail': 'unreadable', 'observed_at': 1,
+                  'disposition': 'pending-owner-action', 'owner': 'Kevin', 'command': 'inspect'}]
+        def save(rows):
+            receipt.write_text(json.dumps({'schema': 'host-drift.v1', 'status': 'drift',
+                                           'drift': rows, 'unknown': []}))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            save(items)
+            sw.main()
+            self.watch.store.db.execute('UPDATE incidents SET ts=0')
+            self.watch.store.db.commit()
+            items[0]['observed_at'] = 9999
+            save(list(reversed(items)))
+            sw.main()
+            self.assertEqual(notify.call_count, 1)
+            items[0]['detail'] = 'different fact, same count'
+            save(items)
+            sw.main()
+            self.assertEqual(notify.call_count, 2)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 2)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents LIMIT 1').fetchone()[0])
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(data['pending_action'][0]['owner'], 'Kevin')
+
+    def test_persisted_unknown_evidence_is_deliverable_without_raw_or_models(self):
+        with patch.object(self.watch.store, 'notify'):
+            ident = self.watch.record('user', 'fixture.service', [sw.event('invariant_unavailable')])
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        data['window']['evidence'][0]['code'] = 'new-producer-code'
+        self.watch.store.db.execute('UPDATE incidents SET data=? WHERE id=?', (json.dumps(data), ident))
+        self.watch.store.db.commit()
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 1, '', '')), \
+             patch.object(sw, 'post', side_effect=OSError('offline')), \
+             patch.object(sw.subprocess, 'run', side_effect=OSError('offline')), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.watch.triage(ident, [])
+            notify.assert_called_once()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'unrecognized')
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(data['decision']['severity'], 'severe')
+
     def test_healthy_heartbeat_never_opens_incident_database(self):
         (self.root / 'status.json').write_text(json.dumps({'scan_completed_at': time.time()}))
         with patch.object(sw, 'Watch', side_effect=AssertionError('must not open database')), \
@@ -274,7 +431,7 @@ class Contracts(unittest.TestCase):
         ]
         for code, report, expected in cases:
             result = subprocess.CompletedProcess([], code, json.dumps(report), '')
-            with patch.object(sw.subprocess, 'run', return_value=result) as run:
+            with patch.object(sw, 'command', return_value=result) as run:
                 events = self.watch.invariant('user', 'fixture.service', invariant, {}, time.time())
             self.assertEqual([e['code'] for e in events], expected)
             self.assertEqual(run.call_args[0][0], ['z0-guard', 'phone-caps', '--root', str(self.root)])

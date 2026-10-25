@@ -18,6 +18,7 @@ import tomllib
 
 SCHEMA = 'host-drift.v1'
 PHYSICAL_RELEASE_ROOT = Path('/mnt/zer0models/releases/files-live')
+DEPLOYMENT_RELEASE_ROOT = Path('/mnt/zer0models/releases')
 PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
               'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
               'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
@@ -45,8 +46,27 @@ def normalized(value):
             'realtime': '1'}.get(value, ' '.join(value.split()))
 
 
+def deployment_stamped(path, entry):
+    """Accept only a declared installer's exact Git-stamped source path."""
+    name = entry.get('stamp_name')
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name):
+        return False
+    base = DEPLOYMENT_RELEASE_ROOT / name
+    resolved = path.resolve()
+    if not resolved.is_relative_to(base):
+        return False
+    parts = resolved.relative_to(base).parts
+    if len(parts) < 2 or not re.fullmatch(r'[0-9a-f]{40}', parts[0]):
+        return False
+    if Path(*parts[1:]) != Path(entry['source']):
+        return False
+    stamp = json.loads((base / parts[0] / '.deployment-stamp.json').read_text())
+    return stamp.get('name') == name and stamp.get('source_sha') == parts[0]
+
+
 def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup')):
     drift, unknown = [], []
+    manifest = {}
     if run is command:
         deadline = time.monotonic() + 120
         def bounded_run(args):
@@ -122,8 +142,8 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                            for base in (library, PHYSICAL_RELEASE_ROOT)):
                         stamped = True
                         break
-                if not stamped:
-                    problem('unstamped_install', live, 'expected symlink into content-stamped ~/.local/lib release')
+                if not stamped and not deployment_stamped(live, entry):
+                    problem('unstamped_install', live, 'expected declared content/Git-stamped source installation')
             if not live.exists():
                 problem('missing_file', live, rel)
             elif live.read_bytes() != data:
@@ -333,6 +353,18 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
             walk(base, 16)
         except (OSError, ValueError) as exc:
             add(unknown, 'pacnew_unavailable', base, str(exc))
+    # The same package file may be observed through its managed path and /etc walk.
+    drift = list({(row['kind'], row['path']): row for row in drift}.values())
+    for action in manifest.get('pending_action', []):
+        if (not isinstance(action, dict) or not isinstance(action.get('paths'), list) or
+                not all(isinstance(action.get(key), str) and action[key]
+                        for key in ('owner', 'command', 'reason'))):
+            add(unknown, 'pending_action_invalid', 'manifest', 'pending action requires paths, owner, command, reason')
+            continue
+        for row in (*drift, *unknown):
+            if row['path'] in action['paths']:
+                row.update(disposition='pending-owner-action', owner=action['owner'],
+                           command=action['command'], pending_reason=action['reason'])
     # Ownership labels explain unresolved drift; they never turn it clean.
     for entry in entries:
         if entry.get('drift') != 'owned-upstream' or not entry.get('issue'):
