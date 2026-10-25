@@ -1,0 +1,6 @@
+#!/usr/bin/busybox sh
+# Keep ~/.config/tern/hosts generated from live Tailscale peers (never this machine).
+# Same runsv tree; never starts or restarts Tern, Tailscale or sshd.
+exec 9>&- 8>&-
+exec 2>&1
+exec /usr/bin/python3 "$HOME/.local/bin/tern-hosts-sync" --every 120
