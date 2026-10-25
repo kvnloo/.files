@@ -1,0 +1,19 @@
+[Unit]
+Description=Dash tailnet-only Metro relay
+Wants=network-online.target dash-metro.service
+After=network-online.target dash-metro.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/dash-services/metro.env
+ExecStartPre=%h/.local/lib/dash-services/current/dash-wait-tailnet
+ExecStart=%h/.local/lib/dash-services/current/dash-metro-relay
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+# Measured startup/manifest peak 20357120 bytes; 128MiB hard ceiling.
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

@@ -2,6 +2,38 @@
 
 Report-only sidecar. It follows **existing** Dash bridge and three Metro user journals; it never restarts or modifies them. Healthy logs use zero inference calls. No new timer or general agent loop.
 
+## Reboot-persistent Dash runtime
+
+`scripts/install-dash-services --dash-repo /path/to/dash --activate` installs
+`dash-bridge.service`, `dash-metro.service` and `dash-metro-relay.service`, all
+wanted by `default.target`.
+Code is archived to `/mnt/zer0models/releases/dash/<git-sha>/`, linked from
+`~/.local/lib/dash/<git-sha>/` to keep dependency payloads off the root disk;
+helpers are content-stamped under `~/.local/lib/dash-services/`. No service runs
+from a worktree. Dependency installation uses frozen locks and disables scripts;
+it does not compile or bundle JavaScript on groot.
+
+The phone-qualified bridge is `f0362444cbb885d25e30f2818a1be78990690df1`;
+the installed development-client APK last loaded app
+`d5c4c17e50a22eef71c821663d07072c113f0ecf` from port 8212. This APK needs Metro
+after a phone/app restart; port 8108 is an older preview, not this launch route.
+Metro itself listens only on loopback port 18212. A bounded TCP relay exposes
+port 8212 only on the tailnet address, and Expo's original-environment proxy URL
+keeps generated manifests pointed at that same address. No user-manager BPF
+firewall support is assumed.
+The bridge binds only groot's tailnet address on 4747, retaining native
+`~/.dash/token` and `bootstrap-token` authentication. Tracked environment files
+contain only non-secret settings, not inherited desktop credential snapshots.
+Each start waits for the tailnet address; failure retries after ten seconds.
+The system tailscaled service must be enabled, and user lingering must remain
+enabled for startup before login. User units cannot order the system manager's
+tailscaled unit; the address gate is the cross-manager readiness contract.
+
+The bridge provides chat/control independently of the optional voice broker and
+artifact-stage viewer. Restoring those optional surfaces is not implied by a
+healthy authenticated bridge. Existing phone pairing and app data are preserved.
+
+
 ## Install and qualify
 
 `core-links` in `scripts/onboard` links `dash-log-watch` and its user unit, but does **not** enable it or copy a machine-specific config. Inspect the example and install an explicit private `~/.config/dash-log-watch/config.json`. Its exact native package, hardware serial, provider, model and four actual unit IDs are mandatory. The shared OAuth helper is reused at an explicitly SHA-256-pinned path; preserve that worktree or deliberately re-qualify a new helper path.
