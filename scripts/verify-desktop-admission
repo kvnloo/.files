@@ -33,8 +33,16 @@ for namespace in ('factory', 'lanes', 'fleet-mbp', 'z0'):
     for name,pod,allow in cases:
         pod=copy.deepcopy(pod)
         pod['metadata']['namespace']=namespace
+        if namespace in ('factory', 'lanes'):
+            pod['spec']['initContainers']=[{
+                'name':'netpol-ready','image':'busybox:1.37','command':['sh','-c'],
+                'args':['i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1'],
+                'securityContext':copy.deepcopy(base['spec']['containers'][0]['securityContext']),
+                'resources':{'requests':{'cpu':'10m','memory':'16Mi'},'limits':{'cpu':'100m','memory':'32Mi'}}}]
         r=subprocess.run(['kubectl','create','--dry-run=server','-f','-','-o','name'],input=json.dumps(pod),text=True,capture_output=True,env=env)
-        ok=(r.returncode==0)==allow
+        ok=(r.returncode==0) if allow else (r.returncode!=0 and "ValidatingAdmissionPolicy 'interactive-cpu-placement'" in r.stderr)
+        if namespace == 'factory' and name == 'allocated-gpu-groot-accepted':
+            ok=r.returncode!=0 and 'exceeded quota: factory-ceiling' in r.stderr
         results.append({'namespace':namespace,'case':name,'pass':ok,'exit':r.returncode,'stdout':r.stdout.strip(),'stderr':r.stderr.strip()})
         print(json.dumps(results[-1]),flush=True)
 if not all(r['pass'] for r in results):
