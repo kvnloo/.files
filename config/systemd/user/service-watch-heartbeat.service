@@ -9,6 +9,7 @@ UMask=0077
 Nice=19
 MemoryMax=96M
 IOSchedulingClass=idle
+CPUQuota=
 TasksMax=16
 NoNewPrivileges=true
 TimeoutStartSec=90
