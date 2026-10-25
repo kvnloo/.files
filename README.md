@@ -61,8 +61,10 @@ To upgrade OMP, use Tern's supported OMP download/update UI in a **separate**
 
 ```sh
 # Open a separate Tern profile, never restart the live session daemon.
-TERN_CONFIG_DIR="$HOME/.local/state/tern-omp-staging" \
-  TERN_DAEMON_SOCKET="$HOME/.local/state/tern-omp-staging.sock" tern
+# Exclude live OMP wrappers from manager discovery in this staging process.
+PATH=/usr/bin:/bin TERN_CONFIG_DIR="$HOME/.local/state/tern-omp-staging" \
+  TERN_DAEMON_SOCKET="$HOME/.local/state/tern-omp-staging.sock" \
+  "$HOME/.local/bin/tern"
 # In that profile use the default omp agent command and accept its OMP update.
 # Publish only its verified immutable version; never copy staging bin/omp live.
 install-tern-omp --apply --from-tern "$HOME/.local/state/tern-omp-staging"
