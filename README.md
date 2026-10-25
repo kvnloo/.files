@@ -86,6 +86,15 @@ OMP, Hermes and Claude Code replace packets older than two hours with a
 one-line stale warning. Unit replacements have backups under
 `~/.local/state/z0int/startup-packet-unit-backups/`.
 
+Socket-activated memory MCP instances use a pinned source release and
+`CollectMode=inactive-or-failed`; client disconnects are handled by the server,
+not hidden with a successful-exit-status override. Telemetry snapshot scratch
+is `/mnt/zer0models/tmp/agent-telemetry-refresh`, on the same Btrfs filesystem as
+the large OpenCode database so reflink snapshots do not become full cross-volume
+copies. New artifact controller releases live under
+`/mnt/zer0models/releases/artifact-leases/<commit>` with home-directory aliases;
+existing running releases are not moved.
+
 ## What this repo configures
 
 - **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
