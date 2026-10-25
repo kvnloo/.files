@@ -287,12 +287,23 @@ that exclusion as `unreadable_foreign_owner`. A traversable directory such as
 mode `0711` still fails closed. A verified archive does not permit removing a
 checkout that still serves an installed link.
 Every removal, including SAFE linked worktrees and standalone clones, requires a
-verified local bundle receipt first. Linked worktrees share an immutable full
-base bundle per common Git store; WIP delta bundles preserve each checkout's
-additional state without duplicating the complete history. The manifest's
-`restore_command` records both base and delta restoration when needed. A base
-clone remains when needed by LIVE linked worktrees. Archive errors prevent the
-affected removal and remain visible in the operational records.
+verified local bundle receipt first. SAFE linked worktrees may share an immutable
+full base bundle per common Git store. WIP preservation always writes a full
+`--all` Git bundle. Every preservation also writes a compressed full working-tree
+tar, including ignored and untracked files, with checksum and restore-list
+verification. The manifest
+records both Git and working-tree restore commands. A base clone remains when
+needed by LIVE linked worktrees. Archive errors prevent removal.
+An explicit owner-approved purge uses shared
+`enroll_approved_worktree(path, owner, provenance, reaper)` enrollment, not a
+lease bypass. Each exact path receives a HEAD/content identity, immediately
+expired archive-then-remove lease, and independent approval receipt under
+`~/.local/state/artifact-leases/approvals/`. An approval extends scope only to
+that exact canonical path, never its siblings or descendants. The reaper checks
+the receipt and current identity again before archival and removal; changed,
+unknown or unapproved data stays. The lease sidecar is control metadata, not
+new working-tree activity. Automatic enrollment retains its seven-day TTL and
+fixed-root defaults.
 Absorbed submodules use a `.git` file without being linked worktrees. The reaper
 preserves their Git state in a verified bundle before removing their directory.
 It retains any common object store that still serves another linked checkout.

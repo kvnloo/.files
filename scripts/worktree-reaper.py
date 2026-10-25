@@ -355,7 +355,7 @@ def newest_mtime(path, cutoff=None):
     for base, dirs, files in os.walk(path, followlinks=False):
         dirs[:] = [d for d in dirs if d != '.git']
         for name in [*dirs, *files]:
-            if name == '.git':
+            if name == '.git' or (base == path and name == '.artifact-lease.json'):
                 continue
             try:
                 latest = max(latest, os.lstat(os.path.join(base, name)).st_mtime)
@@ -389,7 +389,8 @@ def inspect(path, roots, refs, now):
     pushed = bool(head and text(path, 'for-each-ref', '--contains', 'HEAD', '--format=%(refname)', 'refs/remotes/'))
     plain_clone = os.path.isdir(os.path.join(path, '.git'))
     unpublished = int(text(path, 'rev-list', '--count', '--branches', '--not', '--remotes') or '0') if plain_clone else None
-    status = git(path, 'status', '--porcelain=v1', '-z', '--untracked-files=all').stdout.split(b'\0')
+    status = git(path, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                 '--', '.', ':!.artifact-lease.json').stdout.split(b'\0')
     dirty = untracked = 0
     i = 0
     while i < len(status):
@@ -426,10 +427,38 @@ def verified_bundle(path, destination, revisions):
         digest = hashlib.file_digest(bundle_file, 'sha256').hexdigest()
     return {'path': str(destination), 'bytes': destination.stat().st_size, 'sha256': digest}
 
+def preserve_working_tree(row, out, archive):
+    """Preserve every non-Git working file, including ignored private data."""
+    path = row['path']
+    destination = archive / (hashlib.sha256(path.encode()).hexdigest()[:16]
+                             + '-' + str(time.time_ns()) + '.working-tree.tar.zst')
+    command(['nice', '-n', '19', 'ionice', '-c', '3', 'tar', '--zstd',
+             '--exclude=./.git', '-cf', str(destination), '-C', path, '.'],
+            timeout=3600)
+    listing = destination.with_suffix(destination.suffix + '.list')
+    with listing.open('wb') as stream:
+        checked = subprocess.run(['tar', '--zstd', '-tf', str(destination)],
+                                 stdout=stream, stderr=subprocess.PIPE,
+                                 timeout=3600)
+    if checked.returncode or listing.stat().st_size == 0:
+        raise RuntimeError('Working-tree archive restore-list verification failed')
+    with destination.open('rb') as stream:
+        checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+    receipt = {'path': path, 'working_tree_archive': str(destination),
+               'working_tree_sha256': checksum,
+               'working_tree_archive_bytes': destination.stat().st_size,
+               'working_tree_restore_list': str(listing),
+               'working_tree_restore_command': 'tar --zstd -xf ' +
+                   shlex.quote(str(destination)) + ' -C ' + shlex.quote(path)}
+    emit(out, 'working_tree_archived', **receipt)
+    return receipt
+
+
 
 def preserve(row, out, archive):
     path = row['path']
     branch = archive_name(row)
+    working_tree = preserve_working_tree(row, out, archive)
     ref = 'refs/heads/' + branch
     commit = row['head']
     staged_commit = None
@@ -451,7 +480,7 @@ def preserve(row, out, archive):
             idx.unlink(missing_ok=True)
             env = {'GIT_INDEX_FILE': str(idx), 'GIT_AUTHOR_NAME': 'Worktree archive', 'GIT_AUTHOR_EMAIL': 'worktree-archive@localhost', 'GIT_COMMITTER_NAME': 'Worktree archive', 'GIT_COMMITTER_EMAIL': 'worktree-archive@localhost'}
             git(path, 'read-tree', row['head'] or '--empty', env=env)
-            git(path, 'add', '-A', '--', '.', env=env, timeout=180)
+            git(path, 'add', '-A', '--', '.', ':!.artifact-lease.json', env=env, timeout=180)
             tree = text(path, 'write-tree', env=env)
             args = ['commit-tree', tree]
             if staged_commit or row['head']:
@@ -478,7 +507,7 @@ def preserve(row, out, archive):
     # only their delta, not another copy of the repository's entire history.
     new_bytes = 0
     base = None
-    if row['plain_clone']:
+    if row['plain_clone'] or row['class'] == 'WIP':
         destination = archive / (branch.replace('/', '--') + f'-{time.time_ns()}.bundle')
         bundle = verified_bundle(path, destination, ['--all'])
         new_bytes += bundle['bytes']
@@ -502,6 +531,7 @@ def preserve(row, out, archive):
     record.update(bundle=bundle['path'], bundle_sha256=bundle['sha256'],
                   bundle_file_bytes=bundle['bytes'], bundle_bytes=new_bytes,
                   base_bundle=base['path'] if base and bundle is not base else None)
+    record.update(working_tree)
     qpath = shlex.quote(path)
     source = record['base_bundle'] or record['bundle']
     restore = f'git clone {shlex.quote(source)} {qpath}'
@@ -517,7 +547,8 @@ def preserve(row, out, archive):
 def report(out, rows, actions, before, after, errors, mode):
     freed = sum(a.get('size_bytes', 0) for a in actions if a['event'] == 'removed')
     archives = [a for a in actions if a['event'] == 'archived']
-    archive_bytes = sum(a.get('bundle_bytes', 0) for a in archives)
+    archive_bytes = sum(a.get('bundle_bytes', 0) + a.get('working_tree_archive_bytes', 0)
+                        for a in archives)
     summary = {'timestamp': dt.datetime.now(dt.timezone.utc).isoformat(), 'mode': mode, 'checkout_count': sum(after.values()), 'before_counts': before, 'after_counts': after, 'live_count': sum(r['class']=='LIVE' for r in rows), 'safe_count': sum(r['class']=='SAFE' for r in rows), 'wip_count': sum(r['class']=='WIP' for r in rows), 'removed_count': sum(a['event']=='removed' for a in actions), 'bytes_freed': freed, 'archive_bytes': archive_bytes, 'net_estimated_bytes_freed': freed-archive_bytes, 'errors': errors}
     summary['bytes_freed_by_root'] = {root: sum(a.get('size_bytes', 0) for a in actions if a['event'] == 'removed' and (a['path'] == os.path.realpath(root) or a['path'].startswith(os.path.realpath(root) + '/'))) for root in before}
     tmp = out / 'latest.json.tmp'
@@ -535,6 +566,9 @@ def report(out, rows, actions, before, after, errors, mode):
     lines += ['', '## Archives and restore commands', '']
     for a in archives:
         lines += [f"- `{a['path']}` → `{a['archive_branch']}` ({'pushed' if a['push_ok'] else 'bundle fallback'})", f"  - Bundle: `{a['bundle']}`" if a['bundle'] else '  - Remote: `' + a['remote'] + '`', '  - Restore: `' + a['restore_command'] + '`']
+        if a.get('working_tree_archive'):
+            lines += ['  - Full working tree: `' + a['working_tree_archive'] + '`',
+                      '  - Working-tree restore: `' + a['working_tree_restore_command'] + '`']
     lines += ['', '## Errors / deferred actions', ''] + (['- ' + str(e) for e in errors] or ['None.'])
     (out / 'REPORT.md').write_text('\n'.join(lines) + '\n')
     emit(out, 'summary', **summary)
@@ -547,15 +581,8 @@ def lease_allows_reaping(path, now):
     spec = importlib.util.spec_from_file_location('artifact_lease_policy', Path(__file__).with_name('artifact-leases.py'))
     policy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(policy)
-    target = Path(path)
-    try:
-        lease = json.loads((target / policy.SIDECAR).read_text())
-        return (policy.allowed(target, policy.ROOTS['groot'])
-                and not (target / policy.SIDECAR).is_symlink()
-                and isinstance(lease, dict) and lease.get('kind') == 'worktree'
-                and policy.validate(lease, target, 'groot', now) is None)
-    except (OSError, ValueError):
-        return False
+    from types import SimpleNamespace
+    return policy.worktree_lease_allows(path, SimpleNamespace(text=text, git=git), now)
 
 
 def main():

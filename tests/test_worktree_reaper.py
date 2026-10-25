@@ -292,6 +292,8 @@ class ReaperBehavior(unittest.TestCase):
         self.git(self.repo, 'add', 'file.txt')
         (self.repo / 'file.txt').write_text('working\n')
         (self.repo / 'untracked.txt').write_text('untracked\n')
+        (self.repo / '.gitignore').write_text('private.bin\n')
+        (self.repo / 'private.bin').write_bytes(b'ignored but not regenerable')
         self.age(self.repo)
         before_head = self.git(self.repo, 'rev-parse', 'HEAD')
         record = reaper.preserve(self.inspect(), self.out, self.archive)
@@ -303,6 +305,10 @@ class ReaperBehavior(unittest.TestCase):
         self.assertEqual((restored / 'file.txt').read_text(), 'working\n')
         self.assertEqual((restored / 'untracked.txt').read_text(), 'untracked\n')
         self.assertEqual(self.git(restored, 'show', record['staged_commit'] + ':file.txt'), 'staged')
+        subprocess.run(['tar', '--zstd', '-xf', record['working_tree_archive'],
+                        '-C', str(restored)], check=True)
+        self.assertEqual((restored / 'private.bin').read_bytes(),
+                         b'ignored but not regenerable')
 
     def test_bundle_preserves_non_head_branch(self):
         self.git(self.repo, 'checkout', '-b', 'hidden')
@@ -316,7 +322,7 @@ class ReaperBehavior(unittest.TestCase):
         self.git(self.repo, 'clone', '--mirror', record['bundle'], str(restored))
         self.assertEqual(self.git(restored, 'show', 'refs/heads/hidden:hidden.txt'), 'valuable')
 
-    def test_shared_base_and_wip_delta_restore_from_emitted_command(self):
+    def test_full_wip_bundle_and_working_tar_restore_from_emitted_command(self):
         import shlex
         first = self.root / 'linked-a'
         second = self.root / 'linked-b'
@@ -329,11 +335,15 @@ class ReaperBehavior(unittest.TestCase):
         self.age(second)
         second_row = reaper.inspect(str(second), [str(self.root)], {}, time.time())
         delta_record = reaper.preserve(second_row, self.out, self.archive)
-        self.assertEqual(delta_record['base_bundle'], base_record['bundle'])
+        self.assertIsNone(delta_record['base_bundle'])
         self.assertNotEqual(delta_record['bundle'], base_record['bundle'])
         restored = self.base / 'restored-delta'
         restore_command = delta_record['restore_command'].replace(shlex.quote(str(second)), shlex.quote(str(restored)))
         subprocess.run(['bash', '-c', restore_command], text=True, capture_output=True, check=True)
+        self.assertEqual((restored / 'file.txt').read_text(), 'delta working tree\\n')
+        (restored / 'file.txt').unlink()
+        subprocess.run(['tar', '--zstd', '-xf', delta_record['working_tree_archive'],
+                        '-C', str(restored)], check=True)
         self.assertEqual((restored / 'file.txt').read_text(), 'delta working tree\\n')
 
     def test_operator_pause_prevents_inventory_and_removal(self):

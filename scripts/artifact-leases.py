@@ -25,6 +25,106 @@ ROOTS = {
     's22': ['/root/fleet-jobs', '/root/edge-probe-s22', '/root/slm-opt', '/root/.cache/pip', '/root/.omp/wt'],
     's25': ['/root/fleet-jobs', '/root/edge-probe-s25', '/root/slm-opt', '/root/.cache/pip', '/root/.omp/wt'],
 }
+APPROVALS = Path.home() / '.local/state/artifact-leases/approvals'
+
+
+def worktree_identity(path, reaper):
+    """Content identity includes ignored/untracked data, index and HEAD."""
+    path = Path(path)
+    digest = hashlib.sha256()
+    head = reaper.text(str(path), 'rev-parse', '--verify', 'HEAD^{commit}')
+    digest.update(reaper.text(str(path), 'write-tree').encode())
+    def failed(error):
+        raise error
+    for base, dirs, files in os.walk(path, followlinks=False, onerror=failed):
+        dirs.sort()
+        if Path(base) == path:
+            dirs[:] = [name for name in dirs if name != '.git']
+            files = [name for name in files if name not in {'.git', SIDECAR}]
+        for name in sorted([*dirs, *files]):
+            target = Path(base) / name
+            relative = str(target.relative_to(path))
+            metadata = target.lstat()
+            digest.update(json.dumps([relative, stat.S_IMODE(metadata.st_mode),
+                                      stat.S_IFMT(metadata.st_mode)]).encode())
+            if target.is_symlink():
+                digest.update(os.fsencode(os.readlink(target)))
+            elif stat.S_ISREG(metadata.st_mode):
+                with target.open('rb') as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        digest.update(chunk)
+            elif not stat.S_ISDIR(metadata.st_mode):
+                raise RuntimeError('Unarchivable special file: ' + str(target))
+    return {'head': head, 'dirty_hash': digest.hexdigest()}
+
+
+def approval_record(path, lease):
+    """Only an independently retained enrollment receipt grants extra scope."""
+    key = hashlib.sha256(os.fsencode(str(path))).hexdigest()
+    receipt = APPROVALS / (key + '.json')
+    try:
+        if receipt.is_symlink():
+            return None
+        approved = json.loads(receipt.read_text())
+        if (approved != lease or lease.get('action') != 'archive-then-remove'
+                or not lease.get('provenance') or not lease.get('head')
+                or not lease.get('dirty_hash')):
+            return None
+        return approved
+    except (OSError, ValueError):
+        return None
+
+
+def enroll_approved_worktree(path, owner, provenance, reaper, now=None):
+    """Explicit owner approval, never used by automatic discovery/enrollment."""
+    path = Path(path)
+    if (not path.is_absolute() or '..' in path.parts
+            or any(p.is_symlink() for p in [path, *path.parents])
+            or not owner or not provenance):
+        raise ValueError('Invalid approved worktree enrollment')
+    if (path / SIDECAR).exists() or (path / SIDECAR).is_symlink():
+        existing = json.loads((path / SIDECAR).read_text())
+        if approval_record(path, existing):
+            return existing
+        raise ValueError('Existing lease requires owner resolution')
+    identity = worktree_identity(path, reaper)
+    metadata = path.stat()
+    now = time.time() if now is None else now
+    lease = dict(schema=SCHEMA, owner=owner, provenance=provenance,
+                 path=str(path), node='groot', kind='worktree',
+                 created_at=now - 1, ttl=0, expires_at=now,
+                 action='archive-then-remove', keep_receipts=[], **identity)
+    if not atomic_json(path / SIDECAR, lease, replace=False):
+        raise RuntimeError('Concurrent lease creation')
+    if worktree_identity(path, reaper) != identity:
+        raise RuntimeError('Content changed during enrollment; lease not approved')
+    # The sidecar alone is control metadata, not fresh working-tree activity.
+    os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
+    key = hashlib.sha256(os.fsencode(str(path))).hexdigest()
+    atomic_json(APPROVALS / (key + '.json'), lease)
+    return lease
+
+
+def worktree_lease_allows(path, reaper, now):
+    path = Path(path)
+    try:
+        if (path / SIDECAR).is_symlink():
+            return False
+        lease = json.loads((path / SIDECAR).read_text())
+        if not isinstance(lease, dict) or lease.get('kind') != 'worktree':
+            return False
+        approved = approval_record(path, lease)
+        scope = allowed(path, ROOTS['groot'])
+        if not scope and not (approved and allowed(path, [str(path.parent)])):
+            return False
+        if validate(lease, path, 'groot', now):
+            return False
+        if lease.get('action') == 'archive-then-remove':
+            return bool(approved and worktree_identity(path, reaper) ==
+                        {key: lease[key] for key in ('head', 'dirty_hash')})
+        return scope
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return False
 
 def atomic_json(path, value, *, replace=True):
     path = Path(path)

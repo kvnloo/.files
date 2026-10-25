@@ -164,3 +164,49 @@ def test_report_never_scans_home_or_descendants(tmp_path):
     assert report['items'][0]['live'] == 'UNKNOWN'
     assert not report['items'][0]['eligible']
     assert (tmp_path / 'report/items/0.json').exists()
+
+
+def test_approved_worktree_lease_scopes_identity_and_rejects_forgery(tmp_path):
+    import subprocess
+    root = tmp_path / 'explicitly-approved'
+    root.mkdir()
+    def git(*args):
+        return subprocess.run(['git', '-C', str(root), *args],
+                              check=True, capture_output=True)
+    git('init')
+    git('config', 'user.email', 'test@example.invalid')
+    git('config', 'user.name', 'Test')
+    (root / 'tracked').write_text('original')
+    git('add', '.')
+    git('commit', '-m', 'initial')
+    (root / '.gitignore').write_text('private\n')
+    (root / 'private').write_text('ignored but valuable')
+    reaper = leases.backend()
+    before = reaper.inspect(str(root), [str(tmp_path)], {}, time.time())
+    with patch.object(leases, 'APPROVALS', tmp_path / 'approval-receipts'):
+        lease = leases.enroll_approved_worktree(
+            root, 'test-owner', 'explicit test approval', reaper)
+        assert lease['action'] == 'archive-then-remove'
+        assert leases.validate(lease, root, 'groot', time.time()) is None
+        assert leases.worktree_lease_allows(root, reaper, time.time())
+        after = reaper.inspect(str(root), [str(tmp_path)], {}, time.time())
+        assert after['dirty_count'] == before['dirty_count']
+        assert after['untracked_count'] == before['untracked_count']
+        assert after['mtime_timestamp'] == before['mtime_timestamp']
+        (root / 'private').write_text('changed ignored file')
+        assert not leases.worktree_lease_allows(root, reaper, time.time())
+        (root / 'private').write_text('ignored but valuable')
+        assert leases.worktree_lease_allows(root, reaper, time.time())
+        forged = {**lease, 'owner': 'someone else'}
+        leases.atomic_json(root / leases.SIDECAR, forged)
+        assert not leases.worktree_lease_allows(root, reaper, time.time())
+
+
+def test_approval_enrollment_rejects_symlink_target(tmp_path):
+    import pytest
+    root = tmp_path / 'real'
+    root.mkdir()
+    alias = tmp_path / 'alias'
+    alias.symlink_to(root, target_is_directory=True)
+    with pytest.raises(ValueError):
+        leases.enroll_approved_worktree(alias, 'owner', 'approval', leases.backend())
