@@ -215,6 +215,12 @@ identities; uncached weights report `identity_pending` with capacity zero.
 watches model directories and the serving registry; a daily timer is the
 backstop. Discovery reads `$Z0INT_HOME/config/choice-ladder.json`; absent
 configuration is a no-op.
+The 2026-10-24 unswapped stage profile found ingestion retaining the complete
+labelled history. Streaming source hashing and labelled JSONL reduction lowered
+ingest anon peak from 106,586,112 to 22,061,056 bytes; the complete measured
+cgroup peak was 122.7 MiB. The policy unit reserves 192 MiB (measured total peak
+plus at least 50%, rounded up) and limits swap to 64 MiB so a regression cannot
+silently churn unbounded swap.
 Configured missing or near-expiry model scopes enqueue separate transient user
 services so evaluation survives completion of the timer's oneshot. Those
 workers use Kueue `bench` admission or the configured `groot-admit` CUDA lane;

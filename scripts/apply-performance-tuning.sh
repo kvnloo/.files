@@ -46,7 +46,7 @@ log "Creating cpupower systemd service..."
 systemctl enable --now cpupower.service 2>/dev/null || true
 
 # System policy has one owner. This also retires obsolete sysctl and scheduler
-# rules; zram is staged only, never resized during this live tuning operation.
+# rules; existing zram capacity remains unchanged.
 python3 "$(dirname "$(readlink -f "$0")")/apply-host-system" --apply
 
 # Load tcp_bbr if available

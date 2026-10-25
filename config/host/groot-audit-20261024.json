@@ -1,6 +1,14 @@
 {
   "observed_at": "2026-10-25T03:46:09.561433+00:00",
   "root_changes_applied": false,
+  "corrected_policy_decisions": {
+    "zram": "UNCHANGED logical=ram resident=ram/2 zstd priority200; stale oomd guarantee removed; no reboot/resize step",
+    "zram_evidence": "Parent live observation11.63GB swapped/5.14GB resident (~2.2:1); ram/8 would remove most used swap capacity. Correct workload overcommit, not swap size.",
+    "zram_reconsideration": "Only measured A/B PSI + failed_writes + OOM count over >=24h",
+    "overcommit_memory": 1,
+    "overcommit_reason": "Preserve live large-mmap reservation behavior for llama.cpp, Node/Bun and JVM; no measured compatibility reason supports heuristic mode0",
+    "historical_inventory_note": "Original file assignment chains below are observations, not the final chosen policy"
+  },
   "host_memory_budget": {
     "peak_semantics": "MemoryPeak lifetime highs; parent and descendant peaks overlap and are not additive",
     "physical_bytes": 25082167296,
