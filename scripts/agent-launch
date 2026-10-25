@@ -25,7 +25,32 @@ grep -q '/agent.slice/' /proc/self/cgroup 2>/dev/null && inline "$@"   # already
 systemctl --user show-environment >/dev/null 2>&1 || { echo 'agent-launch: user manager unavailable; refusing unbounded launch' >&2; exit 1; }
 
 unit="agent-${name//[^A-Za-z0-9_-]/_}-$$-$(date +%s)"
+
+# Harness first: when the scope hits MemoryMax the kernel kills ONE process by
+# oom_score. The harness keeps its inherited score; everything else in its scope
+# (tools, MCP servers, worker processes) is raised to AGENT_CHILD_OOM_ADJ so it
+# dies first. Unprivileged processes may only raise scores, hence children, not
+# the harness. The watcher stays outside the scope, is silent (it must never
+# write to the agent's tty), and exits when the scope is gone.
+main=$$
+child_adj=${AGENT_CHILD_OOM_ADJ:-800}
+(
+  trap '' HUP INT
+  exec </dev/null >/dev/null 2>&1
+  for _ in $(seq 50); do grep -q "/$unit.scope\$" "/proc/$main/cgroup" && break; sleep 0.1; done
+  while cg=$(cut -d: -f3 "/proc/$main/cgroup") && [[ $cg == */"$unit".scope ]]; do
+    while read -r p; do
+      [[ $p == "$main" ]] && continue
+      read -r adj < "/proc/$p/oom_score_adj" && (( adj < child_adj )) && echo "$child_adj" > "/proc/$p/oom_score_adj"
+    done < "/sys/fs/cgroup$cg/cgroup.procs"
+    sleep 1
+  done
+) &
+disown
+
 # --scope keeps the terminal as the controlling tty; --collect drops the unit after exit.
+# No per-scope MemoryHigh: throttling one harness stalls it and all of its
+# in-process subagents instead of failing the one tool that is too big.
 exec systemd-run --user --scope --quiet --collect --slice=agent.slice --unit="$unit" \
-  --property=MemoryHigh=2G --property=MemoryMax=4G --property=MemorySwapMax=512M --property=ManagedOOMPreference=none \
+  --property=MemoryHigh=infinity --property=MemoryMax=6G --property=MemorySwapMax=1G --property=ManagedOOMPreference=none \
   --description="coding agent: $name" -- "$@"

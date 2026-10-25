@@ -119,7 +119,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 23)
         split = argv.index('--')
         self.assertEqual(argv[split + 1:], [str(base / 'command with spaces'), 'one two', 'literal;$value'])
-        for prop in ('MemoryHigh=2G', 'MemoryMax=4G', 'MemorySwapMax=512M', 'ManagedOOMPreference=none'):
+        for prop in ('MemoryHigh=infinity', 'MemoryMax=6G', 'MemorySwapMax=1G', 'ManagedOOMPreference=none'):
             self.assertIn('--property=' + prop, argv)
         self.assertIn('--slice=agent.slice', argv)
 
@@ -145,8 +145,11 @@ class LauncherTests(unittest.TestCase):
 
     def test_source_envelope(self):
         policy = (ROOT / 'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf').read_text()
-        self.assertIn('MemoryHigh=8G', policy)
+        self.assertIn('MemoryHigh=infinity', policy)
         self.assertIn('MemoryMax=10G', policy)
+        # oomd kills whole cgroups, i.e. the harness with all its subagents.
+        self.assertIn('ManagedOOMMemoryPressure=auto', policy)
+        self.assertNotIn('ManagedOOMMemoryPressure=kill', policy)
         self.assertNotIn('ManagedOOMPreference=avoid', policy)
         self.assertNotIn('ManagedOOMPreference=prefer', policy)
 
