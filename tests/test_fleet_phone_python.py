@@ -66,6 +66,80 @@ class ProbeErrorTests(unittest.TestCase):
                 self.assertEqual(value['node'], node['name'])
 
 
+class StagingSelectionTests(unittest.TestCase):
+    def test_git_staging_counts_selected_bytes_not_ignored_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / '.git').write_text('gitdir: fixture')
+            (root / 'tracked.py').write_bytes(b'1234')
+            (root / 'new file.py').write_bytes(b'567')
+            (root / 'ignored.venv').write_bytes(b'x' * 100)
+            (root / 'submodule').mkdir()
+            (root / 'submodule' / 'data').write_bytes(b'89')
+            result = subprocess.CompletedProcess([], 0, b'tracked.py\0new file.py\0submodule\0', b'')
+            with patch.object(python_jobs.subprocess, 'run', return_value=result) as run:
+                self.assertEqual(python_jobs.staging_bytes(root), 9)
+            self.assertIn('--exclude-standard', run.call_args.args[0])
+
+    def test_non_git_source_and_explicit_inputs_have_measured_sizes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'source'
+            source.mkdir()
+            (source / 'a').write_bytes(b'1234')
+            (source / 'subdir').mkdir()
+            (source / 'subdir' / 'b').write_bytes(b'567')
+            extra = root / 'input'
+            extra.write_bytes(b'89')
+            self.assertEqual(python_jobs.staging_bytes(source, inputs=[f'{extra}:fixtures/input']), 9)
+            self.assertEqual(python_jobs.staging_bytes(source, no_source=True,
+                                                      inputs=[f'{extra}:fixtures/input']), 2)
+
+    def test_fresh_capacity_accepts_zero_without_an_arbitrary_disk_floor(self):
+        result = subprocess.CompletedProcess([], 0, '{"path":"/root/fleet-jobs","free_bytes":0}', '')
+        with patch.object(python_jobs.subprocess, 'run', return_value=result) as run:
+            self.assertEqual(python_jobs.staging_capacity(['ssh', 'guest'])['free_bytes'], 0)
+        self.assertIn('statvfs', run.call_args.args[0][-1])
+        self.assertNotIn('mkdir', run.call_args.args[0][-1])
+
+    def selection(self, capacities, pinned=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            nodes = {name: fleet.registry()[1][name] for name in ('omarchy-phone', 'galaxy-s22plus')}
+            args = SimpleNamespace(node='omarchy-phone' if pinned else None, cls=None,
+                                   arch='arm64', tolerate=[], cmd=['true'], no_src=False,
+                                   src=tmp, mem=None, cpus=None, timeout=30, idempotent=False,
+                                   fetch=[], input=[], guest=True, python_venv=True)
+            def health(node, staging=False):
+                return {'ts': time.time(), 'load1': 0 if node['name'] == 'omarchy-phone' else 4,
+                        'ncpu': 8, 'mem_available_mb': 0,
+                        'staging_capacity': {'free_bytes': capacities[node['name']]}}
+            with patch.object(fleet, 'STATE', Path(tmp)), \
+                 patch.object(fleet, 'registry', return_value=({}, nodes)), \
+                 patch.object(fleet, 'k8s_nodes', return_value={}), \
+                 patch.object(fleet, 'probe_python_guest', side_effect=health), \
+                 patch.object(python_jobs, 'staging_bytes', return_value=1024) as measure, \
+                 patch.object(python_jobs, 'snapshot', side_effect=ValueError('stop before transfer')) as snapshot:
+                with self.assertRaises(SystemExit) as failure:
+                    fleet.cmd_run(args)
+                self.assertEqual(failure.exception.code, 75)
+            return snapshot.call_args.args[0][-1] if snapshot.called else None, measure.call_count
+
+    def test_phone_pool_skips_full_guest_for_this_source_size(self):
+        selected, measurements = self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1024})
+        self.assertEqual(selected, 'root@100.97.11.22')
+        self.assertEqual(measurements, 1)
+
+    def test_phone_pool_accepts_exact_fit_and_holds_when_no_guest_fits(self):
+        self.assertEqual(self.selection({'omarchy-phone': 1024, 'galaxy-s22plus': 2048})[0],
+                         'root@100.104.42.85')
+        self.assertIsNone(self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1023})[0])
+
+    def test_pinned_phone_does_not_gain_a_resource_admission_floor(self):
+        selected, measurements = self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1024}, pinned=True)
+        self.assertEqual(selected, 'root@100.104.42.85')
+        self.assertEqual(measurements, 0)
+
+
 class GuestLifetimeTests(unittest.TestCase):
     def before(self):
         return {'uptime': 1000.0, 'boot_id': 'android-boot', 'guest_identity': [200, '1234']}
@@ -107,6 +181,21 @@ class GuestLifetimeTests(unittest.TestCase):
 
 
 class GuestAdmissionTests(unittest.TestCase):
+    def test_pool_capacity_read_failure_is_a_probe_error_not_a_scheduler_exception(self):
+        node = fleet.registry()[1]['omarchy-phone']
+        android = {'transport': 'adb', 'power': {'on_ac': False, 'batteries': [{'pct': 80}]}}
+        with patch.object(fleet, 'probe', side_effect=[android, {'load1': 0}]), \
+             patch.object(python_jobs, 'staging_capacity', side_effect=ValueError('capacity unavailable')):
+            value = fleet.probe_python_guest(node, staging=True)
+        self.assertEqual(value['status'], 'probe_error')
+        self.assertIn('capacity unavailable', value['message'])
+
+    def test_python_guest_preserves_structured_native_probe_failure(self):
+        node = fleet.registry()[1]['omarchy-phone']
+        failure = fleet.probe_error(node, 'native transport unavailable', 'adb')
+        with patch.object(fleet, 'probe', return_value=failure):
+            self.assertEqual(fleet.probe_python_guest(node), failure)
+
     def test_phone_disk_space_is_not_an_agent_admission_limit(self):
         for name in ('omarchy-phone', 'galaxy-s22plus'):
             node = fleet.registry()[1][name]
