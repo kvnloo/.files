@@ -1,0 +1,135 @@
+{
+  "schema": "files.user-executable-attestation.v1",
+  "observed_at": 1792900882.8839638,
+  "helpers": [
+    {
+      "path": "/home/kvn/.local/bin/agent-resource-classify",
+      "target": "/home/kvn/.local/lib/files-live/1acd8de561f557b8b53e438133070e106856da9dc8ff7a138d7f39b41fee44e5/scripts/agent-resource-classify",
+      "symlink": true,
+      "provenance": "release-path",
+      "sha256": "9bc9ffa5c1d9b9bcaa17a7abbf11d5eb4f9892e5cccef28d20050c7b520b35a4",
+      "size": 6942
+    },
+    {
+      "path": "/home/kvn/.local/bin/agentsview",
+      "target": "/home/kvn/.local/bin/agentsview",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "2c7a6dbc5c037d67353389a412ab23c16b5c8819be51f646a9dd1631bee8ee1b",
+      "size": 147834224
+    },
+    {
+      "path": "/home/kvn/.local/bin/awatcher",
+      "target": "/home/kvn/.local/bin/awatcher",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "8992890443c99396f8ab7f8ab756654b65368b24079b3d786d6d3fa181f18236",
+      "size": 33995528
+    },
+    {
+      "path": "/home/kvn/.local/bin/ctx",
+      "target": "/home/kvn/.local/bin/ctx",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "afcff832d2de1eedd8623097acd29ded17a5defe372e8e04f10b40fd45df7711",
+      "size": 197858288
+    },
+    {
+      "path": "/home/kvn/.local/bin/dash-log-watch",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/dash-log-watch.py",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "ce469ee19a3ea2b13c531a51039062e811f503483a5e173fd6d81b27947690d1",
+      "size": 26441
+    },
+    {
+      "path": "/home/kvn/.local/bin/dotenvx",
+      "target": "/home/kvn/.local/bin/dotenvx",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "c5b1f571d61133e55b161422e28d6304ae6e8f462dc44fcc9a834173afb27e57",
+      "size": 55766652
+    },
+    {
+      "path": "/home/kvn/.local/bin/hyprcaffeine",
+      "target": "/home/kvn/.local/bin/hyprcaffeine",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "5d21b1f715630593648c25d35e1916b6537c47f3f54c5faf3c8ec2a4d2e56ce0",
+      "size": 31381
+    },
+    {
+      "path": "/home/kvn/.local/bin/omp-boat",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/boat",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "179b313bd784cf8dc2d40aaeef327373d8e05af79cd3aa2e4db48cddd8f142c8",
+      "size": 18266
+    },
+    {
+      "path": "/home/kvn/.local/bin/paperclipai",
+      "target": "/home/kvn/.local/bin/paperclipai",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "c89cc07713def631247df343dcad91e77388d3843511e52a3b00623c30bf3113",
+      "size": 213
+    },
+    {
+      "path": "/home/kvn/.local/bin/service-watch",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/service-watch.py",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "bb0bfeb3669f50df1ca15776fba6d6e8a86837fe559c77112a8dd4c16a6a82d0",
+      "size": 52708
+    },
+    {
+      "path": "/home/kvn/.local/bin/taildrop-portal",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/taildrop-portal.py",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "35031d54d9930f28dc38020ba24be64b76a591464cc3cfe2a0f2cbf891bee954",
+      "size": 10879
+    },
+    {
+      "path": "/home/kvn/.local/bin/tern",
+      "target": "/home/kvn/.local/bin/tern",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "40c75e76f9b0d03ed3696f7c6c37c5eddf5e62980a7d7c743ae3acc4e32c27db",
+      "size": 178622760
+    },
+    {
+      "path": "/home/kvn/.local/bin/tern-hosts-sync",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/tern-hosts-sync",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "821606af4b9382ff817d7c80fad4a8592c76187fe5d69424c7b977face242ad5",
+      "size": 4419
+    },
+    {
+      "path": "/home/kvn/.local/bin/unii",
+      "target": "/home/kvn/.local/bin/unii",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "82f422c88bf286c083def3a0e1a162453a029f82635844ca34016779eb5b0442",
+      "size": 95156352
+    },
+    {
+      "path": "/home/kvn/.local/bin/workspace-copilot",
+      "target": "/mnt/zer0models/worktrees/files-live/scripts/workspace-copilot",
+      "symlink": true,
+      "provenance": "mutable-checkout",
+      "sha256": "ff0f2ad09d1e38117584ff2bd58f50e491ba3f00835ea5507021e095bd5ce405",
+      "size": 78285
+    },
+    {
+      "path": "/home/kvn/.local/bin/z0-guard",
+      "target": "/home/kvn/.local/lib/z0-guard/05e676f9931e32a12a094db8451303018958322443127bc4189135777ea17469/z0-guard",
+      "symlink": true,
+      "provenance": "release-path",
+      "sha256": "2c628623f852d7fecaffe5ec63077fed438d4a41f4122e9856ddc9d8f91297e4",
+      "size": 602
+    }
+  ],
+  "note": "Includes dormant Exec* helpers. Native executables and paperclipai generated shim remain application-managed; hashes are inventory observations, not supplied binary rebuild recipes. Future census avoids rehashing large native tools."
+}

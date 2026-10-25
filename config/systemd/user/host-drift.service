@@ -1,0 +1,14 @@
+[Unit]
+Description=Report-only tracked host configuration drift audit
+OnFailure=service-watch-failure@host-drift.service.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/host-drift --output %h/.local/state/host-drift/latest.json
+ExecStartPost=%h/.local/lib/files-host-drift/current/scripts/service-watch.py host-drift
+SuccessExitStatus=1 2
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=256M
+TimeoutStartSec=180
+NoNewPrivileges=yes

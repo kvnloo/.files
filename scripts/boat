@@ -55,14 +55,15 @@ def key():
     value = os.environ.get("BOAT_API_KEY")
     if value:
         return value
-    for path in (Path.home() / ".omp/agent/.env", Path.home() / ".hermes/.env"):
-        if path.exists():
-            for line in path.read_text().splitlines():
-                if line.startswith("BOAT_API_KEY="):
-                    value = line.partition("=")[2].strip().strip("\"'")
-                    if value:
-                        return value
-    raise BoatError("BOAT_API_KEY missing; run scripts/bws-apply-local-secrets.sh")
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    path = Path(runtime) / "bws-secrets/boat.env" if runtime else None
+    if path and path.exists():
+        for line in path.read_text().splitlines():
+            if line.startswith("BOAT_API_KEY="):
+                value = shlex.split(line.partition("=")[2])
+                if len(value) == 1 and value[0]:
+                    return value[0]
+    raise BoatError("BOAT_API_KEY missing; start bws-secrets-sync.service")
 
 
 @contextlib.contextmanager

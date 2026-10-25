@@ -1,0 +1,15 @@
+[Unit]
+Description=Kind-bridge forwarder for Whisperflow (z0intelligence host-service pattern)
+After=whisperflow.service
+Requires=whisperflow.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:8766,bind=172.19.0.1,fork,reuseaddr TCP:127.0.0.1:8766
+ExecStartPost=/usr/bin/python3 /home/kvn/.config/whisperflow/readiness.py ready
+ExecStopPost=/usr/bin/python3 /home/kvn/.config/whisperflow/readiness.py not-ready
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

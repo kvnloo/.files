@@ -1,0 +1,9 @@
+[Unit]
+Description=Keep coding-agent processes inside their resource budget
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/kvn/.local/bin/agent-resource-classify
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=20

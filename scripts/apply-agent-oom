@@ -8,8 +8,11 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tomllib
 
 GIB = 1024 ** 3
+GROOT_HOME = Path('/home/kvn')
+BULK_RELEASES = Path('/mnt/zer0models/releases/files-live')
 # Stale `systemctl set-property` overrides for properties the tracked drop-ins own.
 # Left behind, they silently replace tracked values (2026-10-24: MemorySwapMax=2G
 # and ManagedOOMMemoryPressure=kill survived in user.control after the fix).
@@ -19,6 +22,8 @@ OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
              '50-IOWeight.conf', '50-IOReadBandwidthMax.conf', '50-IOWriteBandwidthMax.conf')
 LINKS = {
     'scripts/agent-launch': '.local/bin/agent-launch',
+    'scripts/bws-env-exec': '.local/bin/bws-env-exec',
+    'config/bws-consumers.json': '.local/share/files-bws/consumers.json',
     'scripts/agent-resource-classify': '.local/bin/agent-resource-classify',
     'scripts/omp': '.local/bin/omp',
     'scripts/omp-hud': '.local/bin/omp-hud',
@@ -39,16 +44,24 @@ def safe_usage(text: str) -> bool:
     return 0 <= current <= 8 * GIB and 0 <= swap and current + swap <= 9 * GIB
 
 
-def stamp_release(source: Path, home: Path) -> Path:
+def stamp_release(source: Path, home: Path, files=None) -> Path:
     """Snapshot the complete installed closure; never link to mutable checkouts."""
     payload = {rel: ((source / rel).read_bytes(), (source / rel).stat().st_mode & 0o777)
-               for rel in LINKS}
+               for rel in (LINKS if files is None else files)}
     digest = hashlib.sha256()
     for rel, (data, mode) in sorted(payload.items()):
         digest.update(f'{rel}\0{mode}\0{len(data)}\0'.encode())
         digest.update(data)
     root = home / '.local/lib/files-live'
     root.mkdir(parents=True, exist_ok=True)
+    alias = root / digest.hexdigest()
+    bulk = BULK_RELEASES
+    # Existing root-backed stamps remain untouched until release retention.
+    if home == GROOT_HOME and not alias.exists():
+        if not os.path.ismount('/mnt/zer0models'):
+            raise ValueError('bulk release storage is not mounted')
+        bulk.mkdir(parents=True, exist_ok=True)
+        root = bulk
     release = root / digest.hexdigest()
     if not release.exists():
         staging = Path(tempfile.mkdtemp(prefix='.agent-oom-', dir=root))
@@ -66,6 +79,8 @@ def stamp_release(source: Path, home: Path) -> Path:
         target = release / rel
         if target.read_bytes() != data or target.stat().st_mode & 0o777 != mode:
             raise ValueError(f'content-stamped release mismatch: {target}')
+    if alias != release and not alias.exists():
+        alias.symlink_to(release, target_is_directory=True)
     return release
 
 
@@ -107,12 +122,178 @@ def install(source: Path, home: Path, apply: bool) -> int:
     return 0
 
 
+def user_path(value: str, home: Path) -> Path:
+    if not value.startswith('~/'):
+        raise ValueError(f'user install path must be home-relative: {value}')
+    relative = Path(value[2:])
+    if '..' in relative.parts or relative.is_absolute():
+        raise ValueError(f'unsafe user path: {value}')
+    return home / relative
+
+
+def intact_installed_release(live: Path, home: Path, relative: Path, verified: dict) -> bool:
+    """Allow upgrades from verified prior stamps, never arbitrary operator edits."""
+    if not live.is_symlink():
+        return False
+    target = live.resolve()
+    libraries = [home / '.local/lib/files-live']
+    if home == GROOT_HOME:
+        libraries.append(BULK_RELEASES)
+    for library in libraries:
+        try:
+            parts = target.relative_to(library).parts
+            break
+        except ValueError:
+            continue
+    else:
+        return False
+    if len(parts) < 2 or len(parts[0]) != 64 or Path(*parts[1:]) != relative:
+        return False
+    release = library / parts[0]
+    if release not in verified:
+        digest = hashlib.sha256()
+        valid = True
+        for path in sorted(release.rglob('*'), key=lambda p: str(p.relative_to(release))):
+            if path.is_symlink():
+                valid = False
+                break
+            if path.is_file():
+                rel = str(path.relative_to(release))
+                data = path.read_bytes()
+                mode = path.stat().st_mode & 0o777
+                digest.update(f'{rel}\0{mode}\0{len(data)}\0'.encode())
+                digest.update(data)
+        verified[release] = valid and digest.hexdigest() == release.name
+    return verified[release]
+
+
+def install_user_layer(source: Path, home: Path, apply: bool) -> int:
+    """Migrate only manifest-owned paths; no service starts/stops or enable changes."""
+    source = source.resolve(strict=True)
+    manifest = tomllib.loads((source / 'config/host/groot.toml').read_text())
+    entries = [row for row in manifest.get('user', [])
+               if row['owner'] == 'scripts/apply-agent-oom']
+    links = {}
+    verified = {}
+    for row in entries:
+        relative = Path(row['source'])
+        if relative.is_absolute() or '..' in relative.parts:
+            raise ValueError(f'unsafe source: {relative}')
+        original = source / relative
+        if not original.is_file():
+            raise ValueError(f'missing source: {relative}')
+        live = user_path(row['live'], home)
+        if live in links:
+            raise ValueError(f'duplicate live path: {live}')
+        if live.exists() or live.is_symlink():
+            if live.is_dir():
+                raise ValueError(f'refusing directory replacement: {live}')
+            data = live.read_bytes()
+            observed = hashlib.sha256(data).hexdigest()
+            expected = row.get('migration_sha256')
+            if (data != original.read_bytes() and observed != expected and
+                    not intact_installed_release(live, home, relative, verified)):
+                raise ValueError(f'live file changed since inventory; preserve and investigate: {live}')
+        links[live] = row
+    cleanup = []
+    for row in manifest.get('user_control_cleanup', []):
+        value = row['live']
+        if value.startswith('~/'):
+            path = user_path(value, home)
+        elif value.startswith('/run/user/'):
+            relative = Path(value).relative_to(f'/run/user/{os.getuid()}')
+            if '..' in relative.parts:
+                raise ValueError(f'unsafe runtime control: {value}')
+            path = Path(f'/run/user/{os.getuid()}') / relative
+        else:
+            raise ValueError(f'unsafe control path: {value}')
+        if '/systemd/user.control/' not in str(path):
+            raise ValueError(f'not a property override: {path}')
+        if path.exists() or path.is_symlink():
+            if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != row['sha256']:
+                raise ValueError(f'control changed since inventory; may be leased: {path}')
+            cleanup.append(path)
+    retired = []
+    for row in manifest.get('user_retired_links', []):
+        path = user_path(row['live'], home)
+        if path.exists() or path.is_symlink():
+            if not path.is_symlink() or os.readlink(path) != row['target'] or path.exists():
+                raise ValueError(f'retired link changed or now resolves; preserve: {path}')
+            retired.append(path)
+    for row in manifest.get('user_retired_files', []):
+        path = user_path(row['live'], home)
+        if path.exists() or path.is_symlink():
+            if hashlib.sha256(path.read_bytes()).hexdigest() != row['sha256']:
+                raise ValueError(f'retired file changed; preserve: {path}')
+            retired.append(path)
+    closure = {row['source'] for row in entries}
+    # Helpers resolve companions relative to __file__; keep their complete local closure.
+    closure.update(manifest.get('user_release_closure', []))
+    for relative in closure:
+        if Path(relative).is_absolute() or '..' in Path(relative).parts:
+            raise ValueError(f'unsafe closure path: {relative}')
+        if not (source / relative).is_file():
+            raise ValueError(f'missing closure source: {relative}')
+    # A newly introduced hard ceiling must not be below current resident+swap use.
+    result = subprocess.run(['systemctl', '--user', 'show', 'app-t3code-agents.slice',
+                             '-p', 'MemoryCurrent', '-p', 'MemorySwapCurrent'],
+                            capture_output=True, text=True, check=False)
+    values = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+    try:
+        usage = int(values['MemoryCurrent']) + int(values['MemorySwapCurrent'])
+    except (KeyError, ValueError):
+        usage = None
+    if result.returncode or usage is None or not 0 <= usage < 3 * GIB:
+        print('STAGED ONLY: T3 aggregate unavailable or lacks headroom below proposed 4G ceiling')
+        return 75
+    print(f'PLAN: {len(links)} stamped links, {len(cleanup)} exact controls, {len(retired)} dangling links; no restart')
+    if not apply:
+        return 0
+    release = stamp_release(source, home, closure)
+    backup_root = home / '.local/state/host-user/backups'
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix='apply-', dir=backup_root))
+    for path in retired:
+        saved = backup / 'retired' / path.relative_to(home)
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, saved, follow_symlinks=False)
+        path.unlink()
+    for path in cleanup:
+        relative = str(path).lstrip('/')
+        saved = backup / 'controls' / relative
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, saved)
+        path.unlink()
+    for live, row in links.items():
+        target = Path('/dev/null') if row.get('mask') else release / row['source']
+        if live.is_symlink() and live.resolve() == target:
+            continue
+        live.parent.mkdir(parents=True, exist_ok=True)
+        if live.exists() or live.is_symlink():
+            saved = backup / 'home' / live.relative_to(home)
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(live, saved, follow_symlinks=False)
+        temporary = live.with_name(f'.{live.name}.host-user-{os.getpid()}')
+        try:
+            temporary.symlink_to(target)
+            os.replace(temporary, live)
+        finally:
+            if temporary.is_symlink():
+                temporary.unlink()
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    print(f'APPLIED: release={release}; backups={backup}; no services restarted')
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--user-layer', action='store_true',
+                        help='install manifest-owned user configuration, not agent policy')
     args = parser.parse_args()
-    return install(args.source, Path.home(), args.apply)
+    installer = install_user_layer if args.user_layer else install
+    return installer(args.source, Path.home(), args.apply)
 
 
 if __name__ == '__main__':

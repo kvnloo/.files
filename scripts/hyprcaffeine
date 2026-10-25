@@ -1,0 +1,893 @@
+#!/usr/bin/env bash
+# HyprCaffeine — Idle inhibition utility for Hyprland
+# Version: 0.8.1
+# Author: HyprCaffeine Contributors
+# License: MIT
+
+set -uo pipefail
+
+# ── Path Resolution ──────────────────────────────────────────────────────────
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Dev: scripts/ sibling of bin/ | Install: ~/.local/share/hyprcaffeine/scripts/
+if [[ -d "${SCRIPT_DIR}/../scripts" ]]; then
+    LIB_DIR="${SCRIPT_DIR}/../scripts"
+elif [[ -d "${SCRIPT_DIR}/../share/hyprcaffeine/scripts" ]]; then
+    LIB_DIR="${SCRIPT_DIR}/../share/hyprcaffeine/scripts"
+else
+    echo "Error: scripts/ not found" >&2; exit 1
+fi
+
+# ── Version ──────────────────────────────────────────────────────────────────
+readonly VERSION="0.9.2"
+readonly APP_NAME="HyprCaffeine"
+
+# ── Dry Run Mode ─────────────────────────────────────────────────────────────
+DRY_RUN=false
+[[ "${1:-}" == "--dry-run" ]] && { DRY_RUN=true; shift; }
+
+# ── Catppuccin Mocha Palette ─────────────────────────────────────────────────
+readonly CLR_TEXT="#cdd6f4"
+readonly CLR_SURFACE="#1e1e2e"
+readonly CLR_BLUE="#89b4fa"
+readonly CLR_GREEN="#a6e3a1"
+readonly CLR_RED="#f38ba8"
+readonly CLR_YELLOW="#f9e2af"
+
+# ── Nerd Font Icons (from icons.sh — verified via nerdfonts.com cheat-sheet) ──
+source "${LIB_DIR}/icons.sh"
+readonly ICON_ACTIVE="${NF_COFFEE}"
+readonly ICON_INACTIVE="${NF_COFFEE_OUTLINE}"
+readonly ICON_TIMER="${NF_TIMER}"
+readonly ICON_INFINITE="${NF_INFINITE}"
+readonly ICON_MONITOR="${NF_MONITOR}"
+readonly ICON_LID="${NF_LAPTOP}"
+# Waybar uses same NF icons as menu — consistent UI
+readonly WB_COFFEE="${NF_COFFEE}"
+readonly WB_COFFEE_OFF="${NF_COFFEE_OUTLINE}"
+readonly WB_LOOP="${NF_INFINITE}"
+readonly WB_TIMER="${NF_TIMER}"
+readonly WB_MONITOR="${NF_MONITOR}"
+readonly WB_LID="${NF_LAPTOP}"
+# ── State Directory ──────────────────────────────────────────────────────────
+readonly STATE_DIR="${HOME}/.cache/hyprcaffeine"
+readonly STATE_FILE="${STATE_DIR}/state.json"
+
+# ── Source Libraries ─────────────────────────────────────────────────────────
+source "${LIB_DIR}/config.sh"
+source "${LIB_DIR}/state.sh"
+source "${LIB_DIR}/timer.sh"
+source "${LIB_DIR}/notify.sh"
+source "${LIB_DIR}/hyprland.sh"
+source "${LIB_DIR}/watcher.sh"
+source "${LIB_DIR}/keybinds.sh"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+show_help() {
+    cat <<EOF
+${APP_NAME} v${VERSION} — Independent idle-inhibition features for Hyprland
+
+USAGE:
+    hyprcaffeine [SUBCOMMAND] [OPTIONS]
+
+FEATURES (each independent):
+    Timer/Infinite      Blocks SUSPEND only (not dim/dpms/lock)
+    Keep Display On     Blocks dim + DPMS + lock (persistent across reboots)
+    Block Lid           Blocks lid-close suspend (persistent across reboots)
+
+SUBCOMMANDS:
+    (none)              Show interactive menu
+    on [DURATION]       Activate sleep inhibition (suspend blocker)
+    off                 Deactivate sleep inhibition only
+    off --all           Deactivate all features (sleep + monitor + lid)
+    status              Show current state
+    toggle              Toggle sleep inhibition on/off
+    waybar              Output Waybar-compatible JSON status
+    menu                Walker/wofi launcher menu
+    monitor on|off|toggle  Keep Display On (blocks dim + DPMS)
+    lid on|off|toggle      Block lid-close suspend
+    waybar-setup [--force]  Configure waybar integration (smart)
+    waybar-remove       Remove waybar integration
+    keybinds install|remove|status  Manage Hyprland keybindings
+    watcher start|stop|status  Auto-activate daemon
+    polkit install|remove|status  Manage polkit rule (requires sudo)
+    setup               Run post-install configuration (polkit + waybar + systemd + keybinds)
+    reinstall           Re-run setup (alias for setup)
+    uninstall           Remove HyprCaffeine and all user files
+
+DURATION FORMATS:
+    30s, 15m, 2h, 1:30 (HH:MM), infinite, bare number = minutes
+
+EXAMPLES:
+    hyprcaffeine on 30m            # Block suspend for 30 minutes
+    hyprcaffeine on 1:30           # Block suspend for 1h 30min
+    hyprcaffeine on infinite       # Block suspend forever
+    hyprcaffeine off               # Stop sleep inhibition
+    hyprcaffeine monitor toggle    # Toggle display keep-awake
+    hyprcaffeine lid on            # Enable lid-close inhibit
+    hyprcaffeine status            # Show all states
+EOF
+}
+
+show_version() {
+    echo "${APP_NAME} v${VERSION}"
+}
+
+# ── Parse duration string to seconds ────────────────────────────────────────
+parse_duration() {
+    local duration="${1:-infinite}"
+    case "${duration}" in
+        infinite|inf) echo "0" ;;
+        *s) echo "${duration%s}" ;;
+        *m) echo "$(( ${duration%m} * 60 ))" ;;
+        *h) echo "$(( ${duration%h} * 3600 ))" ;;
+        *)
+            # HH:MM format (e.g. 1:30 = 90 minutes = 5400 seconds)
+            if [[ "${duration}" =~ ^([0-9]+):([0-9]{2})$ ]]; then
+                local hours="${BASH_REMATCH[1]}"
+                local minutes="${BASH_REMATCH[2]}"
+                echo "$(( hours * 3600 + minutes * 60 ))"
+            elif [[ "${duration}" =~ ^[0-9]+$ ]]; then
+                echo "$(( duration * 60 ))"
+            else
+                echo "-1"
+            fi
+            ;;
+    esac
+}
+
+# ── Core Actions ─────────────────────────────────────────────────────────────
+
+# Activate idle inhibition (ONLY idle — monitor/lid are independent)
+do_on() {
+    local duration="${1:-}"
+    
+    # Use config default if no duration specified
+    if [[ -z "${duration}" ]]; then
+        local config_default
+        config_default="$(config_get timeouts.default)"
+        if [[ -n "${config_default}" ]]; then
+            # Config value is in seconds; convert to minutes string for parse_duration
+            local minutes=$(( config_default / 60 ))
+            if [[ "${minutes}" -gt 0 ]]; then
+                duration="${minutes}m"
+            else
+                duration="${config_default}s"
+            fi
+        else
+            duration="infinite"
+        fi
+    fi
+
+    local duration_seconds
+    duration_seconds="$(parse_duration "${duration}")"
+
+    if [[ "${duration_seconds}" -eq -1 ]]; then
+        notify_error "Invalid duration: ${duration}"
+        echo "Error: Invalid duration '${duration}'." >&2
+        exit 1
+    fi
+
+    # Activate idle inhibitor
+    local inhibit_ok=true
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] idle inhibitor ON"
+    else
+        if ! hypr_idle_inhibit_on; then
+            inhibit_ok=false
+            echo "Warning: Sleep inhibitor failed — check polkit rules." >&2
+        fi
+    fi
+
+    # Preserve current monitor/lid state
+    local monitor_val lid_val
+    monitor_val="$(state_get_monitor)"
+    lid_val="$(state_get_lid)"
+
+    if [[ "${inhibit_ok}" == true ]]; then
+        state_save "active" "${duration_seconds}" "" "${monitor_val}" "${lid_val}"
+        timer_start "${duration_seconds}"
+    else
+        # Inhibitor failed — still save state so monitor/lid persist,
+        # but mark as inactive since sleep isn't blocked
+        state_save "inactive" "0" "" "${monitor_val}" "${lid_val}"
+        notify_error "Sleep inhibitor failed — check polkit rules"
+        echo "Error: Could not activate sleep inhibition." >&2
+        echo "  Install polkit rules: sudo bash scripts/polkit-setup.sh" >&2
+        return 1
+    fi
+
+    local human_duration
+    if [[ "${duration_seconds}" -eq 0 ]]; then
+        human_duration=" infinite"
+    else
+        human_duration="$(timer_human "${duration_seconds}")"
+    fi
+
+    notify_send "${ICON_ACTIVE} Caffeine Active" "Sleep inhibition: ${human_duration}"
+    echo "${ICON_ACTIVE} Caffeine activated — duration: ${human_duration}"
+}
+
+# Deactivate idle inhibition (ONLY idle — monitor/lid stay as they are)
+do_off() {
+    local all="${1:-}"
+
+    timer_stop
+
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] idle inhibitor OFF"
+    else
+        hypr_idle_inhibit_off
+    fi
+
+    if [[ "${all}" == "--all" ]]; then
+        do_monitor_off
+        do_lid_off
+        state_save "inactive" "0" "" "false" "false"
+        notify_send "${ICON_INACTIVE} Caffeine Off" "All features disabled"
+        echo "${ICON_INACTIVE} All features deactivated"
+    else
+        # Preserve monitor/lid
+        local monitor_val lid_val
+        monitor_val="$(state_get_monitor)"
+        lid_val="$(state_get_lid)"
+        state_save "inactive" "0" "" "${monitor_val}" "${lid_val}"
+        notify_send "${ICON_INACTIVE} Caffeine Off" "Idle inhibition disabled"
+        echo "${ICON_INACTIVE} Idle inhibition deactivated"
+    fi
+}
+
+# Toggle idle inhibition
+do_toggle() {
+    local state
+    state="$(state_get_status)"
+    if [[ "${state}" == "active" ]]; then
+        do_off
+    else
+        do_on "infinite"
+    fi
+}
+
+# ── Monitor (independent toggle) ────────────────────────────────────────────
+
+do_monitor_on() {
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] monitor keep-awake ON"
+        return
+    fi
+    if ! hypr_monitor_on; then
+        echo "Error: Monitor inhibitor failed." >&2
+        return 1
+    fi
+    state_set_monitor "true"
+    echo "${ICON_MONITOR} Monitor keep-awake: ON"
+    notify_send "${ICON_MONITOR} Monitor" "Keep display on: enabled"
+}
+
+do_monitor_off() {
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] monitor keep-awake OFF"
+        return
+    fi
+    hypr_monitor_off
+    state_set_monitor "false"
+    echo "${ICON_MONITOR} Monitor keep-awake: OFF"
+    notify_send "${ICON_MONITOR} Monitor" "Keep display on: disabled"
+}
+
+do_monitor_toggle() {
+    local current
+    current="$(state_get_monitor)"
+    if [[ "${current}" == "true" ]]; then
+        do_monitor_off
+    else
+        do_monitor_on
+    fi
+}
+
+# ── Lid (independent toggle) ────────────────────────────────────────────────
+
+do_lid_on() {
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] lid inhibit ON"
+        return
+    fi
+    if ! lid_inhibit_start; then
+        echo "Error: Lid inhibitor failed — check polkit rules." >&2
+        return 1
+    fi
+    state_set_lid "true"
+    echo "${ICON_LID} Lid-close inhibit: ON"
+    notify_send "${ICON_LID} Lid" "Lid-close inhibit: enabled"
+}
+
+do_lid_off() {
+    if [[ "${DRY_RUN}" == true ]]; then
+        echo "[dry-run] lid inhibit OFF"
+        return
+    fi
+    lid_inhibit_stop
+    state_set_lid "false"
+    echo "${ICON_LID} Lid-close inhibit: OFF"
+    notify_send "${ICON_LID} Lid" "Lid-close inhibit: disabled"
+}
+
+do_lid_toggle() {
+    local current
+    current="$(state_get_lid)"
+    if [[ "${current}" == "true" ]]; then
+        do_lid_off
+    else
+        do_lid_on
+    fi
+}
+
+# ── Restore (background persistence — called by systemd on boot) ────────────
+
+do_restore() {
+    local state monitor lid duration restored=()
+
+    state="$(state_get_status)"
+    monitor="$(state_get_monitor)"
+    lid="$(state_get_lid)"
+    duration="$(state_get_duration)"
+
+    # Short-circuit before the socket wait when there is truly nothing to restore
+    if [[ "${state}" != "active" && "${monitor}" != "true" && "${lid}" != "true" ]]; then
+        return 0
+    fi
+
+    # Wait for Hyprland IPC socket before restoring inhibitors so that the
+    # service runs after Hyprland is up on non-UWSM systems (where
+    # graphical-session.target is never activated and the service fires before
+    # Hyprland). Gives up after 60 s and proceeds anyway.
+    local i=0 _xrt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" _f
+    while (( i++ < 60 )); do
+        for _f in "${_xrt}/hypr"/*/.socket2.sock /tmp/hypr/*/.socket2.sock; do
+            [[ -S "${_f}" ]] && break 2
+        done
+        sleep 1
+    done
+
+    # Restore monitor keep-awake (persistent)
+    if [[ "${monitor}" == "true" ]]; then
+        hypr_monitor_on 2>/dev/null && restored+=("monitor")
+    fi
+
+    # Restore lid inhibit (persistent)
+    if [[ "${lid}" == "true" ]]; then
+        lid_inhibit_start 2>/dev/null && restored+=("lid")
+    fi
+
+    # Restore idle inhibition — only infinite mode is persistent across reboots.
+    # Finite timers are ephemeral: clear the stale active state so it does not
+    # confuse the UI on next login.
+    if [[ "${state}" == "active" ]]; then
+        if [[ "${duration}" -eq 0 ]]; then
+            hypr_idle_inhibit_on 2>/dev/null && restored+=("infinite")
+        else
+            state_save "inactive" "0" "" "${monitor}" "${lid}"
+        fi
+    fi
+
+    local num=${#restored[@]}
+    if [[ ${num} -gt 0 ]]; then
+        echo "HyprCaffeine restored ${num} state(s) on boot: ${restored[*]}"
+    fi
+}
+
+# ── Status ───────────────────────────────────────────────────────────────────
+
+do_status() {
+    local state monitor lid parts=()
+
+    state="$(state_get_status)"
+    monitor="$(state_get_monitor)"
+    lid="$(state_get_lid)"
+
+    # Idle status
+    if [[ "${state}" == "active" ]]; then
+        local duration remaining
+        duration="$(state_get_duration)"
+        remaining="$(state_get_remaining)"
+
+        if [[ "${duration}" == "0" ]]; then
+            parts+=("${ICON_ACTIVE} Idle: ${ICON_INFINITE} infinite")
+        else
+            parts+=("${ICON_ACTIVE} Idle: ${remaining}")
+        fi
+    else
+        parts+=("${ICON_INACTIVE} Idle: off")
+    fi
+
+    # Monitor
+    if [[ "${monitor}" == "true" ]]; then
+        parts+=("${ICON_MONITOR} Monitor: ON")
+    else
+        parts+=("${ICON_MONITOR} Monitor: off")
+    fi
+
+    # Lid
+    if [[ "${lid}" == "true" ]]; then
+        parts+=("${ICON_LID} Lid: ON")
+    else
+        parts+=("${ICON_LID} Lid: off")
+    fi
+
+    echo "$(IFS=$' · '; echo "${parts[*]}")"
+}
+
+# ── Waybar ───────────────────────────────────────────────────────────────────
+
+do_waybar() {
+    local state monitor lid duration
+    local timer_on="false" infinite_on="false"
+
+    state="$(state_get_status)"
+    monitor="$(state_get_monitor)"
+    lid="$(state_get_lid)"
+    duration="$(state_get_duration)"
+
+    if [[ "${state}" == "active" ]]; then
+        if [[ "${duration}" -eq 0 ]]; then
+            infinite_on="true"
+        else
+            timer_on="true"
+        fi
+    fi
+
+    # ── Build text ── cup first, then active toggle icons
+    # Cup: filled when idle active, outline when off
+    local idle_active="false"
+    [[ "${timer_on}" == "true" || "${infinite_on}" == "true" ]] && idle_active="true"
+
+    local cup="${WB_COFFEE_OFF}"
+    [[ "${idle_active}" == "true" ]] && cup="${WB_COFFEE}"
+
+    local action_parts=()
+    if [[ "${infinite_on}" == "true" ]]; then
+        action_parts+=("${WB_LOOP}")
+    fi
+    if [[ "${timer_on}" == "true" ]]; then
+        action_parts+=("${WB_TIMER} $(state_get_remaining)")
+    fi
+    if [[ "${monitor}" == "true" ]]; then
+        action_parts+=("${WB_MONITOR}")
+    fi
+    if [[ "${lid}" == "true" ]]; then
+        action_parts+=("${WB_LID}")
+    fi
+
+    local text="${cup}"
+    if [[ ${#action_parts[@]} -gt 0 ]]; then
+        text="${cup} $(IFS=' '; echo "${action_parts[*]}")"
+    fi
+
+    # ── Build tooltip ──
+    local tooltip_parts=()
+    if [[ "${timer_on}" == "true" ]]; then
+        tooltip_parts+=("${NF_TIMER} Timer: $(state_get_remaining)")
+    fi
+    if [[ "${infinite_on}" == "true" ]]; then
+        tooltip_parts+=("${NF_INFINITE} Infinite mode")
+    fi
+    if [[ "${monitor}" == "true" ]]; then
+        tooltip_parts+=("${NF_MONITOR} Display: ON")
+    fi
+    if [[ "${lid}" == "true" ]]; then
+        tooltip_parts+=("${NF_LAPTOP} Lid: Blocked")
+    fi
+
+    local tooltip
+    if [[ ${#tooltip_parts[@]} -eq 0 ]]; then
+        tooltip="☕ Caffeine: Inactive"
+    else
+        tooltip="$(IFS=' | '; echo "${tooltip_parts[*]}")"
+    fi
+
+    # ── CSS class + color based on toggle combination ──
+    local class="hc-off"
+    local color="#6c7086"
+
+    if [[ "${infinite_on}" == "true" && "${monitor}" == "true" && "${lid}" == "true" ]]; then
+        class="hc-all"; color="#f38ba8"
+    elif [[ "${timer_on}" == "true" && "${monitor}" == "true" && "${lid}" == "true" ]]; then
+        class="hc-all"; color="#f38ba8"
+    elif [[ "${infinite_on}" == "true" && "${monitor}" == "true" ]]; then
+        class="hc-infinite-monitor"; color="#a6e3a1"
+    elif [[ "${infinite_on}" == "true" && "${lid}" == "true" ]]; then
+        class="hc-infinite-lid"; color="#f5c2e7"
+    elif [[ "${timer_on}" == "true" && "${monitor}" == "true" ]]; then
+        class="hc-timer-monitor"; color="#a6e3a1"
+    elif [[ "${timer_on}" == "true" && "${lid}" == "true" ]]; then
+        class="hc-timer-lid"; color="#f5c2e7"
+    elif [[ "${monitor}" == "true" && "${lid}" == "true" ]]; then
+        class="hc-monitor-lid"; color="#89b4fa"
+    elif [[ "${infinite_on}" == "true" ]]; then
+        class="hc-infinite"; color="#fab387"
+    elif [[ "${timer_on}" == "true" ]]; then
+        class="hc-timer"; color="#fab387"
+    elif [[ "${monitor}" == "true" ]]; then
+        class="hc-monitor"; color="#94e2d5"
+    elif [[ "${lid}" == "true" ]]; then
+        class="hc-lid"; color="#cba6f7"
+    fi
+
+    tooltip="$(echo "${tooltip}" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+
+    printf '{"text":"%s","tooltip":"%s","class":"%s","color":"%s"}\n' \
+        "${text}" "${tooltip}" "${class}" "${color}"
+}
+
+# ── Waybar (via ui-engine.sh) ──────────────────────────────────────────────
+
+do_waybar_engine() {
+    bash "${LIB_DIR}/ui-engine.sh" waybar
+}
+
+# ── Polkit Rule Management ────────────────────────────────────────────────────
+
+do_polkit_status() {
+    local rule="/etc/polkit-1/rules.d/50-hyprcaffeine.rules"
+    # /etc/polkit-1/rules.d/ is 0750 root:polkitd — stat/read requires root.
+    # Use sudo -n (non-interactive) so interactive runs work; skip gracefully if not.
+    local _exists=false
+    if [[ "$(id -u)" -eq 0 ]]; then
+        [[ -f "${rule}" ]] && _exists=true
+    elif sudo -n test -f "${rule}" 2>/dev/null; then
+        _exists=true
+    fi
+
+    if "${_exists}"; then
+        echo "Polkit rule: installed"
+        echo "  Path: ${rule}"
+        local _grant
+        _grant=$(sudo -n grep -o "wheel\|isInGroup" "${rule}" 2>/dev/null | head -1)
+        [[ "${_grant}" == "wheel" || "${_grant}" == "isInGroup" ]] && \
+            echo "  Grant: wheel group members" || echo "  Grant: specific user"
+    else
+        echo "Polkit rule: NOT installed (or unverifiable without root)"
+        echo "  Sleep/lid inhibition requires auth prompts"
+        echo "  Fix: sudo hyprcaffeine polkit install"
+    fi
+}
+
+do_polkit_install() {
+    local polkit_script=""
+    for candidate in \
+        "/usr/share/hyprcaffeine/scripts/polkit-setup.sh" \
+        "${HOME}/.local/share/hyprcaffeine/scripts/polkit-setup.sh" \
+        "${LIB_DIR}/polkit-setup.sh"; do
+        if [[ -f "${candidate}" ]]; then
+            polkit_script="${candidate}"
+            break
+        fi
+    done
+
+    if [[ -z "${polkit_script}" ]]; then
+        echo "Error: polkit-setup.sh not found" >&2; return 1
+    fi
+
+    if [[ "$(id -u)" -eq 0 ]]; then
+        bash "${polkit_script}"
+    elif command -v sudo &>/dev/null; then
+        echo "Installing polkit rule (sudo required):"
+        sudo bash "${polkit_script}"
+    else
+        echo "Error: sudo required to install polkit rule" >&2
+        echo "Run: sudo bash ${polkit_script}" >&2
+        return 1
+    fi
+}
+
+do_polkit_remove() {
+    local rule="/etc/polkit-1/rules.d/50-hyprcaffeine.rules"
+    if [[ "$(id -u)" -eq 0 ]]; then
+        if [[ ! -f "${rule}" ]]; then
+            echo "Polkit rule not installed — nothing to remove"
+            return 0
+        fi
+        rm -f "${rule}"
+    elif command -v sudo &>/dev/null; then
+        # /etc/polkit-1/rules.d/ is 0750 root:polkitd — use sudo -n to check
+        if ! sudo -n test -f "${rule}" 2>/dev/null; then
+            echo "Polkit rule not found (or unverifiable without root) — nothing to remove"
+            return 0
+        fi
+        sudo rm -f "${rule}"
+    else
+        echo "Error: sudo required to remove polkit rule" >&2
+        echo "Run: sudo rm ${rule}" >&2
+        return 1
+    fi
+    echo "Polkit rule removed"
+}
+
+# ── Setup (post-install) ──────────────────────────────────────────────────────
+
+_setup_systemd_service() {
+    local src_service=""
+    for candidate in \
+        "/usr/share/hyprcaffeine/systemd/hyprcaffeine.service" \
+        "${HOME}/.local/share/hyprcaffeine/systemd/hyprcaffeine.service"; do
+        if [[ -f "${candidate}" ]]; then
+            src_service="${candidate}"
+            break
+        fi
+    done
+    [[ -z "${src_service}" ]] && return 1
+
+    local self bin_path
+    self=$(command -v hyprcaffeine 2>/dev/null || true)
+    if [[ "${self}" == "${HOME}/.local/bin/hyprcaffeine" ]]; then
+        bin_path="%h/.local/bin/hyprcaffeine"
+    elif [[ -n "${self}" ]]; then
+        bin_path="${self}"
+    else
+        bin_path="%h/.local/bin/hyprcaffeine"
+    fi
+
+    mkdir -p "${HOME}/.config/systemd/user"
+    sed "s|__HC_BIN__|${bin_path}|g" "${src_service}" > "${HOME}/.config/systemd/user/hyprcaffeine.service"
+    systemctl --user daemon-reload 2>/dev/null
+    systemctl --user disable hyprcaffeine.service 2>/dev/null
+    systemctl --user enable hyprcaffeine.service 2>/dev/null
+}
+
+do_setup() {
+    echo "  󰒲 HyprCaffeine — Post-install Setup"
+    echo ""
+
+    echo "  [1/4] Polkit rule (sleep/lid inhibition)..."
+    if [[ "$(id -u)" -eq 0 ]]; then
+        # Running as root (post_install) — always (re)install
+        echo "        Installing as root..."
+        if do_polkit_install; then
+            echo "        ✅ Polkit installed"
+        else
+            echo "        ⚠️  Polkit install failed"
+        fi
+    else
+        # /etc/polkit-1/rules.d/ is 0750 root:polkitd — unreadable by normal users.
+        # Cannot verify; the package post-install hook installs as root.
+        # If missing, user can fix manually.
+        echo "        ℹ️  Managed by root (package hook). If missing:"
+        echo "           sudo hyprcaffeine polkit install"
+    fi
+
+    echo "  [2/4] Waybar integration..."
+    if bash "${LIB_DIR}/waybar-setup.sh" 2>/dev/null; then
+        echo "        ✅ Waybar done"
+    else
+        echo "        ⚠️  Waybar skipped"
+    fi
+
+    echo "  [3/4] Systemd user service..."
+    if _setup_systemd_service 2>/dev/null; then
+        echo "        ✅ Service enabled"
+    else
+        echo "        ⚠️  Service file not found — skipped"
+    fi
+
+    echo "  [4/4] Hyprland keybindings..."
+    if _kb_install 2>/dev/null; then
+        echo "        ✅ Keybindings installed"
+    else
+        echo "        ⚠️  Keybindings skipped"
+    fi
+
+    echo ""
+    echo "  Setup complete! Run: hyprcaffeine status"
+}
+
+# ── Uninstall (self) ──────────────────────────────────────────────────────────
+
+do_uninstall_self() {
+    echo "  󰒲 HyprCaffeine — Uninstall"
+    echo ""
+
+    # Detect install method
+    local install_mode="unknown"
+    if command -v pacman &>/dev/null && pacman -Q hyprcaffeine &>/dev/null 2>&1; then
+        install_mode="aur"
+    elif [[ -f "/usr/local/bin/hyprcaffeine" ]]; then
+        install_mode="system"
+    elif [[ -f "${HOME}/.local/bin/hyprcaffeine" ]]; then
+        install_mode="user"
+    fi
+
+    if [[ "${install_mode}" == "aur" ]]; then
+        echo "  Installed via pacman/AUR. To remove the package run:"
+        echo "    yay -R hyprcaffeine"
+        echo "    paru -R hyprcaffeine"
+        echo "    sudo pacman -R hyprcaffeine"
+        echo ""
+        echo "  Continuing to clean up user files..."
+        echo ""
+    fi
+
+    # Stop running state first
+    watcher_stop 2>/dev/null || true
+    do_off "--all" 2>/dev/null || true
+
+    echo "  Removing keybindings..."
+    _kb_remove 2>/dev/null || true
+
+    echo "  Removing waybar integration..."
+    bash "${LIB_DIR}/waybar-remove.sh" 2>/dev/null || true
+
+    echo "  Disabling systemd service..."
+    systemctl --user disable --now hyprcaffeine.service 2>/dev/null || true
+    rm -f "${HOME}/.config/systemd/user/hyprcaffeine.service"
+    systemctl --user daemon-reload 2>/dev/null || true
+
+    rm -rf "${HOME}/.cache/hyprcaffeine"
+    echo "  State cache removed"
+
+    if [[ -d "${HOME}/.config/hyprcaffeine" ]]; then
+        echo -n "  Remove config at ~/.config/hyprcaffeine/? [y/N] "
+        read -r _uc_ans
+        if [[ "${_uc_ans:-}" =~ ^[Yy]$ ]]; then
+            rm -rf "${HOME}/.config/hyprcaffeine"
+            echo "  Config removed"
+        else
+            echo "  Config preserved"
+        fi
+    fi
+
+    if [[ -f "/etc/polkit-1/rules.d/50-hyprcaffeine.rules" ]]; then
+        echo -n "  Remove polkit rule? (requires sudo) [y/N] "
+        read -r _pol_ans
+        if [[ "${_pol_ans:-}" =~ ^[Yy]$ ]]; then
+            do_polkit_remove
+        fi
+    fi
+
+    if [[ "${install_mode}" == "system" ]]; then
+        echo -n "  Remove system binary and data? (requires sudo) [y/N] "
+        read -r _sys_ans
+        if [[ "${_sys_ans:-}" =~ ^[Yy]$ ]]; then
+            sudo rm -f "/usr/local/bin/hyprcaffeine"
+            sudo rm -rf "/usr/local/share/hyprcaffeine"
+            echo "  System files removed"
+        fi
+    elif [[ "${install_mode}" == "user" ]]; then
+        echo -n "  Remove user binary and data? [y/N] "
+        read -r _usr_ans
+        if [[ "${_usr_ans:-}" =~ ^[Yy]$ ]]; then
+            rm -f "${HOME}/.local/bin/hyprcaffeine"
+            rm -rf "${HOME}/.local/share/hyprcaffeine"
+            echo "  User files removed"
+        fi
+    fi
+
+    echo ""
+    echo "  Uninstall complete."
+    [[ "${install_mode}" == "aur" ]] && echo "  Run 'yay -R hyprcaffeine' to remove the AUR package."
+}
+
+# ── Main Entry Point ─────────────────────────────────────────────────────────
+
+main() {
+    mkdir -p "${STATE_DIR}"
+
+    local subcommand="${1:-}"
+    shift 2>/dev/null || true
+
+    case "${subcommand}" in
+        --help|-h)
+            show_help
+            ;;
+        --version|-v)
+            show_version
+            ;;
+        on)
+            do_on "${1:-}"
+            ;;
+        off)
+            do_off "${1:-}"
+            ;;
+        status)
+            do_status
+            ;;
+        toggle)
+            do_toggle
+            ;;
+        waybar)
+            do_waybar
+            ;;
+        menu)
+            # Launch menu via hyprctl so it gets proper Wayland context
+            if command -v hyprctl &>/dev/null && [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
+                hyprctl dispatch exec "bash '${LIB_DIR}/caffeine-menu.sh'" 2>/dev/null
+            else
+                bash "${LIB_DIR}/caffeine-menu.sh"
+            fi
+            ;;
+        waybar-setup)
+            bash "${LIB_DIR}/waybar-setup.sh" "${1:-}"
+            ;;
+        waybar-remove)
+            bash "${LIB_DIR}/waybar-remove.sh"
+            ;;
+        monitor)
+            local action="${1:-toggle}"
+            case "${action}" in
+                on)     do_monitor_on ;;
+                off)    do_monitor_off ;;
+                toggle) do_monitor_toggle ;;
+                *)      echo "Usage: hyprcaffeine monitor <on|off|toggle>" >&2; exit 1 ;;
+            esac
+            ;;
+        lid)
+            local action="${1:-toggle}"
+            case "${action}" in
+                on)     do_lid_on ;;
+                off)    do_lid_off ;;
+                toggle) do_lid_toggle ;;
+                *)      echo "Usage: hyprcaffeine lid <on|off|toggle>" >&2; exit 1 ;;
+            esac
+            ;;
+        keybinds)
+            local kb_action="${1:-status}"
+            case "${kb_action}" in
+                install) _kb_install ;;
+                remove)  _kb_remove ;;
+                status)  _kb_status ;;
+                *)       echo "Usage: hyprcaffeine keybinds <install|remove|status>" >&2; exit 1 ;;
+            esac
+            ;;
+        polkit)
+            local pol_action="${1:-status}"
+            case "${pol_action}" in
+                install) do_polkit_install ;;
+                remove)  do_polkit_remove ;;
+                status)  do_polkit_status ;;
+                *)       echo "Usage: hyprcaffeine polkit <install|remove|status>" >&2; exit 1 ;;
+            esac
+            ;;
+        setup|reinstall)
+            do_setup
+            ;;
+        uninstall)
+            do_uninstall_self
+            ;;
+        restore)
+            do_restore
+            ;;
+        watcher)
+            local watcher_action="${1:-}"
+            case "${watcher_action}" in
+                start)  watcher_start ;;
+                stop)   watcher_stop ;;
+                status) watcher_status ;;
+                *)      echo "Usage: hyprcaffeine watcher <start|stop|status>" >&2; exit 1 ;;
+            esac
+            ;;
+        tui|dashboard)
+            # Launch Premium TUI (ratatui)
+            local tui_bin="${HOME}/.local/bin/hyprcaffeine-tui"
+            if [[ -x "${tui_bin}" ]]; then
+                exec "${tui_bin}" "$@"
+            else
+                echo "TUI not installed. Build with: cd src-tui && cargo build --release" >&2
+                exit 1
+            fi
+            ;;
+        "")
+            # No args — interactive gum menu
+            if command -v gum &>/dev/null; then
+                bash "${LIB_DIR}/caffeine-menu.sh"
+            else
+                show_help
+            fi
+            ;;
+        *)
+            echo "Unknown command: ${subcommand}" >&2
+            echo "Run 'hyprcaffeine --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

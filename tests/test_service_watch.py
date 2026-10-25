@@ -35,6 +35,316 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_real_journal_oom_signature_can_use_reserved_capacity(self):
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
+            for index in range(3):
+                self.watch.record('user', f'routine-{index}.service', [sw.event('failed')], triage=False)
+            self.watch.record('user', 'routine-four.service', [sw.event('failed')], triage=False)
+            self.assertEqual(send.call_count, 3)
+            ident = self.watch.record('user', 'heap.service',
+                                      [sw.event('journal_error_rate', severity='severe', count=5)],
+                                      raw=['JavaScript heap out of memory'], triage=False)
+            self.assertEqual(send.call_count, 4)
+        fingerprint, text = self.watch.store.db.execute('SELECT fingerprint,data FROM incidents WHERE id=?', (ident,)).fetchone()
+        data = json.loads(text)
+        self.assertEqual(data['window']['evidence'][0]['code'], 'journal_error_rate')
+        self.assertEqual(data['window']['signatures']['out_of_memory'], 1)
+        self.assertEqual(self.watch.store.notification_class(fingerprint), ('heap.service', True))
+        for signatures in ({'out_of_memory': 0}, {'out_of_memory': '1'}, {'out_of_memory': True},
+                           {'unknown_memory_claim': 1}):
+            data['window']['signatures'] = signatures
+            self.watch.store.db.execute('UPDATE incidents SET data=? WHERE id=?', (json.dumps(data), ident))
+            self.watch.store.db.commit()
+            self.assertEqual(self.watch.store.notification_class(fingerprint), ('heap.service', False))
+
+    def test_notification_budget_reserves_two_critical_slots_and_limits_routine_sources(self):
+        serial = 0
+        def attempt(unit, code, cause='host_config_drift out_of_memory memory-pressure'):
+            nonlocal serial
+            serial += 1
+            with patch.object(self.watch.store, 'notify'):
+                ident = self.watch.record('user', unit, [sw.event(code)],
+                                          identity=serial, triage=False)
+            fingerprint = self.watch.store.db.execute('SELECT fingerprint FROM incidents WHERE id=?', (ident,)).fetchone()[0]
+            return self.watch.store.notify(fingerprint, unit, cause, ident, once=True)
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
+            self.assertEqual(attempt('routine-one.service', 'failed'), 'delivered')
+            self.assertEqual(attempt('routine-one.service', 'restart_loop'), 'rate_limited')
+            self.assertEqual(attempt('routine-two.service', 'failed'), 'delivered')
+            self.assertEqual(attempt('routine-three.service', 'failed'), 'delivered')
+            self.assertEqual(attempt('routine-four.service', 'failed'), 'rate_limited')
+            self.assertEqual(send.call_count, 3)
+            self.assertEqual(attempt('host-drift.service', 'host_config_drift', cause='unrelated'), 'delivered')
+            self.assertEqual(attempt('memory-watch.service', 'out_of_memory', cause='unrelated'), 'delivered')
+            self.assertEqual(attempt('pressure-watch.service', 'memory-pressure', cause='unrelated'), 'rate_limited')
+            self.assertEqual(send.call_count, 5)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM notifications').fetchone()[0], 5)
+
+    def test_memory_pressure_finite_codes_are_critical(self):
+        for index, code in enumerate(('memory_pressure', 'memory-pressure', 'out_of_memory')):
+            with patch.object(self.watch.store, 'notify'):
+                ident = self.watch.record('user', 'pressure.service', [sw.event(code)], identity=index, triage=False)
+            fingerprint = self.watch.store.db.execute('SELECT fingerprint FROM incidents WHERE id=?', (ident,)).fetchone()[0]
+            self.assertEqual(self.watch.store.notification_class(fingerprint), ('pressure.service', True))
+
+    def test_rate_limited_host_set_retries_without_duplicate_incident(self):
+        now = time.time()
+        self.watch.store.db.executemany('INSERT INTO notifications VALUES (?,?,1)',
+                                       [('other-' + str(i), now) for i in range(5)])
+        self.watch.store.db.commit()
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as deliver, \
+             patch('builtins.print') as journal:
+            ident = self.watch.record('user', 'host-drift.service', [sw.event('host_config_drift')],
+                                      identity={'drift': [{'path': '/fixture'}]}, triage=False)
+            fingerprint = self.watch.store.db.execute('SELECT fingerprint FROM incidents WHERE id=?', (ident,)).fetchone()[0]
+            self.assertIsNone(self.watch.store.db.execute('SELECT 1 FROM notifications WHERE fingerprint=?', (fingerprint,)).fetchone())
+            deliver.assert_not_called()
+            data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+            self.assertEqual(data['notification_state'], 'pending')
+            self.watch.store.db.execute('UPDATE notifications SET ts=?', (now - 7200,))
+            self.watch.store.db.commit()
+            repeated = self.watch.record('user', 'host-drift.service', [sw.event('host_config_drift')],
+                                         identity={'drift': [{'path': '/fixture'}]}, triage=False)
+            self.assertEqual(repeated, ident)
+            self.assertEqual(deliver.call_count, 1)
+            self.watch.store.db.execute('UPDATE notifications SET ts=0')
+            self.watch.store.db.commit()
+            self.watch.record('user', 'host-drift.service', [sw.event('host_config_drift')],
+                              identity={'drift': [{'path': '/fixture'}]}, triage=False)
+            self.assertEqual(deliver.call_count, 1)
+            data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+            self.assertEqual(data['notification_state'], 'delivered')
+            rows = [json.loads(call.args[0].removeprefix('SERVICE_WATCH_DELIVERY '))
+                    for call in journal.call_args_list]
+            self.assertEqual([row['result'] for row in rows], ['rate_limited', 'delivered', 'deduplicated'])
+            self.assertTrue(all(set(row) == {'id', 'fingerprint', 'result'} for row in rows))
+            self.assertTrue(all(row['id'] == ident and row['fingerprint'] == fingerprint for row in rows))
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM notifications WHERE fingerprint=?', (fingerprint,)).fetchone()[0], 1)
+
+    def test_command_shutdown_cancels_owned_process_promptly(self):
+        stop = threading.Event()
+        sw.COMMAND_CONTEXT.stop = stop
+        timer = threading.Timer(.1, stop.set)
+        timer.start()
+        started = time.monotonic()
+        try:
+            with self.assertRaises(sw.ShutdownRequested):
+                sw.command([sys.executable, '-c', 'import time; time.sleep(30)'], 30)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            timer.join()
+            del sw.COMMAND_CONTEXT.stop
+
+    def test_cancelled_journal_preserves_cursor_without_gap_incident(self):
+        self.watch.store.set('cursor:user', 'original')
+        self.watch.units = {('user', 'fixture.service'): {}}
+        proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        sw.COMMAND_CONTEXT.stop = self.watch.stop
+        timer = threading.Timer(.1, self.watch.stop.set)
+        timer.start()
+        try:
+            with patch.object(sw.subprocess, 'Popen', return_value=proc), \
+                 patch.object(self.watch, 'record') as record:
+                with self.assertRaises(sw.ShutdownRequested):
+                    self.watch.journals()
+            self.assertEqual(self.watch.store.get('cursor:user'), 'original')
+            record.assert_not_called()
+            self.assertIsNotNone(proc.poll())
+        finally:
+            timer.join()
+            del sw.COMMAND_CONTEXT.stop
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+    def test_host_drift_identity_is_durable_and_includes_pending_action(self):
+        item = {'path': '/private/root', 'reason': 'unreadable', 'checked_at': 1,
+                'disposition': 'pending-owner-action', 'owner': 'Kevin', 'command': 'inspect locally'}
+        identity = ['host_drift_unknown', sw.host_drift_identity(item)]
+        action = {key: item[key] for key in ('disposition', 'owner', 'command')}
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as notify:
+            first = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=identity, action=action, triage=False)
+            self.watch.store.db.execute('UPDATE incidents SET ts=0')
+            self.watch.store.db.commit()
+            other = sw.Watch(self.watch.store.root, self.root / 'inventory.json')
+            try:
+                item['checked_at'] = 99999
+                second = other.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=['host_drift_unknown', sw.host_drift_identity(item)],
+                                      action=action, triage=False)
+                self.assertEqual(first, second)
+                self.assertEqual(notify.call_count, 1)
+            finally:
+                other.store.db.close()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['pending_action'], action)
+        self.assertNotIn('/private/root', json.dumps(data))
+
+    def test_shutdown_does_not_mark_interrupted_scan_complete(self):
+        entered = threading.Event()
+        def blocked_scan():
+            entered.set()
+            sw.command([sys.executable, '-c', 'import time; time.sleep(30)'], 30)
+        daemon = threading.Thread(target=self.watch.serve)
+        with patch.object(self.watch, 'scan', blocked_scan), \
+             patch.object(self.watch, 'worker', lambda: self.watch.stop.wait()), \
+             patch.object(self.watch, 'checkout_worker', lambda: self.watch.stop.wait()), \
+             patch.object(sw, 'notify_systemd'):
+            daemon.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.watch.stop.set()
+                daemon.join(2)
+                self.assertFalse(daemon.is_alive())
+                self.assertFalse((self.watch.store.root / 'status.json').exists())
+            finally:
+                self.watch.stop.set()
+                daemon.join(2)
+
+    def test_distinct_host_items_do_not_hide_behind_same_event_code(self):
+        with patch.object(self.watch.store, 'notify'):
+            first = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                      identity=['host_drift_unknown', {'path': '/one'}], triage=False)
+            second = self.watch.record('user', 'host-drift.service', [sw.event('host_drift_unknown')],
+                                       identity=['host_drift_unknown', {'path': '/two'}], triage=False)
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 2)
+
+    def test_projection_preserves_host_codes_and_delivers_unknown_class(self):
+        for code in ('host_config_drift', 'host_drift_unknown'):
+            projected = sw.project([sw.event(code)], [])
+            self.assertEqual(projected['evidence'][0]['code'], code)
+            self.assertNotIn('invariant_unavailable', json.dumps(projected))
+        projected = sw.project([{'code': 'future-private-producer-code'}], [])
+        self.assertEqual(projected['evidence'][0]['code'], 'unrecognized')
+        self.assertNotIn('future-private-producer-code', json.dumps(projected))
+        with patch.object(self.watch.store, 'notify') as notify:
+            ident = self.watch.record('user', 'fixture.service',
+                                      [{'code': 'future-private-producer-code', 'severity': 'info'}],
+                                      triage=False)
+            notify.assert_called_once()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertEqual(data['decision']['cause'], 'unrecognized')
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(sw.event('future-private-producer-code')['severity'], 'severe')
+
+    def test_exact_host_drift_set_notifies_once_until_changed(self):
+        receipt = self.root / '.local/state/host-drift/latest.json'
+        receipt.parent.mkdir(parents=True)
+        items = [{'path': '/one', 'detail': 'changed', 'observed_at': 1},
+                 {'path': '/two', 'detail': 'unreadable', 'observed_at': 1,
+                  'disposition': 'pending-owner-action', 'owner': 'Kevin', 'command': 'inspect'}]
+        def save(rows):
+            receipt.write_text(json.dumps({'schema': 'host-drift.v1', 'status': 'drift',
+                                           'drift': rows, 'unknown': []}))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as notify:
+            save(items)
+            sw.main()
+            self.watch.store.db.execute('UPDATE incidents SET ts=0')
+            self.watch.store.db.commit()
+            items[0]['observed_at'] = 9999
+            save(list(reversed(items)))
+            sw.main()
+            self.assertEqual(notify.call_count, 1)
+            items[0]['detail'] = 'different fact, same count'
+            save(items)
+            sw.main()
+            self.assertEqual(notify.call_count, 2)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 2)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents LIMIT 1').fetchone()[0])
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(data['pending_action'][0]['owner'], 'Kevin')
+
+    def test_persisted_unknown_evidence_is_deliverable_without_raw_or_models(self):
+        with patch.object(self.watch.store, 'notify'):
+            ident = self.watch.record('user', 'fixture.service', [sw.event('invariant_unavailable')])
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        data['window']['evidence'][0]['code'] = 'new-producer-code'
+        self.watch.store.db.execute('UPDATE incidents SET data=? WHERE id=?', (json.dumps(data), ident))
+        self.watch.store.db.commit()
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 1, '', '')), \
+             patch.object(sw, 'post', side_effect=OSError('offline')), \
+             patch.object(sw.subprocess, 'run', side_effect=OSError('offline')), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.watch.triage(ident, [])
+            notify.assert_called_once()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertEqual(data['window']['evidence'][0]['code'], 'unrecognized')
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(data['decision']['severity'], 'severe')
+
+    def test_healthy_heartbeat_never_opens_incident_database(self):
+        (self.root / 'status.json').write_text(json.dumps({'scan_completed_at': time.time()}))
+        with patch.object(sw, 'Watch', side_effect=AssertionError('must not open database')), \
+             patch.object(sys, 'argv', ['service-watch', '--state', str(self.root), 'heartbeat']):
+            self.assertEqual(sw.main(), 0)
+
+    def test_missing_malformed_future_and_stale_heartbeat_are_adverse(self):
+        path = self.root / 'status.json'
+        self.assertTrue(sw.heartbeat_stale(path, now=1000))
+        for content in ('{', '{}', '[]', '{"scan_completed_at":true}',
+                        '{"scan_completed_at":1001}', '{"scan_completed_at":879}'):
+            path.write_text(content)
+            self.assertTrue(sw.heartbeat_stale(path, now=1000), content)
+        path.write_text('{"scan_completed_at":880}')
+        self.assertFalse(sw.heartbeat_stale(path, now=1000))
+
+    def test_degraded_tick_is_deduplicated_warning_without_notifications(self):
+        unit = 'z0int-loop-tick.service'
+        self.watch.units[('user', unit)] = {}
+        directory = self.root / '.z0int/loop'
+        directory.mkdir(parents=True)
+        summary = {'schema': 'z0int.loop.tick_summary.v0', 'tick_id': 'fixture',
+                   'status': 'degraded', 'exit': 3, 'degraded_by': ['cognition:context_overflow'],
+                   'ended_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        (directory / 'last-tick.json').write_text(json.dumps(summary))
+        reports = directory / 'reports' / str(datetime.date.today())
+        reports.mkdir(parents=True)
+        (reports / 'ticks.jsonl').write_text(''.join(json.dumps({
+            'status': 'degraded', 'exit': 3, 'rows_added': {'shadow_decisions': 0}}) + '\n' for _ in range(3)))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.watch.loop_invariants()
+            self.watch.loop_invariants()
+        self.assertFalse(notify.called)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['decision']['severity'], 'warn')
+        self.assertEqual(self.watch.store.get('loop:last_tick')['tick_id'], 'fixture')
+
+    def test_host_drift_uses_existing_notification_dedupe(self):
+        receipt = self.root / '.local/state/host-drift/latest.json'
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text(json.dumps({'schema': 'host-drift.v1', 'status': 'drift',
+                                       'drift': [{'path': '/private/not-forwarded'}], 'unknown': []}))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_config_drift', text)
+        self.assertNotIn('/private/not-forwarded', text)
+
+    def test_host_drift_missing_receipt_is_unknown_and_notifies(self):
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_drift_unknown', text)
+
     def test_finite_projection_withholds_every_arbitrary_string(self):
         secrets = ['sk-secret-abcdef', 'Bearer abc.eyJWT.def', 'Cookie: session=SUPERSECRET',
                    'kevin@example.com', '100.117.226.39', 'https://example.test/?token=secret',
@@ -208,7 +518,7 @@ class Contracts(unittest.TestCase):
         ]
         for code, report, expected in cases:
             result = subprocess.CompletedProcess([], code, json.dumps(report), '')
-            with patch.object(sw.subprocess, 'run', return_value=result) as run:
+            with patch.object(sw, 'command', return_value=result) as run:
                 events = self.watch.invariant('user', 'fixture.service', invariant, {}, time.time())
             self.assertEqual([e['code'] for e in events], expected)
             self.assertEqual(run.call_args[0][0], ['z0-guard', 'phone-caps', '--root', str(self.root)])
@@ -292,11 +602,13 @@ class Contracts(unittest.TestCase):
         self.assertIn('fixture.service', digest)
         self.assertIn('severe', digest)
 
-    def test_global_rate_limit(self):
+    def test_unattributed_legacy_notifications_share_conservative_routine_budget(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             results = [self.watch.store.notify(str(i), 'fixture.service', 'failed', str(i), now=100000) for i in range(6)]
-        self.assertEqual(results, ['delivered'] * 5 + ['rate_limited'])
-        self.assertEqual(send.call_count, 5)
+        # Unattributed legacy fingerprints conservatively share an unknown
+        # routine source; they never qualify for the two reserved slots.
+        self.assertEqual(results, ['delivered'] + ['rate_limited'] * 5)
+        self.assertEqual(send.call_count, 1)
 
     def test_loop_receipts_consecutive_zero_ticks(self):
         home = self.root / 'home'

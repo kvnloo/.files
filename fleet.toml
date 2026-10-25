@@ -8,11 +8,11 @@ match_hostnames = ["0", "groot"]
 platform = "cachyos"
 package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
-system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
-system_timers = ["tern-remote-refresh.timer"]
+system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service", "earlyoom.service"]
+system_timers = ["tern-remote-refresh.timer", "fstrim.timer"]
 system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service"]
-user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "zer0-storage-autotier.timer"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 
@@ -29,6 +29,13 @@ autotier_superseded_source = "/workspace/zer0/portfolios/chief-of-staff/scripts/
 [hosts.desktop.policy_pipeline]
 service = "z0int-policy.service"
 timer = "z0int-policy.timer"
+enabled = true
+source = "/home/kvn/.local/lib/z0int-policy/current"
+
+[hosts.desktop.model_identity]
+service = "z0int-model-identity.service"
+path = "z0int-model-identity.path"
+timer = "z0int-model-identity.timer"
 enabled = true
 source = "/home/kvn/.local/lib/z0int-policy/current"
 

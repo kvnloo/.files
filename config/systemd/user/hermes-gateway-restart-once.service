@@ -1,0 +1,6 @@
+[Unit]
+Description=One-shot Hermes gateway restart after API config change
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart hermes-gateway.service

@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes3D operator-started YouTube OBS stream
+After=graphical-session.target network-online.target hermes3d-renderer.service
+Wants=hermes3d-renderer.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/products/content-creation/hermes3d-live
+ExecStart=/workspace/zer0/products/content-creation/hermes3d-live/obs/launch-isolated.sh --startstreaming
+ExecStop=/workspace/zer0/products/content-creation/hermes3d-live/obs/stop-youtube-stream.sh
+# OBS is a GUI. Never relaunch it after a crash or watchdog failure.
+Restart=no
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

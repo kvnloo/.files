@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes persistent web dashboard and conversation backend
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/hermes dashboard --port 9119 --host 127.0.0.1 --skip-build --no-open
+Restart=on-failure
+RestartSec=3
+Environment=HERMES_HOME=/home/kvn/.hermes
+
+[Install]
+WantedBy=default.target

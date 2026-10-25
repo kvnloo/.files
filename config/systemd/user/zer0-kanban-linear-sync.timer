@@ -1,0 +1,12 @@
+[Unit]
+Description=zer0 Kanban↔Linear sync every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=zer0-kanban-linear-sync.service
+
+[Install]
+WantedBy=timers.target

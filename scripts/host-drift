@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Bounded, report-only host config audit. Exit 0 clean, 1 drift, 2 unknown."""
+import argparse
+import datetime
+from decimal import Decimal
+import fnmatch
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import time
+import tomllib
+
+SCHEMA = 'host-drift.v1'
+PHYSICAL_RELEASE_ROOT = Path('/mnt/zer0models/releases/files-live')
+DEPLOYMENT_RELEASE_ROOT = Path('/mnt/zer0models/releases')
+PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
+              'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
+              'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
+
+
+def command(args, timeout=10):
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode:
+        raise ValueError(f'{args[0]} exited {proc.returncode}: {proc.stderr.strip()[:200]}')
+    return proc.stdout
+
+
+def normalized(value):
+    value = str(value).strip()
+    if value in ('infinity', 'max'):
+        return 'infinity'
+    match = re.fullmatch(r'(\d+)([KMGT])(?:B)?', value)
+    if match:
+        return str(int(match[1]) * 1024 ** ('KMGT'.index(match[2]) + 1))
+    duration = re.fullmatch(r'(\d+(?:\.\d+)?)(us|ms|s|min|h)', value)
+    if duration:
+        return str(int(Decimal(duration[1]) * {'us': 1, 'ms': 1000, 's': 1000000,
+                                              'min': 60000000, 'h': 3600000000}[duration[2]]))
+    return {'yes': 'true', 'no': 'false', 'idle': '3', 'best-effort': '2',
+            'realtime': '1'}.get(value, ' '.join(value.split()))
+
+
+def deployment_stamped(path, entry):
+    """Accept only a declared installer's exact Git-stamped source path."""
+    name = entry.get('stamp_name')
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name):
+        return False
+    base = DEPLOYMENT_RELEASE_ROOT / name
+    resolved = path.resolve()
+    if not resolved.is_relative_to(base):
+        return False
+    parts = resolved.relative_to(base).parts
+    if len(parts) < 2 or not re.fullmatch(r'[0-9a-f]{40}', parts[0]):
+        return False
+    if Path(*parts[1:]) != Path(entry['source']):
+        return False
+    stamp = json.loads((base / parts[0] / '.deployment-stamp.json').read_text())
+    return stamp.get('name') == name and stamp.get('source_sha') == parts[0]
+
+
+def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup')):
+    drift, unknown = [], []
+    manifest = {}
+    if run is command:
+        deadline = time.monotonic() + 120
+        def bounded_run(args):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, 120)
+            return command(args, min(10, remaining))
+        run = bounded_run
+    def add(rows, kind, path, detail):
+        rows.append(dict(kind=kind, path=str(path), detail=detail))
+    def problem(kind, path, detail):
+        add(drift, kind, path, detail)
+    try:
+        manifest = tomllib.loads((root / 'config/host/groot.toml').read_text())
+        entries = manifest.get('system', []) + manifest.get('user', [])
+        if not entries or any(not isinstance(row, dict) or
+                              not all(isinstance(row.get(key), str) and row[key] for key in
+                                      ('live', 'source', 'scope', 'install', 'owner', 'reason'))
+                              or row['scope'] not in ('system', 'user') for row in entries):
+            raise ValueError('manifest requires complete managed path entries')
+        entries.sort(key=lambda row: row['live'])
+        stamp = root / 'tracked-files.json'
+        tracked = set(json.loads(stamp.read_text())) if stamp.exists() else set(run(['git', '-C', str(root), 'ls-files']).splitlines())
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        add(unknown, 'manifest_unavailable', root, str(exc))
+        entries, tracked = [], set()
+    expected = {}
+    io_latency = {}
+    for entry in entries:
+        try:
+            rel = entry['source']
+            if Path(rel).is_absolute() or '..' in Path(rel).parts or rel not in tracked:
+                problem('untracked_source', entry.get('live', rel), rel)
+                continue
+            source = root / rel
+            live = Path(entry['live'].replace('~', str(home), 1)).expanduser()
+            data = source.read_bytes()
+            if entry['install'] == 'generated':
+                argv = shlex.split(entry.get('generator', ''))
+                if (len(argv) != 3 or argv[1] != '--render' or argv[0] not in tracked or
+                        not (root / argv[0]).resolve().is_relative_to(root.resolve())):
+                    raise ValueError('generated source requires a tracked offline --render generator')
+                data = run([str(root / argv[0]), *argv[1:]]).encode()
+            if entry.get('secret') == 'private-exception':
+                if not live.exists():
+                    problem('missing_private_file', live, 'private source unavailable; no credential bytes read')
+                elif live.stat().st_mode & 0o777 != 0o600 or live.stat().st_uid != os.getuid():
+                    problem('private_file_permissions', live, 'expected current-user ownership and mode 0600')
+                add(unknown, 'private_source_exception', live, 'tracked nonsecret declaration only; private content provenance not verified')
+                continue
+            if live.is_symlink():
+                resolved = live.resolve()
+                if any(part in ('worktrees', 'z0-wt') for part in resolved.parts) or (resolved.parent / '.git').exists():
+                    problem('worktree_symlink', live, str(resolved))
+                # Mutable git checkout links are forbidden even under a custom worktree name.
+                for parent in (resolved.parent, *resolved.parents):
+                    if (parent / '.git').exists():
+                        problem('checkout_symlink', live, str(resolved))
+                        break
+            if entry.get('mask') is True:
+                if not live.is_symlink() or live.resolve() != Path('/dev/null'):
+                    problem('mask_changed', live, 'expected explicit /dev/null systemd mask')
+            elif entry['install'] == 'symlink-stamped':
+                target, stamped = live, False
+                library = home / '.local/lib'
+                for _ in range(16):
+                    if not target.is_symlink():
+                        break
+                    link = Path(os.readlink(target))
+                    target = Path(os.path.normpath(link if link.is_absolute() else target.parent / link))
+                    if any(target.is_relative_to(base) and
+                           any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(base).parts)
+                           for base in (library, PHYSICAL_RELEASE_ROOT)):
+                        stamped = True
+                        break
+                if not stamped and not deployment_stamped(live, entry):
+                    problem('unstamped_install', live, 'expected declared content/Git-stamped source installation')
+            if not live.exists():
+                problem('missing_file', live, rel)
+            elif live.read_bytes() != data:
+                problem('changed_file', live, rel)
+            for candidate in (live.with_name(live.name + '.pacnew'),):
+                if candidate.exists():
+                    problem('pacnew', candidate, 'package upgrade requires review')
+            if '/sysctl.d/' in str(live):
+                for line in data.decode().splitlines():
+                    line = line.split('#', 1)[0].split(';', 1)[0].strip()
+                    if not line or '=' not in line:
+                        continue
+                    key, value = map(str.strip, line.split('=', 1))
+                    key = key.lstrip('-').replace('/', '.')
+                    actual = run(['sysctl', '-n', key]).strip()
+                    if normalized(actual) != normalized(value):
+                        problem('sysctl_effective', key, dict(expected=value, actual=actual))
+            if '/systemd/' in str(live) and live.suffix in ('.conf', '.service', '.slice', '.timer'):
+                unit = live.parent.name[:-2] if live.parent.name.endswith('.d') else live.name
+                scope = entry['scope']
+                values = expected.setdefault((scope, unit), {})
+                section = ''
+                for line in data.decode().splitlines():
+                    line = line.strip()
+                    if line.startswith('['):
+                        section = line
+                    if section in ('[Service]', '[Slice]', '[Scope]') and '=' in line and not line.startswith(('#', ';')):
+                        key, value = map(str.strip, line.split('=', 1))
+                        if key in PROPERTIES:
+                            values[key] = value
+                        elif key == 'CPUQuota':
+                            values['CPUQuotaPerSecUSec'] = 'infinity' if not value else str(int(Decimal(value.rstrip('%')) * 10000))
+                        elif key in ('CPUQuotaPeriodSec', 'ManagedOOMMemoryPressureDurationSec'):
+                            values[key.replace('Sec', 'USec')] = value or 'infinity'
+                        elif key == 'ManagedOOMMemoryPressureLimit':
+                            values[key] = str(int(Decimal(value.rstrip('%')) * Decimal(4294967295) / 100)) if value else '0'
+                        elif key == 'IODeviceLatencyTargetSec':
+                            targets = io_latency.setdefault((scope, unit), {})
+                            if not value:
+                                targets.clear()
+                            else:
+                                device, duration = shlex.split(value)
+                                number = Path(device).stat().st_rdev
+                                targets[f'{os.major(number)}:{os.minor(number)}'] = int(normalized(duration))
+                values.update(entry.get('effective', {}))
+        except (OSError, KeyError, ValueError, TypeError, ArithmeticError, UnicodeError, subprocess.SubprocessError) as exc:
+            add(unknown, 'observation_failed', entry.get('live', '?'), str(exc))
+    not_applicable = []
+    instance_cache = {}
+    def instances(scope, unit):
+        key = (scope, unit)
+        if key in instance_cache:
+            return instance_cache[key]
+        pattern = unit.replace('@.', '@*.')
+        if '-.' in pattern and unit != '-.slice':
+            pattern = pattern.replace('-.', '-*.', 1)
+        if pattern == unit:
+            return [unit]
+        rows = run(['systemctl', '--user' if scope == 'user' else '--system', 'list-units',
+                    '--all', '--plain', '--no-legend', '--no-pager', pattern]).splitlines()
+        names = sorted({row.split()[0] for row in rows if row.split()
+                        and fnmatch.fnmatchcase(row.split()[0], pattern)})
+        if len(names) > 1024:
+            raise ValueError('managed instance observation exceeded 1024 units')
+        if not names:
+            not_applicable.append(dict(kind='no_loaded_instances', path=unit,
+                                       detail='tracked template/prefix has no loaded effective unit'))
+        instance_cache[key] = names
+        return names
+    def expand_units(mapping, keep_empty=False):
+        expanded = {}
+        for (scope, unit), values in sorted(mapping.items()):
+            if not values and not keep_empty:
+                continue
+            try:
+                for target in instances(scope, unit):
+                    expanded.setdefault((scope, target), {}).update(values)
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                add(unknown, 'instance_inventory_unavailable', unit, str(exc))
+        return expanded
+    expected = expand_units(expected)
+    io_latency = expand_units(io_latency, keep_empty=True)
+    for (scope, unit), values in sorted(expected.items()):
+        if not values:
+            continue
+        try:
+            args = ['systemctl', '--user' if scope == 'user' else '--system', 'show']
+            for key in sorted(values):
+                args += ['-p', key]
+            args += ['--', unit]
+            actual = dict(line.split('=', 1) for line in run(args).splitlines() if '=' in line)
+            for key, value in values.items():
+                if key not in actual or not actual[key]:
+                    add(unknown, 'property_unavailable', unit, key)
+                elif normalized(actual[key]) != normalized(value):
+                    problem('systemd_effective', unit, dict(property=key, expected=value, actual=actual[key]))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            add(unknown, 'systemd_unavailable', unit, str(exc))
+    for (scope, unit), targets in sorted(io_latency.items()):
+        try:
+            group = run(['systemctl', '--user' if scope == 'user' else '--system', 'show', unit,
+                         '-p', 'ControlGroup', '--value']).strip()
+            if not group.startswith('/') or '..' in Path(group).parts:
+                raise ValueError('no valid unit cgroup path')
+            path = cgroup_root / group.lstrip('/') / 'io.latency'
+            actual = {}
+            for line in path.read_text().splitlines():
+                device, *fields = line.split()
+                actual[device] = int(dict(field.split('=', 1) for field in fields)['target'])
+            for device, target in targets.items():
+                if actual.get(device, 0) != target:
+                    problem('io_latency_effective', unit, dict(device=device, expected=target, actual=actual.get(device, 0)))
+            if not targets and any(actual.values()):
+                problem('io_latency_effective', unit, 'expected no per-device latency target')
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            add(unknown, 'io_latency_unavailable', unit, str(exc))
+    budget_observation = None
+    if entries and manifest.get('budget'):
+        try:
+            budget = manifest['budget']
+            desktop = budget['desktop']
+            groups = budget['groups']
+            if not isinstance(groups, list) or not groups or len(groups) > 64:
+                raise ValueError('budget requires 1..64 named sibling groups')
+            def observe(scope, unit):
+                if scope not in ('system', 'user') or not re.fullmatch(r'[A-Za-z0-9_.:@-]+\.(slice|service|scope)', unit):
+                    raise ValueError('invalid budget group')
+                args = ['systemctl', '--user' if scope == 'user' else '--system', 'show', unit,
+                        '-p', 'MemoryMin', '-p', 'MemoryMax', '-p', 'ControlGroup']
+                return dict(line.split('=', 1) for line in run(args).splitlines() if '=' in line)
+            desktop_values = observe('user', desktop)
+            desktop_min = int(desktop_values['MemoryMin'])
+            physical = os.sysconf('SC_PHYS_PAGES') * os.sysconf('SC_PAGE_SIZE')
+            if desktop_min < 0 or physical <= 0:
+                raise ValueError('invalid physical memory or desktop MemoryMin')
+            observed = []
+            for group in groups:
+                values = observe(group['scope'], group['unit'])
+                cgroup = values.get('ControlGroup', '')
+                if not cgroup:
+                    add(unknown, 'budget_group_unavailable', group['unit'], 'no loaded cgroup observation')
+                    continue
+                observed.append((group, values, cgroup))
+            largest = 0
+            for group, values, cgroup in observed:
+                if any(cgroup.startswith(parent + '/') for _, _, parent in observed if parent != cgroup):
+                    continue  # A named parent already owns this nested envelope.
+                maximum = values.get('MemoryMax')
+                if maximum in ('infinity', 'max', None, ''):
+                    add(unknown, 'budget_unbounded', group['unit'], 'non-desktop MemoryMax has no finite bound')
+                    continue
+                maximum = int(maximum)
+                if maximum < 0:
+                    raise ValueError('negative group MemoryMax')
+                largest = max(largest, maximum)
+            budget_observation = dict(physical_bytes=physical, desktop_min_bytes=desktop_min,
+                                      largest_finite_group_bytes=largest, remaining_bytes=physical - desktop_min)
+            if physical - desktop_min < largest:
+                problem('desktop_budget', desktop, budget_observation)
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+            add(unknown, 'budget_unavailable', 'budget', str(exc))
+    # Only two directory levels: systemd control drop-ins cannot hide deeper.
+    for control in (home / '.config/systemd/user.control', runtime / 'systemd/user.control'):
+        try:
+            if not control.exists():
+                continue
+            paths = []
+            for directory in sorted(control.iterdir()):
+                if directory.name.endswith('.d') and directory.is_dir():
+                    paths.extend(path for path in directory.iterdir() if path.name.endswith('.conf'))
+                if len(paths) > 4096:
+                    raise ValueError('bounded user.control inventory exceeded 4096 drop-ins')
+            for path in sorted(paths):
+                leased = False
+                lease = lease_root / (hashlib.sha256(str(path).encode()).hexdigest() + '.json')
+                if lease.exists():
+                    record = json.loads(lease.read_text())
+                    leased = (record.get('schema') == 'host-drift.lease.v1' and record.get('path') == str(path)
+                              and record.get('owner') and record.get('expires_at', 0) > time.time()
+                              and record.get('sha256') == hashlib.sha256(path.read_bytes()).hexdigest())
+                if not leased:
+                    problem('unleased_control', path, 'no valid path/content/expiry-bound lease')
+        except (OSError, ValueError, TypeError) as exc:
+            add(unknown, 'control_unavailable', control, str(exc))
+    # No whole-home or model-volume scan. Bound /etc by 20k entries/16 levels.
+    for base in pacnew_roots:
+        try:
+            count = 0
+            def walk(directory, depth):
+                nonlocal count
+                try:
+                    children = sorted(directory.iterdir())
+                except OSError as exc:
+                    add(unknown, 'pacnew_unavailable', directory, str(exc))
+                    return
+                for path in children:
+                    count += 1
+                    if count > 20000:
+                        raise ValueError('bounded pacnew inventory exceeded 20000 entries')
+                    if path.name.endswith('.pacnew'):
+                        problem('pacnew', path, 'package upgrade requires review')
+                    if path.is_dir() and not path.is_symlink():
+                        if depth:
+                            walk(path, depth - 1)
+                        else:
+                            add(unknown, 'pacnew_depth_bound', path, 'inventory depth exceeded 16')
+            walk(base, 16)
+        except (OSError, ValueError) as exc:
+            add(unknown, 'pacnew_unavailable', base, str(exc))
+    # The same package file may be observed through its managed path and /etc walk.
+    drift = list({(row['kind'], row['path']): row for row in drift}.values())
+    for action in manifest.get('pending_action', []):
+        if (not isinstance(action, dict) or not isinstance(action.get('paths'), list) or
+                not all(isinstance(action.get(key), str) and action[key]
+                        for key in ('owner', 'command', 'reason'))):
+            add(unknown, 'pending_action_invalid', 'manifest', 'pending action requires paths, owner, command, reason')
+            continue
+        for row in (*drift, *unknown):
+            if row['path'] in action['paths']:
+                row.update(disposition='pending-owner-action', owner=action['owner'],
+                           command=action['command'], pending_reason=action['reason'])
+    # Ownership labels explain unresolved drift; they never turn it clean.
+    for entry in entries:
+        if entry.get('drift') != 'owned-upstream' or not entry.get('issue'):
+            continue
+        live = Path(entry.get('live', ''))
+        unit = live.parent.name[:-2] if live.parent.name.endswith('.d') else live.name
+        for row in drift:
+            if row['path'] == str(live) or row['path'] == unit or unit + '.d' in Path(row['path']).parts:
+                row.update(classification='owned-upstream', issue=entry['issue'])
+    # Unknown takes precedence: drift is still retained and alertable.
+    status = 'unknown' if unknown else 'drift' if drift else 'clean'
+    return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown, budget=budget_observation,
+                not_applicable=not_applicable,
+                host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                summary=f'host drift: {len(drift)} drift, {len(unknown)} unknown', executed=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--home', type=Path, default=Path.home())
+    parser.add_argument('--runtime', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/1000')))
+    parser.add_argument('--leases', type=Path)
+    parser.add_argument('--pacnew-root', type=Path, action='append')
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    report = audit(args.root, args.home, args.runtime,
+                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')])
+    text = json.dumps(report, sort_keys=True, indent=2) + '\n'
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.output.with_suffix('.tmp')
+        temporary.write_text(text)
+        temporary.replace(args.output)
+    print(text, end='')
+    print(report['summary'], file=sys.stderr)
+    return {'clean': 0, 'drift': 1, 'unknown': 2}[report['status']]
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes PR 87495 exact 486a620b5 private synthetic preview
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/hermes-home/kanban/boards/spatial-canvas/workspaces/t_4407766a
+Environment=HERMES_HOME=/workspace/hermes-home/kanban/boards/spatial-canvas/workspaces/t_4407766a/.preview/home-isolated
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m uvicorn desktop_preview:app --app-dir /workspace/hermes-home/kanban/boards/spatial-canvas/workspaces/t_4407766a/.preview --host 127.0.0.1 --port 9141
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

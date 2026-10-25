@@ -12,6 +12,7 @@ const strings: Record<string, true> = {
   phone_resource_caps: true,
 
   policy_stale: true, offload_obligation: true, findings_ingest_stall: true,
+  host_config_drift: true, host_drift_unknown: true, loop_degraded: true, unrecognized: true,
   js_type_error: true, js_reference_error: true, js_syntax_error: true, module_resolution: true,
   connection_refused: true, connection_reset: true, timeout: true, out_of_memory: true,
   uncaught_exception: true, native_fatal: true, bridge_failure: true,

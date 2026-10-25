@@ -106,7 +106,6 @@ def main():
     args = parser.parse_args()
     if args.cmd[:1] == ['--']:
         args.cmd.pop(0)
-    state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
     from fleet_paths import runs_dir
     runs = runs_dir()
     kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml'), '-n', 'fleet-mbp']

@@ -1,0 +1,22 @@
+[Unit]
+Description=Dash authenticated tailnet bridge
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/lib/dash/bridge-current/bridge
+EnvironmentFile=%h/.config/dash-services/bridge.env
+ExecStartPre=%h/.local/lib/dash-services/current/dash-wait-tailnet
+ExecStart=%h/.bun/bin/bun run index.ts
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+OOMPolicy=continue
+# Measured startup/health peak 178798592 bytes; 1GiB includes child headroom.
+# Not a worst-case agent-turn measurement; no soft throttling of control plane.
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

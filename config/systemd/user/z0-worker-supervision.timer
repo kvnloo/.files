@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh z0 supervision every ten minutes (no notifications)
+
+[Timer]
+OnCalendar=*:0/10
+Persistent=true
+RandomizedDelaySec=15
+Unit=z0-worker-supervision.service
+
+[Install]
+WantedBy=timers.target

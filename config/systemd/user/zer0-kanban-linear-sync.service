@@ -1,0 +1,14 @@
+[Unit]
+Description=zer0 Kanban↔Linear sync (groot)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=ZER0_HOST_ID=groot
+Environment=HERMES_HOME=/workspace/hermes-home/profiles/chiefstaff
+EnvironmentFile=-/workspace/zer0/coordination/kanban-linear/linear.env
+ExecStart=/usr/bin/python3 /workspace/zer0/portfolios/chief-of-staff/scripts/kanban_linear_sync.py --once
+WorkingDirectory=/workspace/zer0/coordination
+
+[Install]
+WantedBy=default.target
