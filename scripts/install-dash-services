@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Install the last phone-qualified Dash releases and persistent user services."""
+import argparse
+import hashlib
+import os
+from pathlib import Path
+import subprocess
+import tarfile
+
+BRIDGE = 'f0362444cbb885d25e30f2818a1be78990690df1'
+APP = 'd5c4c17e50a22eef71c821663d07072c113f0ecf'
+FILES = {
+    'config/systemd/user/dash-bridge.service': '.config/systemd/user/dash-bridge.service',
+    'config/systemd/user/dash-metro.service': '.config/systemd/user/dash-metro.service',
+    'config/systemd/user/dash-metro-relay.service': '.config/systemd/user/dash-metro-relay.service',
+    'scripts/dash-metro-relay': '.local/lib/dash-services/current/dash-metro-relay',
+    'config/dash-services/bridge.env': '.config/dash-services/bridge.env',
+    'config/dash-services/metro.env': '.config/dash-services/metro.env',
+    'scripts/dash-wait-tailnet': '.local/lib/dash-services/current/dash-wait-tailnet',
+}
+
+def run(*args, **kwargs):
+    subprocess.run(args, check=True, **kwargs)
+
+def link(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp = target.with_name(target.name + '.dash-new')
+    temp.symlink_to(source)
+    temp.replace(target)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dash-repo', required=True, type=Path)
+    parser.add_argument('--activate', action='store_true')
+    parser.add_argument('--release-root', type=Path, default=Path('/mnt/zer0models/releases/dash'))
+    args = parser.parse_args()
+    home = Path.home()
+    repo = Path(__file__).resolve().parent.parent
+    base = home / '.local/lib/dash'
+    base.mkdir(parents=True, exist_ok=True)
+    args.release_root.mkdir(parents=True, exist_ok=True)
+    for sha, component in ((BRIDGE, 'bridge'), (APP, 'app')):
+        dest = args.release_root / sha
+        ready = dest / '.dash-release-ready'
+        if not ready.exists():
+            dest.mkdir(parents=True, exist_ok=True)
+            archive = subprocess.Popen(['git', '-C', str(args.dash_repo), 'archive', sha], stdout=subprocess.PIPE)
+            with tarfile.open(fileobj=archive.stdout, mode='r|') as stream:
+                stream.extractall(dest, filter='data')
+            if archive.wait():
+                raise SystemExit('git archive failed')
+            # Dependency installation only: no compilation or JavaScript bundling on groot.
+            run(str(home / '.bun/bin/bun'), 'install', '--frozen-lockfile', '--ignore-scripts', cwd=dest / component)
+            ready.write_text(sha + '\n')
+        link(dest, base / sha)
+        link(base / sha, base / (component + '-current'))
+    digest = hashlib.sha256()
+    for source in sorted(FILES):
+        digest.update(source.encode())
+        digest.update((repo / source).read_bytes())
+    stamp = home / '.local/lib/dash-services' / digest.hexdigest()
+    stamp.mkdir(parents=True, exist_ok=True)
+    for source in FILES:
+        target = stamp / Path(source).name
+        target.write_bytes((repo / source).read_bytes())
+        target.chmod(0o755 if source.startswith('scripts/') else 0o644)
+    link(stamp, stamp.parent / 'current')
+    for source, target in FILES.items():
+        if source.startswith('scripts/'):
+            continue
+        link(stamp / Path(source).name, home / target)
+        if args.activate and source.endswith('.service'):
+            link(stamp / Path(source).name, home / '.config/systemd/user/default.target.wants' / Path(source).name)
+    print('Dash release:', BRIDGE, 'app:', APP, 'service stamp:', stamp.name)
+    if args.activate:
+        run('systemctl', '--user', 'daemon-reload')
+        run('systemctl', '--user', 'start', 'dash-bridge.service', 'dash-metro.service', 'dash-metro-relay.service')
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,39 @@
+[[user]]
+live = "~/.config/systemd/user/dash-bridge.service"
+source = "config/systemd/user/dash-bridge.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-dash-services"
+reason = "Reboot-persistent authenticated Dash control plane; archived qualified runtime, token files remain private."
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro.service"
+source = "config/systemd/user/dash-metro.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-dash-services"
+reason = "Installed Dash development-client APK requires loopback Metro after app restart."
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-relay.service"
+source = "config/systemd/user/dash-metro-relay.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-dash-services"
+reason = "Expose required Metro only on tailnet, not an unauthenticated LAN wildcard listener."
+
+[[user]]
+live = "~/.config/dash-services/bridge.env"
+source = "config/dash-services/bridge.env"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-dash-services"
+reason = "Minimal non-secret bridge launch configuration replaces captured desktop environment."
+
+[[user]]
+live = "~/.config/dash-services/metro.env"
+source = "config/dash-services/metro.env"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-dash-services"
+reason = "Minimal non-secret Metro proxy routing preserves installed phone launch URL."
