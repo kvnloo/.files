@@ -12,7 +12,7 @@ import runpy
 
 import pytest
 
-from hypr_lua_fixtures import hypr_inventory
+from hypr_lua_fixtures import GLASS_FRAGMENT, hypr_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 HYPR = ROOT / "config/hyprland"
@@ -107,8 +107,12 @@ def test_liquid_glass_bridge_is_explicit_and_fail_closed():
     assert "error(" in body
     assert "source =" not in body
     assert "source =" not in glass
-    fragment = ROOT / "config/hermes-liquid-glass/hypr/liquid-glass.conf"
+    fragment = GLASS_FRAGMENT
     assert fragment.is_file()
+    directive = fragment.read_text().splitlines()[-1]
+    assert directive == "windowrule = match:class ^(Hermes)$, opacity 1.0 1.0"
+    assert 'class = "^(Hermes)$"' in glass
+    assert 'opacity = "1.0 1.0"' in glass
 
 
 def test_generated_monitors_artifact_does_not_edit_monitors_conf(hypr_inventory, tmp_path, monkeypatch):

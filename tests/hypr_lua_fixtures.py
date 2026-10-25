@@ -2,6 +2,7 @@
 
 import json
 import runpy
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+GLASS_FRAGMENT = ROOT / "tests/fixtures/hypr/liquid-glass.conf"
 
 
 @pytest.fixture
@@ -40,6 +42,8 @@ def hypr_inventory(tmp_path, monkeypatch):
 
     def expand(raw):
         prefix = "/home/kvn/workspace/.files/"
+        if raw.strip() == prefix + "config/hermes-liquid-glass/hypr/liquid-glass.conf":
+            return GLASS_FRAGMENT
         if raw.strip().startswith(prefix):
             return ROOT / raw.strip()[len(prefix):]
         return original_expand(raw)
@@ -47,3 +51,18 @@ def hypr_inventory(tmp_path, monkeypatch):
     generator["build"].__globals__["expand"] = expand
     assert generator["main"]() == 0
     return SimpleNamespace(path=output, entry=entry, monitors=monitors, home=home)
+
+
+@pytest.fixture
+def migration_inventory(tmp_path):
+    sandbox = tmp_path / "inventory"
+    scripts = sandbox / "scripts"
+    scripts.mkdir(parents=True)
+    for name in ("build-hypr-lua-inventory", "hypr_lua_semantics.py"):
+        shutil.copy2(ROOT / "scripts" / name, scripts / name)
+    config = sandbox / "config/hyprland"
+    config.mkdir(parents=True)
+    for name in ("hyprland.legacy.conf", "lua"):
+        (config / name).symlink_to(ROOT / "config/hyprland" / name)
+    subprocess.run([sys.executable, str(scripts / "build-hypr-lua-inventory")], check=True)
+    return config / "migration-inventory.json"

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from hypr_lua_fixtures import migration_inventory
+
 ROOT = Path(__file__).resolve().parents[1]
 HYPR = ROOT / "config/hyprland"
 LEGACY = HYPR / "hyprland.legacy.conf"
@@ -30,8 +32,8 @@ def legacy_directive_lines():
     return directives
 
 
-def test_inventory_classifies_every_legacy_directive_exactly_once():
-    inventory = json.loads(INVENTORY.read_text())
+def test_inventory_classifies_every_legacy_directive_exactly_once(migration_inventory):
+    inventory = json.loads(migration_inventory.read_text())
     expected = legacy_directive_lines()
     actual = [(item["line"], item["directive"]) for item in inventory["directives"]]
     assert actual == expected

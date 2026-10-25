@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from hypr_lua_fixtures import hypr_inventory
+from hypr_lua_fixtures import GLASS_FRAGMENT, hypr_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP_PATH = ROOT / "config/hyprland/lua-ownership-map.json"
@@ -38,6 +38,8 @@ SCRIPT_COMMAND = re.compile(
 def _expand(raw: str) -> Path:
     path = os.path.expandvars(os.path.expanduser(raw.strip()))
     resolved = Path(path)
+    if raw.strip() == "/home/kvn/workspace/.files/config/hermes-liquid-glass/hypr/liquid-glass.conf":
+        return GLASS_FRAGMENT
     if path.startswith("/home/kvn/workspace/.files/"):
         resolved = ROOT / path[len("/home/kvn/workspace/.files/") :]
     return resolved
