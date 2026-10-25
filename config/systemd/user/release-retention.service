@@ -1,0 +1,11 @@
+[Unit]
+Description=Offload unused stamped releases while preserving live and rollback trees
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/lib/host-storage/current/scripts/release-retention.py --apply
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=45min

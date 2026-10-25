@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import time
 
@@ -292,6 +293,22 @@ def test_mover_verifies_count_and_bytes_before_removing_source(monkeypatch, tmp_
     assert (source / "b.txt").read_text() == "beta"
 
 
+def test_mover_keeps_source_if_process_starts_during_copy(monkeypatch, tmp_path, ledger):
+    home = tmp_path / "home"
+    source = home / "tmp" / "work"
+    source.mkdir(parents=True)
+    (source / "a.txt").write_text("alpha")
+    calls = iter([[], ["new live process"]])
+    monkeypatch.setattr(mover, "active_references", lambda _path: next(calls))
+    monkeypatch.setattr(mover, "rsync_copy", lambda src, dst: shutil.copytree(src, dst))
+    monkeypatch.setattr(mover, "verify_checksum", lambda _src, _dst: None)
+    with pytest.raises(RuntimeError, match="appeared during migration"):
+        mover.migrate(source, tmp_path / "offload", dry_run=False, source_root=home)
+    assert source.is_dir() and not source.is_symlink()
+    assert (source / "a.txt").read_text() == "alpha"
+
+
+@pytest.mark.skipif(shutil.which("rsync") is None, reason="real mover integration requires rsync; exercised on MBP")
 def test_mover_moves_dir_and_file_behind_symlinks(tmp_path, ledger):
     home = tmp_path / "home"
     work = home / "tmp" / "work"

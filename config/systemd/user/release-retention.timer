@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily reversible offload of unused stamped releases
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

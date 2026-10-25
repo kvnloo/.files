@@ -162,6 +162,11 @@ def migrate(source: Path, destination_root: Path, dry_run: bool, source_root: Pa
         raise RuntimeError(
             f"file count/byte total mismatch source={count}/{size} destination={destination_count}/{destination_size}"
         )
+    # A process may have started during a large copy. Never replace its tree.
+    refs = active_references(source)
+    if refs:
+        emit("blocked_active_before_switch", source=canonical, destination=str(destination), references=refs)
+        raise RuntimeError(f"active process references appeared during migration: {source}")
     backup = source.with_name(source.name + f".tier-backup-{os.getpid()}")
     if backup.exists():
         raise RuntimeError(f"backup collision: {backup}")
