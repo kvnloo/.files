@@ -17,6 +17,7 @@ import time
 import tomllib
 
 SCHEMA = 'host-drift.v1'
+PHYSICAL_RELEASE_ROOT = Path('/mnt/zer0models/releases/files-live')
 PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
               'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
               'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
@@ -116,8 +117,9 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                         break
                     link = Path(os.readlink(target))
                     target = Path(os.path.normpath(link if link.is_absolute() else target.parent / link))
-                    if (target.is_relative_to(library) and
-                            any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(library).parts)):
+                    if any(target.is_relative_to(base) and
+                           any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(base).parts)
+                           for base in (library, PHYSICAL_RELEASE_ROOT)):
                         stamped = True
                         break
                 if not stamped:

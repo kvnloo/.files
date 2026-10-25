@@ -124,6 +124,15 @@ class DriftTests(unittest.TestCase):
         self.live.symlink_to('../fixture.service')
         self.manifest(install='symlink-stamped')
         self.assertEqual(self.run_audit()['status'], 'clean')
+        physical = self.base / 'physical-files-live'
+        destination = physical / ('b' * 64) / 'fixture.service'
+        destination.parent.mkdir(parents=True)
+        destination.write_text('safe\n')
+        unit.unlink()
+        unit.symlink_to(destination)
+        with patch.object(drift, 'PHYSICAL_RELEASE_ROOT', physical):
+            self.assertEqual(self.run_audit()['status'], 'clean')
+        self.assertEqual(self.run_audit()['drift'][0]['kind'], 'unstamped_install')
 
     def test_root_slice_is_not_a_dashed_prefix_or_cli_option(self):
         self.live = self.etc / 'systemd/system/-.slice.d/50-policy.conf'
