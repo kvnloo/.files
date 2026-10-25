@@ -29,8 +29,11 @@ The system file chooser and FileManager1 D-Bus provider remain unchanged.
 
 ## Local Fettl code checks
 
-Linux x86_64 agent-tool onboarding installs the release pinned in
-`hosts.desktop.fettl` in `fleet.toml`. To install it independently:
+Fettl is removed from the workstation harnesses as of 2026-10-25.
+Agent-tool onboarding no longer installs its binary or hooks.
+Shadow mode suppresses findings, but still waits for synchronous full scans.
+Do not reinstall the hooks without Kevin's approval. The pinned installer
+remains available for an explicitly approved evaluation:
 
 ```sh
 python3 scripts/setup-fettl.py
@@ -149,7 +152,7 @@ Non-interactive examples:
 | `core-links` | Symlinks shell, tmux, git, Hyprland, nvim, noctalia, PipeWire fragments, Sunshine config (no credentials), and common CLI helpers into `~` / `~/.local/bin` |
 | `fonts` | Installs Nerd Fonts from [`packages/packages.toml`](../packages/packages.toml) (`scripts/install-fonts.sh`) |
 | `agent-skills` | Links `workspace-copilot` into Claude, Codex, OpenCode, Gemini, Cursor, OMP, and Agents skill directories |
-| `agent-tools` | Runs [`scripts/setup-agent-tools.sh`](../scripts/setup-agent-tools.sh) (Agent Reach, yt-dlp, mcporter; pinned Fettl binary and local hooks on Linux x86_64) |
+| `agent-tools` | Runs [`scripts/setup-agent-tools.sh`](../scripts/setup-agent-tools.sh) (Agent Reach, yt-dlp, mcporter; no Fettl installation) |
 | `tailnet-ssh` | Runs [`scripts/setup-tailnet-ssh.sh`](../scripts/setup-tailnet-ssh.sh) (Linux Tailscale + SSH) |
 | `nix-home` | Runs [`config/nix/bootstrap-cachyos.sh`](../config/nix/bootstrap-cachyos.sh) on CachyOS/Arch |
 | `audio-evolution` | Runs [`scripts/install-audio-evolution.sh`](../scripts/install-audio-evolution.sh) |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install shared local research and code-checking tools for agent harnesses.
+# Install shared local research tools for agent harnesses.
 # Prefer: ./scripts/onboard run agent-tools   or   ./install
 # Docs: docs/SETUP.md
 set -euo pipefail
@@ -9,10 +9,6 @@ mcporter_config="${repo_root}/config/mcporter/mcporter.json"
 agent_tools_dir="${HOME}/.agent-reach/tools"
 user_bin_dir="${HOME}/.local/bin"
 
-if [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
-  python3 "${repo_root}/scripts/setup-fettl.py"
-  python3 "${repo_root}/scripts/setup-fettl-hooks.py"
-fi
 
 if ! command -v pipx >/dev/null 2>&1; then
   printf '%s\n' "pipx is required to install the shared agent tools." >&2
