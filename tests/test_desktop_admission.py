@@ -96,6 +96,32 @@ class Admission(unittest.TestCase):
         cg = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/render.scope'
         self.assertEqual(classifier.select({1:(0,'agent-batch',cg),2:(1,'gpu-worker',cg)}),[1,2])
 
+    def test_classifier_preserves_explicit_scope_limits(self):
+        prefix = f'/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service'
+        paths = {
+            1: prefix + '/session.slice/compositor.service',
+            2: prefix + '/background.slice/purge.scope',
+            3: prefix + '/app.slice/bounded.scope',
+            4: prefix + '/app.slice/unbounded.scope',
+            5: prefix + '/app.slice/zero.scope',
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            for pid, value in ((3, '2147483648'), (4, 'max'), (5, '0')):
+                leaf = root / paths[pid].lstrip('/')
+                leaf.mkdir(parents=True)
+                (leaf / 'memory.max').write_text(value)
+            data = {pid: (0 if pid == 1 else 1,
+                          'agent-control' if pid == 1 else 'python3',
+                          '0::' + path) for pid, path in paths.items()}
+            self.assertEqual(classifier.select(data, root), [4])
+
+    def test_classifier_preserves_unreadable_limit(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            (root / 'memory.max').mkdir()
+            self.assertTrue(classifier.explicitly_bounded('0::/', root))
+
     def test_failed_workload_scope_is_reset_and_recreated(self):
         # A failed transient scope stays loaded; StartTransientUnit alone then fails forever.
         calls = []

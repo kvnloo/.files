@@ -91,6 +91,12 @@ unbounded non-desktop groups are unknown, never discarded; finite shortfalls
 are drift. This does not claim that summed budgets fit RAM or prevent global
 OOM; memory.min is reclaim protection, not an OOM exemption.
 
+The agent classifier preserves caller-owned process placement. It does not move
+processes from `background.slice` or from a leaf cgroup with finite `memory.max`,
+including a zero-byte limit. Unreadable or malformed limits fail closed. This
+keeps a bounded controller and its result-delivery lifecycle in its original
+unit instead of silently emptying that unit during a classifier tick.
+
 Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
 snapshot the complete tracked source closure and enable `host-drift.timer`.
 Reinstall after any manifest/source change; the installed checker never reads a
