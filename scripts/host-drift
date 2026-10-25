@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Bounded, report-only host config audit. Exit 0 clean, 1 drift, 2 unknown."""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import subprocess
+import sys
+import time
+import tomllib
+
+SCHEMA = 'host-drift.v1'
+PROPERTIES = {'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
+              'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
+              'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
+
+
+def command(args):
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    if proc.returncode:
+        raise ValueError(f'{args[0]} exited {proc.returncode}: {proc.stderr.strip()[:200]}')
+    return proc.stdout
+
+
+def normalized(value):
+    value = str(value).strip()
+    if value in ('infinity', 'max'):
+        return 'infinity'
+    match = re.fullmatch(r'(\d+)([KMGT])(?:B)?', value)
+    if match:
+        return str(int(match[1]) * 1024 ** ('KMGT'.index(match[2]) + 1))
+    return {'yes': 'true', 'no': 'false', 'idle': '3', 'best-effort': '2',
+            'realtime': '1'}.get(value, ' '.join(value.split()))
+
+
+def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
+    drift, unknown = [], []
+    def add(rows, kind, path, detail):
+        rows.append(dict(kind=kind, path=str(path), detail=detail))
+    def problem(kind, path, detail):
+        add(drift, kind, path, detail)
+    try:
+        manifest = tomllib.loads((root / 'config/host/groot.toml').read_text())
+        entries = manifest.get('system', []) + manifest.get('user', [])
+        if not entries or any(not isinstance(row, dict) or
+                              not all(key in row for key in ('live', 'source', 'scope', 'install', 'owner', 'reason'))
+                              or row['scope'] not in ('system', 'user') for row in entries):
+            raise ValueError('manifest requires complete managed path entries')
+        entries.sort(key=lambda row: row['live'])
+        stamp = root / 'tracked-files.json'
+        tracked = set(json.loads(stamp.read_text())) if stamp.exists() else set(run(['git', '-C', str(root), 'ls-files']).splitlines())
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        add(unknown, 'manifest_unavailable', root, str(exc))
+        entries, tracked = [], set()
+    expected = {}
+    for entry in entries:
+        try:
+            rel = entry['source']
+            if Path(rel).is_absolute() or '..' in Path(rel).parts or rel not in tracked:
+                problem('untracked_source', entry.get('live', rel), rel)
+                continue
+            source = root / rel
+            live = Path(entry['live'].replace('~', str(home), 1)).expanduser()
+            data = source.read_bytes()
+            if live.is_symlink():
+                resolved = live.resolve()
+                if any(part in ('worktrees', 'z0-wt') for part in resolved.parts) or (resolved.parent / '.git').exists():
+                    problem('worktree_symlink', live, str(resolved))
+                # Mutable git checkout links are forbidden even under a custom worktree name.
+                for parent in (resolved.parent, *resolved.parents):
+                    if (parent / '.git').exists():
+                        problem('checkout_symlink', live, str(resolved))
+                        break
+            if not live.exists():
+                problem('missing_file', live, rel)
+            elif live.read_bytes() != data:
+                problem('changed_file', live, rel)
+            for candidate in (live.with_name(live.name + '.pacnew'),):
+                if candidate.exists():
+                    problem('pacnew', candidate, 'package upgrade requires review')
+            if '/sysctl.d/' in str(live):
+                for line in data.decode().splitlines():
+                    line = line.split('#', 1)[0].split(';', 1)[0].strip()
+                    if not line or '=' not in line:
+                        continue
+                    key, value = map(str.strip, line.split('=', 1))
+                    key = key.lstrip('-').replace('/', '.')
+                    actual = run(['sysctl', '-n', key]).strip()
+                    if normalized(actual) != normalized(value):
+                        problem('sysctl_effective', key, dict(expected=value, actual=actual))
+            if '/systemd/' in str(live) and live.suffix in ('.conf', '.service', '.slice', '.timer'):
+                unit = live.parent.name[:-2] if live.parent.name.endswith('.d') else live.name
+                scope = entry['scope']
+                values = expected.setdefault((scope, unit), {})
+                section = ''
+                for line in data.decode().splitlines():
+                    line = line.strip()
+                    if line.startswith('['):
+                        section = line
+                    if section in ('[Service]', '[Slice]', '[Scope]') and '=' in line and not line.startswith(('#', ';')):
+                        key, value = line.split('=', 1)
+                        if key in PROPERTIES:
+                            values[key] = value
+                values.update(entry.get('effective', {}))
+        except (OSError, KeyError, ValueError, UnicodeError, subprocess.SubprocessError) as exc:
+            add(unknown, 'observation_failed', entry.get('live', '?'), str(exc))
+    for (scope, unit), values in sorted(expected.items()):
+        if not values:
+            continue
+        try:
+            args = ['systemctl', '--user' if scope == 'user' else '--system', 'show', unit]
+            for key in sorted(values):
+                args += ['-p', key]
+            actual = dict(line.split('=', 1) for line in run(args).splitlines() if '=' in line)
+            for key, value in values.items():
+                if key not in actual or not actual[key]:
+                    add(unknown, 'property_unavailable', unit, key)
+                elif normalized(actual[key]) != normalized(value):
+                    problem('systemd_effective', unit, dict(property=key, expected=value, actual=actual[key]))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            add(unknown, 'systemd_unavailable', unit, str(exc))
+    # Only two directory levels: systemd control drop-ins cannot hide deeper.
+    for control in (home / '.config/systemd/user.control', runtime / 'systemd/user.control'):
+        try:
+            if not control.exists():
+                continue
+            paths = []
+            for directory in sorted(control.iterdir()):
+                if directory.name.endswith('.d') and directory.is_dir():
+                    paths.extend(path for path in directory.iterdir() if path.name.endswith('.conf'))
+                if len(paths) > 4096:
+                    raise ValueError('bounded user.control inventory exceeded 4096 drop-ins')
+            for path in sorted(paths):
+                leased = False
+                lease = lease_root / (hashlib.sha256(str(path).encode()).hexdigest() + '.json')
+                if lease.exists():
+                    record = json.loads(lease.read_text())
+                    leased = (record.get('schema') == 'host-drift.lease.v1' and record.get('path') == str(path)
+                              and record.get('owner') and record.get('expires_at', 0) > time.time()
+                              and record.get('sha256') == hashlib.sha256(path.read_bytes()).hexdigest())
+                if not leased:
+                    problem('unleased_control', path, 'no valid path/content/expiry-bound lease')
+        except (OSError, ValueError, TypeError) as exc:
+            add(unknown, 'control_unavailable', control, str(exc))
+    # No whole-home or model-volume scan. Bound /etc by 20k entries/16 levels.
+    for base in pacnew_roots:
+        try:
+            count = 0
+            def walk(directory, depth):
+                nonlocal count
+                try:
+                    children = sorted(directory.iterdir())
+                except OSError as exc:
+                    add(unknown, 'pacnew_unavailable', directory, str(exc))
+                    return
+                for path in children:
+                    count += 1
+                    if count > 20000:
+                        raise ValueError('bounded pacnew inventory exceeded 20000 entries')
+                    if path.name.endswith('.pacnew'):
+                        problem('pacnew', path, 'package upgrade requires review')
+                    if path.is_dir() and not path.is_symlink():
+                        if depth:
+                            walk(path, depth - 1)
+                        else:
+                            add(unknown, 'pacnew_depth_bound', path, 'inventory depth exceeded 16')
+            walk(base, 16)
+        except (OSError, ValueError) as exc:
+            add(unknown, 'pacnew_unavailable', base, str(exc))
+    # Ownership labels explain unresolved drift; they never turn it clean.
+    for entry in entries:
+        if entry.get('drift') != 'owned-upstream' or not entry.get('issue'):
+            continue
+        live = Path(entry.get('live', ''))
+        unit = live.parent.name[:-2] if live.parent.name.endswith('.d') else live.name
+        for row in drift:
+            if row['path'] == str(live) or row['path'] == unit or unit + '.d' in Path(row['path']).parts:
+                row.update(classification='owned-upstream', issue=entry['issue'])
+    # Unknown takes precedence: drift is still retained and alertable.
+    status = 'unknown' if unknown else 'drift' if drift else 'clean'
+    return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown,
+                host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                summary=f'host drift: {len(drift)} drift, {len(unknown)} unknown', executed=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--home', type=Path, default=Path.home())
+    parser.add_argument('--runtime', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/1000')))
+    parser.add_argument('--leases', type=Path)
+    parser.add_argument('--pacnew-root', type=Path, action='append')
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    report = audit(args.root, args.home, args.runtime,
+                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')])
+    text = json.dumps(report, sort_keys=True, indent=2) + '\n'
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.output.with_suffix('.tmp')
+        temporary.write_text(text)
+        temporary.replace(args.output)
+    print(text, end='')
+    print(report['summary'], file=sys.stderr)
+    return {'clean': 0, 'drift': 1, 'unknown': 2}[report['status']]
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

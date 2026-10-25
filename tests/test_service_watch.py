@@ -35,6 +35,32 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_host_drift_uses_existing_notification_dedupe(self):
+        receipt = self.root / '.local/state/host-drift/latest.json'
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text(json.dumps({'schema': 'host-drift.v1', 'status': 'drift',
+                                       'drift': [{'path': '/private/not-forwarded'}], 'unknown': []}))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_config_drift', text)
+        self.assertNotIn('/private/not-forwarded', text)
+
+    def test_host_drift_missing_receipt_is_unknown_and_notifies(self):
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_drift_unknown', text)
+
     def test_finite_projection_withholds_every_arbitrary_string(self):
         secrets = ['sk-secret-abcdef', 'Bearer abc.eyJWT.def', 'Cookie: session=SUPERSECRET',
                    'kevin@example.com', '100.117.226.39', 'https://example.test/?token=secret',

@@ -62,6 +62,42 @@ by this policy: ctx 2.2.8 already defaults to one preparation worker. Its
 `ExecStart` override is not needed for the resource fix. Preserve the generated
 `env -i` launch contract rather than installing that redundant override.
 
+## Report-only host drift
+
+`config/host/groot.toml` inventories managed live paths and tracked sources.
+`scripts/host-drift` prints JSON on stdout and a short summary on stderr:
+exit 0 is clean, 1 is observed drift, and 2 means at least one observation is
+unknown (observed drift remains in the report). No outcome authorizes repair.
+The checker compares bytes, mutable-checkout symlinks, managed systemd resource
+properties, tracked sysctl values, package `.pacnew` files and both persistent
+and runtime `user.control` drop-ins. Optional manifest `effective` values
+override derived scalar systemd directives when systemd exposes a different
+property representation. Managed paths are processed in lexical drop-in order.
+An `owned-upstream` classification and issue URL explain drift, never exempt it.
+
+Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
+snapshot the complete tracked source closure and enable `host-drift.timer`.
+Reinstall after any manifest/source change; the installed checker never reads a
+mutable worktree. The timer runs every 30 minutes with Nice 19, idle IO and a
+256 MiB hard memory limit. It writes `~/.local/state/host-drift/latest.json`.
+ServiceWatch records finite drift/unknown counts through its existing incident,
+notification and one-hour dedupe path; inspect the local JSON for exact paths.
+No watched desktop, gateway or agent service is restarted.
+
+The package-file inventory is bounded to `/etc` and 16 directory descents
+(20,000 entries maximum); it never walks home/model volumes or follows directory
+symlinks. Unreadable directories or exceeded bounds yield unknown, not clean. An admin must
+review inaccessible package configuration separately. Extra bounded roots can be
+given with repeated `--pacnew-root`. This is not an unrestricted package audit.
+
+A temporary control drop-in needs a local lease in
+`~/.local/state/host-drift/leases/SHA256_OF_ABSOLUTE_PATH.json` containing
+`schema="host-drift.lease.v1"`, exact `path`, nonempty `owner`, future epoch
+`expires_at` and the drop-in's `sha256`. A changed or expired lease does not
+exempt the file. The checker never creates leases. Persistent changes belong in
+the tracked source and stamped installer, not `systemctl --user set-property`.
+
+
 ## Foreground activation gate (do not call this complete early)
 
 Native background terminal tools were exercised inside `agent.slice` with CPU max
