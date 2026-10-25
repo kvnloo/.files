@@ -255,6 +255,22 @@ class PreemptionLifecycleTests(unittest.TestCase):
         ], pods=[[terminated], []])
         self.assertEqual(result, 0)
 
+    def test_genuine_oom_is_terminal_and_preserves_diagnostic_receipt(self):
+        pod = {'metadata': {'name': 'oom-pod', 'uid': 'owned-pod-uid'}, 'status': {
+            'containerStatuses': [{'name': 'build', 'state': {'terminated': {
+                'exitCode': 137, 'reason': 'OOMKilled'}}}]}}
+        failed = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Failed', 'status': 'True', 'reason': 'BackoffLimitExceeded'}]}}
+        workload = {'status': {'conditions': [{'type': 'Finished', 'status': 'True'}]}}
+        result, _, stderr, receipts, _ = self.exercise(
+            [failed], workloads=[workload], pods=[[pod]])
+        self.assertEqual(result, 137)
+        self.assertEqual(receipts[0]['terminal']['exit_code'], 137)
+        self.assertEqual(receipts[0]['terminal']['pods'], [pod])
+        self.assertEqual(receipts[0]['terminal']['job'], failed)
+        self.assertEqual(receipts[0]['terminal']['workload'], workload)
+        self.assertIn('OOMKilled', stderr)
+
     def test_unsafe_build_remains_in_protected_queue(self):
         complete = {'spec': {'suspend': False}, 'status': {'conditions': [
             {'type': 'Complete', 'status': 'True'}]}}

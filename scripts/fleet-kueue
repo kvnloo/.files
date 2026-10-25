@@ -153,6 +153,7 @@ def main():
     runs.mkdir(parents=True, exist_ok=True)
     created = bool(args.attach)
     terminal = False
+    terminal_recorded = False
     logs = None
     rc = 1
     detach_code = 130
@@ -376,6 +377,17 @@ def main():
                 reader.join(timeout=5)
             logfile.write(f'\n# exit {rc}\n'.encode())
         if terminal:
+            receipt = runs / f'{name}.json'
+            evidence = json.loads(receipt.read_text()) if receipt.exists() else {'job_id': name}
+            evidence['terminal'] = {'exit_code': rc, 'job': job, 'workload': workload, 'pods': pods}
+            temporary = receipt.with_suffix('.json.tmp')
+            temporary.write_text(json.dumps(evidence, indent=2) + '\n')
+            os.replace(temporary, receipt)
+            terminal_recorded = True
+            reasons = [s['state']['terminated'].get('reason', 'Unknown')
+                       for p in pods for s in p.get('status', {}).get('containerStatuses', [])
+                       if 'terminated' in s.get('state', {})]
+            print(f'fleet: terminal evidence {receipt}; container reasons: {reasons}', file=sys.stderr)
             for value in args.fetch:
                 dest = runs / name
                 dest.mkdir(exist_ok=True)
@@ -410,12 +422,12 @@ def main():
             logs.terminate()
             logs.wait()
         # Controller loss is detach, never an implicit remote cancellation.
-        if created and terminal and (args.host or not args.keep):
+        if created and terminal and terminal_recorded and (args.host or not args.keep):
             checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
         if created and not terminal:
             print(f'fleet: detached job {name}; retained checkpoint stage {stage}; '
                   f'receipt {runs / (name + ".json")}; reattach: fleet-build --attach {name}', file=sys.stderr)
-        elif terminal and not args.keep:
+        elif terminal and terminal_recorded and not args.keep:
             checked(remote(f'rm -rf -- {qstage}'))
 
 

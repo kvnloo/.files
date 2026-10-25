@@ -76,6 +76,12 @@ Observer interruption (SIGINT, SIGTERM or SIGHUP) detaches without cancelling
 the Job or removing its stage. Resume observation with `fleet-build --attach JOB`;
 this never submits or replays the command. Use `fleet kill mbp JOB` for explicit
 cancellation. Automatic cleanup requires confirmed completion.
+Before terminal cleanup, the durable job JSON receipt atomically records the
+final Job, Workload, and Pod snapshots under `terminal`, including container
+termination reasons such as `OOMKilled`. Cleanup is withheld if that write
+fails. A real container OOM is terminal, not a Kueue eviction: use its measured
+memory footprint to size the caller's next request; do not blindly retry 137.
+
 
 For Bend proofs, `fleet-build --node mbp --bend-tools ...` stages only
 `~/.bend/{bin,bend2,bendtt}` in a private job HOME and sets `BEND` and `PATH`.
