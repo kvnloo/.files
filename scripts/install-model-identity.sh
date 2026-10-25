@@ -21,6 +21,14 @@ for unit in z0int-policy.service z0int-model-identity.service z0int-model-identi
   cmp <(git -C "$repo" show "$sha:config/systemd/user/$unit") "$dest/config/systemd/user/$unit"
   ln -sfn "$dest/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"
 done
+# Preserve existing enablement, but migrate pinned historical targets too.
+# Install-only does not enable or start a unit that was not already enabled.
+for link in default.target.wants/z0int-model-identity.path timers.target.wants/z0int-model-identity.timer; do
+  live="$HOME/.config/systemd/user/$link"
+  if [[ -L "$live" ]]; then
+    ln -sfn "../${link##*/}" "$live"
+  fi
+done
 printf 'Installed identity units from %s at %s\n' "$sha" "$dest"
 if [[ "${1:-}" == --activate ]]; then
   systemctl --user daemon-reload
