@@ -1,3 +1,4 @@
+import configparser
 import importlib.machinery
 import importlib.util
 from pathlib import Path
@@ -65,12 +66,21 @@ class CtxPolicyTests(unittest.TestCase):
             installer.stamp_release(self.source, self.home)
 
     def test_policy_has_hard_budget_without_execstart_override(self):
-        policy = (ROOT / installer.RELATIVE).read_text()
-        for value in ['MemoryHigh=infinity', 'MemoryMax=5G', 'MemorySwapMax=2G',
-                      'OOMPolicy=stop', 'Restart=on-failure', 'StartLimitBurst=3',
-                      'RestartSteps=3', 'RestartMaxDelaySec=5min']:
-            self.assertIn(value, policy)
-        self.assertNotIn('ExecStart=', policy)
+        policy = configparser.ConfigParser()
+        policy.read_string((ROOT / installer.RELATIVE).read_text())
+        service = policy['Service']
+        unit = policy['Unit']
+        def bytes_value(value):
+            return int(value[:-1]) * {'G': 1024 ** 3}[value[-1]]
+        self.assertEqual(bytes_value(service['MemoryMax']), 5 * 1024 ** 3)
+        self.assertEqual(bytes_value(service['MemorySwapMax']), 2 * 1024 ** 3)
+        self.assertEqual(service['MemoryHigh'], 'infinity')
+        self.assertEqual(service['OOMPolicy'], 'stop')
+        self.assertEqual(service['Restart'], 'on-failure')
+        self.assertEqual(service.getint('RestartSteps'), 3)
+        self.assertEqual(service['RestartMaxDelaySec'], '5min')
+        self.assertEqual(unit.getint('StartLimitBurst'), 3)
+        self.assertNotIn('ExecStart', service)
 
 
 if __name__ == '__main__':
