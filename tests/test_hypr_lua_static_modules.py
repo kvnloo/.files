@@ -5,6 +5,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from hypr_lua_fixtures import hypr_inventory
+
 ROOT = Path(__file__).resolve().parents[1]
 HYPR = ROOT / "config/hyprland"
 MAP_PATH = HYPR / "lua-ownership-map.json"
@@ -35,8 +39,8 @@ def owner_body(item: dict) -> str:
     return path.read_text()
 
 
-def test_every_static_inventory_line_has_an_owning_lua_module():
-    data = payload()
+def test_every_static_inventory_line_has_an_owning_lua_module(hypr_inventory):
+    data = json.loads(hypr_inventory.path.read_text())
     missing = []
     for item in data["lines"]:
         api = item["lua_api"]
@@ -52,8 +56,8 @@ def test_every_static_inventory_line_has_an_owning_lua_module():
     assert missing == []
 
 
-def test_deferred_inventory_lines_stay_classified_as_bridges_or_generated():
-    data = payload()
+def test_deferred_inventory_lines_stay_classified_as_bridges_or_generated(hypr_inventory):
+    data = json.loads(hypr_inventory.path.read_text())
     deferred = [item for item in data["lines"] if item["lua_api"] in DEFERRED_APIS]
     assert deferred
     assert all(item["lua_api"] in DEFERRED_APIS for item in deferred)
@@ -97,8 +101,8 @@ def _needles_for(text: str) -> list[str]:
     return [needle for needle in needles if needle]
 
 
-def test_static_matchers_and_commands_appear_in_owner_modules():
-    data = payload()
+def test_static_matchers_and_commands_appear_in_owner_modules(hypr_inventory):
+    data = json.loads(hypr_inventory.path.read_text())
     failures = []
     for item in data["lines"]:
         if item["lua_api"] not in STATIC_APIS:
@@ -128,7 +132,7 @@ def test_lua_tree_parses_with_luac():
     subprocess.run(["luac", "-p", *map(str, files)], check=True)
 
 
-def test_static_lua_verify_or_lsp_is_clean():
+def test_static_lua_lsp_is_clean():
     if shutil.which("lua-language-server"):
         result = subprocess.run(
             ["lua-language-server", "--check", str(HYPR / "hyprland.lua")],
@@ -138,6 +142,10 @@ def test_static_lua_verify_or_lsp_is_clean():
         )
         output = result.stdout + result.stderr
         assert result.returncode == 0, output
+
+
+@pytest.mark.live_system
+def test_static_lua_verify_or_lsp_is_clean():
     result = subprocess.run(
         ["Hyprland", "--verify-config", "-c", str(HYPR / "hyprland.lua")],
         capture_output=True,
@@ -149,12 +157,16 @@ def test_static_lua_verify_or_lsp_is_clean():
     assert "config ok" in output.lower(), output
 
 
+@pytest.mark.live_system
 def test_legacy_conf_remains_selected_and_lua_is_not_live_symlink_target():
-    assert (HYPR / "hyprland.lua").is_file()
-    assert (HYPR / "hyprland.legacy.conf").is_file()
     assert LIVE_LINK.is_symlink()
     assert LIVE_LINK.resolve() == (HYPR / "hyprland.legacy.conf").resolve()
     assert LIVE_LINK.resolve() != (HYPR / "hyprland.lua").resolve()
+
+
+def test_lua_entry_requires_existing_static_modules():
+    assert (HYPR / "hyprland.lua").is_file()
+    assert (HYPR / "hyprland.legacy.conf").is_file()
     entry = (HYPR / "hyprland.lua").read_text()
     for module in ("lua.monitors", "lua.environment", "lua.appearance", "lua.rules", "lua.binds", "lua.autostart"):
         assert f'require("{module}")' in entry

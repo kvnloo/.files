@@ -3,6 +3,10 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
+from hypr_lua_fixtures import hypr_inventory
+
 ROOT = Path(__file__).resolve().parents[1]
 MAP_PATH = ROOT / "config/hyprland/lua-ownership-map.json"
 LIVE_LINK = Path.home() / ".config/hypr/hyprland.conf"
@@ -34,8 +38,8 @@ SCRIPT_COMMAND = re.compile(
 def _expand(raw: str) -> Path:
     path = os.path.expandvars(os.path.expanduser(raw.strip()))
     resolved = Path(path)
-    if not resolved.exists() and path.startswith("/home/kvn/workspace/.files/"):
-        resolved = Path("/workspace/.files") / path[len("/home/kvn/workspace/.files/") :]
+    if path.startswith("/home/kvn/workspace/.files/"):
+        resolved = ROOT / path[len("/home/kvn/workspace/.files/") :]
     return resolved
 
 
@@ -96,9 +100,9 @@ def test_ownership_map_artifact_exists_and_is_json():
     assert payload["unclassified"] == []
 
 
-def test_every_recursive_non_comment_line_is_classified_exactly_once():
-    payload = json.loads(MAP_PATH.read_text())
-    expected, _, _ = walk_hyprlang(live_entry())
+def test_every_recursive_non_comment_line_is_classified_exactly_once(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
+    expected, _, _ = walk_hyprlang(hypr_inventory.entry)
     actual = [
         (item["file"], item["line"], item["text"])
         for item in payload["lines"]
@@ -111,9 +115,9 @@ def test_every_recursive_non_comment_line_is_classified_exactly_once():
         assert item["lua_api"] in ALLOWED_APIS, item
 
 
-def test_comments_are_listed_separately_and_never_as_directives():
-    payload = json.loads(MAP_PATH.read_text())
-    _, comments, _ = walk_hyprlang(live_entry())
+def test_comments_are_listed_separately_and_never_as_directives(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
+    _, comments, _ = walk_hyprlang(hypr_inventory.entry)
     listed = [(item["file"], item["line"]) for item in payload["comments"]]
     wanted = [(item["file"], item["line"]) for item in comments]
     assert listed == wanted
@@ -123,9 +127,9 @@ def test_comments_are_listed_separately_and_never_as_directives():
             assert (item["file"], item["line"]) not in directive_keys
 
 
-def test_pywal_and_liquid_glass_sources_are_followed_and_owned():
-    payload = json.loads(MAP_PATH.read_text())
-    _, _, sourced = walk_hyprlang(live_entry())
+def test_pywal_and_liquid_glass_sources_are_followed_and_owned(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
+    _, _, sourced = walk_hyprlang(hypr_inventory.entry)
     joined = " ".join(sourced)
     assert "colors-hyprland.conf" in joined
     assert "liquid-glass.conf" in joined
@@ -143,8 +147,8 @@ def test_pywal_and_liquid_glass_sources_are_followed_and_owned():
     assert {item["lua_api"] for item in source_lines} <= {"generated Lua artifact", "explicit bridge"}
 
 
-def test_helper_scripts_that_issue_hyprctl_keyword_or_dispatch_are_explicit_bridges():
-    payload = json.loads(MAP_PATH.read_text())
+def test_helper_scripts_that_issue_hyprctl_keyword_or_dispatch_are_explicit_bridges(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
     found: list[tuple[str, int]] = []
     for path in (ROOT / "scripts").rglob("*"):
         if not path.is_file() or path.suffix not in {".sh", ".py"}:
@@ -172,18 +176,19 @@ def test_helper_scripts_that_issue_hyprctl_keyword_or_dispatch_are_explicit_brid
         assert item["lua_api"] == "explicit bridge"
 
 
-def test_monitors_conf_is_inventoried_as_generated_and_not_hand_edited():
-    payload = json.loads(MAP_PATH.read_text())
+def test_monitors_conf_is_inventoried_as_generated_and_not_hand_edited(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
     generated = payload["generated_not_sourced"]
     assert any(item["path"].endswith("monitors.conf") for item in generated)
     for item in generated:
         if item["path"].endswith("monitors.conf"):
             assert item["lua_api"] == "generated Lua artifact"
             assert "do not hand-edit" in item["note"].lower()
-    text = MONITORS_CONF.read_text()
+    text = hypr_inventory.monitors.read_text()
     assert text.startswith("# Generated from the live layout by persist-monitor-layout.py.")
 
 
+@pytest.mark.live_system
 def test_live_startup_symlink_is_unchanged_legacy_hyprlang():
     assert LIVE_LINK.is_symlink()
     assert LIVE_LINK.resolve() == ROOT / "config/hyprland/hyprland.legacy.conf"

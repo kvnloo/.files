@@ -7,6 +7,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "scripts/prove-hypr-lua-e2e-lifecycle"
 COMPARE = ROOT / "scripts/hypr_lua_e2e_lifecycle.py"
@@ -172,6 +174,7 @@ def test_rollback_command_reselects_legacy_in_sandbox_without_restart(tmp_path: 
     assert "systemctl" not in body
 
 
+@pytest.mark.live_system
 def test_live_login_still_selects_legacy_conf():
     assert LIVE_LINK.is_symlink()
     assert LIVE_LINK.resolve() == HYPR / "hyprland.legacy.conf"

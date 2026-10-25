@@ -8,6 +8,12 @@ import os
 import subprocess
 from pathlib import Path
 
+import runpy
+
+import pytest
+
+from hypr_lua_fixtures import hypr_inventory
+
 ROOT = Path(__file__).resolve().parents[1]
 HYPR = ROOT / "config/hyprland"
 BRIDGES = HYPR / "lua/bridges.lua"
@@ -32,8 +38,8 @@ def _lua_tree() -> str:
     return "\n".join(parts)
 
 
-def test_every_inventory_source_and_script_line_has_a_concrete_lua_bridge():
-    payload = json.loads(MAP_PATH.read_text())
+def test_every_inventory_source_and_script_line_has_a_concrete_lua_bridge(hypr_inventory):
+    payload = json.loads(hypr_inventory.path.read_text())
     tree = _lua_tree()
     assert BRIDGES.is_file(), "lua/bridges.lua must own dynamic sources"
     assert 'require("lua.bridges")' in ENTRY.read_text()
@@ -105,14 +111,17 @@ def test_liquid_glass_bridge_is_explicit_and_fail_closed():
     assert fragment.is_file()
 
 
-def test_generated_monitors_artifact_does_not_edit_monitors_conf():
-    before = MONITORS_CONF.read_bytes()
+def test_generated_monitors_artifact_does_not_edit_monitors_conf(hypr_inventory, tmp_path, monkeypatch):
+    before = hypr_inventory.monitors.read_bytes()
     digest = hashlib.sha256(before).hexdigest()
     assert before.startswith(b"# Generated from the live layout by persist-monitor-layout.py.")
-    subprocess.run(["python3", str(GENERATOR)], check=True, cwd=ROOT)
-    after = MONITORS_CONF.read_bytes()
+    monkeypatch.setenv("HYPR_MONITORS_CONF", str(hypr_inventory.monitors))
+    generator = runpy.run_path(str(GENERATOR))
+    artifact = tmp_path / "generated/monitors.lua"
+    generator["main"].__globals__["OUT"] = artifact
+    generator["main"]()
+    after = hypr_inventory.monitors.read_bytes()
     assert hashlib.sha256(after).hexdigest() == digest
-    artifact = HYPR / "lua/generated/monitors.lua"
     text = artifact.read_text()
     assert "hl.monitor" in text or "output=" in text
     assert "DP-1" in text
@@ -157,8 +166,12 @@ def test_phone_display_rejects_lua_scale_injection_before_hyprctl(tmp_path: Path
     assert not log.exists()
 
 
+@pytest.mark.live_system
 def test_legacy_startup_selection_is_unchanged():
     assert LIVE_LINK.is_symlink()
     assert LIVE_LINK.resolve() == HYPR / "hyprland.legacy.conf"
+
+
+def test_dynamic_bridges_do_not_reload_or_restart():
     assert "hyprctl reload" not in BRIDGES.read_text()
     assert "systemctl" not in BRIDGES.read_text()

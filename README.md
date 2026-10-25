@@ -75,6 +75,19 @@ This tree is public. Treat anything that can authenticate as **out of band**:
 - `scripts/with-secrets` loads local dotenvx material; keys never ship in git.
 - See [AGENTS.md](AGENTS.md) safety rules for agent harnesses cloning this repo.
 
+## Python tests
+
+Use a fresh virtual environment and install `requirements-test.txt`.
+Run `python -m pytest tests -q` for the clean-runner suite.
+The dependency list includes NumPy for the next-action reranker.
+The runner also needs Bash, Git, and the Lua compiler (`luac`) on `PATH`.
+
+Tests with the `live_system` marker check a deployed desktop, installed tools,
+or real provider accounts. The default suite deselects these checks.
+Run `python -m pytest tests -q --run-live-system -m live_system` on the
+configured operator machine to run those checks explicitly.
+Do not copy account credentials or desktop state into a CI runner.
+
 ## License
 
 [MIT](LICENSE) © Kevin Rajan (kvnloo)

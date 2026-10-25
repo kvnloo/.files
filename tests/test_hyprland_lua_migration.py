@@ -3,6 +3,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 HYPR = ROOT / "config/hyprland"
 LEGACY = HYPR / "hyprland.legacy.conf"
@@ -172,6 +174,7 @@ def test_hyprglass_defers_native_lua_api_until_hyprland_start():
     assert 'keyword plugin:hyprglass' not in harness
 
 
+@pytest.mark.live_system
 def test_production_verify_config_has_no_error_text():
     result = subprocess.run(
         ["Hyprland", "--verify-config", "-c", HYPR / "hyprland.lua"],
