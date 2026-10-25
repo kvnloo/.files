@@ -35,6 +35,11 @@ class ReaperBehavior(unittest.TestCase):
         self.out.mkdir()
         self.archive = self.base / 'archives'
         self.archive.mkdir()
+        # These regressions exercise archival/liveness mechanics independently
+        # of the lease gate, whose real policy has dedicated coverage below.
+        lease_gate = patch.object(reaper, 'lease_allows_reaping', return_value=True)
+        lease_gate.start()
+        self.addCleanup(lease_gate.stop)
 
     def git(self, path, *args):
         result = subprocess.run(['git', '-C', str(path), *args], text=True, capture_output=True, check=True)

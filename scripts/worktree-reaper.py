@@ -491,11 +491,28 @@ def report(out, rows, actions, before, after, errors, mode):
     print(json.dumps(summary, indent=2), flush=True)
 
 
+def lease_allows_reaping(path, now):
+    """Legacy CLI obeys the same lease gate as the fleet actor."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('artifact_lease_policy', Path(__file__).with_name('artifact-leases.py'))
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    target = Path(path)
+    try:
+        lease = json.loads((target / policy.SIDECAR).read_text())
+        return (policy.allowed(target, policy.ROOTS['groot'])
+                and not (target / policy.SIDECAR).is_symlink()
+                and isinstance(lease, dict) and lease.get('kind') == 'worktree'
+                and policy.validate(lease, target, 'groot', now) is None)
+    except (OSError, ValueError):
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--apply', action='store_true', help='Archive and remove every non-LIVE checkout now')
-    mode.add_argument('--daily', action='store_true', help='Remove SAFE >=3d and archive WIP >=14d')
+    mode.add_argument('--apply', action='store_true', help='Archive and remove expired, leased non-LIVE checkouts')
+    mode.add_argument('--daily', action='store_true', help='Lease-only daily worktree reclamation')
     mode.add_argument('--inventory', action='store_true', help='Read-only inventory (default)')
     parser.add_argument('--root', action='append', dest='roots')
     parser.add_argument('--output', type=Path, default=OUTPUT)
@@ -567,6 +584,9 @@ def main():
             break
         if not mutating or row['class'] == 'LIVE':
             continue
+        if not lease_allows_reaping(row['path'], time.time()):
+            actions.append(emit(args.output, 'kept_without_expired_lease', path=row['path']))
+            continue
         if args.daily and row['mtime_age_days'] < (3 if row['class']=='SAFE' else 14):
             continue
         try:
@@ -600,6 +620,8 @@ def main():
                 raise RuntimeError('HEAD changed during archival')
             if newest_mtime(row['path'], time.time()-DAY) > time.time()-DAY:
                 raise RuntimeError('Working files changed during archival')
+            if not lease_allows_reaping(row['path'], time.time()):
+                raise RuntimeError('Lease changed or renewed during archival')
             emit(args.output, 'remove_intent', path=row['path'], size_bytes=size, parent_repo=row['parent_repo'], remote=row['remote'], branch=row['branch'])
             # Absorbed submodules also use a .git file, but are not linked
             # worktrees. Their Git directory is their common object store.
