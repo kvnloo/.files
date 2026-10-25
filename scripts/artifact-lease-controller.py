@@ -129,7 +129,10 @@ with tempfile.TemporaryDirectory(prefix='artifact-lease-source-') as tmp:
     expected = {**node, 'name': name, 'flags': (['--apply'] if apply else []) + (['--enroll'] if enroll else [])}
     args = ['python3', '-c', wrapper, json.dumps(expected)]
     if node['transport'] == 'ssh':
-        args = SSH + [node['host'], shlex.join(args)]
+        # The shell owns its worker and tears it down on disconnect or timeout.
+        command = ('trap \'test -z "${child:-}" || kill "$child" 2>/dev/null || :\' EXIT HUP INT TERM; '
+                   'timeout 110s ' + shlex.join(args) + ' <&0 & child=$!; wait "$child"')
+        args = SSH + [node['host'], shlex.join(['bash', '-c', command])]
     payload = {'artifact-leases.py': source,
                'worktree-reaper.py': (ROOT / 'scripts/worktree-reaper.py').read_text()}
     return json.loads(run(args, json.dumps(payload)))

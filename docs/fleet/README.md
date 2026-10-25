@@ -970,8 +970,15 @@ Repeatable `--node s22 --node s25` restricts a real apply to those nodes.
 The report-only `artifact-leases.timer` checks every five minutes. It targets
 groot, MBP and S22 only; S25 is excluded pending its separate cleanup review.
 It neither enrolls leases nor deletes artifacts. `--monitor` runs each node
-hourly otherwise and immediately on a check below 10% free
-space. **10% is explicit configuration, not measured calibration and not a
+hourly otherwise and immediately on a check below 10% free space.
+
+Report mode enumerates fixed-root children without HOME or descendant scans.
+Each item gets a separate receipt with liveness UNKNOWN and size UNKNOWN;
+metadata allocation is not recursive payload size. Known bytes and unknown-size
+counts are distinct. Reports never authorize removal. SSH actors have a
+110-second lifetime bound and a disconnect cleanup trap.
+
+**10% is explicit configuration, not measured calibration and not a
 resource cap.** Pressure does not shorten leases or override live/unknown
 protection; expired-oldest removal remains the core's ordering policy.
 Timer runs serialize through a controller lock; the core has its own lock.
