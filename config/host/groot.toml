@@ -244,3 +244,55 @@ scope = "system"
 install = "copy"
 owner = "scripts/apply-host-system"
 reason = "Preserve package backup deviation observed 2026-10-24; DESKTOP-ADMISSION.md system audit"
+
+[[system]]
+live = "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf"
+source = "config/host/etc/systemd/system/user.slice.d/70-desktop-reserve.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "session.slice peak6346428416 bytes plus18% margin; DESKTOP-ADMISSION.md"
+effective = { MemoryMin = "7516192768", MemoryLow = "7516192768" }
+
+[[system]]
+live = "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf"
+source = "config/host/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Propagate7GiB measured desktop reclaim reserve; DESKTOP-ADMISSION.md"
+effective = { MemoryMin = "7516192768", MemoryLow = "7516192768" }
+
+[[system]]
+live = "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf"
+source = "config/host/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Propagate7GiB reclaim reserve; future manager OOMScoreAdjust0, no restart; DESKTOP-ADMISSION.md"
+effective = { MemoryMin = "7516192768", MemoryLow = "7516192768" }
+
+[budget]
+desktop = "session.slice"
+groups = [
+  { scope = "user", unit = "agent.slice" },
+  { scope = "user", unit = "z0-farm-llama.service" },
+  { scope = "user", unit = "ctx.service" },
+  { scope = "user", unit = "app-t3code-agents.slice" },
+  { scope = "user", unit = "agent-telemetry-refresh.service" },
+  { scope = "user", unit = "neuroforge-anki-bridge.service" },
+  { scope = "user", unit = "neuroforge-game.service" },
+  { scope = "user", unit = "neuroforge-dashboard.service" },
+  { scope = "user", unit = "dash-log-watch.service" },
+  { scope = "user", unit = "service-watch.service" },
+  { scope = "user", unit = "z0-ghcache.service" },
+  { scope = "user", unit = "z0int-policy-identity-warm.service" },
+  { scope = "user", unit = "t3code.service" },
+  { scope = "user", unit = "hermes-web.service" },
+  { scope = "user", unit = "background.slice" },
+  { scope = "system", unit = "kubepods.slice" },
+  { scope = "system", unit = "k3s.service" },
+  { scope = "system", unit = "docker.service" },
+  { scope = "system", unit = "containerd.service" },
+  { scope = "system", unit = "ollama.service" },
+]

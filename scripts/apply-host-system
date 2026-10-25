@@ -172,6 +172,17 @@ def install(source, root, apply=False, oomd=False):
                 raise RuntimeError('UNSAFE: oomctl still lists monitored cgroups; inspect higher-priority drop-ins; no success claimed')
             print('VERIFIED: oomctl monitored set empty; hard caps/kernel OOM remain, no global OOM guarantee')
         else:
+            for unit in ('user.slice', 'user-1000.slice', 'user@1000.service'):
+                cg = subprocess.run(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+                if not cg.startswith('/') or '..' in Path(cg).parts:
+                    raise RuntimeError(f'invalid cgroup for {unit}')
+                for key in ('memory.min', 'memory.low'):
+                    value = (root / 'sys/fs/cgroup' / cg.lstrip('/') / key).read_text().strip()
+                    if value != '7516192768':
+                        raise RuntimeError(f'{unit} {key}={value}; expected7516192768; no reclaim-protection success claimed')
+            print('VERIFIED: root user.slice -> user-1000.slice -> user@1000.service memory.min/low=7516192768')
+            print('STAGED: user@1000 OOMScoreAdjust=0 for next controlled login/reboot; existing manager/process scores unchanged')
             subprocess.run(['sysctl', '--system'], check=True)
             subprocess.run(['udevadm', 'control', '--reload'], check=True)
             # Narrow block trigger: never touch USB input, live zram, network or desktop.

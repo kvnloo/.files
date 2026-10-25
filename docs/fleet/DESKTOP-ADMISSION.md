@@ -234,3 +234,45 @@ ManagedOOM=kill threshold. `agent-workloads-v2.scope` currently mixes tool
 work with MCP/AgentsView and is not an eligible kill target. This stage does
 not implement that migration or falsely mark mixed scopes killable.
 
+
+### Unified reclaim reserve and victim-selection layers
+
+The single measured budget table is
+`config/host/groot-audit-20261024.json` → `host_memory_budget.groups`:
+per group, lifetime `MemoryPeak`, current cap, proposed/retained cap and basis.
+Do not add hierarchical peaks as simultaneous demand. Session lifetime peak
+was6,346,428,416 bytes (5.91GiB). The measured-peak-plus-margin choice is
+MemoryMin=MemoryLow=7GiB, replacing the user session's existing4GiB MemoryLow.
+The root installer propagates7GiB through user.slice, user-1000.slice and
+user@1000.service; UserLayer owns session.slice. Kernel memory.min/low values
+are read back after reload; mismatch fails rather than claiming protection.
+No manager or desktop restart is used to apply reclaim settings.
+
+The continuous manifest `[budget]` check adopts
+`physical RAM - effective session.slice MemoryMin >= largest non-desktop cap`.
+With7GiB protected, remaining17,565,974,528 bytes (~16.36GiB) exceeds the
+largest proposed finite group10GiB. T3 agents move19.36→4GiB and Kubernetes
+19.36→approximately3.36GiB after its explicit20GiB host-reserve maintenance.
+The nominal sum still exceeds RAM (~38.5GiB); caps are not reservations and
+need not all peak together. Unbounded/missing groups produce UNKNOWN, never a
+false pass. The guard is a necessary finite-single-runaway check, **not**
+sufficient when other workloads already occupy memory. Hard reclaim
+protection does not exempt a process from global OOM victim selection.
+
+Victim selection is separate: earlyoom avoids the anchored harness/session
+names; kernel scores still matter independently. Observed live
+`oom_score_adj`: user manager100; Hyprland, Xwayland, noctalia(qs), tern,
+OMP and Hermes200. Current scores were respectively733,804,802,814,806,812,
+814 (gateway); these are changing observations, not static guarantees.
+Some preexisting Hermes worker processes also retained200, so desired
+agent-launch child800 was not proof that every live child had that rank.
+The root user@1000 drop-in stages OOMScoreAdjust=0 for the **next controlled
+login/reboot only**. Existing user manager/desktop scores are not rewritten
+by this root script and user@1000 is never restarted. UserLayer owns bounded
+classifier updates to raise only eligible disposable children; no invalid
+OOMScoreAdjust directive is added to a scope (it is service-spawn-only).
+
+Residual risk: unbounded groups and concurrent capped workloads can still
+cause global OOM; reclaim protection, earlyoom avoidance and relative
+oom_score_adj ranking do not guarantee desktop survival.
+

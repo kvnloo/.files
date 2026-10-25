@@ -126,5 +126,30 @@ class EarlyoomSelectionTests(unittest.TestCase):
                      'cc1plus', 'omp-worker', 'not-hermes', 'codex-tool'):
             with self.subTest(comm=comm):
                 self.assertIsNone(re.fullmatch(pattern, comm))
+
+class DesktopBudgetTests(unittest.TestCase):
+    def test_root_reserve_chain_and_next_login_ranking(self):
+        for unit in ('user.slice', 'user-1000.slice', 'user@1000.service'):
+            text = (SOURCE / f'config/host/etc/systemd/system/{unit}.d/70-desktop-reserve.conf').read_text()
+            self.assertIn('MemoryMin=7G', text)
+            self.assertIn('MemoryLow=7G', text)
+            if unit.endswith('.service'):
+                self.assertIn('OOMScoreAdjust=0', text)
+            else:
+                self.assertNotIn('OOMScoreAdjust=', text)
+        # Explicit model of the adopted finite-cap guard, not aggregate safety.
+        ram, desktop, runaway = 25082167296, 7 * 1024**3, 10 * 1024**3
+        self.assertGreaterEqual(ram - desktop, runaway)
+        self.assertLess(ram - desktop, 20 * 1024**3)
+
+    def test_audit_retains_unbounded_risk_and_measured_desktop_peak(self):
+        import json
+        audit = json.loads((SOURCE / 'config/host/groot-audit-20261024.json').read_text())
+        budget = audit['host_memory_budget']
+        session = next(g for g in budget['groups'] if g['unit'] == 'session.slice')
+        self.assertGreater(session['proposed_min_bytes'], session['peak_bytes'])
+        self.assertTrue(any(g['proposed_cap'] == 'infinity' for g in budget['groups']))
+        self.assertIn('not OOM-victim immunity', budget['not_a_guarantee'])
+
 if __name__ == '__main__':
     unittest.main()

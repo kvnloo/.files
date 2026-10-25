@@ -1,6 +1,48 @@
 {
   "observed_at": "2026-10-25T03:46:09.561433+00:00",
   "root_changes_applied": false,
+  "host_memory_budget": {
+    "peak_semantics": "MemoryPeak lifetime highs; parent and descendant peaks overlap and are not additive",
+    "physical_bytes": 25082167296,
+    "desktop_reclaim_min_proposed_bytes": 7516192768,
+    "physical_minus_desktop_min_bytes": 17565974528,
+    "rule": "physical_bytes - effective session.slice MemoryMin >= largest non-desktop group MemoryMax; unbounded or missing groups remain UNKNOWN",
+    "not_a_guarantee": "MemoryMin is hard reclaim protection, not OOM-victim immunity. This single-cap guard is not an aggregate memory reservation.",
+    "groups": [
+      {"scope":"user","unit":"session.slice","peak_bytes":6346428416,"current_cap":"infinity","proposed_cap":"infinity","current_min_bytes":0,"current_low_bytes":4294967296,"proposed_min_bytes":7516192768,"proposed_low_bytes":7516192768,"basis":"measured peak plus18 percent margin; UserLayer"},
+      {"scope":"user","unit":"agent.slice","peak_bytes":14181822464,"current_cap":10737418240,"proposed_cap":10737418240,"basis":"already approved10GiB aggregate; peak predates cap"},
+      {"scope":"user","unit":"z0-farm-llama.service","peak_bytes":3126669312,"current_cap":8589934592,"proposed_cap":8589934592,"basis":"retain approved8GiB model envelope; lifetime peak is not largest model fit"},
+      {"scope":"user","unit":"ctx.service","peak_bytes":5368709120,"current_cap":5368709120,"proposed_cap":5368709120,"basis":"CtxRootCause owner; at cap, no unmeasured raise"},
+      {"scope":"user","unit":"app-t3code-agents.slice","peak_bytes":1229709312,"current_cap":20787200000,"proposed_cap":4294967296,"basis":"parent-selected4GiB; UserLayer"},
+      {"scope":"user","unit":"agent-telemetry-refresh.service","peak_bytes":1365536768,"current_cap":2621440000,"proposed_cap":2621440000,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"neuroforge-anki-bridge.service","peak_bytes":45793280,"current_cap":805306368,"proposed_cap":805306368,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"neuroforge-game.service","peak_bytes":109916160,"current_cap":805306368,"proposed_cap":805306368,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"neuroforge-dashboard.service","peak_bytes":32784384,"current_cap":134217728,"proposed_cap":134217728,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"dash-log-watch.service","peak_bytes":54677504,"current_cap":805306368,"proposed_cap":805306368,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"service-watch.service","peak_bytes":136204288,"current_cap":268435456,"proposed_cap":268435456,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"z0-ghcache.service","peak_bytes":104251392,"current_cap":268435456,"proposed_cap":268435456,"basis":"retain existing bounded policy"},
+      {"scope":"user","unit":"t3code.service","peak_bytes":1818808320,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded residual; do not cap session/harness runtime without lifecycle fit"},
+      {"scope":"user","unit":"hermes-web.service","peak_bytes":311656448,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded residual; runtime owner not modified"},
+      {"scope":"user","unit":"background.slice","peak_bytes":1241526272,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded mixed services, not a disposable kill target"},
+      {"scope":"system","unit":"kubepods.slice","peak_bytes":552407040,"current_cap":20787200000,"proposed_cap":"approximately3.36GiB after20GiB host reserve","basis":"setup-k3s server maintenance; verify actual Allocatable and cgroup cap"},
+      {"scope":"system","unit":"k3s.service","peak_bytes":1086623744,"current_cap":"infinity","proposed_cap":"infinity","basis":"control plane remains unbounded; no blanket essential-services cap without fit testing"},
+      {"scope":"system","unit":"docker.service","peak_bytes":163450880,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded daemon; containers have separate caps"},
+      {"scope":"system","unit":"containerd.service","peak_bytes":151011328,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded daemon; pod cgroups separate"},
+      {"scope":"system","unit":"ollama.service","peak_bytes":444395520,"current_cap":"infinity","proposed_cap":"infinity","basis":"unbounded model endpoint; no workload-fit evidence for new cap"}
+    ],
+    "kernel_ranking_before": [
+      {"pid":1113,"comm":"systemd","role":"user manager","oom_score_adj":100,"oom_score":733},
+      {"pid":623313,"comm":"Hyprland","oom_score_adj":200,"oom_score":804},
+      {"pid":623989,"comm":"Xwayland","oom_score_adj":200,"oom_score":802},
+      {"pid":623977,"comm":"qs","role":"noctalia","oom_score_adj":200,"oom_score":814},
+      {"pid":1392199,"comm":"tern","oom_score_adj":200,"oom_score":806},
+      {"pid":1826151,"comm":"omp","oom_score_adj":200,"oom_score":812},
+      {"pid":4087,"comm":"hermes","role":"gateway","oom_score_adj":200,"oom_score":814},
+      {"pid":1417006,"comm":"hermes","role":"agent","oom_score_adj":200,"oom_score":801}
+    ],
+    "kernel_ranking_staged": "user@1000.service OOMScoreAdjust=0 applies to next controlled manager lifecycle only; existing processes are not restarted or rewritten by root installer",
+    "residual_risk": "Unbounded groups and concurrent capped workloads can still cause global OOM; reclaim protection, earlyoom avoidance and score ranking do not guarantee desktop survival."
+  },
   "package_integrity": {
     "qkk_returncode": 1,
     "elapsed_seconds": 349.85,
