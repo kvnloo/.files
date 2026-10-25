@@ -42,10 +42,42 @@ Useful commands:
 
 ## OMP executable ownership
 
-`scripts/apply-agent-oom --apply` installs the content-stamped `~/.local/bin/omp`
-wrapper alongside `agent-launch`. The wrapper runs Tern's managed
-`~/.local/share/tern/omp/bin/omp` through `agent-launch omp`; no global Bun OMP
-package is required. Point launchers at `~/.local/bin/omp`, not `~/.bun/bin/omp`.
+`scripts/apply-agent-oom --apply` installs one content-stamped wrapper at both
+`~/.local/bin/omp` and Tern's legacy absolute
+`~/.local/share/tern/omp/bin/omp`. Thus previously recorded Tern `--restore`
+commands also enter `agent-launch omp`, not just new shell starts. The payload is
+checksum-verified against Tern's installed state and copied into an immutable
+SHA-256 release; `~/.local/lib/files-tern-omp/current` selects it atomically.
+On groot the payload bytes live under `/mnt/zer0models/releases/files-tern-omp`.
+No running executable inode, daemon, pane or desktop is changed or restarted.
+
+**Update ownership changes explicitly:** .files owns the live OMP entry points.
+The installer sets the supported Tern `agent_command` to `~/.local/bin/omp` and
+the live OMP manager state to `managed=false`. Tern's own application updates are
+unchanged. Do not let its OMP updater replace the live legacy entry.
+
+To upgrade OMP, use Tern's supported OMP download/update UI in a **separate**
+`TERN_CONFIG_DIR` staging profile, then import that profile:
+
+```sh
+# Open a separate Tern profile, never restart the live session daemon.
+# Exclude live OMP wrappers from manager discovery in this staging process.
+PATH=/usr/bin:/bin TERN_CONFIG_DIR="$HOME/.local/state/tern-omp-staging" \
+  TERN_DAEMON_SOCKET="$HOME/.local/state/tern-omp-staging.sock" \
+  "$HOME/.local/bin/tern"
+# In that profile use the default omp agent command and accept its OMP update.
+# Publish only its verified immutable version; never copy staging bin/omp live.
+install-tern-omp --apply --from-tern "$HOME/.local/state/tern-omp-staging"
+```
+
+The import takes an installer lock and Tern's manager check lock, verifies the
+advertised SHA-256, stages the payload, and atomically switches the payload
+pointer while both live entries remain wrappers. Re-run this import after each
+staging-profile update. Checksum failure leaves live entries unchanged.
+`install-tern-omp --rollback` restores the exact entry points, settings, manager
+state and payload pointer saved by the last successful import. Rollback never
+writes through an executable symlink. The host-drift manifest checks both entry
+points and the installer against their content-stamped .files sources.
 
 ## Scoped Bitwarden credentials
 
