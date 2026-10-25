@@ -5,7 +5,7 @@ ConditionPathIsMountPoint=/mnt/zer0models
 [Service]
 Type=oneshot
 Environment=ZER0_STORAGE_POLICY=%h/.config/zer0/storage.toml
-ExecStart=/usr/bin/python %h/.local/lib/zer0-storage-autotier/current/scripts/zer0_storage_autotier.py --apply
+ExecStart=/usr/bin/python %h/.local/lib/host-storage/current/scripts/zer0_storage_autotier.py --apply
 Nice=19
 IOSchedulingClass=idle
 MemoryMax=512M

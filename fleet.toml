@@ -22,6 +22,8 @@ fleet_policy = "config/fleet/storage.toml"
 root_reserve_gib = 20
 root_admission_floor_gib = 15
 source_retention_days = 7
+autotier_owner = ".files"
+autotier_superseded_source = "/workspace/zer0/portfolios/chief-of-staff/scripts/zer0_storage_autotier.py"
 
 # Policy-only immutable release; discovery runs admitted workers outside the timer.
 [hosts.desktop.policy_pipeline]
