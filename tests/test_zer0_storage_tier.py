@@ -54,7 +54,8 @@ def test_verified_readonly_backup_removed_without_destination_mode_changes(tmp_p
 
 def test_unverified_backup_is_never_removed(tmp_path, monkeypatch):
     backup = tmp_path / "backup"
-    backup.mkdir(mode=0o555)
+    backup.mkdir()
+    backup.chmod(0o555)
     destination = tmp_path / "destination"
     destination.mkdir()
     def reject(*_):
