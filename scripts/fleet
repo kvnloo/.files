@@ -208,8 +208,10 @@ def judge(n, p, k8s, online, overrides):
         return ([] if limits.get("canStart") else [p.get("error", "Boat cannot start")]), []
     bad, warn = [], []
     if n["kind"] == "phone" and p.get("transport") == "adb":
-        if p.get("error"):
+        if p.get("error") and p.get("status") != "guest_down":
             return [p["error"]], []
+        if p.get("status") == "guest_down":
+            warn.append(p.get("error", "guest_down: Omalauncher LinuxService missing"))
         power = p["power"]
         pct = power["batteries"][0]["pct"]
         if pct < 2 and not power["on_ac"]:

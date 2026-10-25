@@ -52,7 +52,8 @@ class Device:
             raise RuntimeError(f"authenticated adb hardware {self.hardware} unavailable (no guest fallback)")
 
     def call(self, *args, check=True, timeout=30, **kwargs):
-        kwargs.setdefault("stdin", subprocess.DEVNULL)
+        if "input" not in kwargs:
+            kwargs.setdefault("stdin", subprocess.DEVNULL)
         return subprocess.run([self.adb, "-P", "5037", *args], env=self.env,
                               capture_output=True, text=True, check=check, timeout=timeout, **kwargs)
 
@@ -71,8 +72,10 @@ class Device:
 
     def guest_running(self):
         services = self.shell("dumpsys activity services dev.omalauncher")
-        return bool(re.search(r"LinuxService\b", services)
-                    and re.search(r"isForeground=true\b", services))
+        records = re.split(r"(?m)^\s*\* ServiceRecord", services)
+        return any(re.search(r"\bdev\.omalauncher/[^ \n}]*LinuxService\b", record)
+                   and re.search(r"\bisForeground=true\b", record)
+                   for record in records)
 
     def restore_guest(self):
         """Fail closed on owner/call evidence; serialize launch with all UI users."""

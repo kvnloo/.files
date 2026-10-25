@@ -103,8 +103,9 @@ class NativeLaneTests(unittest.TestCase):
 
     def test_guest_service_requires_foreground_linux_service(self):
         device = Device.__new__(Device)
-        for text, expected in [("LinuxService isForeground=true", True),
-                               ("LinuxService isForeground=false", False),
+        for text, expected in [("* ServiceRecord{a dev.omalauncher/.LinuxService}\n isForeground=true", True),
+                               ("* ServiceRecord{a dev.omalauncher/.LinuxService}\n isForeground=false\n"
+                                "* ServiceRecord{b dev.omalauncher/.OtherService}\n isForeground=true", False),
                                ("OtherService isForeground=true", False)]:
             device.shell = mock.Mock(return_value=text)
             self.assertEqual(device.guest_running(), expected)
@@ -186,6 +187,19 @@ class NativeLaneTests(unittest.TestCase):
         self.assertEqual(facts["status"], "guest_down")
         self.assertTrue(facts["online"])
         self.assertEqual(facts["guest_recovery"], "owner_busy")
+        bad, warnings = FLEET["judge"](
+            {"kind": "phone", "health": {}}, facts, {}, {}, {})
+        self.assertEqual(bad, [])
+        self.assertEqual(warnings, [facts["error"]])
+
+    def test_adb_commands_do_not_consume_discovery_stdin(self):
+        device = Device.__new__(Device)
+        device.adb, device.env = "adb", {}
+        with mock.patch("subprocess.run") as run:
+            device.call("devices")
+            self.assertEqual(run.call_args.kwargs["stdin"], subprocess.DEVNULL)
+            device.call("shell", "cat", input="payload")
+            self.assertNotIn("stdin", run.call_args.kwargs)
 
 if __name__ == "__main__":
     unittest.main()
