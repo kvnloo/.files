@@ -24,9 +24,9 @@ CHECKS = {
         'phone-display.sh toggle',
     ),
     "appearance.lua": (
-        'hl.plugin.hyprglass', 'enabled=false', 'default_theme="dark"',
-        'default_preset="flow"', 'blur_strength=1.10', 'brightness=0.88',
-        'hg.layer("waybar", {preset="flow",mask_threshold=0.05})', 'colors.json',
+        'hl.plugin.hyprglass', 'default_theme="dark"',
+        'default_preset="Prism"', 'blur_strength=0.70', 'brightness=0.86',
+        'hg.preset("Prism"', 'lua.bridges',
     ),
 }
 

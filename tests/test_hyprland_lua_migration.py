@@ -1,5 +1,6 @@
 import json
 import re
+import runpy
 import subprocess
 from pathlib import Path
 
@@ -30,6 +31,52 @@ def legacy_directive_lines():
             directives.append((number, text))
     assert depth == 0
     return directives
+
+
+def effective_repository_scalars():
+    """Read ordered repository sources independently of the conversion generator."""
+    values = {}
+    seen = set()
+    repeated = {
+        "monitor", "workspace", "windowrule", "layerrule", "env", "exec-once",
+        "exec", "bind", "binde", "bindm", "bindl", "bindel", "bindr", "unbind",
+        "bezier", "animation", "gesture", "preset", "spatialoverview-gesture",
+        "submap", "plugin",
+    }
+
+    def visit(path):
+        if path in seen:
+            return
+        seen.add(path)
+        stack = []
+        for raw in path.read_text().splitlines():
+            text = raw.partition("#")[0].strip()
+            if not text:
+                continue
+            if text.endswith("{"):
+                stack.append(text[:-1].strip())
+                continue
+            if text == "}":
+                stack.pop()
+                continue
+            key, separator, value = text.partition("=")
+            assert separator, (path, text)
+            key, value = key.strip(), value.strip()
+            if key == "source":
+                for prefix in ("/home/kvn/workspace/.files/", "~/workspace/.files/"):
+                    if value.startswith(prefix):
+                        target = ROOT / value[len(prefix):]
+                        if target.is_file():
+                            visit(target)
+                        break
+                continue
+            if key in repeated or key.startswith("$") or "device" in stack:
+                continue
+            normalized = ".".join([*stack, key]).replace(":", ".").replace("-", "_")
+            values[normalized] = value
+
+    visit(LEGACY)
+    return values
 
 
 def test_inventory_classifies_every_legacy_directive_exactly_once(migration_inventory):
@@ -93,28 +140,37 @@ def test_sabotaged_lua_is_rejected_by_parser(tmp_path):
     assert "expected" in result.stderr
 
 
-def test_hyprglass_semantics_are_preserved_in_lua_and_inventory():
+def test_hyprglass_semantics_are_preserved_in_lua_and_inventory(migration_inventory):
     appearance = (HYPR / "lua/appearance.lua").read_text()
-    inventory = json.loads(INVENTORY.read_text())
-    expected = {
-        "plugin:hyprglass.enabled": "0",
-        "plugin:hyprglass.default_theme": "dark",
-        "plugin:hyprglass.default_preset": "flow",
-        "plugin:hyprglass.layers.enabled": "0",
-        "plugin:hyprglass.layers.namespaces": "waybar",
-        "plugin:hyprglass.layers.preset": "flow",
-        "plugin:hyprglass.layers.namespace_mask_thresholds": "waybar=0.05",
+    inventory = json.loads(migration_inventory.read_text())
+    effective = effective_repository_scalars()
+    paths = {
+        "plugin.hyprglass.enabled", "plugin.hyprglass.default_theme",
+        "plugin.hyprglass.default_preset", "plugin.hyprglass.layers.enabled",
+        "plugin.hyprglass.layers.namespaces", "plugin.hyprglass.layers.preset",
+        "group.groupbar.gradients", "group.groupbar.height",
+        "group.groupbar.indicator_height", "group.groupbar.indicator_gap",
+        "group.groupbar.text_offset", "plugin.spatialoverview.animation.speed",
     }
-    semantics = {item["path"]: item["value"] for item in inventory["semantics"]}
-    assert expected.items() <= semantics.items()
-    for token in (
-        "enabled=false", 'default_theme="dark"', 'default_preset="flow"',
-        'layers={enabled=false,preset="flow"}',
-        'hg.layer("waybar", {preset="flow",mask_threshold=0.05})',
-    ):
-        assert token in appearance
-    assert "blur_strength=1.10" in appearance
-    assert "brightness=0.88" in appearance
+    semantics = {
+        item["path"].replace(":", ".").replace("-", "_"): item["value"]
+        for item in inventory["semantics"]
+    }
+    actual = runpy.run_path(str(ROOT / "scripts/hypr_lua_semantics.py"))["config_values"](appearance)
+
+    def normalized(value):
+        value = str(value).strip().strip('"').strip("'")
+        if value in {"true", "false"}:
+            return int(value == "true")
+        try:
+            return float(value)
+        except ValueError:
+            return value
+
+    for path in paths:
+        assert path in effective
+        assert normalized(semantics[path]) == normalized(effective[path]), path
+        assert normalized(actual[path]) == normalized(effective[path]), path
 
 
 def test_semantic_inventory_rejects_representative_sabotage(tmp_path):
@@ -168,11 +224,13 @@ def test_hyprglass_defers_native_lua_api_until_hyprland_start():
     appearance = (HYPR / "lua/appearance.lua").read_text()
     harness = (ROOT / "scripts/verify-hypr-lua-nested").read_text()
     assert 'local hg=hl.plugin.hyprglass' in appearance
-    assert 'hl.plugin.load(hyprglass_plugin)\n  hl.on("hyprland.start", function()' in appearance
-    assert 'error("hyprglass Lua API unavailable after plugin load")' in appearance
-    assert 'hg.config(hyprglass)' in appearance
-    assert 'hg.preset("flow"' in appearance
-    assert 'hg.layer("waybar"' in appearance
+    assert appearance.index("hl.plugin.load(") < appearance.index('hl.on("hyprland.start"')
+    deferred = appearance.split('hl.on("hyprland.start", function()', 1)[1]
+    assert 'error("hyprglass Lua API unavailable after plugin load")' in deferred
+    assert re.search(r"hl\.config\(\{plugin=\{", deferred)
+    for preset in ("Clear", "Frost", "Smoke", "Prism", "MonDP1", "MonDP2", "Slate"):
+        assert f'hg.preset("{preset}"' in deferred
+    assert 'namespace_presets=' in deferred
     assert 'keyword plugin:hyprglass' not in harness
 
 
@@ -282,16 +340,24 @@ def test_checker_detects_specific_rule_and_ordinary_semantic_sabotage(tmp_path):
 def test_checker_detects_exact_typed_config_value_sabotage(tmp_path):
     checker = ROOT / "scripts/check-hypr-lua-parity"
     for old, new, semantic in (
-        ("gaps_out=8", "gaps_out=9", "general.gaps_out"),
-        ("allow_tearing=false", "allow_tearing=true", "general.allow_tearing"),
-        ("gaps_out=8, gradient_rounding", "gaps_out=9, gradient_rounding", "group.groupbar.gaps_out"),
+        ("8", "9", "general.gaps_out"),
+        ("false", "true", "general.allow_tearing"),
+        ("8", "9", "group.groupbar.gaps_out"),
     ):
         lua_root = tmp_path / semantic.replace(".", "-")
         lua_root.mkdir()
         source = HYPR / "lua/appearance.lua"
         body = source.read_text()
-        assert old in body
-        (lua_root / source.name).write_text(body.replace(old, new, 1))
+        parts = semantic.split(".")
+        offset = 0
+        for table in parts[:-1]:
+            match = re.search(rf"\b{re.escape(table)}\s*=\s*\{{", body[offset:])
+            assert match is not None, semantic
+            offset += match.end()
+        match = re.search(rf"\b{re.escape(parts[-1])}\s*=\s*({re.escape(old)})\b", body[offset:])
+        assert match is not None, semantic
+        start, end = offset + match.start(1), offset + match.end(1)
+        (lua_root / source.name).write_text(body[:start] + new + body[end:])
         result = subprocess.run([checker, "--lua-root", lua_root], capture_output=True, text=True)
         assert result.returncode != 0, (semantic, result.stdout, result.stderr)
         assert semantic in result.stderr

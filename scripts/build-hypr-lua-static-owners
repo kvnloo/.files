@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Regenerate checked-in native Lua owners without touching the live desktop."""
+from pathlib import Path
+from hypr_lua_static import generate
+
+if __name__ == '__main__':
+    generate(Path(__file__).resolve().parents[1])

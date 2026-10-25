@@ -73,6 +73,8 @@ def _needles_for(text: str) -> list[str]:
         if inner.startswith("^(") and inner.endswith(")$"):
             inner = inner[2:-2]
         needles.extend(part.strip() for part in inner.split("|") if part.strip())
+    if text.startswith("spatialoverview-gesture ="):
+        return ["so.gesture"]
     if text.startswith("env ="):
         needles.append(text.split("=", 1)[1].split(",", 1)[0].strip())
     elif text.startswith("monitor ="):
@@ -93,12 +95,12 @@ def _needles_for(text: str) -> list[str]:
     elif re.fullmatch(r"[A-Za-z0-9_.:-]+\s*=\s*.+", text) and not text.startswith("windowrule"):
         leaf = text.split("=", 1)[0].strip().split(":")[-1]
         if leaf == "namespaces":
-            needles.append("waybar")
+            needles.append(text.split("=", 1)[1].strip())
         elif leaf == "namespace_mask_thresholds":
             needles.append("mask_threshold")
         else:
             needles.append(leaf.split(".")[-1])
-    return [needle for needle in needles if needle]
+    return [needle.replace("-", "_") if needle in {"tap-to-click", "tap-and-drag"} else needle for needle in needles if needle]
 
 
 def test_static_matchers_and_commands_appear_in_owner_modules(hypr_inventory):

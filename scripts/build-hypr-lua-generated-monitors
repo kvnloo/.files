@@ -12,7 +12,7 @@ SRC = Path(os.environ.get("HYPR_MONITORS_CONF", Path.home() / ".config/hypr/moni
 
 
 def parse_monitor(text: str) -> dict[str, object]:
-    _, payload = text.split("=", 1)
+    _, payload = text.partition("#")[0].split("=", 1)
     parts = [part.strip() for part in payload.split(",")]
     record: dict[str, object] = {
         "output": parts[0],

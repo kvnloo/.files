@@ -58,11 +58,11 @@ def migration_inventory(tmp_path):
     sandbox = tmp_path / "inventory"
     scripts = sandbox / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("build-hypr-lua-inventory", "hypr_lua_semantics.py"):
+    for name in ("build-hypr-lua-inventory", "hypr_lua_semantics.py", "hypr_lua_static.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     config = sandbox / "config/hyprland"
     config.mkdir(parents=True)
-    for name in ("hyprland.legacy.conf", "lua"):
+    for name in ("hyprland.legacy.conf", "lua", "hyprglass.conf", "phantomat"):
         (config / name).symlink_to(ROOT / "config/hyprland" / name)
     subprocess.run([sys.executable, str(scripts / "build-hypr-lua-inventory")], check=True)
     return config / "migration-inventory.json"

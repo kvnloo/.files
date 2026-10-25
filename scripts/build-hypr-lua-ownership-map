@@ -112,7 +112,7 @@ def lua_api_for(keyword: str, text: str, kind: str) -> str:
         return "hl.window_rule"
     if keyword.startswith("layerrule"):
         return "hl.layer_rule"
-    if keyword.startswith("bind") or keyword in {"submap", "$mod"}:
+    if keyword.startswith("bind") or keyword in {"unbind", "submap", "$mod"}:
         return "hl.bind"
     if keyword in {"exec-once", "exec"}:
         return "hl.on"

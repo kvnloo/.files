@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 from hypr_lua_semantics import extract
+from hypr_lua_static import read_directives
 
 root = Path(__file__).resolve().parents[1]
 legacy = root / "config/hyprland/hyprland.legacy.conf"
@@ -41,6 +42,37 @@ for number, raw in enumerate(legacy.read_text().splitlines(), 1):
         semantics.append({"line": number, "path": path, "value": value, "owner": owner})
 if stack:
     raise SystemExit(f"unclosed blocks: {stack}")
+# Root directive coverage remains an independent audit. Semantic proofs instead
+# describe the effective ordered source graph, not overwritten root values.
+semantics = []
+effective = {}
+repeatable = {"monitor", "workspace", "env", "windowrule", "layerrule", "gesture",
+              "spatialoverview-gesture", "bezier", "animation", "preset",
+              "unbind", "submap", "exec-once", "exec", "plugin"}
+for record in read_directives(root):
+    name, value = record["name"], record["value"]
+    path = record["path"].replace("-", "_")
+    if name.startswith("$"):
+        continue
+    if name in {"monitor", "workspace"}:
+        owner = "lua/monitors.lua"
+    elif name == "env":
+        owner = "lua/environment.lua"
+    elif name in {"windowrule", "layerrule"}:
+        owner = "lua/rules.lua"
+    elif name.startswith("bind") or name in {"submap", "unbind"}:
+        owner = "lua/binds.lua"
+    elif name in {"exec-once", "exec"}:
+        owner = "lua/autostart.lua"
+    else:
+        owner = "lua/appearance.lua"
+    item = {"line": record["line"], "file": record["file"], "path": path,
+            "value": value, "owner": owner}
+    if name in repeatable or name.startswith("bind") or record["stack"] == ["device"]:
+        semantics.append(item)
+    else:
+        effective[path] = item
+semantics.extend(effective.values())
 for item in semantics:
     expected = f'{item["path"]}={item["value"]}'
     owner = root / "config/hyprland" / item["owner"]

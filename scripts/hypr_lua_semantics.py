@@ -13,7 +13,7 @@ def canonical(text: str) -> str:
     return re.sub(r"[\s'\"]+", "", text).replace("\\\\", "\\").lower()
 
 
-TOKEN = re.compile(r'''\s*(?:(--[^\n]*)|([A-Za-z_][A-Za-z0-9_]*)|(-?\d+(?:\.\d+)?)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(.))''')
+TOKEN = re.compile(r'''\s*(?:(--[^\n]*)|([A-Za-z_][A-Za-z0-9_]*)|(0x[0-9A-Fa-f]+|-?\d+(?:\.\d+)?)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(.))''')
 
 
 def _tokens(text: str) -> list[str]:
@@ -74,6 +74,7 @@ def typed(value: str) -> str:
 
 def atoms(path: str, value: str) -> list[str]:
     result = []
+    value = value.replace("$HOME/", "/")
     if path == "source" and "liquid-glass" in value:
         result.append("hyprglass_disabled")
     if path == "source" and "colors-hyprland" in value:
@@ -83,7 +84,7 @@ def atoms(path: str, value: str) -> list[str]:
     result.extend(re.findall(r"\^\([^,]+?\)\$", value))
     leaf = path.rsplit(".", 1)[-1]
     if leaf not in {"windowrule", "layerrule", "bind", "binde", "bindm", "bindl", "bindr", "env", "exec-once", "monitor", "workspace"}:
-        result.append(leaf.replace(":", "_"))
+        result.append(leaf.replace(":", "_").replace("-", "_"))
     for token in re.findall(r"[A-Za-z_][A-Za-z0-9_./-]*|(?<![A-Za-z])\d+(?:\.\d+)?", value):
         if token.lower() not in NOISE and len(token) > 1:
             result.append(token)
@@ -98,6 +99,7 @@ def atoms(path: str, value: str) -> list[str]:
 def extract(owner: Path, path: str, value: str) -> dict:
     lines = owner.read_text().splitlines()
     configs = config_values("\n".join(lines))
+    path = path.replace(":", ".").replace("-", "_")
     if path in configs:
         actual_value = configs[path]
         expected_typed = typed(value)
