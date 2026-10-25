@@ -54,6 +54,22 @@ class InstallerTests(unittest.TestCase):
             self.assertNotEqual(replacement, release)
             self.assertTrue(installer.intact_installed_release(live, self.home, relative, {}))
 
+    def test_interpreter_bytecode_cache_is_not_tampering(self):
+        # Running a stamped Python helper writes scripts/__pycache__/*.pyc into the release;
+        # that generated cache must not block every later upgrade, but any other byte still does.
+        bulk = Path(self.tmp.name) / 'bulk'
+        relative = Path('scripts/agent-launch')
+        with patch.object(installer, 'GROOT_HOME', self.home), patch.object(installer, 'BULK_RELEASES', bulk), patch.object(installer.os.path, 'ismount', return_value=True):
+            release = installer.stamp_release(self.source, self.home)
+            live = self.home / 'probe'
+            live.symlink_to(release / relative)
+            cache = release / 'scripts/__pycache__'
+            cache.mkdir()
+            (cache / 'workspace_flow.cpython-314.pyc').write_bytes(b'\x00bytecode')
+            self.assertTrue(installer.intact_installed_release(live, self.home, relative, {}))
+            (cache / 'planted.py').write_text('not bytecode')
+            self.assertFalse(installer.intact_installed_release(live, self.home, relative, {}))
+
     def test_tampered_bulk_stamp_cannot_authorize_upgrade(self):
         bulk = Path(self.tmp.name) / 'bulk'
         relative = Path('scripts/agent-launch')
