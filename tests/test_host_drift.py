@@ -113,13 +113,13 @@ class DriftTests(unittest.TestCase):
     def test_effective_resource_values_and_unknown_manager(self):
         self.live = self.home / '.config/systemd/user/a.service.d/50-budget.conf'
         self.live.parent.mkdir(parents=True)
-        text = '[Service]\nMemoryHigh=infinity\nMemoryMax=256M\n'
+        text = '[Service]\nMemoryHigh=infinity\nMemoryMax=256M\nCPUQuota=200%\n'
         (self.root / self.source).write_text(text)
         self.live.write_text(text)
         self.manifest(scope='user')
         self.assertEqual(self.run_audit()['status'], 'unknown')
-        self.assertEqual(self.run_audit({'MemoryHigh': 'infinity', 'MemoryMax': '268435456'})['status'], 'clean')
-        report = self.run_audit({'MemoryHigh': '1024', 'MemoryMax': '268435456'})
+        self.assertEqual(self.run_audit({'MemoryHigh': 'infinity', 'MemoryMax': '268435456', 'CPUQuotaPerSecUSec': '2s'})['status'], 'clean')
+        report = self.run_audit({'MemoryHigh': '1024', 'MemoryMax': '268435456', 'CPUQuotaPerSecUSec': '2s'})
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['detail']['property'], 'MemoryHigh')
 

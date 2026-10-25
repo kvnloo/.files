@@ -2,6 +2,7 @@
 """Bounded, report-only host config audit. Exit 0 clean, 1 drift, 2 unknown."""
 import argparse
 import datetime
+from decimal import Decimal
 import hashlib
 import json
 import os
@@ -33,6 +34,10 @@ def normalized(value):
     match = re.fullmatch(r'(\d+)([KMGT])(?:B)?', value)
     if match:
         return str(int(match[1]) * 1024 ** ('KMGT'.index(match[2]) + 1))
+    duration = re.fullmatch(r'(\d+(?:\.\d+)?)(us|ms|s|min|h)', value)
+    if duration:
+        return str(int(Decimal(duration[1]) * {'us': 1, 'ms': 1000, 's': 1000000,
+                                              'min': 60000000, 'h': 3600000000}[duration[2]]))
     return {'yes': 'true', 'no': 'false', 'idle': '3', 'best-effort': '2',
             'realtime': '1'}.get(value, ' '.join(value.split()))
 
@@ -122,8 +127,14 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                         key, value = line.split('=', 1)
                         if key in PROPERTIES:
                             values[key] = value
+                        elif key == 'CPUQuota':
+                            values['CPUQuotaPerSecUSec'] = 'infinity' if not value else str(int(Decimal(value.rstrip('%')) * 10000))
+                        elif key in ('CPUQuotaPeriodSec', 'ManagedOOMMemoryPressureDurationSec'):
+                            values[key.replace('Sec', 'USec')] = value or 'infinity'
+                        elif key == 'ManagedOOMMemoryPressureLimit':
+                            values[key] = str(int(Decimal(value.rstrip('%')) * Decimal(4294967295) / 100)) if value else '0'
                 values.update(entry.get('effective', {}))
-        except (OSError, KeyError, ValueError, UnicodeError, subprocess.SubprocessError) as exc:
+        except (OSError, KeyError, ValueError, TypeError, ArithmeticError, UnicodeError, subprocess.SubprocessError) as exc:
             add(unknown, 'observation_failed', entry.get('live', '?'), str(exc))
     for (scope, unit), values in sorted(expected.items()):
         if not values:
