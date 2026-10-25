@@ -153,6 +153,44 @@ class ReaperBehavior(unittest.TestCase):
         self.assertTrue(self.repo.exists())
         self.assertEqual(list(self.archive.glob('*.bundle')), [])
 
+    @unittest.skipIf(os.geteuid() == 0, 'requires ordinary-user directory permissions')
+    def test_foreign_owner_private_directory_is_recorded_not_failed(self):
+        self.check_foreign_directory_scan(0o700, ignored=True)
+
+    @unittest.skipIf(os.geteuid() == 0, 'requires ordinary-user directory permissions')
+    def test_foreign_owner_traversable_directory_still_fails_closed(self):
+        self.check_foreign_directory_scan(0o711, ignored=False)
+
+    def check_foreign_directory_scan(self, mode, ignored):
+        home = self.base / 'home'
+        blocked = home / 'foreign'
+        blocked.mkdir(parents=True)
+        blocked.chmod(0)
+        actual_stat = os.stat
+        def foreign_stat(path, *args, **kwargs):
+            result = actual_stat(path, *args, **kwargs)
+            if os.fspath(path) == str(blocked):
+                values = list(result)
+                values[0] = (result.st_mode & ~0o777) | mode
+                values[4] = os.geteuid() + 1
+                return os.stat_result(values)
+            return result
+        try:
+            with patch.object(reaper.os, 'stat', foreign_stat):
+                _, errors = reaper.symlink_references(home=home, extra_roots=[], out=self.out)
+        finally:
+            blocked.chmod(0o700)
+        receipt = json.loads((self.out / 'manifest.jsonl').read_text().splitlines()[-1])
+        self.assertEqual(receipt['event'], 'installed_link_scan')
+        if ignored:
+            self.assertEqual(errors, [])
+            self.assertEqual(receipt['unreadable_foreign_owner'],
+                             [{'path': str(blocked), 'reason': 'unreadable_foreign_owner',
+                               'uid': os.geteuid() + 1, 'mode': '0o700'}])
+        else:
+            self.assertTrue(errors)
+            self.assertEqual(receipt['unreadable_foreign_owner'], [])
+
     def test_pause_during_archive_prevents_current_removal(self):
         self.age(self.repo)
         preserve = reaper.preserve
