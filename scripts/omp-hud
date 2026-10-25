@@ -160,13 +160,13 @@ _watch() {
 # ids of the blocks that run omp in the HUD daemon (empty when none or no daemon).
 omp_blocks() {
 	"$TERN" ls --json 2>/dev/null | jq -r '.sessions[].tabs[].blocks[]
-		| select(.live and ((.command // "") | test("^(\\S*/)?omp(\\s|$)"))) | .id' 2>/dev/null || true
+		| select(.live and ((.command // "") | test("^(?:(\\S*/)?agent-launch\\s+omp\\s+|(\\S*/)?omp(?:\\s|$))"))) | .id' 2>/dev/null || true
 }
 
 # A new tab with omp, made the tab the window shows (a tab made from the CLI is not shown by itself).
 new_omp_tab() {
 	local id
-	id="$(cd "$CWD" && "$TERN" new tab --cwd "$CWD" --json -- $OMP_CMD | jq -r '.block')"
+	id="$(cd "$CWD" && "$TERN" new tab --cwd "$CWD" --json -- "$HOME/.local/bin/agent-launch" omp $OMP_CMD | jq -r '.block')"
 	[[ -z "$id" ]] || "$TERN" focus "$id" >/dev/null
 }
 
@@ -192,7 +192,7 @@ window() {
 	if [[ -n "$(omp_blocks)" ]]; then
 		exec "$TERN"                 # omp still runs in the daemon: only attach a window
 	else
-		exec "$TERN" -e $OMP_CMD     # -e must be Tern's first argument
+		exec "$TERN" -e "$HOME/.local/bin/agent-launch" omp $OMP_CMD
 	fi
 }
 

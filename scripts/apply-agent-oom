@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Stage by default; --apply links agent policy only when aggregate usage is safe."""
+from __future__ import annotations
+import argparse
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+
+GIB = 1024 ** 3
+OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf')
+LINKS = {
+    'scripts/agent-launch': '.local/bin/agent-launch',
+    'scripts/omp-hud': '.local/bin/omp-hud',
+    'config/zsh/agent-scopes.zsh': '.config/zsh/agent-scopes.zsh',
+    'config/systemd/user/agent.slice': '.config/systemd/user/agent.slice',
+    'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': '.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
+}
+
+
+def safe_usage(text: str) -> bool:
+    try:
+        values = dict(line.split('=', 1) for line in text.splitlines() if '=' in line)
+        current = int(values['MemoryCurrent'])
+        swap = int(values['MemorySwapCurrent'])
+    except (KeyError, ValueError):
+        return False
+    return 0 <= current <= 8 * GIB and 0 <= swap and current + swap <= 9 * GIB
+
+
+def install(source: Path, home: Path, apply: bool) -> int:
+    source = source.resolve(strict=True)
+    for rel in LINKS:
+        if not (source / rel).is_file():
+            raise ValueError(f'missing tracked source: {rel}')
+    result = subprocess.run(['systemctl', '--user', 'show', 'agent.slice',
+                             '-p', 'MemoryCurrent', '-p', 'MemorySwapCurrent'],
+                            text=True, capture_output=True, check=False)
+    if result.returncode or not safe_usage(result.stdout):
+        print('STAGED ONLY: aggregate usage unavailable or unsafe; no links, overrides or reload changed')
+        return 75
+    if not apply:
+        print('DRY RUN: safe aggregate; would back up exact cap overrides, link agent policy and daemon-reload')
+        return 0
+    backup_root = home / '.local/state/agent-oom/backups'
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix='apply-', dir=backup_root))
+    control = home / '.config/systemd/user.control/agent.slice.d'
+    for name in OVERRIDES:
+        path = control / name
+        if path.exists() or path.is_symlink():
+            shutil.copy2(path, backup / name, follow_symlinks=False)
+            path.unlink()
+    for rel, dest in LINKS.items():
+        path = home / dest
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() or path.is_symlink():
+            saved = backup / dest
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, saved, follow_symlinks=False)
+            path.unlink()
+        path.symlink_to(source / rel)
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    print(f'APPLIED: agent policy linked; backups={backup}; no services restarted')
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
+    args = parser.parse_args()
+    return install(args.source, Path.home(), args.apply)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
