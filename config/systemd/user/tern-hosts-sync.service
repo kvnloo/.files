@@ -1,0 +1,6 @@
+[Unit]
+Description=Regenerate ~/.config/tern/hosts from live Tailscale peers (never lists this machine)
+[Service]
+Type=oneshot
+Slice=agent.slice
+ExecStart=%h/.local/bin/tern-hosts-sync

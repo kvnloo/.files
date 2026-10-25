@@ -139,8 +139,14 @@ Named phone nodes in `fleet-build` imply the Python guest lane. Android/JDK
 builds and Bend/native x86 proofs stay on the MBP. This does not change native
 `fleet run --node s25 -- CMD` or the explicit general-purpose `--guest` API.
 No CPU/RAM caps are added or accepted by the Python wrapper.
-Disk free space is diagnostic, not a phone admission threshold. An actual
-out-of-space error fails the job normally.
+No fixed free-disk threshold gates a phone job. The `--node phones` pool measures
+the selected source files and explicit input files. It compares their byte
+count with fresh availability on each guest's actual staging filesystem.
+The pool skips a guest that cannot hold that payload, before source transfer.
+This placement signal depends on the job, not an agent-defined resource budget.
+It does not reserve storage or predict venv and dependency growth. An actual
+out-of-space error still fails the job normally. Pinned phone jobs remain
+explicit placement requests.
 
 Admission requires a fresh native adb health probe and authenticated guest SSH.
 A phone below 2% battery charge cannot start a job unless it is charging.
@@ -192,6 +198,11 @@ The source directory must already exist beneath `~/fleet-jobs`. One attempt is t
 ## Outage, retry and drain semantics
 
 Availability states are separate: `unavailable` means authenticated SSH/probe failed, `stale` means evidence too old/clock-skewed, `paused` means explicit owner pause/call or stopped service, and `unsupported` means wrong host platform. `ready` means the host lane is reachable and active. Missing device telemetry does not prevent phone jobs. `fleet-polite-run` forwards termination to the payload process group.
+
+A failed probe reports `status: probe_error`, the node name, and its error
+message. A nonzero SSH exit is a transport failure, not JSON to parse. Empty
+or malformed output also rejects that node without an exception in the
+scheduler. Diagnostics preserve known SSH failure causes without raw stderr.
 
 Guest executor checks leases/cancel at most every 5 s. It rechecks owner intent while queued. A controller crash/outage stops renewal. The guest terminates expired work when it can execute. A frozen guest may still hold execution ownership. Lease expiration alone never licenses a second execution elsewhere. Guest reconciliation occurs through the explicit guest API, not default adb-only `fleet health`. No UI wake or app reopening is invoked.
 

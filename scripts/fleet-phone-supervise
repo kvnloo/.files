@@ -28,7 +28,7 @@ HOME=${HOME:-/root}
 SV=$HOME/.local/share/fleet/sv
 ST=$HOME/.local/state/fleet/supervise
 LOCK=$ST/lock
-SERVICES="tailscaled sshd tern-remote fleet-worker"
+SERVICES="tailscaled sshd tern-remote fleet-worker tern-hosts"
 BB=/usr/bin/busybox # under `busybox sh` bare names may run applets: util-linux tools by full path
 mkdir -p "$ST"
 

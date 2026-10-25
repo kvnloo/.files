@@ -114,35 +114,53 @@ def probe_path(n):
     return "~/.local/lib/fleet/fleet-node-probe" if n["kind"] == "phone" else "/usr/local/bin/fleet-node-probe"
 
 
+def probe_error(n, message, transport):
+    return {"node": n["name"], "status": "probe_error", "message": message,
+            "error": f"probe_error: {message}", "transport": transport}
+
+
 def probe(n, guest=False):
-    """Read health on groot, over adb for phones, or over SSH for Linux/opt-in guests."""
-    if n["kind"] == "boat":
-        result = subprocess.run([sys.executable, str(REPO / "scripts/boat"), "limits"],
-                                capture_output=True, text=True, timeout=90)
-        try:
-            return {"boat_limits": json.loads(result.stdout)}
-        except ValueError:
-            return {"error": "Boat limits unavailable"}
-    if n["kind"] == "phone" and not guest:
-        try:
-            result = subprocess.run([sys.executable, str(REPO / "scripts/fleet-adb"), "probe", n["name"]],
-                                    capture_output=True, text=True, timeout=120, check=True)
-            return json.loads(result.stdout)
-        except (OSError, ValueError, subprocess.SubprocessError) as exc:
-            return {"error": f"adb probe failed: {type(exc).__name__}", "transport": "adb"}
+    """Return health or a named probe_error. Never parse failed transport output."""
+    transport = "local"
     try:
-        if n["role"] == "server":
-            out = subprocess.run([sys.executable, str(REPO / "scripts/fleet-node-probe")],
-                                 capture_output=True, text=True, timeout=60).stdout
+        if n["kind"] == "boat":
+            transport = "boat"
+            argv, deadline = [sys.executable, str(REPO / "scripts/boat"), "limits"], 90
+        elif n["kind"] == "phone" and not guest:
+            transport = "adb"
+            argv = [sys.executable, str(REPO / "scripts/fleet-adb"), "probe", n["name"]]
+            deadline = 120
+        elif n["role"] == "server":
+            argv, deadline = [sys.executable, str(REPO / "scripts/fleet-node-probe")], 60
         else:
+            transport = "ssh"
             ssh = ssh_cmd(n)
             if n["kind"] == "phone":
                 ssh = phone_controller.strict_ssh(ssh)
-            out = subprocess.run(ssh + [f"python3 {probe_path(n)}"], capture_output=True,
-                                 text=True, timeout=90).stdout
-        return json.loads(out.strip().splitlines()[-1])
-    except (subprocess.TimeoutExpired, IndexError, ValueError) as e:
-        return {"error": f"probe failed: {type(e).__name__}"}
+            argv, deadline = ssh + [f"python3 {probe_path(n)}"], 90
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=deadline)
+        if result.returncode:
+            # Preserve useful transport causes without exposing arbitrary stderr,
+            # which can contain credentials or authentication URLs.
+            reasons = ("connection timed out", "connection refused", "no route to host",
+                       "could not resolve hostname", "permission denied",
+                       "host key verification failed", "remote host identification has changed",
+                       "connection closed", "connection reset", "no such file or directory")
+            reason = next((text for text in reasons if text in result.stderr.lower()), "command failed")
+            raise RuntimeError(f"{transport} probe exited {result.returncode}: {reason}")
+        lines = result.stdout.strip().splitlines()
+        if not lines:
+            raise ValueError(f"{transport} probe returned no JSON output")
+        value = json.loads(lines[-1])
+        if not isinstance(value, dict):
+            raise ValueError(f"{transport} probe returned JSON that is not an object")
+        return {"boat_limits": value} if n["kind"] == "boat" else value
+    except Exception as exc:
+        # A failed node must not abort concurrent admission of healthy nodes.
+        message = (f"{transport} probe timed out after {exc.timeout}s"
+                   if isinstance(exc, subprocess.TimeoutExpired)
+                   else f"{type(exc).__name__}: {exc}")
+        return probe_error(n, message, transport)
 
 
 def kc(*args, check=True):
@@ -351,16 +369,24 @@ def eligible(n, args, state):
     return None
 
 
-def probe_python_guest(n):
+def probe_python_guest(n, staging=False):
     """Admit with Android health AND authenticated guest/service reachability."""
-    android = probe(n)
-    bad, _ = judge(n, android, {}, {}, {})
-    if bad:
-        return {"error": "; ".join(bad)}
-    guest = probe(n, guest=True)
-    if "error" not in guest:
-        guest["power"] = android["power"]
-    return guest
+    try:
+        android = probe(n)
+        if "error" in android:
+            return android
+        bad, _ = judge(n, android, {}, {}, {})
+        if bad:
+            return {"error": "; ".join(bad)}
+        guest = probe(n, guest=True)
+        if "error" not in guest:
+            guest["power"] = android["power"]
+            if staging:
+                guest["staging_capacity"] = phone_python.staging_capacity(
+                    phone_controller.strict_ssh(ssh_cmd(n)))
+        return guest
+    except Exception as exc:
+        return probe_error(n, f"{type(exc).__name__}: {exc}", "ssh")
 
 
 def cmd_run(args):
@@ -370,6 +396,13 @@ def cmd_run(args):
     python_guest = getattr(args, "python_venv", False)
     if python_guest:
         args.guest = True
+    staging_size = None
+    if python_guest and args.node in (None, "auto"):
+        try:
+            staging_size = phone_python.staging_bytes(
+                args.src or os.getcwd(), args.no_src, getattr(args, "input", []) or [])
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            die(f"cannot measure source staging bytes: {exc}")
     def queued_mbp():
         worker = nodes["mbp"]
         if (args.arch and args.arch != worker["arch"]) or (args.cls and args.cls not in worker["classes"] + worker["capabilities"]):
@@ -423,7 +456,8 @@ def cmd_run(args):
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in cands],
-                          ex.map(probe_python_guest if python_guest else lambda n: probe(n, args.guest), cands)))
+                          ex.map(lambda n: probe_python_guest(n, staging=staging_size is not None)
+                                 if python_guest else probe(n, args.guest), cands)))
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
@@ -441,6 +475,11 @@ def cmd_run(args):
             phase, reasons = host_health(p)
             if phase != "ready":
                 notes.append(f"{n['name']}: {phase}: {'; '.join(reasons)}"); continue
+        if staging_size is not None:
+            available = p["staging_capacity"]["free_bytes"]
+            if available < staging_size:
+                notes.append(f"{n['name']}: staging needs {staging_size} bytes, "
+                             f"fresh available bytes={available}"); continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
         if n["kind"] != "phone":
