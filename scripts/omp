@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Use Tern's managed OMP while charging its process tree to agent.slice.
+exec "$HOME/.local/bin/agent-launch" omp "$HOME/.local/share/tern/omp/bin/omp" "$@"

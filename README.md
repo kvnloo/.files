@@ -40,6 +40,13 @@ Useful commands:
 ./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
+## OMP executable ownership
+
+`scripts/apply-agent-oom --apply` installs the content-stamped `~/.local/bin/omp`
+wrapper alongside `agent-launch`. The wrapper runs Tern's managed
+`~/.local/share/tern/omp/bin/omp` through `agent-launch omp`; no global Bun OMP
+package is required. Point launchers at `~/.local/bin/omp`, not `~/.bun/bin/omp`.
+
 ## Agent state packet freshness
 
 `scripts/install-state-packet-timer.sh --activate` installs content-stamped user
