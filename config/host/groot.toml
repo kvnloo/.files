@@ -3731,15 +3731,6 @@ reason = "Replace mutable helper link with content-stamped dependency closure; D
 migration_sha256 = "ce469ee19a3ea2b13c531a51039062e811f503483a5e173fd6d81b27947690d1"
 
 [[user]]
-live = "~/.local/bin/service-watch"
-source = "scripts/service-watch.py"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
-migration_sha256 = "bb0bfeb3669f50df1ca15776fba6d6e8a86837fe559c77112a8dd4c16a6a82d0"
-
-[[user]]
 live = "~/.local/bin/taildrop-portal"
 source = "scripts/taildrop-portal.py"
 scope = "user"
