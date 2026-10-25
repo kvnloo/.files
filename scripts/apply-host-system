@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Groot system policy: dry-run default; --audit is read-only; --oomd separate."""
+from __future__ import annotations
+import argparse
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import shlex
+import socket
+import subprocess
+import tempfile
+import tomllib
+
+OBSOLETE = ('50-cursor.conf', '99-custom.conf', '99-performance-tuning.conf',
+            '99-z-memory-latency.conf', '99-zz-groot-memory.conf')
+SCHEDULERS = ('60-io-scheduler.rules', '60-ioscheduler.rules')
+AUDIT_DIRS = ('etc/sysctl.d', 'etc/udev/rules.d', 'etc/systemd', 'etc/modprobe.d',
+              'etc/security/limits.d', 'etc/kernel', 'etc/default', 'boot')
+
+
+def digest(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def earlyoom_args(text):
+    lines = [line for line in text.replace('\\\n', '').splitlines()
+             if line.startswith('EARLYOOM_ARGS=')]
+    if len(lines) != 1:
+        raise ValueError('expected one EARLYOOM_ARGS assignment')
+    assignment = shlex.split(lines[0])
+    if len(assignment) != 1:
+        raise ValueError('invalid EARLYOOM_ARGS quoting')
+    return shlex.split(assignment[0].split('=', 1)[1])
+def audit(root):
+    """Names and hashes only: never dump env, credentials or boot config values."""
+
+    errors = 0
+    def failed(error):
+        nonlocal errors
+        errors += 1
+        print(json.dumps({'path': error.filename, 'error': str(error)}))
+    for rel in AUDIT_DIRS:
+        start = root / rel
+        if not start.exists():
+            continue
+        for directory, dirs, files in os.walk(start, followlinks=False, onerror=failed):
+            for name in sorted(files):
+                path = Path(directory) / name
+                record = {'path': '/' + str(path.relative_to(root))}
+                try:
+                    if path.is_symlink():
+                        record['link'] = os.readlink(path)
+                    elif path.is_file():
+                        record['sha256'] = digest(path)
+                        record['bytes'] = path.stat().st_size
+                    print(json.dumps(record))
+                except OSError as error:
+                    failed(error)
+    # Find upgrade leftovers throughout /etc, names/hashes only, no contents.
+    for directory, dirs, files in os.walk(root / 'etc', followlinks=False, onerror=failed):
+        for name in sorted(files):
+            if name.endswith(('.pacnew', '.pacsave')):
+                p = Path(directory) / name
+                try:
+                    print(json.dumps({'upgrade_leftover': '/' + str(p.relative_to(root)), 'sha256': digest(p)}))
+                except OSError as error:
+                    failed(error)
+    if root == Path('/'):
+        # Stream package verification, not a resident full-output buffer. Pacman
+        # reports metadata/path differences, never file contents. Exit 1 means drift.
+        result = subprocess.run(['pacman', '-Qkk'], check=False)
+        print(f'PACKAGE_INTEGRITY_EXIT={result.returncode}')
+        if result.returncode not in (0, 1):
+            errors += 1
+    print(f'AUDIT unreadable={errors}; values/credentials were not printed')
+    return 1 if errors else 0
+
+
+def load(source, oomd):
+    manifest = tomllib.loads((source / 'config/host/groot.toml').read_text())
+    entries = [e for e in manifest.get('system', []) if (e.get('stage') == 'oomd') == oomd]
+    seen = set()
+    for e in entries:
+        live = Path(e['live'])
+        src = (source / e['source']).resolve(strict=True)
+        if (not live.is_absolute() or '..' in live.parts or not str(live).startswith('/etc/')
+                or not src.is_relative_to(source / 'config/host/etc')
+                or e['scope'] != 'system' or e['install'] != 'copy' or live in seen):
+            raise ValueError(f'invalid system entry: {e["live"]}')
+        seen.add(live)
+        e['payload'] = src.read_bytes()
+    if not entries:
+        raise ValueError('no managed system entries')
+    return entries
+
+
+def install(source, root, apply=False, oomd=False):
+    source = source.resolve(strict=True)
+    root = root.resolve(strict=True)
+    entries = load(source, oomd)
+    if root == Path('/') and socket.gethostname() != 'groot':
+        raise ValueError('real-root deployment is groot-only')
+    if root == Path('/') and apply and os.geteuid() != 0:
+        raise PermissionError('--apply on real root requires sudo')
+    # Refuse escaped destination parents before any write (fake roots included).
+    for e in entries:
+        target = root / e['live'].lstrip('/')
+        if not target.parent.resolve().is_relative_to(root):
+            raise ValueError(f'destination parent escapes root: {target}')
+    removals = [] if oomd else [root / 'etc/sysctl.d' / n for n in OBSOLETE] + [root / 'etc/udev/rules.d' / n for n in SCHEDULERS]
+    for p in removals:
+        if not p.parent.resolve().is_relative_to(root):
+            raise ValueError(f'removal parent escapes root: {p}')
+    changes = []
+    for e in entries:
+        p = root / e['live'].lstrip('/')
+        if p.is_symlink() or not p.is_file() or p.read_bytes() != e['payload'] or p.stat().st_mode & 0o777 != 0o644:
+            changes.append((p, e['payload']))
+    removals = [p for p in removals if p.exists() or p.is_symlink()]
+    for p, data in changes:
+        print(f'{"INSTALL" if apply else "WOULD INSTALL"} /{p.relative_to(root)} sha256={hashlib.sha256(data).hexdigest()}')
+    for p in removals:
+        print(f'{"RETIRE" if apply else "WOULD RETIRE"} /{p.relative_to(root)} (backup retained)')
+    if not apply:
+        print('DRY RUN: no writes, reloads, service restarts or runtime sysctl changes')
+        return 0
+    backup = None
+    if changes or removals:
+        backups = root / 'var/backups/files-host'
+        if not backups.resolve().is_relative_to(root):
+            raise ValueError('backup parent escapes root')
+        backups.mkdir(parents=True, exist_ok=True)
+        backup = Path(tempfile.mkdtemp(prefix=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'), dir=backups))
+        receipt = {'stage': 'oomd' if oomd else 'system', 'files': []}
+        for p in [p for p, _ in changes] + removals:
+            exists = p.exists() or p.is_symlink()
+            if exists:
+                saved = backup / p.relative_to(root)
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(p, saved, follow_symlinks=False)
+            receipt['files'].append({'live': '/' + str(p.relative_to(root)), 'existed': exists})
+        (backup / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+        for p, data in changes:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp = tempfile.mkstemp(prefix='.files-host-', dir=p.parent)
+            try:
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(temp, 0o644)
+                os.replace(temp, p)
+            finally:
+                if os.path.exists(temp):
+                    os.unlink(temp)
+        for p in removals:
+            p.unlink()
+    if root == Path('/'):
+        subprocess.run(['systemctl', 'daemon-reload'], check=True)
+        if oomd:
+            # Daemon stays on; no service restart, desktop migration or kill.
+            result = subprocess.run(['oomctl', '--no-pager'], text=True, capture_output=True, check=True)
+            print(result.stdout)
+            if any(line.lstrip().startswith('Path:') for line in result.stdout.splitlines()):
+                raise RuntimeError('UNSAFE: oomctl still lists monitored cgroups; inspect higher-priority drop-ins; no success claimed')
+            print('VERIFIED: oomctl monitored set empty; hard caps/kernel OOM remain, no global OOM guarantee')
+        else:
+            for unit in ('user.slice', 'user-1000.slice', 'user@1000.service'):
+                cg = subprocess.run(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value'],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+                if not cg.startswith('/') or '..' in Path(cg).parts:
+                    raise RuntimeError(f'invalid cgroup for {unit}')
+                for key in ('memory.min', 'memory.low'):
+                    value = (root / 'sys/fs/cgroup' / cg.lstrip('/') / key).read_text().strip()
+                    if value != '7516192768':
+                        raise RuntimeError(f'{unit} {key}={value}; expected7516192768; no reclaim-protection success claimed')
+            print('VERIFIED: root user.slice -> user-1000.slice -> user@1000.service memory.min/low=7516192768')
+            print('STAGED: user@1000 OOMScoreAdjust=0 for next controlled login/reboot; existing manager/process scores unchanged')
+            subprocess.run(['sysctl', '--system'], check=True)
+            subprocess.run(['udevadm', 'control', '--reload'], check=True)
+            # Narrow block trigger: never touch USB input, live zram, network or desktop.
+            subprocess.run(['udevadm', 'trigger', '--subsystem-match=block', '--sysname-match=sd*', '--sysname-match=nvme*n*', '--action=change'], check=True)
+            subprocess.run(['udevadm', 'settle'], check=True)
+            for e in entries:
+                p = root / e['live'].lstrip('/')
+                if p.read_bytes() != e['payload']:
+                    raise RuntimeError(f'installed bytes differ: {p}')
+            subprocess.run(['sysctl', 'vm.swappiness', 'vm.watermark_scale_factor', 'vm.page-cluster', 'vm.dirty_bytes', 'vm.dirty_background_bytes', 'vm.overcommit_memory'], check=True)
+            earlyoom_changed = any(p == root / 'etc/default/earlyoom' for p, _ in changes)
+            if earlyoom_changed:
+                print('RESTART: earlyoom.service only, to activate approved single-process selection policy')
+                subprocess.run(['systemctl', 'restart', 'earlyoom.service'], check=True)
+            expected_args = earlyoom_args((root / 'etc/default/earlyoom').read_text())
+            pid = subprocess.run(['systemctl', 'show', 'earlyoom.service', '-p', 'MainPID', '--value'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
+            if not pid.isdecimal() or pid == '0':
+                raise RuntimeError('earlyoom is not running; no activation success claimed')
+            actual_args = (root / 'proc' / pid / 'cmdline').read_bytes().decode().strip('\0').split('\0')[1:]
+            if actual_args != expected_args:
+                raise RuntimeError('earlyoom runtime arguments differ; explicit restart required')
+            print('VERIFIED: earlyoom active; -m 5 -s 65; anchored harness/session avoid; no --prefer')
+            journal_changed = any(p == root / 'etc/systemd/journald.conf.d/50-groot-retention.conf' for p, _ in changes)
+            if journal_changed:
+                print('RESTART: systemd-journald.service to activate approved retention policy')
+                subprocess.run(['systemctl', 'restart', 'systemd-journald.service'], check=True)
+                print('RESTARTED: systemd-journald.service; no vacuum operation requested')
+            subprocess.run(['journalctl', '--disk-usage'], check=True)
+            subprocess.run(['systemd-analyze', 'cat-config', 'systemd/journald.conf'], check=True)
+            print('STAGED: zram resize only at next controlled reboot; no swapoff/restart performed')
+            print('SEPARATE MAINTENANCE: scripts/setup-k3s.sh server (20Gi reserve; k3s restart explicit, not performed)')
+    print(f'APPLIED stage={"oomd" if oomd else "system"} changed={len(changes)} retired={len(removals)} backup={backup or "none (already converged)"}; only earlyoom/journald restarted if their config changed')
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
+    p.add_argument('--root', type=Path, default=Path('/'), help='fake root for offline tests; runtime commands are skipped')
+    p.add_argument('--apply', action='store_true')
+    group = p.add_mutually_exclusive_group()
+    group.add_argument('--audit', action='store_true')
+    group.add_argument('--oomd', action='store_true')
+    a = p.parse_args()
+    if a.audit and a.apply:
+        p.error('--audit is strictly read-only; do not combine with --apply')
+    return audit(a.root.resolve(strict=True)) if a.audit else install(a.source, a.root, a.apply, a.oomd)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

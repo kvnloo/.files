@@ -158,6 +158,215 @@ Hermes source patch, checkpoint active sessions, perform its owned gateway resta
 and re-run the actual foreground terminal cgroup probe before declaring all future
 launches protected. Do not throttle the gateway/core to hide that activation gap.
 
+## Groot system-layer audit and staged installation (2026-10-24)
+
+`config/host/groot.toml` is the managed-path contract. Root configuration lives
+under `config/host/etc/`; `scripts/apply-host-system` is dry-run by default.
+The system stage copies exact tracked bytes, backs up replaced files/symlinks
+with a receipt under `/var/backups/files-host/`, and retires the five obsolete
+sysctl `.conf` files plus two duplicate local I/O-scheduler rules. The inactive
+`.pre-migration` sysctl backup is evidence, not an active policy file.
+The retired latency/swap and groot-memory installer entry points are removed.
+The performance installer delegates system policy rather than writing a second
+VM/scheduler policy. No desktop, terminal, gateway, k3s or zram restart occurs.
+Only earlyoom and systemd-journald are restarted by `--apply`, each only when
+its tracked configuration changed, with activation/verification logs.
+
+### Observed deviations and decisions
+
+| Setting | Observed live | Tracked desired / decision | Evidence |
+| --- | --- | --- | --- |
+| swappiness | 180 | retain 180 | Historical 3.6e9 file vs 0.9e9 anon refaults; kernel permits >100 for cheap in-memory swap |
+| watermark_scale_factor | 200 | retain 200, not claimed optimum | Historical 36% direct reclaim; earlier 125 files conflict |
+| page-cluster / VFS pressure | 0 / 50 | distro-owned, no duplicate | Installed `70-cachyos-settings.conf` |
+| dirty limits | bytes=0/background=0, ratios20/10 | 256MiB/64MiB byte caps, ratios become zero | Runtime differed from last-on-disk file; distro already supplies these caps |
+| overcommit | mode1, ratio100 | mode0, ratio100 | Last-on-disk latency policy was mode0; restore heuristic checks, not promise no OOM |
+| old CFS scheduler keys | absent | remove invalid writes | Current 7.2.9 scheduler has no latency/min/wakeup/migration-cost sysctls |
+| other local networking/watch/process limits | existing custom values | preserve, not claimed tuned optimum | No measured reason to change working network/container semantics during memory repair |
+| zram | logical25,081,937,920 bytes, resident limit12,540,968,960; failed_writes8,655,925 | next reboot: logical=ram/8, resident=ram/8 (~2.92GiB each) | Historical allocator maximum12,541,140,992 reached cap; SYSTEM-OOMD.md; never resize live |
+| sdb SSD scheduler | mq-deadline | keep distro mq-deadline | Two current samples: util99.4/98.9%, r_await8.81/8.10ms, w_await15.27/13.94ms; no controlled BFQ A/B evidence |
+| NVMe scheduler | kyber | distro-owned kyber, retire older local `none` writes | Installed `60-ioschedulers.rules` wins over both local singular rules |
+| mounts | sdb2 btrfs noatime/compress=zstd:3; root/workspace NVMe XFS noatime/lazytime; sda unmounted NTFS | preserve, no remount | fstab, mnt-zer0models.mount, findmnt/lsblk snapshot |
+| fstrim.timer | enabled, active weekly | preserve package timer | `systemctl status`; do not manually run trim under current I/O load |
+| boot cmdline | `/proc/cmdline` equals `/etc/kernel/cmdline` | preserve source; generated Limine entry UNKNOWN | Limine12.9; `/boot` permission denied |
+| systemd-oomd | active, user-1000/system.slice monitored at80%/30s, swap90% | separate `--oomd` stage: empty monitored set | Broad ancestor could kill desktop/harness; explicitly approved staged policy |
+| earlyoom | active, memory5%/swap65%, Python/node preferred | remove --prefer; anchored harness/session --avoid; retain thresholds | ps comm: omp/hermes/tern/node-MainThread; packaged earlyoom1.9 help |
+
+Effective-file order is lexical basename across sysctl.d directories, with
+`/etc` replacing same-basename vendor files. `99-custom` sets swappiness180,
+ratios10/5; `99-performance-tuning` replaces them with150,20/10, overcommit1
+and unsupported CFS writes; `99-z-memory-latency` replaces swappiness150,
+watermark125, overcommit0 and bytes; `99-zz-groot-memory` finally replaces
+swappiness180, watermark200 and bytes. That predicts byte caps on reload, but
+the measured runtime was ratios20/10: file order alone does not prove runtime.
+`50-cursor.conf` contains only comments. `30-zram.rules` intentionally retains
+swappiness180 against the packaged zram event's150 and disables simultaneous
+zswap; it is separately tracked. Dirty byte caps are global, not sdb bandwidth
+caps. No SSD `io.max` cap is introduced. Keep scheduler choice separate from
+the measured scheduler-independent desktop `io.latency` policy.
+
+The CachyOS defaults are documented at
+<https://wiki.cachyos.org/features/cachyos_settings/>; installed vendor files,
+not the latest web revision, define this host's package baseline. Kernel
+semantics: <https://docs.kernel.org/admin-guide/sysctl/vm.html>.
+
+### Exact privileged stages
+
+Run from the merged `deploy/live` checkout:
+
+```sh
+# READ ONLY: names, hashes and package metadata only, never env/credential values.
+# Retain locally; no upload. Root removes the explicit UNKNOWN permission gaps.
+sudo python3 scripts/apply-host-system --audit
+# Separate explicit policy choice; keeps oomd running, removes broad candidates.
+python3 scripts/apply-host-system --oomd
+sudo python3 scripts/apply-host-system --oomd --apply
+python3 scripts/apply-host-system
+sudo python3 scripts/apply-host-system --apply
+```
+
+Expected sysctl verification: swappiness180, watermark_scale_factor200,
+page-cluster0, dirty_bytes268435456, dirty_background_bytes67108864,
+overcommit_memory0. The two corresponding dirty ratios should read zero.
+Expected oomd verification: `oomctl` prints no `Path:` entries and
+`VERIFIED: oomctl monitored set empty`; if any candidate remains the stage
+fails rather than claiming protection. Oomd's configured thresholds remain
+90% swap, default60%/30s pressure, but apply to **no** cgroup in this stage.
+No pressure threshold is invented as a guarantee. This is tested for rendered
+files and fake-root idempotence, not a live root-systemd/cgroup/VM test.
+Expected earlyoom verification: `VERIFIED: earlyoom active; -m 5 -s 65;
+anchored harness/session avoid; no --prefer`. Its TERM gate requires BOTH
+available memory below5% (~1.17GiB) and free swap below65% (used above35%,
+~8.18GiB with current23.36GiB logical zram). The default KILL gates halve
+those free percentages to2.5%/32.5%. Zram uses real RAM, so a large logical
+swap size is not a physical reserve. After the smaller reboot policy the
+swap-used TERM gate is ~1.02GiB. Keep thresholds; do not infer capacity from
+them. Earlyoom remains an active **single-process** killer (no `-g`).
+`--avoid` is a preference, not immunity; kernel global OOM remains possible.
+T3's observed `node-MainThread` comm is shared by some Node tool workers,
+so those workers are also avoided: comm matching is not process identity.
+Generic `node`, `python`, `python3`, compiler and llama worker fixtures are
+not avoided. Claude/codex were absent from the live census; their exact launch
+names are defensively included, not falsely claimed observed. The other
+observed broker identity is `omp daemon brok` (Linux comm truncation).
+
+Zram's new size is **staged only**, effective after Kevin checkpoints work and
+chooses a controlled reboot; never run swapoff, generator restart or reduce
+`mem_limit` online. Verify logical size and resident limit after that reboot,
+not immediately after install. Kernel allocator overhead still needs headroom.
+
+The k3s20Gi host reserve is already owned by `scripts/setup-k3s.sh server`.
+Run `sudo bash scripts/setup-k3s.sh server` only in a separately approved k3s
+maintenance window: it can install/configure and restart the server, unlike
+the host installer. Check its printed plan and node Allocatable afterward.
+It is not invoked automatically here.
+
+Rollback is receipt-based: restore each saved file/symlink to its same absolute
+path; for receipt entries with `existed=false`, remove only that newly installed
+file. Restore retired files from the same backup. Then daemon-reload and
+sysctl --system; zram rollback also waits for a controlled reboot. Backups and
+receipts are never deleted by this installer.
+
+### Scope and residual risk
+
+The package inventory includes modified, missing and unreadable backup paths.
+Account databases (`passwd`, `group`, `shadow`, subuid/subgid), dynamically
+generated resolver/mirror lists, credentials and firewall state are **not**
+copied into public dotfiles as arbitrary file snapshots. Existing owning
+generators/security policy retain those boundaries. The audit emits names and
+hashes, not contents. Root-only `/boot`, k3s.service.env and other inaccessible
+paths remain UNKNOWN until the read-only sudo audit; absence of access is not
+proof of clean configuration. Generated k3s units remain setup-k3s-owned.
+The streamed `pacman -Qkk` completed in349.85s (exit1: alterations/unreadable
+paths, not a package-clean certificate); `-Qii` found42 modified/missing/
+unreadable backup entries. Nine readable `.pacnew` files remain in locale,
+mkinitcpio, mirror lists, resolver and TPM profiles. They are inventoried, not
+blindly applied or deleted. Neither permission failures nor pending `.pacnew`
+reviews are represented as resolved. No `.pacsave` was found in readable
+directories. Scope/hashes, package status, full sysctl assignment chains and
+measurements are in the tracked audit JSON, without credential values.
+
+Hard caps are ceilings, not reservations: agent10GiB + farm8GiB + ctx5GiB
+already equals23GiB against23.36GiB physical RAM, before desktop, kernel,
+zram and unbounded system services. The complete census's17 non-overlapping
+capped groups sum69.8657GiB, not a reservation: agent10, farm8, ctx5,
+app-t3code-agents19.36, kubepods19.36, telemetry2.441, Docker2+0.5,
+neuroforge0.75+0.75+0.125, dash0.75, service-watch0.25, ghcache0.25,
+identity-warm0.25, earlyoom0.0488 and polkit0.03125GiB. Nested capped
+scopes/pods are excluded from that sum; the audit's own transient scope is
+excluded. See `config/host/groot-audit-20261024.json` for bytes and paths.
+`system.slice`,
+background.slice, app.slice, session.slice, t3code, noctalia-shell, hermes-web
+and browser/desktop workloads remain unbounded. Global kernel OOM can still
+hit the desktop. Removing broad oomd selection prevents that userspace
+whole-cgroup kill route, **not all OOMs or individual process kills**.
+
+An opt-in killable-only slice requires a later ownership/placement design:
+only disposable worker processes may enter it; harness, MCP, AgentsView,
+session and desktop processes must be excluded before enabling any
+ManagedOOM=kill threshold. `agent-workloads-v2.scope` currently mixes tool
+work with MCP/AgentsView and is not an eligible kill target. This stage does
+not implement that migration or falsely mark mixed scopes killable.
+
+
+### Unified reclaim reserve and victim-selection layers
+
+The single measured budget table is
+`config/host/groot-audit-20261024.json` → `host_memory_budget.groups`:
+per group, lifetime `MemoryPeak`, current cap, proposed/retained cap and basis.
+Do not add hierarchical peaks as simultaneous demand. Session lifetime peak
+was6,346,428,416 bytes (5.91GiB). The measured-peak-plus-margin choice is
+MemoryMin=MemoryLow=7GiB, replacing the user session's existing4GiB MemoryLow.
+The root installer propagates7GiB through user.slice, user-1000.slice and
+user@1000.service; UserLayer owns session.slice. Kernel memory.min/low values
+are read back after reload; mismatch fails rather than claiming protection.
+No manager or desktop restart is used to apply reclaim settings.
+
+The continuous manifest `[budget]` check adopts
+`physical RAM - effective session.slice MemoryMin >= largest non-desktop cap`.
+With7GiB protected, remaining17,565,974,528 bytes (~16.36GiB) exceeds the
+largest proposed finite group10GiB. T3 agents move19.36→4GiB and Kubernetes
+19.36→approximately3.36GiB after its explicit20GiB host-reserve maintenance.
+The nominal sum still exceeds RAM (~38.5GiB); caps are not reservations and
+need not all peak together. Unbounded/missing groups produce UNKNOWN, never a
+false pass. The guard is a necessary finite-single-runaway check, **not**
+sufficient when other workloads already occupy memory. Hard reclaim
+protection does not exempt a process from global OOM victim selection.
+
+Victim selection is separate: earlyoom avoids the anchored harness/session
+names; kernel scores still matter independently. Observed live
+`oom_score_adj`: user manager100; Hyprland, Xwayland, noctalia(qs), tern,
+OMP and Hermes200. Current scores were respectively733,804,802,814,806,812,
+814 (gateway); these are changing observations, not static guarantees.
+Some preexisting Hermes worker processes also retained200, so desired
+agent-launch child800 was not proof that every live child had that rank.
+The root user@1000 drop-in stages OOMScoreAdjust=0 for the **next controlled
+login/reboot only**. Existing user manager/desktop scores are not rewritten
+by this root script and user@1000 is never restarted. UserLayer owns bounded
+classifier updates to raise only eligible disposable children; no invalid
+OOMScoreAdjust directive is added to a scope (it is service-spawn-only).
+
+Residual risk: unbounded groups and concurrent capped workloads can still
+cause global OOM; reclaim protection, earlyoom avoidance and relative
+oom_score_adj ranking do not guarantee desktop survival.
+
+### Journal retention
+
+Packaged `00-journal-size.conf` limited the whole journal to50MiB; measured
+usage43.5MiB and missing same-day incident records justify a host override.
+Tracked `50-groot-retention.conf` sets SystemMaxUse=1G, SystemKeepFree=2G and
+MaxRetentionSec=30day. One GiB is below1% of the132GiB root filesystem.
+The storage policy targets20GiB root free upstream; the smaller2GiB journald
+floor avoids discarding debugging history prematurely during an incident.
+Thirty days is a **maximum age**, not guaranteed minimum retention: volume
+and the1GiB ceiling may rotate sooner. Residual risk: when `/` falls below
+2GiB free, history may still be vacuumed by journald's space policy.
+No bulk-disk journal mount or data migration is introduced.
+
+`--apply` restarts only systemd-journald when this file changes, then prints
+`journalctl --disk-usage` and `systemd-analyze cat-config systemd/journald.conf`
+for verification. The latter must show the later host file with1G/2G/30day.
+There is **no** manual journal vacuum operation and no journal deletion.
 ## Groot user-layer configuration audit (2026-10-25 UTC)
 
 `scripts/inventory-host-user` is a read-only, bounded inventory of configured
