@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Cribble token usage sync
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=15min
+Unit=dev.cribble.agent.sync.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+[Unit]
+Description=z0 factory ghcache: shared caching, budgeted GitHub read proxy (127.0.0.1:18090; pods via 10.42.0.1:18091)
+Documentation=https://github.com/kvnloo/oss-factory/blob/main/factory/EXECUTION_SUBSTRATE.md
+After=network-online.target
+
+[Service]
+Type=simple
+# Rendered by install-user-units.sh: FACTORY_TOOLS is the absolute tools/factory path.
+Environment=FACTORY_TOOLS=/mnt/zer0models/worktrees/oss-factory-substrate/tools/factory
+Environment=GHCACHE_STATE=%h/.local/state/z0-factory
+# Short-lived handler threads would each keep a glibc malloc arena: 136 MiB RSS after a
+# 200-agent burst without this.
+Environment=MALLOC_ARENA_MAX=2
+# --pod-listen binds groot's cni0 address so only cluster pods (through the
+# factory-gateway forwarder in namespace z0) can reach the token-gated pod listener.
+# The process retries the bind until k3s has created cni0.
+ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghcache.py --listen 127.0.0.1:18090 --pod-listen 10.42.0.1:18091 --core-per-hour 3000 --reserve 500 --max-upstream 3
+Restart=on-failure
+RestartSec=10
+MemoryMax=256M
+CPUQuota=50%
+Nice=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Hyprland mode border watcher
+# Avoid the target adding a reverse ordering edge for its WantedBy service.
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=/workspace/.files/scripts/mode-border run
+Restart=always
+RestartSec=1
+# run waits for socket2 and discovers a fresh signature when its env is stale.
+# No HYPRLAND_INSTANCE_SIGNATURE is pinned in this unit.
+
+[Install]
+WantedBy=graphical-session.target

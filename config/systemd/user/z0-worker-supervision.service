@@ -1,0 +1,16 @@
+[Unit]
+Description=Read-only z0 worker supervision and batched owner queue
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/zer0models/z0-wt/fsm-worker-supervision
+Environment=PYTHONPATH=/mnt/zer0models/z0-wt/fsm-worker-supervision/src
+Environment=GIT_OPTIONAL_LOCKS=0
+Environment=TMPDIR=/mnt/zer0models/workspace/zer0/data/operations/fsm/live/.tmp
+ExecStartPre=/usr/bin/mkdir -p /mnt/zer0models/workspace/zer0/data/operations/fsm/live/.tmp
+ExecStart=/usr/bin/python3 -m z0int.fsm.supervise --live-dir /mnt/zer0models/workspace/zer0/data/operations/fsm/live
+TimeoutStartSec=8min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/zer0models/workspace/zer0/data/operations/fsm/live

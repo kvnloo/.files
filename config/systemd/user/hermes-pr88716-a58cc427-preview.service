@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes PR 88716 exact a58cc4276 private synthetic preview
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716
+Environment=HERMES_HOME=/workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716/.preview/home-isolated
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m uvicorn mobile_preview:app --app-dir /workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716/.preview --host 127.0.0.1 --port 9145
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

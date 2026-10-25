@@ -1,0 +1,16 @@
+[Unit]
+Description=Factory shared GitHub return poller
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/bin/chat-poller.py
+Slice=agent.slice
+MemoryMax=300M
+Nice=5
+IOWeight=10
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

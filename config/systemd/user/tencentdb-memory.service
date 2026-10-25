@@ -1,0 +1,26 @@
+[Unit]
+Description=TencentDB Agent Memory gateway (memory-core) on 127.0.0.1:8420 for Hermes memory_tencentdb
+Documentation=file:///mnt/zer0models/z0-wt/wiring/ops/tencentdb/README.md
+After=network-online.target
+Wants=network-online.target
+# Retry forever: covers docker not up yet and a locked keyring before login.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=/mnt/zer0models/z0-wt/wiring/ops/tencentdb/tencentdb-memory.env
+ExecStart=/mnt/zer0models/z0-wt/wiring/ops/tencentdb/bin/tencentdb-memory-run
+ExecStartPost=/mnt/zer0models/z0-wt/wiring/ops/tencentdb/bin/tencentdb-memory-health --wait 120
+ExecStop=/usr/bin/docker stop -t 20 ${TENCENTDB_CONTAINER}
+# always: the 2026-09-18 outage was a clean exit (host shutdown) with no restart policy.
+Restart=always
+RestartSec=30
+TimeoutStartSec=200
+TimeoutStopSec=45
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tencentdb-memory
+
+[Install]
+WantedBy=default.target

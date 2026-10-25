@@ -1,0 +1,10 @@
+[Unit]
+Description=Synchronize kvnloo GitHub forks without force overwrites
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/zer0/portfolios/chief-of-staff
+ExecStart=/usr/bin/python /workspace/zer0/portfolios/chief-of-staff/scripts/github_sync_forks.py --workers 4
+ExecStartPost=/usr/bin/python /workspace/zer0/portfolios/chief-of-staff/scripts/github_track_upstream_main.py
+Nice=10

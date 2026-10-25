@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes heavy-build / GPU job slice (exclusive)
+[Slice]
+CPUWeight=80
+MemoryHigh=infinity
+MemoryMax=16G

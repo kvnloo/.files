@@ -1,0 +1,13 @@
+[Unit]
+Description=Temple Guard VitePress artifact story
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/experiments/jedi_temple_guard
+ExecStart=/usr/bin/npm run story:preview -- --host 0.0.0.0 --port 4176
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

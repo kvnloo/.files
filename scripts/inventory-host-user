@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Read-only inventory of groot's user units, provenance and resource envelopes."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+HOME = Path.home()
+PROPERTIES = ('Id', 'ActiveState', 'SubState', 'FragmentPath', 'DropInPaths', 'ExecStart',
+              'ControlGroup', 'MemoryCurrent', 'MemoryPeak', 'MemoryMax', 'MemoryHigh',
+              'MemorySwapMax', 'OOMPolicy', 'ManagedOOMMemoryPressure',
+              'ManagedOOMSwap', 'ManagedOOMPreference', 'ManagedOOMMemoryPressureLimit',
+              'ManagedOOMMemoryPressureDurationUSec', 'CPUWeight', 'IOWeight', 'Slice',
+              'MemoryMin', 'MemoryLow', 'EffectiveMemoryMax', 'EffectiveMemoryHigh')
+
+def command(*args):
+    result = subprocess.run(args, text=True, capture_output=True, check=False)
+    return {'returncode': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
+
+def file_record(path):
+    target = path.resolve()
+    row = {'path': str(path), 'target': str(target), 'symlink': path.is_symlink()}
+    if '.local/lib/' in str(target):
+        row['provenance'] = 'release-path'  # Path classification, not a content attestation.
+    elif '/worktrees/' in str(target) or '/workspace/' in str(target) or '/z0-wt/' in str(target):
+        row['provenance'] = 'mutable-checkout'
+    elif str(target).startswith('/usr/'):
+        row['provenance'] = 'packaged'
+    else:
+        row['provenance'] = 'local-unattested'
+    try:
+        data = path.read_bytes()
+        row['sha256'] = hashlib.sha256(data).hexdigest()
+        # Never export unit Environment values or helper bodies: they may contain credentials.
+        row['size'] = len(data)
+    except OSError as error:
+        row['error'] = str(error)
+    return row
+
+def inventory():
+    roots = [HOME / '.config/systemd/user', HOME / '.config/systemd/user.control',
+             Path(f'/run/user/{os.getuid()}/systemd/user.control'), HOME / '.config/environment.d',
+             HOME / '.config/systemd/user.conf.d', Path('/etc/systemd/user.conf.d'),
+             Path('/etc/systemd/system/user@.service.d'), Path('/etc/systemd/system/user@1000.service.d')]
+    files = []
+    for root in roots:
+        if root.is_dir():
+            for base, dirs, names in os.walk(root, followlinks=False):
+                dirs.sort()
+                for name in sorted(names):
+                    files.append(file_record(Path(base) / name))
+    for path in [HOME / '.config/systemd/user.conf', Path('/etc/systemd/user.conf')]:
+        if path.exists():
+            files.append(file_record(path))
+    listing = command('systemctl', '--user', 'list-units', '--all', '--plain', '--no-legend', '--no-pager')
+    names = [line.split()[0] for line in listing['stdout'].splitlines() if line.split() and
+             line.split()[0].endswith(('.service', '.slice', '.scope'))]
+    shown = command('systemctl', '--user', 'show', *['--property=' + p for p in PROPERTIES], '--', *names) if names else {'stdout': ''}
+    units = []
+    helpers = set()
+    # Include Exec* helpers of dormant declarations, not just loaded units.
+    for item in files:
+        path = Path(item['path'])
+        if '/systemd/user/' not in str(path):
+            continue
+        try:
+            lines = path.read_text().splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for line in lines:
+            if line.lstrip().startswith(('ExecStart=', 'ExecStartPre=', 'ExecStartPost=', 'ExecStop=', 'ExecStopPost=', 'ExecReload=')):
+                helpers.update(value.replace('%h', str(HOME)) for value in
+                               re.findall(r'(?:/home/kvn|%h)/\.local/bin/[^ ;{}\"\\\']+', line))
+    for block in shown['stdout'].strip().split('\n\n'):
+        row = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+        if not row:
+            continue
+        for helper in re.findall(r'(?:/home/kvn|%h)/\.local/bin/[^ ;{}]+', row.get('ExecStart', '')):
+            helpers.add(helper.replace('%h', str(HOME)))
+        # ExecStart may carry secrets; retain executable paths only.
+        row['executables'] = re.findall(r'path=([^ ;}]+)', row.pop('ExecStart', ''))
+        group = row.get('ControlGroup', '')
+        if group:
+            for metric in ('memory.pressure', 'io.pressure', 'io.stat', 'io.weight', 'io.latency', 'io.bfq.weight'):
+                path = Path('/sys/fs/cgroup') / group.lstrip('/') / metric
+                try:
+                    row[metric] = path.read_text()
+                except OSError as error:
+                    row[metric] = {'error': str(error)}
+        flags = []
+        if row.get('MemoryHigh') not in (None, '', 'infinity', '[not set]'):
+            flags.append('MemoryHigh throttling violates desktop policy')
+        try:
+            if int(row['MemoryMax']) < int(row['MemoryPeak']):
+                flags.append('MemoryMax below recorded peak')
+        except (KeyError, ValueError):
+            pass
+        try:
+            if row.get('MemoryMax') == 'infinity' and int(row['MemoryPeak']) >= 512 * 1024**2:
+                flags.append('unbounded >=512MiB recorded peak; measure working set before choosing cap')
+        except (KeyError, ValueError):
+            pass
+        if row.get('OOMPolicy') == 'stop':
+            flags.append('OOMPolicy=stop; inspect multi-session ownership')
+        row['flags'] = flags
+        units.append(row)
+    return {'schema': 'files.host-user-inventory.v1', 'at': time.time(), 'files': files, 'units': units,
+            'helpers': [file_record(Path(p)) for p in sorted(helpers)],
+            'enabled': command('systemctl', '--user', 'list-unit-files', '--state=enabled,enabled-runtime,linked,linked-runtime', '--no-pager'),
+            'timers': command('systemctl', '--user', 'list-timers', '--all', '--no-pager'),
+            'lingering': command('loginctl', 'show-user', str(os.getuid()), '-p', 'Linger'),
+            'manager': command('systemctl', 'show', f'user@{os.getuid()}.service', '-p', 'FragmentPath', '-p', 'DropInPaths'),
+            'errors': [r for r in (listing, shown) if r.get('returncode', 0)]}
+
+if __name__ == '__main__':
+    json.dump(inventory(), sys.stdout, indent=2)
+    print()

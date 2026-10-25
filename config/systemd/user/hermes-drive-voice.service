@@ -1,0 +1,14 @@
+[Unit]
+Description=Isolated Hermes chiefstaff voice dashboard
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40
+Environment=PYTHONPATH=/workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main -p chiefstaff dashboard --port 9166 --host 127.0.0.1 --open-profile chiefstaff --no-open --skip-build
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

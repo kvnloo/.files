@@ -1,0 +1,13 @@
+[Unit]
+Description=CardTwin FLUX tiled Arcanine private A/B preview
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/zer0-worktrees/hermes3d-live/pokemon-card-exhibit-preview/private/cardtwin-card-materials/public/exhibits/pokemon-cards/arcanine-sm1-22/derivatives/flux-tiled-experiment
+ExecStart=/usr/bin/python -m http.server 4329 --bind 127.0.0.1
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=AgentWeb Ad Arena tailnet preview
+After=network-online.target pipeline-studio-projection.service
+Wants=pipeline-studio-projection.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/clients/agentweb/product/ad-arena
+EnvironmentFile=-/home/kvn/.config/agentweb-ad-arena.env
+Environment=ARTIFACT_INDEX_URL=http://127.0.0.1:4317/projection/artifact-revisions
+Environment=EXPERIMENT_REVISION_URL=http://127.0.0.1:4317/projection/experiment-revisions/airbnb-study-a.v1
+Environment=ARENA_HOST=0.0.0.0
+Environment=ARENA_PORT=49321
+Environment=ARENA_DATA_DIR=/home/kvn/.local/state/agentweb-ad-arena
+ExecStart=/usr/bin/node /workspace/zer0/clients/agentweb/product/ad-arena/src/server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/kvn/.local/state/agentweb-ad-arena
+
+[Install]
+WantedBy=default.target

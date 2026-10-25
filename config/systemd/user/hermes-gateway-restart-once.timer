@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule one-shot Hermes gateway restart
+
+[Timer]
+OnActiveSec=3s
+AccuracySec=1s
+Unit=hermes-gateway-restart-once.service
+
+[Install]
+WantedBy=timers.target
