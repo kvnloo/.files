@@ -1,0 +1,9 @@
+schema = 1
+# Large fetched job trees belong on the bulk disk, never the root partition.
+[hosts.groot]
+runs = "/mnt/zer0models/host-offload/home_kvn_.local_state_fleet_runs"
+source_retention_days = 7
+
+[hosts."0"]
+runs = "/mnt/zer0models/host-offload/home_kvn_.local_state_fleet_runs"
+source_retention_days = 7

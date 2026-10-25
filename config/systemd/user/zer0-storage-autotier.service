@@ -1,0 +1,12 @@
+[Unit]
+Description=Preserve root and workspace reserves with verified idle-data tiering
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=oneshot
+Environment=ZER0_STORAGE_POLICY=%h/.config/zer0/storage.toml
+ExecStart=/usr/bin/python %h/.local/lib/host-storage/current/scripts/zer0_storage_autotier.py --apply
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=45min
