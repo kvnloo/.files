@@ -73,9 +73,23 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(saved[0].read_text(), 'old cap\n')
         self.assertEqual((self.control / 'unrelated.conf').read_text(), 'keep\n')
         for rel, dest in installer.LINKS.items():
-            self.assertEqual((self.home / dest).resolve(), self.source / rel)
+            target = (self.home / dest).resolve()
+            self.assertTrue(target.is_relative_to(self.home / '.local/lib/files-live'))
+            self.assertNotEqual(target, self.source / rel)
+            self.assertEqual(target.read_bytes(), (self.source / rel).read_bytes())
         self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'daemon-reload'])
         self.assertEqual(run.call_count, 2)
+
+    def test_release_survives_source_change_and_rejects_tampering(self):
+        release = installer.stamp_release(self.source, self.home)
+        old = (release / 'scripts/agent-launch').read_bytes()
+        (self.source / 'scripts/agent-launch').write_text('new source')
+        self.assertEqual((release / 'scripts/agent-launch').read_bytes(), old)
+        self.assertNotEqual(installer.stamp_release(self.source, self.home), release)
+        (release / 'scripts/agent-launch').write_text('tampered')
+        (self.source / 'scripts/agent-launch').write_bytes(old)
+        with self.assertRaisesRegex(ValueError, 'release mismatch'):
+            installer.stamp_release(self.source, self.home)
 
 
 class LauncherTests(unittest.TestCase):
