@@ -147,6 +147,16 @@ ServiceWatch deduplicates the canonical finding set across timer runs; timestamp
 do not create a new incident. A distinct evidence set can be reported again;
 an identical set remains deduplicated across restarts. Permission-limited roots
 remain visible as unknown.
+The five-notification hourly ceiling still applies. Routine traffic gets at most
+three slots total and one per source unit. Two slots remain reserved for finite
+drift, OOM, or memory-pressure evidence and never roll over to routine traffic.
+Model-generated cause text cannot grant reserved eligibility. A rate-limited
+host incident remains pending and retries through the same channel on a later
+hook. A reserved delivery never retries, including after an ambiguous failure.
+Each delivery attempt emits a finite `SERVICE_WATCH_DELIVERY` journal record.
+Known host codes survive projection. Unknown producer codes become the severe
+`unrecognized` class rather than disappearing. Shutdown cancels owned scan
+helpers and journal reads instead of waiting through their full deadlines.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory
