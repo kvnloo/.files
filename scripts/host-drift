@@ -109,12 +109,18 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                 if not live.is_symlink() or live.resolve() != Path('/dev/null'):
                     problem('mask_changed', live, 'expected explicit /dev/null systemd mask')
             elif entry['install'] == 'symlink-stamped':
-                target = Path(os.readlink(live)) if live.is_symlink() else live
-                if not target.is_absolute():
-                    target = live.parent / target
+                target, stamped = live, False
                 library = home / '.local/lib'
-                if (not live.is_symlink() or not target.is_relative_to(library) or
-                        not any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(library).parts)):
+                for _ in range(16):
+                    if not target.is_symlink():
+                        break
+                    link = Path(os.readlink(target))
+                    target = Path(os.path.normpath(link if link.is_absolute() else target.parent / link))
+                    if (target.is_relative_to(library) and
+                            any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(library).parts)):
+                        stamped = True
+                        break
+                if not stamped:
                     problem('unstamped_install', live, 'expected symlink into content-stamped ~/.local/lib release')
             if not live.exists():
                 problem('missing_file', live, rel)
@@ -170,7 +176,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         if key in instance_cache:
             return instance_cache[key]
         pattern = unit.replace('@.', '@*.')
-        if '-.' in pattern:
+        if '-.' in pattern and unit != '-.slice':
             pattern = pattern.replace('-.', '-*.', 1)
         if pattern == unit:
             return [unit]
@@ -202,9 +208,10 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         if not values:
             continue
         try:
-            args = ['systemctl', '--user' if scope == 'user' else '--system', 'show', unit]
+            args = ['systemctl', '--user' if scope == 'user' else '--system', 'show']
             for key in sorted(values):
                 args += ['-p', key]
+            args += ['--', unit]
             actual = dict(line.split('=', 1) for line in run(args).splitlines() if '=' in line)
             for key, value in values.items():
                 if key not in actual or not actual[key]:

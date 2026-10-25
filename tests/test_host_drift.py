@@ -111,6 +111,34 @@ class DriftTests(unittest.TestCase):
         self.live.symlink_to(target)
         self.assertIn('checkout_symlink', {row['kind'] for row in self.run_audit()['drift']})
 
+    def test_relative_wants_link_reaches_stamped_release(self):
+        release = self.home / '.local/lib/fixture' / ('a' * 64)
+        release.mkdir(parents=True)
+        target = release / 'fixture.service'
+        target.write_text('safe\n')
+        unit = self.home / '.config/systemd/user/fixture.service'
+        unit.parent.mkdir(parents=True)
+        unit.symlink_to(target)
+        self.live = unit.parent / 'default.target.wants/fixture.service'
+        self.live.parent.mkdir()
+        self.live.symlink_to('../fixture.service')
+        self.manifest(install='symlink-stamped')
+        self.assertEqual(self.run_audit()['status'], 'clean')
+
+    def test_root_slice_is_not_a_dashed_prefix_or_cli_option(self):
+        self.live = self.etc / 'systemd/system/-.slice.d/50-policy.conf'
+        self.live.parent.mkdir(parents=True)
+        text = '[Slice]\nMemoryMin=0\n'
+        (self.root / self.source).write_text(text)
+        self.live.write_text(text)
+        self.manifest()
+        def run(args):
+            if args[0] == 'git':
+                return self.source
+            self.assertEqual(args[-2:], ['--', '-.slice'])
+            return 'MemoryMin=0'
+        self.assertEqual(drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run)['status'], 'clean')
+
     def test_persistent_and_runtime_control_require_bound_leases(self):
         paths = [self.home / '.config/systemd/user.control/a.service.d/50-MemoryMax.conf',
                  self.runtime / 'systemd/user.control/b.service.d/50-MemoryMax.conf']
@@ -165,7 +193,7 @@ class DriftTests(unittest.TestCase):
                     return self.source
                 if args[2] == 'list-units':
                     return '\n'.join(unit + ' loaded active running fixture' for unit in names)
-                self.assertIn(args[3], names)
+                self.assertIn(args[-1], names)
                 return 'MemoryMax=268435456'
             def audit():
                 return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run)
