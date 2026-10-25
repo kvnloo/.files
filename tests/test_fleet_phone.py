@@ -500,6 +500,30 @@ class ControllerTests(TempHome):
                 self.assertIn("SIGKILL", record["termination_reason"])
                 self.assertIn("not confirmed", record["termination_reason"])
 
+    def test_unknown_job_api_reply_keeps_pending_cancel_without_claiming_transport_down(self):
+        response = subprocess.CompletedProcess([], 75,
+            '{"state":"blocked","reason":"unknown job"}', '')
+        with patch.object(controller.subprocess, "run", return_value=response):
+            result = controller.cancel(self.state, "phone", "staging", ["ssh", "host"])
+        self.assertEqual(result, {"id": "staging", "state": "cancel-pending",
+                                 "availability": "ready", "reason": "job-not-found"})
+        record = common.read(controller.records(self.state, "phone") / "staging.json")
+        self.assertTrue(record["cancel"])
+        self.assertEqual(record["reason"], "job-not-found")
+        self.assertFalse(record.get("terminal", False))
+
+    def test_unknown_job_after_submit_retains_missing_job_evidence_without_replay(self):
+        responses = [{"state": "queued", "lease": "TOKEN"},
+                     controller.UnknownJob("unknown job")]
+        with patch.object(controller, "transport", side_effect=responses) as transport:
+            result = controller.run(self.state, "phone", "missing", {"argv": ["true"]},
+                                    ["ssh", "host"], lambda _: None)
+        self.assertEqual(result, 255)
+        self.assertEqual([call.args[1] for call in transport.call_args_list], ["submit", "status"])
+        record = common.read(controller.records(self.state, "phone") / "missing.json")
+        self.assertEqual(record["availability"], "ready")
+        self.assertEqual(record["reason"], "job-not-found")
+
     def test_completion_racing_expired_lease_uses_read_only_terminal_evidence(self):
         responses = [{"state": "queued", "lease": "TOKEN"}, {"state": "queued", "expires": 0},
                      common.Blocked("terminal lease"), {"state": "succeeded"}, "done\n"]

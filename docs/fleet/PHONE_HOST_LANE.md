@@ -174,6 +174,15 @@ automatically replayed after allocation.
 
 `fleet run --node s22 --guest -- CMD...` submits the selected guest job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB --guest` cancels that exact durable ID. Source transfer and artifact fetching use SSH. The guest spool/source remain available for recovery. Linux/MBP execution is unchanged.
 
+Source staging precedes executor submission. If the controller is stopped during
+that transfer, the remote staging directory can exist without a worker record.
+A valid API reply `blocked: unknown job` is therefore `job-not-found`, not proof
+that SSH or the guest is down. Cancellation intent remains `cancel-pending`
+with API availability `ready`; it does not claim that a nonexistent worker job
+was cancelled. Inspect the local source-snapshot receipt/`staging` phase and stop
+the owned staging client before relocating work. Ordinary SSH/API outages still
+remain unavailable and never authorize replay.
+
 Explicit controller API:
 
 ```sh
