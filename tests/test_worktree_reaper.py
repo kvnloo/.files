@@ -232,6 +232,19 @@ class ReaperBehavior(unittest.TestCase):
                 self.assertEqual(reaper.symlink_references(home, []), initial)
             self.assertIs(index.directories[str(home)], cached)
 
+    def test_explicit_symlink_root_scans_external_installed_links(self):
+        home = self.base / 'home'
+        home.mkdir()
+        external = self.base / 'external'
+        external.mkdir()
+        (external / 'active').symlink_to(self.repo)
+        alias = home / '.config'
+        alias.symlink_to(external, target_is_directory=True)
+        refs, errors = reaper.symlink_references(home, [alias])
+        self.assertEqual(errors, [])
+        self.assertIn('home-symlink:' + str(external / 'active'),
+                      refs[str(self.repo)])
+
     def test_pause_during_archive_prevents_current_removal(self):
         self.age(self.repo)
         preserve = reaper.preserve

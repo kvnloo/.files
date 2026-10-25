@@ -201,7 +201,7 @@ def symlink_references(home=None, extra_roots=None, out=None):
                 except OSError:
                     pass
             errors.append('installed-link inventory: ' + str(error))
-        for base, dirs, files in LINK_INDEX.walk(root, failed):
+        for base, dirs, files in LINK_INDEX.walk(canonical, failed):
             location = Path(base)
             if location.name in installed or (
                     any(part in installed for part in location.parts) and
