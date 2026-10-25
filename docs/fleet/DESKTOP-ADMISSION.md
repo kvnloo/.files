@@ -95,8 +95,8 @@ sysctl `.conf` files plus two duplicate local I/O-scheduler rules. The inactive
 The retired latency/swap and groot-memory installer entry points are removed.
 The performance installer delegates system policy rather than writing a second
 VM/scheduler policy. No desktop, terminal, gateway, k3s or zram restart occurs.
-Only earlyoom is restarted by `--apply`, only when its tracked configuration
-changed, with a before/after log and runtime argv verification.
+Only earlyoom and systemd-journald are restarted by `--apply`, each only when
+its tracked configuration changed, with activation/verification logs.
 
 ### Observed deviations and decisions
 
@@ -275,4 +275,22 @@ OOMScoreAdjust directive is added to a scope (it is service-spawn-only).
 Residual risk: unbounded groups and concurrent capped workloads can still
 cause global OOM; reclaim protection, earlyoom avoidance and relative
 oom_score_adj ranking do not guarantee desktop survival.
+
+### Journal retention
+
+Packaged `00-journal-size.conf` limited the whole journal to50MiB; measured
+usage43.5MiB and missing same-day incident records justify a host override.
+Tracked `50-groot-retention.conf` sets SystemMaxUse=1G, SystemKeepFree=2G and
+MaxRetentionSec=30day. One GiB is below1% of the132GiB root filesystem.
+The storage policy targets20GiB root free upstream; the smaller2GiB journald
+floor avoids discarding debugging history prematurely during an incident.
+Thirty days is a **maximum age**, not guaranteed minimum retention: volume
+and the1GiB ceiling may rotate sooner. Residual risk: when `/` falls below
+2GiB free, history may still be vacuumed by journald's space policy.
+No bulk-disk journal mount or data migration is introduced.
+
+`--apply` restarts only systemd-journald when this file changes, then prints
+`journalctl --disk-usage` and `systemd-analyze cat-config systemd/journald.conf`
+for verification. The latter must show the later host file with1G/2G/30day.
+There is **no** manual journal vacuum operation and no journal deletion.
 

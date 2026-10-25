@@ -272,6 +272,14 @@ owner = "scripts/apply-host-system"
 reason = "Propagate7GiB reclaim reserve; future manager OOMScoreAdjust0, no restart; DESKTOP-ADMISSION.md"
 effective = { MemoryMin = "7516192768", MemoryLow = "7516192768" }
 
+[[system]]
+live = "/etc/systemd/journald.conf.d/50-groot-retention.conf"
+source = "config/host/etc/systemd/journald.conf.d/50-groot-retention.conf"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Packaged50MiB cap lost same-day incident logs; root132GiB with2GiB journal free-space reserve; DESKTOP-ADMISSION.md"
+
 [budget]
 desktop = "session.slice"
 groups = [

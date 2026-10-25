@@ -151,5 +151,13 @@ class DesktopBudgetTests(unittest.TestCase):
         self.assertTrue(any(g['proposed_cap'] == 'infinity' for g in budget['groups']))
         self.assertIn('not OOM-victim immunity', budget['not_a_guarantee'])
 
+
+    def test_journal_retention_overrides_small_vendor_cap(self):
+        text = (SOURCE / 'config/host/etc/systemd/journald.conf.d/50-groot-retention.conf').read_text()
+        for setting in ('SystemMaxUse=1G', 'SystemKeepFree=2G', 'MaxRetentionSec=30day'):
+            self.assertIn(setting, text)
+        installer = (SOURCE / 'scripts/apply-host-system').read_text()
+        self.assertNotIn('--vacuum', installer)
+
 if __name__ == '__main__':
     unittest.main()

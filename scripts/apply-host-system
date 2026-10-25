@@ -206,9 +206,16 @@ def install(source, root, apply=False, oomd=False):
             if actual_args != expected_args:
                 raise RuntimeError('earlyoom runtime arguments differ; explicit restart required')
             print('VERIFIED: earlyoom active; -m 5 -s 65; anchored harness/session avoid; no --prefer')
+            journal_changed = any(p == root / 'etc/systemd/journald.conf.d/50-groot-retention.conf' for p, _ in changes)
+            if journal_changed:
+                print('RESTART: systemd-journald.service to activate approved retention policy')
+                subprocess.run(['systemctl', 'restart', 'systemd-journald.service'], check=True)
+                print('RESTARTED: systemd-journald.service; no vacuum operation requested')
+            subprocess.run(['journalctl', '--disk-usage'], check=True)
+            subprocess.run(['systemd-analyze', 'cat-config', 'systemd/journald.conf'], check=True)
             print('STAGED: zram resize only at next controlled reboot; no swapoff/restart performed')
             print('SEPARATE MAINTENANCE: scripts/setup-k3s.sh server (20Gi reserve; k3s restart explicit, not performed)')
-    print(f'APPLIED stage={"oomd" if oomd else "system"} changed={len(changes)} retired={len(removals)} backup={backup or "none (already converged)"}; only earlyoom restarted if its config changed')
+    print(f'APPLIED stage={"oomd" if oomd else "system"} changed={len(changes)} retired={len(removals)} backup={backup or "none (already converged)"}; only earlyoom/journald restarted if their config changed')
     return 0
 
 
