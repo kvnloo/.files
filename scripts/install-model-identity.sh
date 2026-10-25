@@ -5,7 +5,7 @@ repo=$(dirname "$(dirname "$(readlink -f "$0")")")
 sha=$(git -C "$repo" rev-parse HEAD)
 dest="$HOME/.local/lib/z0int-model-identity-units/$sha"
 mkdir -p "$dest" "$HOME/.config/systemd/user"
-for unit in z0int-model-identity.service z0int-model-identity.path z0int-model-identity.timer; do
+for unit in z0int-policy.service z0int-model-identity.service z0int-model-identity.path z0int-model-identity.timer; do
   if [[ ! -e "$dest/$unit" ]]; then
     git -C "$repo" show "$sha:config/systemd/user/$unit" > "$dest/$unit"
   fi

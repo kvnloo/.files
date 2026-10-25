@@ -1154,8 +1154,8 @@ live = "~/.config/systemd/user/z0int-policy.service"
 source = "config/systemd/user/z0int-policy.service"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-model-identity.sh"
+reason = "Measured streaming pipeline working set plus 50% headroom; bounded swap makes regressions visible."
 migration_sha256 = "e9eb3720c3bd6c21aae96101239df6da5c849ab996a34a21d50725fad377d61f"
 
 [[user]]
@@ -3911,3 +3911,43 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-dash-services"
 reason = "Minimal non-secret Metro proxy routing preserves installed phone launch URL."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-model-identity.service"
+source = "config/systemd/user/z0int-model-identity.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-model-identity.sh"
+reason = "Independent idle-I/O hasher prevents model discovery from blocking evidence-to-policy compilation."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-model-identity.path"
+source = "config/systemd/user/z0int-model-identity.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-model-identity.sh"
+reason = "Refresh canonical identities on model publication or serving registry change."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-model-identity.timer"
+source = "config/systemd/user/z0int-model-identity.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-model-identity.sh"
+reason = "Daily backstop refreshes identities outside policy compilation."
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0int-model-identity.path"
+source = "config/systemd/user/z0int-model-identity.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-model-identity.sh"
+reason = "Keep the approved model publication watch enabled."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0int-model-identity.timer"
+source = "config/systemd/user/z0int-model-identity.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-model-identity.sh"
+reason = "Keep the approved daily identity backstop enabled."

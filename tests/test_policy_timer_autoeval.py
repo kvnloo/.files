@@ -40,6 +40,8 @@ def test_identity_hasher_is_separate_idle_and_bounded():
     policy = configparser.ConfigParser(interpolation=None, strict=False)
     policy.read(ROOT/'config/systemd/user/z0int-policy.service')
     assert policy['Service']['TimeoutStartSec'] == '5min'
+    assert policy['Service']['MemoryMax'] == '192M'
+    assert policy['Service']['MemorySwapMax'] == '64M'
     for suffix, section in [('path', 'Path'), ('timer', 'Timer')]:
         trigger = configparser.ConfigParser(interpolation=None, strict=False)
         trigger.read(ROOT/f'config/systemd/user/z0int-model-identity.{suffix}')
