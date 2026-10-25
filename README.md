@@ -75,6 +75,11 @@ tokens belong in the existing keyring, not dotenv files. Missing vault access
 fails closed; run `~/.hermes/bin/hermes-store-bws-token.sh` to restore the
 machine-account token. Do not paste credentials into a command or a ticket.
 
+`scripts/install-bws-secrets --render UNIT` prints the exact generated drop-in
+using only the tracked consumer map. It performs no vault or network access
+and emits no credential values. The host manifest records these drop-ins as
+`install = "generated"` with that command as their reproducible generator.
+
 ## Agent state packet freshness
 
 `scripts/install-state-packet-timer.sh --activate` installs content-stamped user
