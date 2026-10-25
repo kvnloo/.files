@@ -1216,9 +1216,13 @@ Newly configured limits do not prove every old scope has a per-session cap.
 Explicit Tern pane commands are:
 `tern new tab --cwd DIR -- ~/.local/bin/agent-launch omp ~/.local/share/tern/omp/bin/omp`
 and `tern new tab --cwd DIR -- ~/.local/bin/agent-launch hermes ~/.local/bin/hermes`.
-The HUD uses this same seam. Tern's internal Carly is application-owned and
-is not intercepted by shell functions; do not claim universal isolation from
-these pane wrappers alone. A report-only placement guard detects bypasses.
+The HUD uses this same seam. The managed OMP installer also owns Tern's absolute
+`~/.local/share/tern/omp/bin/omp` entry, so saved `--restore` commands and Carly's
+use of that entry cannot bypass `agent-launch`. Carly's model and harness are
+unchanged. Existing processes are not moved or restarted, and their previously
+charged heaps are not retroactively contained. See the root README's
+**OMP executable ownership** section for staging-profile upgrades and rollback.
+A report-only placement guard still detects other bypasses.
 
 No user-unit desktop `ManagedOOMPreference=avoid` is installed: systemd ignores
 UID-owned preferences for root-ancestor swap victim selection. These workload

@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
-# Use Tern's managed OMP while charging its process tree to agent.slice.
-exec "$HOME/.local/bin/agent-launch" omp "$HOME/.local/share/tern/omp/bin/omp" "$@"
+# Both shell starts and Tern's recorded absolute restores use this managed entry.
+# Payload upgrades change only the installer-owned, checksum-verified pointer.
+if [[ ${1:-} == update ]]; then
+  printf '%s\n' 'OMP is managed by .files. Update it in a separate Tern staging profile, then run:' \
+    '  install-tern-omp --apply --from-tern STAGING_CONFIG_DIR'
+  exit 0
+fi
+exec "$HOME/.local/bin/agent-launch" omp "$HOME/.local/lib/files-tern-omp/current/omp" "$@"

@@ -26,6 +26,7 @@ LINKS = {
     'config/bws-consumers.json': '.local/share/files-bws/consumers.json',
     'scripts/agent-resource-classify': '.local/bin/agent-resource-classify',
     'scripts/omp': '.local/bin/omp',
+    'scripts/install-tern-omp': '.local/bin/install-tern-omp',
     'scripts/omp-hud': '.local/bin/omp-hud',
     'config/zsh/agent-scopes.zsh': '.config/zsh/agent-scopes.zsh',
     'config/systemd/user/agent.slice': '.config/systemd/user/agent.slice',
@@ -99,6 +100,11 @@ def install(source: Path, home: Path, apply: bool) -> int:
         print('DRY RUN: safe aggregate; would back up exact cap overrides, link agent policy and daemon-reload')
         return 0
     release = stamp_release(source, home)
+    # Take ownership of Tern's legacy absolute entry before publishing the new
+    # local wrapper. This never restarts a daemon, window, pane or agent.
+    subprocess.run(['python3', str(release / 'scripts/install-tern-omp'),
+                    '--home', str(home), '--wrapper', str(release / 'scripts/omp'),
+                    '--apply'], check=True)
     backup_root = home / '.local/state/agent-oom/backups'
     backup_root.mkdir(parents=True, exist_ok=True)
     backup = Path(tempfile.mkdtemp(prefix='apply-', dir=backup_root))

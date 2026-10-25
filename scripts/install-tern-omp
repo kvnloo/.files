@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Import a checksum-verified Tern OMP release without exposing an unscoped entry."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import tempfile
+
+OWNED = ('.local/lib/files-tern-omp/current', '.local/share/tern/omp/state.json',
+         '.config/tern/settings.json', '.local/bin/omp', '.local/share/tern/omp/bin/omp')
+
+
+def checksum(path: Path) -> str:
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def snapshot(home: Path) -> Path:
+    root = home / '.local/state/agent-oom/tern-omp-backups'
+    root.mkdir(parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix='apply-', dir=root))
+    entries = {}
+    for rel in OWNED:
+        path = home / rel
+        if path.is_symlink():
+            entries[rel] = {'link': os.readlink(path)}
+        elif path.exists():
+            if not path.is_file():
+                raise ValueError(f'refusing non-file managed entry: {path}')
+            saved = backup / rel
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, saved)
+            entries[rel] = {'file': rel, 'mode': path.stat().st_mode & 0o777}
+        else:
+            entries[rel] = None
+    (backup / 'manifest.json').write_text(json.dumps(entries))
+    return backup
+
+
+def rollback(home: Path) -> None:
+    latest = home / '.local/state/agent-oom/tern-omp-rollback'
+    backup = latest.resolve(strict=True)
+    entries = json.loads((backup / 'manifest.json').read_text())
+    # Restore payload and entries first, manager ownership last. Never write
+    # through a running executable's symlink or modify its inode.
+    for rel in (OWNED[0], OWNED[3], OWNED[4], OWNED[2], OWNED[1]):
+        entry = entries[rel]
+        path = home / rel
+        if entry is None:
+            path.unlink(missing_ok=True)
+        elif 'link' in entry:
+            atomic_link(path, Path(entry['link']))
+        else:
+            atomic_bytes(path, (backup / entry['file']).read_bytes(), entry['mode'])
+    latest.unlink()
+    print(f'ROLLED BACK: restored exact prior OMP entries from {backup}; no processes restarted')
+
+
+def atomic_bytes(path: Path, data: bytes, mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.omp-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+        os.chmod(name, mode)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def atomic_link(path: Path, target: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.omp-', dir=path.parent)
+    os.close(fd)
+    os.unlink(name)
+    try:
+        os.symlink(target, name)
+        os.replace(name, path)
+    finally:
+        if os.path.lexists(name):
+            os.unlink(name)
+
+
+def import_release(home: Path, tern: Path, wrapper: Path, apply: bool) -> Path:
+    """Only import Tern's immutable version file, never its mutable bin link."""
+    state = json.loads((tern / 'omp/state.json').read_text())
+    installed = state['installed']
+    version = installed['version']
+    digest = installed['sha256']
+    if (not isinstance(version, str) or not version or Path(version).name != version
+            or version in ('.', '..')):
+        raise ValueError('unsafe Tern OMP version')
+    if (not isinstance(digest, str) or len(digest) != 64
+            or any(c not in '0123456789abcdef' for c in digest)):
+        raise ValueError('invalid Tern OMP SHA-256')
+    payload = tern / 'omp/versions' / version
+    if (state.get('managed') is False and
+            tern.resolve() == (home / '.local/share/tern').resolve()):
+        current = home / '.local/lib/files-tern-omp/current'
+        if current.is_symlink():
+            adopted = current.resolve(strict=True)
+            if adopted.name != digest:
+                raise ValueError('adopted OMP pointer disagrees with installed state')
+            payload = adopted / 'omp'
+    if payload.is_symlink() or not payload.is_file():
+        raise ValueError('Tern version payload must be a regular file')
+    if checksum(payload) != digest:
+        raise ValueError('Tern version payload checksum mismatch')
+    if not os.access(payload, os.X_OK):
+        raise ValueError('Tern version payload is not executable')
+    if not wrapper.is_file():
+        raise ValueError('missing managed OMP wrapper')
+    root = home / '.local/lib/files-tern-omp'
+    if home == Path('/home/kvn'):
+        if not os.path.ismount('/mnt/zer0models'):
+            raise ValueError('bulk release storage is not mounted')
+        root = Path('/mnt/zer0models/releases/files-tern-omp')
+    release = root / digest
+    if not apply:
+        print(f'DRY RUN: import Tern OMP {version} sha256={digest}; transfer update ownership to .files')
+        return release
+    root.mkdir(parents=True, exist_ok=True)
+    # OMP's supported external-manager contract reads manager.json two levels
+    # above the resolved executable. Its own updater must not replace our entry.
+    atomic_bytes(root / 'manager.json', json.dumps({
+        'manager': 'files',
+        'name': '.files (use install-tern-omp --apply --from-tern STAGING_CONFIG_DIR)',
+    }).encode() + b'\n')
+    if not release.exists():
+        staging = Path(tempfile.mkdtemp(prefix='.import-', dir=root))
+        try:
+            shutil.copyfile(payload, staging / 'omp')
+            (staging / 'omp').chmod(0o755)
+            if checksum(staging / 'omp') != digest:
+                raise ValueError('OMP payload changed during import')
+            (staging / 'provenance.json').write_text(json.dumps(installed, indent=2) + '\n')
+            os.rename(staging, release)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+    if checksum(release / 'omp') != digest:
+        raise ValueError('installed OMP release checksum mismatch')
+    live_tern = home / '.local/share/tern/omp'
+    live_state_path = live_tern / 'state.json'
+    live_state = json.loads(live_state_path.read_text()) if live_state_path.exists() else {}
+    live_state.update(managed=False, installed=installed)
+    settings_path = home / '.config/tern/settings.json'
+    settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+    settings['agent_command'] = str(home / '.local/bin/omp')
+    backup = snapshot(home)
+    atomic_link(home / '.local/state/agent-oom/tern-omp-rollback', backup)
+    # Publish the payload before replacing either entry point. The live bin is
+    # always a wrapper; future imports change only this one atomic pointer.
+    atomic_link(home / '.local/lib/files-tern-omp/current', release)
+    atomic_bytes(live_state_path, (json.dumps(live_state, indent=2) + '\n').encode())
+    atomic_bytes(settings_path, (json.dumps(settings, indent=2) + '\n').encode())
+    atomic_link(home / '.local/bin/omp', wrapper)
+    atomic_link(live_tern / 'bin/omp', wrapper)
+    print(f'APPLIED: .files owns OMP {version}; release={release}; Tern OMP updates disabled in live profile; no processes restarted')
+    return release
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--home', type=Path, default=Path.home())
+    parser.add_argument('--from-tern', type=Path, help='staging TERN_CONFIG_DIR containing omp/state.json and omp/versions/V')
+    parser.add_argument('--wrapper', type=Path, default=Path(__file__).resolve().with_name('omp'))
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--rollback', action='store_true', help='restore the exact entries saved by the last apply')
+    args = parser.parse_args()
+    home = args.home.resolve()
+    lock = home / '.local/state/agent-oom/tern-omp.lock'
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open('a') as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        if args.rollback:
+            if args.apply or args.from_tern:
+                parser.error('--rollback cannot be combined with --apply or --from-tern')
+            rollback(home)
+            return
+        # Serialize against Tern's supported manager while taking initial ownership.
+        tern = args.from_tern or home / '.local/share/tern'
+        with (tern / 'omp/check.lock').open('a') as manager_lock:
+            fcntl.flock(manager_lock, fcntl.LOCK_EX)
+            import_release(home, tern, args.wrapper.resolve(), args.apply)
+
+
+if __name__ == '__main__':
+    main()

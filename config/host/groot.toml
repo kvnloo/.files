@@ -4521,6 +4521,30 @@ stamp_name = "host-storage"
 owner = "scripts/install-host-storage.sh"
 reason = "ADB fetch defaults share the configured bulk spool."
 
+[[user]]
+live = "~/.local/bin/omp"
+source = "scripts/omp"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Every OMP launch must enter agent-launch before the real payload."
+
+[[user]]
+live = "~/.local/share/tern/omp/bin/omp"
+source = "scripts/omp"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-tern-omp"
+reason = "Legacy saved Tern restore commands must use the same scoped OMP entry."
+
+[[user]]
+live = "~/.local/bin/install-tern-omp"
+source = "scripts/install-tern-omp"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OMP update and rollback retain the scoped entry through a stamped installer."
+
 # Pending actions annotate evidence; they never waive drift or authorize execution.
 [[pending_action]]
 paths = ["/etc/default/earlyoom", "/etc/sysctl.d/99-groot.conf", "/etc/systemd/journald.conf.d/50-groot-retention.conf", "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf", "/etc/systemd/zram-generator.conf", "vm.dirty_bytes", "vm.dirty_background_bytes", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter", "net.netfilter.nf_conntrack_max", "user-1000.slice", "user.slice", "user@1000.service"]

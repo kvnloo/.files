@@ -109,7 +109,7 @@ class InstallerTests(unittest.TestCase):
             self.assertNotEqual(target, self.source / rel)
             self.assertEqual(target.read_bytes(), (self.source / rel).read_bytes())
         self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'daemon-reload'])
-        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_count, 3)
 
     def test_release_survives_source_change_and_rejects_tampering(self):
         release = installer.stamp_release(self.source, self.home)
