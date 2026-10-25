@@ -67,7 +67,8 @@ class CtxPolicyTests(unittest.TestCase):
     def test_policy_has_hard_budget_without_execstart_override(self):
         policy = (ROOT / installer.RELATIVE).read_text()
         for value in ['MemoryHigh=infinity', 'MemoryMax=5G', 'MemorySwapMax=2G',
-                      'OOMPolicy=stop', 'Restart=on-failure', 'StartLimitBurst=3']:
+                      'OOMPolicy=stop', 'Restart=on-failure', 'StartLimitBurst=3',
+                      'RestartSteps=3', 'RestartMaxDelaySec=5min']:
             self.assertIn(value, policy)
         self.assertNotIn('ExecStart=', policy)
 
