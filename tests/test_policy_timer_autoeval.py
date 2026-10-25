@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize('failure,expected',[(0,['python3 -m z0int.policy.autoeval tick','z0int policy ingest','z0int policy compile']),
                                              (1,['python3 -m z0int.policy.autoeval tick'])])
 def test_policy_timer_orders_discovery_and_stops_on_failure(tmp_path,failure,expected):
-    unit = configparser.ConfigParser(interpolation=None)
+    unit = configparser.ConfigParser(interpolation=None,strict=False)
     unit.read(ROOT/'config/systemd/user/z0int-policy.service')
     command = shlex.split(unit['Service']['ExecStart'])
     assert command[:2]==['/bin/sh','-ec']
