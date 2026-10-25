@@ -101,8 +101,9 @@ class HostSystemTests(unittest.TestCase):
         self.assertIn('vm.dirty_bytes = 268435456', text)
         self.assertIn('vm.dirty_background_bytes = 67108864', text)
         zram = (SOURCE / 'config/host/etc/systemd/zram-generator.conf').read_text()
-        self.assertIn('zram-size = ram / 8', zram)
-        self.assertIn('zram-resident-limit = ram / 8', zram)
+        self.assertIn('zram-size = ram\n', zram)
+        self.assertIn('zram-resident-limit = ram / 2', zram)
+        self.assertIn('vm.overcommit_memory = 1', text)
         self.assertNotIn('oomd stops', zram)
 
 
