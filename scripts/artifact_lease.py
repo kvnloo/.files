@@ -63,6 +63,13 @@ def shell_create(path, owner, node, kind, keep_receipts=()):
             'rc=$?; rm -f "$t"; exit "$rc")')
 
 
+def terminal_command(command, directory):
+    """Record only an actually returned payload status, never transport status."""
+    return (f'{command}; rc=$?; d={directory}; '
+            't=$(mktemp "$d/.exit-XXXXXX") || exit "$rc"; '
+            'printf "%s\\n" "$rc" > "$t" && mv -f "$t" "$d/exit"; exit "$rc"')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('path')

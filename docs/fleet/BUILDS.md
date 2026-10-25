@@ -184,6 +184,11 @@ separate from these artifact-retention leases.
 Shared phone controller/worker JSON spool records remain receipts, not
 independently leased directories. Unknown live artifacts remain protected;
 a sidecar does not grant deletion authority or expand cleanup allowlists.
+Payload-return paths publish an atomic numeric `exit` receipt for Linux jobs,
+MBP host/container jobs, and guest jobs with definitive succeeded/failed
+outcomes. Disconnected controllers, admission holds, evicted containers,
+interrupted guest jobs and retryable attempts do not synthesize terminal
+receipts. Missing terminal evidence keeps an expired spool protected.
 Caller-selected `--out` locations are not automatically cleanup roots.
 
 For new agent worktrees, use

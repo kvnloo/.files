@@ -237,6 +237,10 @@ class Executor:
             job.update(state=state, exit=rc, finished=time.time())
             self.store.save(job)
             self.store.recover(job)
+            # Only real final payload outcomes authorize retention cleanup. Paused,
+            # drained, interrupted or retryable attempts leave no terminal marker.
+            if state in ("succeeded", "failed") and rc != 76:
+                atomic(jobdir / "exit", rc)
 
     async def events(self, sock):
         loop = asyncio.get_running_loop()

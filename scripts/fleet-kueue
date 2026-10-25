@@ -14,7 +14,7 @@ import sys
 import time
 import uuid
 import socket
-from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command
+from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 
 
 def checked(argv, **kwargs):
@@ -173,10 +173,11 @@ def main():
             f'systemd-run --user --scope --quiet --unit={shlex.quote(unit)} '
             f'-p MemoryMax={memory} -p MemorySwapMax=512M -p CPUQuota={float(args.cpus) * 100:g}% '
             f'-- timeout --kill-after=30 {args.timeout} nice -n 5 {shlex.join(args.cmd)}; '
-            f'rc=$?; systemctl --user stop {shlex.quote(unit)} 2>/dev/null || true; exit $rc')
+            f'rc=$?; systemctl --user stop {shlex.quote(unit)} 2>/dev/null || true; '
+            + terminal_command('(exit "$rc")', qstage))
         command = (['/usr/bin/bash', '-c', 'while :; do sleep 30; done'] if args.host else
                    ['/usr/bin/bash', '-c', '[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; ' +
-                    cache_setup + 'exec "$@"', 'fleet-kueue', *args.cmd])
+                    cache_setup + terminal_command('"$@"', '/work'), 'fleet-kueue', *args.cmd])
         manifest = {
             'apiVersion': 'batch/v1', 'kind': 'Job',
             'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': 'lanes',

@@ -42,7 +42,7 @@ import yaml
 from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
 import fleet_phone_python as phone_python
-from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command
+from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -582,7 +582,8 @@ def cmd_run(args):
                  f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
                  f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
                  f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; rc=$?; "
-                 f"systemctl --user stop fleet-{jid}.scope 2>/dev/null; exit $rc")
+                 f"systemctl --user stop fleet-{jid}.scope 2>/dev/null; "
+                 + terminal_command('(exit "$rc")', jdir))
     with open(log, "w") as lf:
         lf.write(f"# fleet job {jid} node={n['name']} cmd={cmd}\n")
         proc = subprocess.Popen(ssh + [inner], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

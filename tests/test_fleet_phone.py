@@ -399,6 +399,7 @@ class ExecutionIntegration(TempHome):
         result = self.store.get("j")
         self.assertEqual(result["state"], "succeeded")
         self.assertEqual(result["attempt"], 1)
+        self.assertEqual((self.cwd.parent / "exit").read_text(), "0\n")
         log = (self.state / "j.log").read_text()
         self.assertIn("PAYLOAD_OK", log)
         self.assertIn(str(self.home.resolve() / "fleet-jobs/j/home"), log)
@@ -408,6 +409,7 @@ class ExecutionIntegration(TempHome):
         asyncio.run(worker.Executor(self.store, self.polite).execute(job))
         self.assertEqual(self.store.get("j")["attempt"], 0)
         self.assertFalse((self.state / "j.log").exists())
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_failed_gate_leaves_queued_not_admitted(self):
         job = self.store.submit("j", self.spec())
@@ -415,6 +417,7 @@ class ExecutionIntegration(TempHome):
             asyncio.run(worker.Executor(self.store, self.polite).execute(job))
         self.assertEqual(self.store.get("j")["state"], "queued")
         self.assertEqual(self.store.get("j")["attempt"], 0)
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_running_lease_expiry_drains_then_requires_confirmation(self):
         job = self.store.submit("j", self.spec(argv=[sys.executable, "-c", "import time; time.sleep(60)"]), ttl=0.15)
@@ -422,6 +425,7 @@ class ExecutionIntegration(TempHome):
         result = self.store.get("j")
         self.assertEqual(result["state"], "needs-confirmation")
         self.assertFalse(common.alive(result["child"]))
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_concurrent_attempts_cannot_duplicate_effect(self):
         code = "from pathlib import Path; p=Path('effects'); p.open('a').write('effect\\n')"

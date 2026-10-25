@@ -52,6 +52,13 @@ class CreatorTests(unittest.TestCase):
             subprocess.run(['sh', '-c', artifact_lease.shell_create(artifact_lease.shlex.quote(directory), 'other', 's25', 'other')], check=True)
             self.assertEqual(sidecar.read_bytes(), first)
 
+    def test_terminal_receipt_contains_actual_return_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(['sh', '-c', artifact_lease.terminal_command('(exit 17)', artifact_lease.shlex.quote(directory))])
+            self.assertEqual(result.returncode, 17)
+            self.assertEqual((Path(directory) / 'exit').read_text(), '17\n')
+            self.assertEqual([p.name for p in Path(directory).iterdir()], ['exit'])
+
     def test_worktree_wrapper_requires_owner_and_leases_after_git(self):
         from importlib.machinery import SourceFileLoader
         loader = SourceFileLoader('agent_worktree_test', str(SCRIPTS / 'agent-worktree'))
