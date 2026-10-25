@@ -15,14 +15,17 @@ set -u
 name=${1:?usage: agent-launch NAME CMD...}
 shift
 [ $# -gt 0 ] || { echo "agent-launch: no command" >&2; exit 2; }
+executable=$(type -P -- "$1") || { echo "agent-launch: executable not found: $1" >&2; exit 127; }
+set -- "$executable" "${@:2}"
 
 inline() { exec "$@"; }
 [ -n "${AGENT_LAUNCH_INLINE:-}" ] && inline "$@"
-command -v systemd-run >/dev/null 2>&1 || inline "$@"
+command -v systemd-run >/dev/null 2>&1 || { echo 'agent-launch: systemd-run required; refusing unbounded launch' >&2; exit 1; }
 grep -q '/agent.slice/' /proc/self/cgroup 2>/dev/null && inline "$@"   # already placed: no nesting
-systemctl --user show-environment >/dev/null 2>&1 || inline "$@"        # no user manager (ssh, container)
+systemctl --user show-environment >/dev/null 2>&1 || { echo 'agent-launch: user manager unavailable; refusing unbounded launch' >&2; exit 1; }
 
 unit="agent-${name//[^A-Za-z0-9_-]/_}-$$-$(date +%s)"
 # --scope keeps the terminal as the controlling tty; --collect drops the unit after exit.
 exec systemd-run --user --scope --quiet --collect --slice=agent.slice --unit="$unit" \
+  --property=MemoryHigh=2G --property=MemoryMax=4G --property=MemorySwapMax=512M --property=ManagedOOMPreference=none \
   --description="coding agent: $name" -- "$@"

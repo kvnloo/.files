@@ -933,3 +933,35 @@ unit lookup paths. Live unit archives, cron before/after receipts and exact
 rollback commands are in
 `operations/host-hygiene/RETIREMENT-20261024.md` under the operations data tree.
 Do not reactivate archived experiment services as part of fleet enrollment.
+
+## Coding-agent launch isolation
+
+Use `agent-launch NAME EXECUTABLE [args...]` for Tern panes and direct shell
+launches. It resolves the executable before entering an agent.slice scope,
+preserves arguments and exit status, and refuses an unbounded launch if the
+user manager is unavailable. An explicit `AGENT_LAUNCH_INLINE=1` is reserved
+for intentional container use, not desktop fallback. Existing agent.slice
+children do not create nested scopes. Each new session gets MemoryHigh=2G,
+MemoryMax=4G and MemorySwapMax=512M; the aggregate policy is 8G/10G/2G.
+
+After a normal deploy/live merge, run `python3 scripts/apply-agent-oom`
+first, then `python3 scripts/apply-agent-oom --apply`. The installer refuses
+to mutate when current usage exceeds 8GiB or current+swap exceeds 9GiB.
+It backs up and removes only the two conflicting user.control MemoryHigh
+and MemoryMax override files, installs the tracked launcher/shell/HUD/slice
+links and daemon-reloads. It never restarts a service or moves existing PIDs.
+If staging is reported, wait for jobs to finish naturally; do not kill them.
+Newly configured limits do not prove every old scope has a per-session cap.
+
+Explicit Tern pane commands are:
+`tern new tab --cwd DIR -- ~/.local/bin/agent-launch omp ~/.local/share/tern/omp/bin/omp`
+and `tern new tab --cwd DIR -- ~/.local/bin/agent-launch hermes ~/.local/bin/hermes`.
+The HUD uses this same seam. Tern's internal Carly is application-owned and
+is not intercepted by shell functions; do not claim universal isolation from
+these pane wrappers alone. A report-only placement guard detects bypasses.
+
+No user-unit desktop `ManagedOOMPreference=avoid` is installed: systemd ignores
+UID-owned preferences for root-ancestor swap victim selection. These workload
+limits reduce the failure mechanism, not a universal no-OOM guarantee; the
+privileged reservation/candidate-policy proposal is in the private operations
+`groot-oom/SYSTEM-OOMD.md`. Keep groot-admit's RAM reserve gate unchanged.
