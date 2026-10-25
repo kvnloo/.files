@@ -24,6 +24,16 @@ fleet-build --node mbp --wait 0 -- python3 tests/test_desktop_admission.py
 
 Inspect `/sys/fs/cgroup/.../cpu.max` and `io.max`, not just configured systemd properties. API dry runs prove admission, not running pods. Check real Job `spec.nodeName`, completion and logs separately. Never uncordon a hot worker just to get green evidence.
 
+The placement binding covers every namespace selectable by the configured
+ClusterQueues: `factory`, `lanes`, `fleet-mbp`, and `z0`. The z0 `cpu` flavor
+deliberately has no node labels so its CPU quota can accompany the GPU flavor;
+it does not bypass pod admission. The verifier exercises all seven placement
+cases in each namespace plus the full MBP lane (29 server dry runs). The trusted
+`fleet-mbp` namespace retains its Kueue-owned 4-CPU/10441814016-byte budget only
+when explicitly selecting MBP; groot's per-container limits remain unchanged.
+Factory's GPU case is denied by its zero-GPU ResourceQuota. Keep queue namespace
+selectors and this binding aligned when adding queues.
+
 ## Canonical film continuation
 
 `fleet-fframes-delivery --out NEW_DIRECTORY --wait 0` uses the canonical script and exact picture/soundtrack input files. It extends existing `fleet-build` with exact `--input FILE:RELATIVE_PATH`, retains the remote job with `--keep`, and fetches only final encodes/logs. It refuses to overwrite the paused source artifact tree. Direct canonical `deliver_v2.py encode` fails with 75 on groot; MBP execution must prove an effective fleet scope CPU/memory ceiling. Genuine GPU film rendering remains local within the agent envelope.

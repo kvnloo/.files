@@ -20,6 +20,7 @@ OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
 LINKS = {
     'scripts/agent-launch': '.local/bin/agent-launch',
     'scripts/agent-resource-classify': '.local/bin/agent-resource-classify',
+    'scripts/omp': '.local/bin/omp',
     'scripts/omp-hud': '.local/bin/omp-hud',
     'config/zsh/agent-scopes.zsh': '.config/zsh/agent-scopes.zsh',
     'config/systemd/user/agent.slice': '.config/systemd/user/agent.slice',

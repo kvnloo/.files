@@ -28,12 +28,26 @@ p=copy.deepcopy(base);p['spec']['containers'][0]['resources']={'limits':{'cpu':'
 cases.append(('bounded-gateway-preserved',p,True))
 p=copy.deepcopy(base);p['spec']['nodeName']='groot';p['spec']['nodeSelector']={'kubernetes.io/hostname':'mbp','z0.dev/cpu-admit':'true'}
 cases.append(('nodename-bypass-denied',p,False))
+p=copy.deepcopy(base);p['spec']['nodeSelector']={'kubernetes.io/hostname':'mbp','z0.dev/cpu-admit':'true'}
+p['spec']['containers'][0]['resources']={'requests':{'cpu':'4','memory':'10441814016'},'limits':{'cpu':'4','memory':'10441814016'}}
+full_lane=('full-mbp-lane-preserved',p,True)
 results=[]
-for name,pod,allow in cases:
-    r=subprocess.run(['kubectl','create','--dry-run=server','-f','-','-o','name'],input=json.dumps(pod),text=True,capture_output=True,env=env)
-    ok=(r.returncode==0)==allow
-    results.append({'case':name,'pass':ok,'exit':r.returncode,'stdout':r.stdout.strip(),'stderr':r.stderr.strip()})
-    print(json.dumps(results[-1]),flush=True)
+for namespace in ('factory', 'lanes', 'fleet-mbp', 'z0'):
+    for name,pod,allow in cases + ([full_lane] if namespace == 'fleet-mbp' else []):
+        pod=copy.deepcopy(pod)
+        pod['metadata']['namespace']=namespace
+        if namespace in ('factory', 'lanes'):
+            pod['spec']['initContainers']=[{
+                'name':'netpol-ready','image':'busybox:1.37','command':['sh','-c'],
+                'args':['i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1'],
+                'securityContext':copy.deepcopy(base['spec']['containers'][0]['securityContext']),
+                'resources':{'requests':{'cpu':'10m','memory':'16Mi'},'limits':{'cpu':'100m','memory':'32Mi'}}}]
+        r=subprocess.run(['kubectl','create','--dry-run=server','-f','-','-o','name'],input=json.dumps(pod),text=True,capture_output=True,env=env)
+        ok=(r.returncode==0) if allow else (r.returncode!=0 and "ValidatingAdmissionPolicy 'interactive-cpu-placement'" in r.stderr)
+        if namespace == 'factory' and name == 'allocated-gpu-groot-accepted':
+            ok=r.returncode!=0 and 'exceeded quota: factory-ceiling' in r.stderr
+        results.append({'namespace':namespace,'case':name,'pass':ok,'exit':r.returncode,'stdout':r.stdout.strip(),'stderr':r.stderr.strip()})
+        print(json.dumps(results[-1]),flush=True)
 if not all(r['pass'] for r in results):
     raise SystemExit(1)
 print(f'PLACEMENT_API_OK {len(results)} cases (server dry-run only; no pod readiness claimed)')
