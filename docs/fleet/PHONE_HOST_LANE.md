@@ -161,8 +161,10 @@ is job-local. No system Python packages, Android settings or app state change.
 
 Logs are `~/.local/state/fleet/runs/<job>-<registry-node>.log` on the controller.
 They include command, exit/status, venv setup, command and total elapsed times,
-and guest uptime before source transfer and after execution. A kernel boot-ID
-change, uptime reset/insufficient coverage, or changed PRoot tracer PID/start
+and guest uptime before source transfer and after execution. Uptime comes from
+the kernel `CLOCK_BOOTTIME` clock: Omalauncher's `/proc/uptime` can be a frozen
+startup snapshot, not a live clock. A kernel boot-ID change, uptime
+reset/insufficient coverage, or changed PRoot tracer PID/start
 identity makes the result `guest_restarted` (exit76), even if pytest exited0.
 Missing final lifetime evidence is `guest_unavailable` (exit255), never success.
 The retained source and executor spool are available for diagnosis; no job is
@@ -171,6 +173,15 @@ automatically replayed after allocation.
 ## Shared job API
 
 `fleet run --node s22 --guest -- CMD...` submits the selected guest job to the durable executor, follows status/logs and renews its lease. `fleet kill PHONE JOB --guest` cancels that exact durable ID. Source transfer and artifact fetching use SSH. The guest spool/source remain available for recovery. Linux/MBP execution is unchanged.
+
+Source staging precedes executor submission. If the controller is stopped during
+that transfer, the remote staging directory can exist without a worker record.
+A valid API reply `blocked: unknown job` is therefore `job-not-found`, not proof
+that SSH or the guest is down. Cancellation intent remains `cancel-pending`
+with API availability `ready`; it does not claim that a nonexistent worker job
+was cancelled. Inspect the local source-snapshot receipt/`staging` phase and stop
+the owned staging client before relocating work. Ordinary SSH/API outages still
+remain unavailable and never authorize replay.
 
 Explicit controller API:
 

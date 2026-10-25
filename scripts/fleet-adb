@@ -14,6 +14,8 @@ import time
 import uuid
 import socket
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command
+from fleet_source import source_snapshot
+from fleet_paths import runs_dir
 
 ROOT = "/data/local/tmp/fleet-jobs"
 TOOLBOX = "/data/local/tmp/fleet-bin"
@@ -268,7 +270,13 @@ def run(device, args):
         source = Path(args.src or os.getcwd()).resolve()
         if not source.is_dir():
             raise RuntimeError("--src must be a directory")
-        device.push(str(source) + "/.", directory + "/src/")
+        with source_snapshot(source, getattr(args, "src_include", []) or []) as (archive, metadata):
+            receipts = runs_dir()
+            receipts.mkdir(parents=True, exist_ok=True)
+            (receipts / f"{job}.json").write_text(json.dumps(
+                {"job_id": job, "node": device.hardware, "source_snapshot": metadata}, indent=2) + "\n")
+            device.push(archive, directory + "/source.tar.gz")
+            device.shell(f"tar -xzf {directory}/source.tar.gz -C {directory}/src && rm {directory}/source.tar.gz")
     for item in args.input:
         source, sep, path = item.rpartition(":")
         if not sep or not Path(source).is_file():
@@ -326,7 +334,6 @@ finish $?
     if args.fetch:
         while status(device, job)["state"] == "running":
             time.sleep(0.5)
-        from fleet_paths import runs_dir
         fetch(device, job, args.fetch, Path(args.dest) if args.dest else runs_dir() / job)
         result = status(device, job)
         return result["exit_code"] if result["exit_code"] is not None else 255
@@ -339,6 +346,7 @@ def main():
     parser.add_argument("node", choices=HARDWARE)
     parser.add_argument("job", nargs="?")
     parser.add_argument("--src")
+    parser.add_argument("--src-include", action="append", default=[])
     parser.add_argument("--no-src", action="store_true")
     parser.add_argument("--input", action="append", default=[])
     parser.add_argument("--timeout", type=int, default=3600)
@@ -370,7 +378,6 @@ def main():
             if args.fetch or args.action == "fetch":
                 if not args.fetch:
                     raise RuntimeError("fetch requires --fetch PATH")
-                from fleet_paths import runs_dir
                 fetch(device, args.job, args.fetch, Path(args.dest) if args.dest else runs_dir() / args.job)
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
         detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)

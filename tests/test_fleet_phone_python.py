@@ -70,16 +70,15 @@ class StagingSelectionTests(unittest.TestCase):
     def test_git_staging_counts_selected_bytes_not_ignored_dependencies(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / '.git').write_text('gitdir: fixture')
+            subprocess.run(['git', '-C', str(root), 'init', '--quiet'], check=True)
+            (root / '.git/info/exclude').write_text('ignored.venv\n')
             (root / 'tracked.py').write_bytes(b'1234')
             (root / 'new file.py').write_bytes(b'567')
             (root / 'ignored.venv').write_bytes(b'x' * 100)
             (root / 'submodule').mkdir()
             (root / 'submodule' / 'data').write_bytes(b'89')
-            result = subprocess.CompletedProcess([], 0, b'tracked.py\0new file.py\0submodule\0', b'')
-            with patch.object(python_jobs.subprocess, 'run', return_value=result) as run:
-                self.assertEqual(python_jobs.staging_bytes(root), 9)
-            self.assertIn('--exclude-standard', run.call_args.args[0])
+            subprocess.run(['git', '-C', str(root), 'add', 'tracked.py'], check=True)
+            self.assertEqual(python_jobs.staging_bytes(root), 9)
 
     def test_non_git_source_and_explicit_inputs_have_measured_sizes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,6 +153,34 @@ class GuestLifetimeTests(unittest.TestCase):
                         {'guest_identity': [201, '1260']}, {'uptime': 1020.0}):
             with self.subTest(changes=changes):
                 self.assertTrue(python_jobs.restarted(before, {**before, **changes}, 60.0))
+
+    def test_static_omalauncher_proc_uptime_does_not_report_restart(self):
+        # Retained S25 49c1/66ad receipts had this frozen /proc/uptime value
+        # and the same tracer identity, despite successful command completion.
+        proc_reads = []
+        def read_proc(path):
+            proc_reads.append(str(path))
+            return {
+                '/proc/uptime': '292659.57 2341276.58',
+                '/proc/self/status': 'TracerPid:\t2074\n',
+                '/proc/2074/stat': '2074 (proot) ' + ' '.join(['0'] * 19 + ['27758720']),
+                '/proc/sys/kernel/random/boot_id': 'c4719f5c-4da0-45d3-81d9-48d62e7f2ade',
+            }[str(path)]
+        receipts = []
+        with patch.object(Path, 'read_text', read_proc), \
+             patch.object(time, 'clock_gettime', side_effect=[301000.0, 301093.889]) as clock:
+            for _ in range(2):
+                with patch('builtins.print') as printed:
+                    exec(python_jobs.SNAPSHOT, {})
+                receipts.append(json.loads(printed.call_args.args[0]))
+        self.assertNotIn('/proc/uptime', proc_reads)
+        self.assertEqual(clock.call_args_list[0].args, (time.CLOCK_BOOTTIME,))
+        self.assertFalse(python_jobs.restarted(*receipts, 93.889))
+        for changes in ({'boot_id': 'new-boot'}, {'guest_identity': [2075, '30105000']},
+                        {'guest_identity': [2074, '30105000']}, {'uptime': 3.0}):
+            with self.subTest(changes=changes):
+                self.assertTrue(python_jobs.restarted(
+                    receipts[0], {**receipts[1], **changes}, 93.889))
 
     def test_missing_guest_identity_fails_closed(self):
         result = subprocess.CompletedProcess([], 0, json.dumps({**self.before(), 'guest_identity': None}), '')
@@ -242,6 +269,9 @@ class GuestExecutionTests(unittest.TestCase):
                                        fetch=[], input=[], guest=True, python_venv=True)
                 probe = {'ts': time.time(), 'load1': 0, 'ncpu': 8, 'mem_available_mb': 0}
                 with patch.object(fleet, 'STATE', Path(tmp)), \
+                     patch('fleet_paths.runs_dir', return_value=Path(tmp) / 'runs'), \
+                     patch.dict(os.environ, {'FLEET_TEST_PLACEMENT': json.dumps({
+                         'selected_lane': 'phones', 'reason': 'mbp-owned-quota-unavailable'})}), \
                      patch.object(fleet, 'k8s_nodes', return_value={}), \
                      patch.object(fleet, 'probe_python_guest', return_value=probe), \
                      patch.object(fleet.subprocess, 'run'), \
@@ -257,6 +287,11 @@ class GuestExecutionTests(unittest.TestCase):
                 self.assertEqual(payload['argv'][3], '/root/.cache/pip')
                 self.assertNotIn('mem_mb', payload)
                 self.assertEqual(payload['max_attempts'], 1)
+                receipt = json.loads(next((Path(tmp) / 'runs').glob('*.json')).read_text())
+                self.assertEqual(receipt['placement']['selected_node'], 'omarchy-phone')
+                self.assertEqual(receipt['placement']['reason'], 'mbp-owned-quota-unavailable')
+                durable = json.loads(next((Path(tmp) / 'phone-jobs/omarchy-phone').glob('*.json')).read_text())
+                self.assertEqual(durable['placement'], receipt['placement'])
 
 
 class BuildDispatchTests(unittest.TestCase):

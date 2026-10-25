@@ -102,9 +102,37 @@ Kueue worker-only placement, the bounded supervisor, and guarded delivery contin
   an explicit shared-capacity plan. Both `lanes` LocalQueues share one quota.
 - Source transfers use tar through the existing fleet registry and SSH command
   for MBP's `agentjob` identity. Remote commands use `bash -c`.
+  Git sources include existing cached and untracked, non-ignored files only;
+  sparse skip-worktree entries and staged/unstaged deletions are excluded.
+  Sources inside a Git subdirectory use that repository's selection rules.
+  Non-Git trees use a plain walk with Git's nested `.gitignore` matching.
+  SSH/Kueue, native adb, and public-source Boat transfers freeze the selected
+  source once into an immutable archive, excluding `.git`. Capture retries
+  when the selected file list, file fingerprints, Git HEAD, or dirty state
+  changes; an unstable tree is refused rather than shipped mixed.
+  The receipt records archive SHA-256, Git HEAD, dirty flag, include list, and
+  source/archive sizes before transfer. Later source edits cannot change it.
+  Snapshot archives live beside fleet's configured runs storage, not groot's
+  root filesystem. Python guest source-size admission uses the same selection.
+  A source snapshot is not a Git checkout: tests requiring Git metadata must
+  construct their own fixture rather than expect the sender's `.git`.
   Staging is `/home/agentjob/.local/state/fleet/kueue/<job>` on MBP.
   The pod mounts source at `/work/src` through hostPath.
   It runs as `agentjob`, UID 1001, with `runAsNonRoot: true`.
+
+Use repeatable `--src-include PATH_OR_GLOB` for an explicitly bounded payload.
+Paths are relative to `--src`; directory paths include their descendants and
+globs match selected relative filenames. Every include must match at least one
+existing, non-ignored file. Absolute paths and `..` are rejected. Without an
+include list, the full non-ignored source is retained; no dependency pruning
+is guessed. Exact `--input FILE:RELATIVE_PATH` artifacts remain separate.
+
+```sh
+fleet-build --class test --src "$PWD" \
+  --src-include scripts/ --src-include config/ \
+  --src-include tests/test_x.py -- python3 -m unittest discover -s tests -p test_x.py
+```
+
 - HOME is `/home/agentjob`, mounted read-write to retain existing build caches.
   Absolute paths under that HOME remain valid in host and Kueue jobs.
   Trusted jobs can access that account's other files and caches.

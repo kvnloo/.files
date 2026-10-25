@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 loader = importlib.machinery.SourceFileLoader("fleet_boat_under_test", str(ROOT / "scripts/fleet-boat"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 adapter = importlib.util.module_from_spec(spec)

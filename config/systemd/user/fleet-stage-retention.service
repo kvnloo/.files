@@ -1,0 +1,11 @@
+[Unit]
+Description=Retain expired MBP Kueue stages with terminal and fetch proof
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/lib/host-storage/current/scripts/fleet-stage-retention.py --automatic --output %h/.local/state/fleet/stage-retention/plan.json
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=20min

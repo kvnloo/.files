@@ -12,6 +12,10 @@ REMOTE = "~/.local/lib/fleet/fleet-phone-worker"
 TERMINAL = {"succeeded", "failed", "cancelled", "needs-confirmation"}
 
 
+class UnknownJob(Blocked):
+    """The guest API answered, but its executor does not know this job."""
+
+
 def strict_ssh(ssh):
     # OpenSSH uses the FIRST obtained value, so policy precedes generic options.
     return [ssh[0], "-o", "StrictHostKeyChecking=yes", "-o", "ControlMaster=no",
@@ -31,6 +35,14 @@ def transport(ssh, command, jid=None, payload=None) -> Any:
     except (OSError, subprocess.TimeoutExpired):
         raise Blocked("unavailable: SSH transport timeout/error") from None
     if proc.returncode:
+        if proc.returncode == 75:
+            try:
+                rejected = json.loads(proc.stdout)
+            except ValueError:
+                rejected = {}
+            if (isinstance(rejected, dict) and rejected.get("state") == "blocked"
+                    and rejected.get("reason") == "unknown job"):
+                raise UnknownJob("guest executor does not know this job")
         raise Blocked("unavailable or blocked: strict SSH/guest API failed")
     if command == "logs":
         return proc.stdout
@@ -67,8 +79,14 @@ def cancel(state, node, jid, ssh):
     update_record(path, {"id": jid, "node": node, "cancel": True})
     try:
         result = transport(ssh, "cancel", jid)
-        update_record(path, {"state": result["state"], "terminal": result["state"] in TERMINAL})
+        update_record(path, {"state": result["state"], "terminal": result["state"] in TERMINAL,
+                             "availability": "ready", "reason": None})
         return result
+    except UnknownJob:
+        update_record(path, {"state": "cancel-pending", "availability": "ready",
+                             "reason": "job-not-found"})
+        return {"id": jid, "state": "cancel-pending", "availability": "ready",
+                "reason": "job-not-found"}
     except Blocked:
         return {"id": jid, "state": "cancel-pending", "availability": "unavailable"}
 
@@ -101,7 +119,9 @@ def reconcile(state, node, probe, ssh):
                         submitted = transport(ssh, "submit", record["id"], record["spec"])
                         record["lease"] = submitted["lease"]
                     transport(ssh, "heartbeat", record["id"], {"lease": record["lease"]})
-            record.update(availability="ready", state=job["state"], checked=time.time(), terminal=job["state"] in TERMINAL)
+            record.update(availability="ready", reason=None, state=job["state"], checked=time.time(), terminal=job["state"] in TERMINAL)
+        except UnknownJob:
+            record.update(availability="ready", reason="job-not-found", checked=time.time())
         except Blocked:
             record.update(availability="unavailable", checked=time.time())
         record = update_record(path, record)
@@ -111,7 +131,7 @@ def reconcile(state, node, probe, ssh):
 
 def run(state, node, jid, spec, ssh, output):
     path = records(state, node) / f"{identifier(jid)}.json"
-    record = update_record(path, {"id": jid, "node": node, "spec": spec, "state": "submitting", "terminal": False})
+    record = update_record(path, {"id": jid, "node": node, "spec": spec, "state": "submitting", "terminal": False, "reason": None})
     try:
         job = transport(ssh, "submit", jid, spec)
         record = update_record(path, {"state": job["state"], "lease": job["lease"]})
@@ -138,10 +158,20 @@ def run(state, node, jid, spec, ssh, output):
                 output(logs[printed:])
                 printed = len(logs)
             terminal = job["state"] in TERMINAL
-            record = update_record(path, {"state": job["state"], "checked": time.time(), "availability": "ready", "terminal": terminal})
+            result = job.get("exit")
+            exit_code = 128 - result if isinstance(result, int) and result < 0 else result
+            termination_reason = job.get("reason")
+            if exit_code == 137 and not termination_reason:
+                termination_reason = "SIGKILL/exit137; possible OOM, not confirmed by guest"
+            record = update_record(path, {"state": job["state"], "checked": time.time(), "availability": "ready",
+                                          "terminal": terminal, "exit": exit_code, "reason": None,
+                                          "termination_reason": termination_reason})
             if terminal:
-                return 0 if job["state"] == "succeeded" else job.get("exit", 255) if job["state"] == "failed" else 255
+                return 0 if job["state"] == "succeeded" else exit_code if job["state"] == "failed" and exit_code is not None else 255
             time.sleep(5)  # measured job status, never lifecycle survival
+    except UnknownJob:
+        update_record(path, {"availability": "ready", "reason": "job-not-found", "checked": time.time()})
+        return 255
     except Blocked:
         update_record(path, {"availability": "unavailable", "checked": time.time()})
         return 255  # retain spool and ID, never speculative relocate/retry

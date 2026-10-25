@@ -19,6 +19,8 @@ import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
+from fleet_source import source_snapshot
+from fleet_paths import runs_dir
 
 ROOT = Path(__file__).resolve().parent.parent
 loader = importlib.machinery.SourceFileLoader("fleet_boat_policy", str(ROOT / "scripts/boat"))
@@ -34,22 +36,21 @@ def relative(value):
     return path
 
 
-def pack_source(src, archive, inputs, no_src=False):
+def pack_source(src, archive, inputs, no_src=False, includes=()):
     src = Path(src).resolve()
-    if no_src:
-        names = []
-    elif (src / ".git").exists():
-        names = subprocess.check_output(["git", "-C", str(src), "ls-files", "-co", "--exclude-standard", "-z"]).split(b"\0")
-        names = [os.fsdecode(name) for name in names if name]
-    else:
-        raise ValueError("Boat source must be a git checkout; review public files before shipping")
+    metadata = None
     with tarfile.open(archive, "w:gz") as tar:
-        for name in dict.fromkeys(names):
-            path = relative(name)
-            # Never ship local environment files, even if accidentally tracked.
-            if any(part == ".env" or part.startswith(".env.") for part in path.parts):
-                raise ValueError("Boat source contains an environment file; use a reviewed public snapshot")
-            tar.add(src / path, arcname=str(Path("src") / path), recursive=False)
+        if not no_src:
+            if not (src / ".git").exists():
+                raise ValueError("Boat source must be a git checkout; review public files before shipping")
+            with source_snapshot(src, includes, directory=Path(archive).parent) as (snapshot, metadata):
+                with tarfile.open(snapshot, "r:gz") as captured:
+                    for member in captured:
+                        path = relative(member.name)
+                        if any(part == ".env" or part.startswith(".env.") for part in path.parts):
+                            raise ValueError("Boat source contains an environment file; use a reviewed public snapshot")
+                        member.name = str(Path("src") / path)
+                        tar.addfile(member, captured.extractfile(member) if member.isfile() else None)
         for item in inputs:
             source, sep, destination = item.rpartition(":")
             if not sep or not Path(source).is_file():
@@ -57,6 +58,11 @@ def pack_source(src, archive, inputs, no_src=False):
             tar.add(source, arcname=str(Path("src") / relative(destination)), recursive=False)
     if Path(archive).stat().st_size > 32 * 1024 * 1024:
         raise ValueError("Boat source archive exceeds 32 MiB; send a smaller reviewed snapshot")
+    if metadata is not None:
+        with Path(archive).open("rb") as stream:
+            metadata = {**metadata, "sha256": hashlib.file_digest(stream, "sha256").hexdigest(),
+                        "archive_bytes": Path(archive).stat().st_size}
+    return metadata
 
 
 def upload_source(prefix, archive):
@@ -151,7 +157,8 @@ def callback(manifest_path):
     sys.stderr.write(result.get("stderr", ""))
     rc = result.get("exitCode")
     rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
-    receipt = {"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc, "artifacts": []}
+    receipt = {"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc,
+               "artifacts": [], "source_snapshot": data.get("source_snapshot")}
     Path(data["receipt"]).write_text(json.dumps(receipt) + "\n")
     for name in data["fetch"]:
         try:
@@ -186,17 +193,19 @@ def run(args):
         print("fleet: boat admission held: " + str(exc), file=sys.stderr)
         return 75
     jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
-    from fleet_paths import runs_dir
+
     runs = runs_dir()
     runs.mkdir(parents=True, exist_ok=True)
     dest = runs / jid
     dest.mkdir()
-    with tempfile.TemporaryDirectory(prefix="fleet-boat-") as temp:
+    with tempfile.TemporaryDirectory(prefix="fleet-boat-", dir=runs.parent) as temp:
         archive = Path(temp) / "source.tar.gz"
-        pack_source(args.src or os.getcwd(), archive, args.input, args.no_src)
+        source_metadata = pack_source(args.src or os.getcwd(), archive, args.input, args.no_src,
+                                      getattr(args, "src_include", []) or [])
         manifest = Path(temp) / "manifest.json"
         manifest.write_text(json.dumps(dict(archive=str(archive), command=args.command, timeout=args.timeout,
-            fetch=args.fetch or [], dest=str(dest), receipt=str(dest / "boat-receipt.json"))))
+            fetch=args.fetch or [], dest=str(dest), receipt=str(dest / "boat-receipt.json"),
+            source_snapshot=source_metadata)))
         log = runs / (jid + "-boat.log")
         allocated = False
         started = time.monotonic()
@@ -232,6 +241,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--callback")
     p.add_argument("--src")
+    p.add_argument("--src-include", action="append", default=[])
     p.add_argument("--no-src", action="store_true")
     p.add_argument("--keep", action="store_true")
     p.add_argument("--mem-mb", type=int, default=512)
@@ -245,7 +255,7 @@ def main():
         args.command.pop(0)
     try:
         return callback(args.callback) if args.callback else run(args)
-    except (ValueError, OSError, boat.BoatError, subprocess.SubprocessError, tarfile.TarError) as exc:
+    except (ValueError, OSError, RuntimeError, boat.BoatError, subprocess.SubprocessError, tarfile.TarError) as exc:
         print("fleet: boat: " + str(exc), file=sys.stderr)
         return 1
 
