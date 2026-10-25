@@ -42,6 +42,12 @@ spec:
          (!has(object.spec.nodeName) || object.spec.nodeName == 'groot'))
       message: "CPU-only work must select mbp and z0.dev/cpu-admit=true; groot requires an allocated NVIDIA GPU (only <=200m/64Mi infrastructure is exempt)"
     - expression: >-
+        (object.metadata.namespace == 'fleet-mbp' &&
+         has(object.spec.nodeSelector) &&
+         'kubernetes.io/hostname' in object.spec.nodeSelector &&
+         object.spec.nodeSelector['kubernetes.io/hostname'] == 'mbp' &&
+         'z0.dev/cpu-admit' in object.spec.nodeSelector &&
+         object.spec.nodeSelector['z0.dev/cpu-admit'] == 'true') ||
         size(object.spec.containers) <= 2 && size(variables.init) <= 2 &&
         (object.spec.containers + variables.init).all(c,
           has(c.resources) && has(c.resources.limits) &&
