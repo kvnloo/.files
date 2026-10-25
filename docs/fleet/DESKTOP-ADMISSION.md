@@ -144,11 +144,11 @@ Run from the merged `deploy/live` checkout:
 # READ ONLY: names, hashes and package metadata only, never env/credential values.
 # Retain locally; no upload. Root removes the explicit UNKNOWN permission gaps.
 sudo python3 scripts/apply-host-system --audit
-python3 scripts/apply-host-system
-sudo python3 scripts/apply-host-system --apply
 # Separate explicit policy choice; keeps oomd running, removes broad candidates.
 python3 scripts/apply-host-system --oomd
 sudo python3 scripts/apply-host-system --oomd --apply
+python3 scripts/apply-host-system
+sudo python3 scripts/apply-host-system --apply
 ```
 
 Expected sysctl verification: swappiness180, watermark_scale_factor200,
