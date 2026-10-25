@@ -514,6 +514,9 @@ def cmd_run(args):
     logdir = runs_dir()
     logdir.mkdir(parents=True, exist_ok=True)
     log = logdir / f"{jid}-{n['name']}.log"
+    placement = json.loads(os.environ.get("FLEET_TEST_PLACEMENT") or "null")
+    if placement is not None:
+        placement = {**placement, "selected_node": n["name"]}
     print(f"fleet: job {jid} -> {n['name']} (load {p['load1']}/{p['ncpu']} cpu, "
           f"{p['mem_available_mb']}MiB available); log {log}", file=sys.stderr)
     ssh = ssh_cmd(n)
@@ -535,11 +538,12 @@ def cmd_run(args):
         with source_snapshot(src, getattr(args, 'src_include', []) or []) as (archive, source_metadata):
             (logdir / f"{jid}.json").write_text(json.dumps(
                 {"job_id": jid, "node": n["name"], "phase": "staging",
-                 "source_snapshot": source_metadata}, indent=2) + "\n")
+                 "source_snapshot": source_metadata, "placement": placement}, indent=2) + "\n")
             with archive.open('rb') as stream:
                 subprocess.run(ssh + [f"tar -xzf - -C {jdir}/src"], stdin=stream, check=True)
     (logdir / f"{jid}.json").write_text(json.dumps(
-        {"job_id": jid, "node": n["name"], "source_snapshot": source_metadata}, indent=2) + "\n")
+        {"job_id": jid, "node": n["name"], "source_snapshot": source_metadata,
+         "placement": placement}, indent=2) + "\n")
     # Exact artifact inputs are staged only AFTER health admission, never by
     # recursively scanning a render store. Relative destinations cannot escape src.
     for item in getattr(args, 'input', []) or []:
@@ -557,10 +561,7 @@ def cmd_run(args):
         spec = {"argv": phone_python.command(args.cmd, before["pip_cache"]) if python_guest else args.cmd,
                 "cwd": f"{jdir}/src", "timeout": args.timeout,
                 "idempotent": args.idempotent, "max_attempts": 3 if args.idempotent else 1}
-        receipt_metadata = {"source_snapshot": source_metadata}
-        if os.environ.get("FLEET_TEST_PLACEMENT"):
-            placement = json.loads(os.environ["FLEET_TEST_PLACEMENT"])
-            receipt_metadata["placement"] = {**placement, "selected_node": n["name"]}
+        receipt_metadata = {"source_snapshot": source_metadata, "placement": placement}
         phone_controller.update_record(
             phone_controller.records(STATE, n["name"]) / f"{jid}.json", receipt_metadata)
         if args.mem is not None:

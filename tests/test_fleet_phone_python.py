@@ -270,6 +270,8 @@ class GuestExecutionTests(unittest.TestCase):
                 probe = {'ts': time.time(), 'load1': 0, 'ncpu': 8, 'mem_available_mb': 0}
                 with patch.object(fleet, 'STATE', Path(tmp)), \
                      patch('fleet_paths.runs_dir', return_value=Path(tmp) / 'runs'), \
+                     patch.dict(os.environ, {'FLEET_TEST_PLACEMENT': json.dumps({
+                         'selected_lane': 'phones', 'reason': 'mbp-owned-quota-unavailable'})}), \
                      patch.object(fleet, 'k8s_nodes', return_value={}), \
                      patch.object(fleet, 'probe_python_guest', return_value=probe), \
                      patch.object(fleet.subprocess, 'run'), \
@@ -285,6 +287,11 @@ class GuestExecutionTests(unittest.TestCase):
                 self.assertEqual(payload['argv'][3], '/root/.cache/pip')
                 self.assertNotIn('mem_mb', payload)
                 self.assertEqual(payload['max_attempts'], 1)
+                receipt = json.loads(next((Path(tmp) / 'runs').glob('*.json')).read_text())
+                self.assertEqual(receipt['placement']['selected_node'], 'omarchy-phone')
+                self.assertEqual(receipt['placement']['reason'], 'mbp-owned-quota-unavailable')
+                durable = json.loads(next((Path(tmp) / 'phone-jobs/omarchy-phone').glob('*.json')).read_text())
+                self.assertEqual(durable['placement'], receipt['placement'])
 
 
 class BuildDispatchTests(unittest.TestCase):
