@@ -47,7 +47,8 @@ spec:
          'kubernetes.io/hostname' in object.spec.nodeSelector &&
          object.spec.nodeSelector['kubernetes.io/hostname'] == 'mbp' &&
          'z0.dev/cpu-admit' in object.spec.nodeSelector &&
-         object.spec.nodeSelector['z0.dev/cpu-admit'] == 'true') ||
+         object.spec.nodeSelector['z0.dev/cpu-admit'] == 'true' &&
+         (!has(object.spec.nodeName) || object.spec.nodeName == 'mbp')) ||
         size(object.spec.containers) <= 2 && size(variables.init) <= 2 &&
         (object.spec.containers + variables.init).all(c,
           has(c.resources) && has(c.resources.limits) &&
