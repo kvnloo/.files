@@ -117,6 +117,36 @@ def user_path(value: str, home: Path) -> Path:
     return home / relative
 
 
+def intact_installed_release(live: Path, home: Path, relative: Path, verified: dict) -> bool:
+    """Allow upgrades from verified prior stamps, never arbitrary operator edits."""
+    if not live.is_symlink():
+        return False
+    target = live.resolve()
+    library = home / '.local/lib/files-live'
+    try:
+        parts = target.relative_to(library).parts
+    except ValueError:
+        return False
+    if len(parts) < 2 or len(parts[0]) != 64 or Path(*parts[1:]) != relative:
+        return False
+    release = library / parts[0]
+    if release not in verified:
+        digest = hashlib.sha256()
+        valid = True
+        for path in sorted(release.rglob('*'), key=lambda p: str(p.relative_to(release))):
+            if path.is_symlink():
+                valid = False
+                break
+            if path.is_file():
+                rel = str(path.relative_to(release))
+                data = path.read_bytes()
+                mode = path.stat().st_mode & 0o777
+                digest.update(f'{rel}\0{mode}\0{len(data)}\0'.encode())
+                digest.update(data)
+        verified[release] = valid and digest.hexdigest() == release.name
+    return verified[release]
+
+
 def install_user_layer(source: Path, home: Path, apply: bool) -> int:
     """Migrate only manifest-owned paths; no service starts/stops or enable changes."""
     source = source.resolve(strict=True)
@@ -124,6 +154,7 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
     entries = [row for row in manifest.get('user', [])
                if row['owner'] == 'scripts/apply-agent-oom']
     links = {}
+    verified = {}
     for row in entries:
         relative = Path(row['source'])
         if relative.is_absolute() or '..' in relative.parts:
@@ -140,7 +171,8 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
             data = live.read_bytes()
             observed = hashlib.sha256(data).hexdigest()
             expected = row.get('migration_sha256')
-            if data != original.read_bytes() and observed != expected:
+            if (data != original.read_bytes() and observed != expected and
+                    not intact_installed_release(live, home, relative, verified)):
                 raise ValueError(f'live file changed since inventory; preserve and investigate: {live}')
         links[live] = row
     cleanup = []
@@ -167,6 +199,12 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
         if path.exists() or path.is_symlink():
             if not path.is_symlink() or os.readlink(path) != row['target'] or path.exists():
                 raise ValueError(f'retired link changed or now resolves; preserve: {path}')
+            retired.append(path)
+    for row in manifest.get('user_retired_files', []):
+        path = user_path(row['live'], home)
+        if path.exists() or path.is_symlink():
+            if hashlib.sha256(path.read_bytes()).hexdigest() != row['sha256']:
+                raise ValueError(f'retired file changed; preserve: {path}')
             retired.append(path)
     closure = {row['source'] for row in entries}
     # Helpers resolve companions relative to __file__; keep their complete local closure.

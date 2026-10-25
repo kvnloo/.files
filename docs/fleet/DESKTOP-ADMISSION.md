@@ -222,3 +222,10 @@ does not use the separate `config/binds.lua` browser shortcut. No user-local
 Chrome desktop entry or tracked Chrome launcher was found, so this change does
 not claim future Chrome placement is fixed.
 
+Installer upgrades accept a previous managed link only after recomputing its
+complete content/mode-stamped release digest (once per release). This permits
+tracked updates without weakening the refusal of arbitrary operator edits.
+The five obsolete Dash preview/bridge overrides are explicitly hash-retired
+after the PR88 canonical bridge/Metro cutover; their exact live files are backed
+up and removed, never reinstalled from the earlier inventory snapshot.
+
