@@ -1,0 +1,16 @@
+[Unit]
+Description=Dash native preview Metro (Tailscale :8108)
+After=network-online.target
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/dash/.worktrees/native-turbo/app
+EnvironmentFile=/home/kvn/.config/dash-services/env-metro-preview.systemd
+Environment=CI=false
+Environment=EXPO_PUBLIC_DASH_TURBO=1
+Environment=REACT_NATIVE_PACKAGER_HOSTNAME=100.113.138.100
+Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+ExecStart=/home/kvn/.bun/bin/bun x expo start --dev-client --host lan --port 8108 --clear
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=default.target

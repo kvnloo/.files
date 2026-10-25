@@ -1,0 +1,23 @@
+[Unit]
+Description=Neuroforge bounded local analytics import (single writer)
+ConditionPathIsMountPoint=/mnt/zer0models
+ConditionPathIsDirectory=/mnt/zer0models/sft-svlm/data/telemetry/activity/state/analytics
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/zer0models/sft-svlm/data/telemetry/activity/runtime
+ExecStart=/mnt/zer0models/sft-svlm/data/telemetry/activity/runtime/.venv/bin/python /mnt/zer0models/sft-svlm/data/telemetry/activity/runtime/nf_runtime.py tick
+TimeoutStartSec=120
+UMask=0077
+LimitCORE=0
+Nice=10
+CPUQuota=25%
+IOWeight=25
+MemoryMax=768M
+NoNewPrivileges=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+Environment=TMPDIR=/mnt/zer0models/sft-svlm/data/neuroforge/lanes/c/tmp
+StandardOutput=append:/mnt/zer0models/sft-svlm/data/neuroforge/lanes/c/importer.log
+StandardError=inherit
+SuccessExitStatus=75

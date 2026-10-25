@@ -1,0 +1,11 @@
+[Unit]
+Description=Automatically isolate coding-agent workloads
+
+[Timer]
+OnStartupSec=10
+OnUnitActiveSec=10
+AccuracySec=2
+Unit=agent-resource-classify.service
+
+[Install]
+WantedBy=timers.target

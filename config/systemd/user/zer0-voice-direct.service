@@ -1,0 +1,30 @@
+[Unit]
+Description=Zer0 continuous voice with direct Blue Snowball capture
+After=pipewire.service
+Wants=pipewire.service
+Conflicts=zer0-voice-stable.service zer0-voice-maxine-full.service
+Conflicts=zer0-maxine-stable.service zer0-maxine-full.service
+
+[Service]
+Type=simple
+Environment="ZERO_VOICE_INPUT=Blue Snowball"
+Environment=ZERO_VOICE_MIC_MODE=continuous
+Environment=ZERO_VOICE_STATE_DIR=/home/kvn/.local/state/zer0-voice/direct
+Environment=ZERO_VOICE_HEALTH=/home/kvn/.local/state/zer0-voice/direct/health.json
+Environment=ZERO_VOICE_DEBUG=/home/kvn/.local/state/zer0-voice/direct/debug.jsonl
+Environment=ZERO_VOICE_METRICS=/workspace/zer0/products/pm/bench/voice-history.jsonl
+Environment=ZERO_VOICE_CONTROL_SOCKET=/run/user/1000/zer0-voice-maxine-full.sock
+Environment=ZERO_VOICE_LIVE_MODEL=gpt-5.6-luna
+Environment=ZERO_VOICE_LIVE_EFFORT=low
+Environment=ZERO_VOICE_BARGE_IN=final
+ExecStartPre=/usr/bin/pactl set-card-profile alsa_card.usb-BLUE_MICROPHONE_Blue_Snowball_797_2020_11_17_99419-00 off
+ExecStart=/home/kvn/.local/state/zer0-voice/releases/bundles/a06b262af9ec76e0e56a8313202093df91a5c38438deca5d471f07daf1ea199d/voice/candidate-service /home/kvn/.local/state/zer0-voice/releases/bundles/a06b262af9ec76e0e56a8313202093df91a5c38438deca5d471f07daf1ea199d 019f904f-2462-7593-85c4-22b88e4f4908
+ExecStopPost=-/usr/bin/pactl set-card-profile alsa_card.usb-BLUE_MICROPHONE_Blue_Snowball_797_2020_11_17_99419-00 input:mono-fallback
+Restart=always
+RestartSec=1
+StartLimitIntervalSec=60
+StartLimitBurst=5
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

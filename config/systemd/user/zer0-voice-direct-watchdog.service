@@ -1,0 +1,16 @@
+[Unit]
+Description=Zer0 direct voice ALSA progress watchdog
+Requires=zer0-voice-direct.service
+After=zer0-voice-direct.service
+PartOf=zer0-voice-direct.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /workspace/zer0/products/pm/voice/alsa_watchdog.py --health /home/kvn/.local/state/zer0-voice/direct/health.json --control-socket /run/user/1000/zer0-voice-maxine-full.sock
+Restart=always
+RestartSec=1
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Install]
+WantedBy=default.target

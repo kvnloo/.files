@@ -1,0 +1,21 @@
+[Unit]
+Description=Hermes3D renderer for public stream
+After=network-online.target hermes3d-demo-gateway.service
+Requires=hermes3d-demo-gateway.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/products/content-creation/hermes3d-live/engine/.worktrees/live-runtime
+Environment=PORT=3310
+Environment=HERMES3D_GATEWAY_URL=ws://localhost:18789
+Environment=HERMES3D_GATEWAY_ADAPTER_TYPE=demo
+Environment=UPSTREAM_ALLOWLIST=localhost
+Environment=HERMES3D_BUILD_EVENTS_ENABLED=true
+ExecStart=/usr/bin/node server/index.js --dev
+Restart=always
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

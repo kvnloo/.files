@@ -1,0 +1,14 @@
+[Unit]
+Description=O9: mark headless runs Interrupted (with resume commands) when the Hermes gateway restarts
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/mnt/zer0models/z0-wt/bend-ops-laws/src
+Environment=GIT_OPTIONAL_LOCKS=0
+# report-only by default: records go to ~/.local/state/z0-guard/o9-interrupted.jsonl.
+# Enforce (also append to fsm/worker-decisions.jsonl): systemctl --user edit, add
+# Environment=Z0_GUARD_O9=enforce
+ExecStart=/usr/bin/python3 -m z0int.fsm.guard gateway-watch
+TimeoutStartSec=2min
+Nice=10
+NoNewPrivileges=true

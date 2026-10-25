@@ -1,0 +1,20 @@
+[Unit]
+Description=Zer0 stable NVIDIA Maxine dereverb and denoise microphone
+After=pipewire.service pipewire-pulse.service
+Wants=pipewire.service pipewire-pulse.service
+
+[Service]
+Type=simple
+Environment=LADSPA_PATH=/workspace/zer0/products/pm/voice/maxine_aec/build:/workspace/zer0/vendor/noisetorch-rtx/c/ladspa
+Environment=LD_LIBRARY_PATH=/mnt/zer0models/nvidia/maxine/maxine_linux_audio_effects_sdk_v2.1.0/Audio_Effects_SDK/features/aec/lib:/mnt/zer0models/nvidia/maxine/maxine_linux_audio_effects_sdk_v2.1.0/Audio_Effects_SDK/features/dereverb_denoiser/lib:/mnt/zer0models/nvidia/maxine/maxine_linux_audio_effects_sdk_v2.1.0/Audio_Effects_SDK/nvafx/lib:/mnt/zer0models/nvidia/maxine/maxine_linux_audio_effects_sdk_v2.1.0/Audio_Effects_SDK/external/cuda/lib
+Environment=ZERO_MAXINE_CONFIG=/workspace/zer0/products/pm/voice/pipewire/maxine-stable-filter-chain.conf
+Environment=ZERO_MAXINE_PROBE_DEVICE=zer0_maxine_full
+Environment=ZERO_MAXINE_PROBE_TIMEOUT=2
+Environment=ZERO_MAXINE_PROBE_INTERVAL=5
+Environment=ZERO_MAXINE_UPSTREAM=alsa_input.usb-BLUE_MICROPHONE_Blue_Snowball_797_2020_11_17_99419-00.mono-fallback
+ExecStart=/workspace/zer0/products/pm/voice/pipewire/run-maxine-stable
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=default.target
