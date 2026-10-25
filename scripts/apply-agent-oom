@@ -2,6 +2,8 @@
 """Stage by default; --apply links agent policy only when aggregate usage is safe."""
 from __future__ import annotations
 import argparse
+import hashlib
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -28,6 +30,36 @@ def safe_usage(text: str) -> bool:
     return 0 <= current <= 8 * GIB and 0 <= swap and current + swap <= 9 * GIB
 
 
+def stamp_release(source: Path, home: Path) -> Path:
+    """Snapshot the complete installed closure; never link to mutable checkouts."""
+    payload = {rel: ((source / rel).read_bytes(), (source / rel).stat().st_mode & 0o777)
+               for rel in LINKS}
+    digest = hashlib.sha256()
+    for rel, (data, mode) in sorted(payload.items()):
+        digest.update(f'{rel}\0{mode}\0{len(data)}\0'.encode())
+        digest.update(data)
+    root = home / '.local/lib/files-live'
+    root.mkdir(parents=True, exist_ok=True)
+    release = root / digest.hexdigest()
+    if not release.exists():
+        staging = Path(tempfile.mkdtemp(prefix='.agent-oom-', dir=root))
+        try:
+            for rel, (data, mode) in payload.items():
+                target = staging / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+                target.chmod(mode)
+            os.rename(staging, release)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+    for rel, (data, mode) in payload.items():
+        target = release / rel
+        if target.read_bytes() != data or target.stat().st_mode & 0o777 != mode:
+            raise ValueError(f'content-stamped release mismatch: {target}')
+    return release
+
+
 def install(source: Path, home: Path, apply: bool) -> int:
     source = source.resolve(strict=True)
     for rel in LINKS:
@@ -42,6 +74,7 @@ def install(source: Path, home: Path, apply: bool) -> int:
     if not apply:
         print('DRY RUN: safe aggregate; would back up exact cap overrides, link agent policy and daemon-reload')
         return 0
+    release = stamp_release(source, home)
     backup_root = home / '.local/state/agent-oom/backups'
     backup_root.mkdir(parents=True, exist_ok=True)
     backup = Path(tempfile.mkdtemp(prefix='apply-', dir=backup_root))
@@ -59,9 +92,9 @@ def install(source: Path, home: Path, apply: bool) -> int:
             saved.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, saved, follow_symlinks=False)
             path.unlink()
-        path.symlink_to(source / rel)
+        path.symlink_to(release / rel)
     subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
-    print(f'APPLIED: agent policy linked; backups={backup}; no services restarted')
+    print(f'APPLIED: agent policy release={release}; backups={backup}; no services restarted')
     return 0
 
 

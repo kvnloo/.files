@@ -948,8 +948,11 @@ After a normal deploy/live merge, run `python3 scripts/apply-agent-oom`
 first, then `python3 scripts/apply-agent-oom --apply`. The installer refuses
 to mutate when current usage exceeds 8GiB or current+swap exceeds 9GiB.
 It backs up and removes only the two conflicting user.control MemoryHigh
-and MemoryMax override files, installs the tracked launcher/shell/HUD/slice
-links and daemon-reloads. It never restarts a service or moves existing PIDs.
+and MemoryMax override files, snapshots the complete five-file installed
+closure into `~/.local/lib/files-live/<sha256>/`, links only that release and
+daemon-reloads. The stamp covers paths, contents and executable modes; a
+tampered existing release is rejected. No installed link points at a worktree.
+It never restarts a service or moves existing PIDs.
 If staging is reported, wait for jobs to finish naturally; do not kill them.
 Newly configured limits do not prove every old scope has a per-session cap.
 
