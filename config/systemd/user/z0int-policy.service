@@ -7,7 +7,7 @@ Type=oneshot
 WorkingDirectory=/mnt/zer0models/z0-wt/decision-policy
 Environment=PATH=/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONPATH=/mnt/zer0models/z0-wt/decision-policy/src
-ExecStart=/bin/sh -ec 'z0int policy ingest && z0int policy compile'
+ExecStart=/bin/sh -ec 'python3 -m z0int.policy.autoeval tick && z0int policy ingest && z0int policy compile'
 UMask=0077
 Nice=15
 MemoryMax=256M

@@ -171,10 +171,17 @@ O10 receives the actual checkout root and scans its scripts and registry.
 When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
 switch the links together and build the guard release from that canonical tree.
 
-`z0int-policy.timer` declares a fifteen-minute ingest/compile cadence from
-`/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled** until
-the operator confirms that CLI is deployed. The service executes ingest then
-compile only on success, with a five-minute wall limit and bounded resources.
+`z0int-policy.timer` declares a fifteen-minute discovery/ingest/compile cadence
+from `/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled**
+until the operator confirms that CLI is deployed. It first runs
+`python3 -m z0int.policy.autoeval tick`, then ingest and compile only on success,
+with a five-minute wall limit and bounded resources. Discovery reads
+`$Z0INT_HOME/config/choice-ladder.json`; absent configuration is a no-op.
+Configured missing or near-expiry model scopes enqueue separate transient user
+services so evaluation survives completion of the timer's oneshot. Those
+workers use Kueue `bench` admission or the configured `groot-admit` CUDA lane;
+the timer itself does not perform inference. Configuration and CLI installation
+must precede activation; this unit change does not activate the timer.
 The loop, intelligence and policy services declare `Z0INT_LIVE_HOME=%h/.z0int`
 through drop-ins; installing these does not restart active model/loop units.
 ServiceWatch checks contract-v1 policy files once per discovery cycle: policy
