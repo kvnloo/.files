@@ -63,6 +63,10 @@ def migration_inventory(tmp_path):
     config = sandbox / "config/hyprland"
     config.mkdir(parents=True)
     for name in ("hyprland.legacy.conf", "lua", "hyprglass.conf", "phantomat"):
-        (config / name).symlink_to(ROOT / "config/hyprland" / name)
+        source = ROOT / "config/hyprland" / name
+        if source.is_dir():
+            shutil.copytree(source, config / name)
+        else:
+            shutil.copy2(source, config / name)
     subprocess.run([sys.executable, str(scripts / "build-hypr-lua-inventory")], check=True)
     return config / "migration-inventory.json"

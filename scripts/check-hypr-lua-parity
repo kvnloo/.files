@@ -17,6 +17,7 @@ CHECKS = {
     ),
     "rules.lua": (
         'class="^(Spotify|spotify)$"', 'workspace="10"',
+        'namespace="^(noctalia-background-.*)$"',
         'special:hermes-tests', 'hyprglass_disabled',
     ),
     "binds.lua": (
