@@ -132,6 +132,21 @@ root; mutable checkout targets remain drift. Generated declarations require
 `install="generated"` and a tracked offline `generator="scripts/NAME --render UNIT"`.
 Rendered bytes are compared to live bytes; missing or failing generators are
 unknown, never an exemption. The stamped closure includes the generator source.
+Dedicated Git-stamped installers declare `stamp_name` per managed path. The
+checker requires `/mnt/zer0models/releases/NAME/FULL_GIT_SHA/SOURCE`, a matching
+`.deployment-stamp.json` name/revision, and exact tracked source bytes. Merely
+having a forty-character directory is not provenance. The policy identity unit
+installer uses this layout instead of flattening unit files into an unstamped
+directory.
+
+Exact `[[pending_action]]` paths carry `owner`, `command`, and `reason` into
+findings as `disposition="pending-owner-action"`. This is an operator handoff,
+not permission to execute the command and not an exemption: pending items remain
+drift or unknown. Duplicate `.pacnew` observations collapse to one finding.
+ServiceWatch deduplicates the canonical finding set across timer runs; timestamps
+do not create a new incident. A distinct evidence set can be reported again;
+an identical set remains deduplicated across restarts. Permission-limited roots
+remain visible as unknown.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory
