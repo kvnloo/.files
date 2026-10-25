@@ -1,0 +1,9 @@
+[Unit]
+Description=Hermes3D viewer-visible broadcast health
+After=network-online.target hermes3d-stream.service hermes3d-renderer.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/zer0/products/content-creation/hermes3d-live
+ExecStart=/usr/bin/python3 /workspace/zer0/products/content-creation/hermes3d-live/watchdog/hermes3d_broadcast.py health

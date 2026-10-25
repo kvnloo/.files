@@ -1,0 +1,14 @@
+[Unit]
+Description=Tailnet WebSocket proxy for isolated Hermes voice dashboard
+After=hermes-drive-voice.service
+Requires=hermes-drive-voice.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python /workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40/scripts/tailnet_voice_proxy.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

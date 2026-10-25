@@ -37,10 +37,10 @@ class DriftTests(unittest.TestCase):
         self.live.write_text('safe\n')
         self.manifest()
 
-    def manifest(self, extra='', scope='system'):
+    def manifest(self, extra='', scope='system', install='copy'):
         (self.root / 'config/host/groot.toml').write_text(
             f'[[{scope}]]\nlive={json.dumps(str(self.live))}\nsource="{self.source}"\n'
-            f'scope="{scope}"\ninstall="copy"\nowner="fixture"\nreason="test"\n{extra}')
+            f'scope="{scope}"\ninstall="{install}"\nowner="fixture"\nreason="test"\n{extra}')
 
     def run_audit(self, properties=None):
         def run(args):
@@ -79,6 +79,27 @@ class DriftTests(unittest.TestCase):
         report = self.run_audit()
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['kind'], 'untracked_source')
+
+    def test_generated_source_compares_offline_render_and_fails_unknown(self):
+        generator = self.root / 'scripts/render'
+        generator.parent.mkdir()
+        generator.write_text('offline fixture')
+        self.manifest('generator="scripts/render --render fixture.service"', install='generated')
+        fails = [False]
+        def run(args):
+            if args[0] == 'git':
+                return self.source + '\nscripts/render'
+            if fails[0]:
+                raise ValueError('render failed')
+            self.assertEqual(args, [str(generator), '--render', 'fixture.service'])
+            return 'safe\n'
+        def audit():
+            return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run)
+        self.assertEqual(audit()['status'], 'clean')
+        self.live.write_text('wrong')
+        self.assertEqual(audit()['drift'][0]['kind'], 'changed_file')
+        fails[0] = True
+        self.assertEqual(audit()['status'], 'unknown')
 
     def test_checkout_symlink_even_when_content_agrees(self):
         checkout = self.base / 'arbitrary-name'

@@ -1,0 +1,11 @@
+[Unit]
+Description=O7 provider routing check hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+Unit=z0-guard-routing.service
+
+[Install]
+WantedBy=timers.target

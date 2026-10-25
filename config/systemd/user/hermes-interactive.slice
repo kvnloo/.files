@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes interactive capacity slice (Telegram/Desktop/CoS)
+[Slice]
+CPUWeight=200
+MemoryHigh=infinity
+MemoryMax=6G

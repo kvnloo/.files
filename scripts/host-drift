@@ -83,6 +83,12 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
             source = root / rel
             live = Path(entry['live'].replace('~', str(home), 1)).expanduser()
             data = source.read_bytes()
+            if entry['install'] == 'generated':
+                argv = shlex.split(entry.get('generator', ''))
+                if (len(argv) != 3 or argv[1] != '--render' or argv[0] not in tracked or
+                        not (root / argv[0]).resolve().is_relative_to(root.resolve())):
+                    raise ValueError('generated source requires a tracked offline --render generator')
+                data = run([str(root / argv[0]), *argv[1:]]).encode()
             if entry.get('secret') == 'private-exception':
                 if not live.exists():
                     problem('missing_private_file', live, 'private source unavailable; no credential bytes read')
@@ -103,10 +109,12 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                 if not live.is_symlink() or live.resolve() != Path('/dev/null'):
                     problem('mask_changed', live, 'expected explicit /dev/null systemd mask')
             elif entry['install'] == 'symlink-stamped':
-                resolved = live.resolve()
+                target = Path(os.readlink(live)) if live.is_symlink() else live
+                if not target.is_absolute():
+                    target = live.parent / target
                 library = home / '.local/lib'
-                if (not live.is_symlink() or not resolved.is_relative_to(library) or
-                        not any(re.fullmatch(r'[0-9a-f]{64}', part) for part in resolved.relative_to(library).parts)):
+                if (not live.is_symlink() or not target.is_relative_to(library) or
+                        not any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(library).parts)):
                     problem('unstamped_install', live, 'expected symlink into content-stamped ~/.local/lib release')
             if not live.exists():
                 problem('missing_file', live, rel)

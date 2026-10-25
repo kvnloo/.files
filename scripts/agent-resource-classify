@@ -2,9 +2,9 @@
 """Route user coding-agent trees out of the compositor cgroup."""
 import json, os, pathlib, subprocess, sys
 
-def snapshot():
+def snapshot(starttimes=None, proc=pathlib.Path('/proc')):
     data = {}
-    for p in pathlib.Path('/proc').iterdir():
+    for p in proc.iterdir():
         if not p.name.isdigit():
             continue
         try:
@@ -29,6 +29,8 @@ def snapshot():
             if name in {'python', 'python3'} and any(pathlib.PurePath(a.decode(errors='replace')).name in {'train_sft.py', 'build_index.py'} for a in args[1:]):
                 name = 'agent-batch'
             data[int(p.name)] = (int(status['PPid']), name, (p/'cgroup').read_text().strip())
+            if starttimes is not None:
+                starttimes[int(p.name)] = process_starttime(p)
         except (OSError, ValueError, KeyError):
             continue
     return data
@@ -107,12 +109,67 @@ def rescue(data):
                            ('MemorySwapMax', 't', str(1 << 30))], loose)
     return stuck
 
+def process_starttime(path):
+    # comm may contain spaces/parentheses; the remaining stat fields start at #3.
+    return (path / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+
+
+def service_owners():
+    result = subprocess.run(
+        ['systemctl', '--user', 'show', '--type=service',
+         '-p', 'Id,MainPID', '*'], capture_output=True, text=True, timeout=15, check=True)
+    owners = {}
+    for block in result.stdout.strip().split('\n\n'):
+        row = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+        if row.get('MainPID', '0').isdigit() and int(row.get('MainPID', '0')):
+            owners[int(row['MainPID'])] = row['Id']
+    return owners
+
+
+def rank_workloads(data, routed, owners, starttimes, proc=pathlib.Path('/proc')):
+    """Raise disposable children only; never lower an existing score or rank a control."""
+    gateways = {pid for pid, unit in owners.items()
+                if unit == 'hermes-gateway.service' or unit.startswith('hermes-gateway-')}
+    descendants = set(gateways)
+    while True:
+        more = {pid for pid, (parent, name, _) in data.items()
+                if parent in descendants and name not in DESKTOP}
+        if more <= descendants:
+            break
+        descendants |= more
+    prefix = '/user.slice/user-%d.slice/user@%d.service/' % (os.getuid(), os.getuid())
+    candidates = sorted(pid for pid in set(routed) | (descendants - gateways)
+                        if pid in data and pid not in owners
+                        and data[pid][1] not in PROTECTED | DESKTOP and prefix in data[pid][2])
+    ranked, failures = [], []
+    for pid in candidates:
+        path = proc / str(pid)
+        try:
+            if path.stat().st_uid != os.getuid() or process_starttime(path) != starttimes.get(pid):
+                continue
+            score = path / 'oom_score_adj'
+            if int(score.read_text()) < 800:
+                score.write_text('800\n')
+            ranked.append(pid)
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as error:
+            failures.append({'pid': pid, 'error': str(error)})
+    return {'oom_ranked': ranked, 'oom_rank_failures': failures, 'oom_score_adj': 800}
+
+
 def main():
-    data = snapshot()
+    starttimes = {}
+    data = snapshot(starttimes)
     pids = select(data)
     if '--dry-run' in sys.argv:
         print(json.dumps({'eligible': pids, 'count': len(pids)}))
         return
+    owners = service_owners()
+    # Existing agent.slice workloads are already routed, but still need ranking.
+    already_routed = {pid for pid, (_, name, cg) in data.items()
+                      if '/agent.slice/' in cg and name not in PROTECTED | DESKTOP}
+    print(json.dumps(rank_workloads(data, set(pids) | already_routed, owners, starttimes)))
     rescued = rescue(data)
     if rescued:
         print(json.dumps({'rescued': rescued}))

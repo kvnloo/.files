@@ -1,0 +1,17 @@
+[Unit]
+Description=Whisperflow local STT runtime (loopback only)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/zerOS/.worktrees/golden-slice-ui/services/whisperflow
+Environment=PYTHONPATH=/mnt/zer0models/workspace/zer0/products/zerOS/.worktrees/golden-slice-ui/services/whisperflow/src
+Environment=CUDA_VISIBLE_DEVICES=-1
+RuntimeDirectory=whisperflow
+RuntimeDirectoryMode=0700
+ExecStart=/home/kvn/workspace/whisper/.venv/bin/python -m whisperflow serve --host 127.0.0.1 --port 8766 --token-file %t/whisperflow/token
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

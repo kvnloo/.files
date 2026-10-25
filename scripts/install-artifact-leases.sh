@@ -8,12 +8,18 @@ base="$HOME/.local/lib/artifact-leases"
 mkdir -p "$base" "$HOME/.local/state/artifact-leases" "$HOME/.config/systemd/user"
 exec 9>"$HOME/.local/state/artifact-leases/deploy.lock"
 flock -n 9 || { echo 'another artifact deployment owns lock' >&2; exit 1; }
-dest="$base/$sha"
+dest="/mnt/zer0models/releases/artifact-leases/$sha"
 mkdir -p "$dest/scripts" "$dest/config/fleet" "$dest/config/systemd/user"
 for file in scripts/artifact-leases.py scripts/worktree-reaper.py scripts/artifact-lease-controller.py config/fleet/artifact-leases.json config/systemd/user/artifact-leases.service config/systemd/user/artifact-leases.timer; do
   git -C "$repo" show "$sha:$file" > "$dest/$file"
 done
 chmod 755 "$dest/scripts/"*.py
+printf '%s\n' "$sha" > "$dest/DEPLOYED_SHA"
+if [[ -e "$base/$sha" && ! -L "$base/$sha" ]]; then
+  echo "refusing to replace existing artifact release $base/$sha" >&2
+  exit 1
+fi
+ln -sfn "$dest" "$base/$sha"
 backup="$HOME/.local/state/artifact-leases/unit-backups/$(date -u +%Y%m%dT%H%M%S%NZ)"
 mkdir -p "$backup"
 for unit in artifact-leases.service artifact-leases.timer; do

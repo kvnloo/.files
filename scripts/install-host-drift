@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import shlex
 import tempfile
 import tomllib
 
@@ -22,6 +23,13 @@ def install(source, home, apply):
     manifest = tomllib.loads((source / 'config/host/groot.toml').read_text())
     names = set(CLOSURE)
     names.update(row['source'] for scope in ('system', 'user') for row in manifest.get(scope, []))
+    for scope in ('system', 'user'):
+        for row in manifest.get(scope, []):
+            if row['install'] == 'generated':
+                argv = shlex.split(row.get('generator', ''))
+                if len(argv) != 3 or argv[1] != '--render':
+                    raise ValueError('invalid offline render generator')
+                names.add(argv[0])
     payload = {}
     for name in sorted(names):
         if name not in tracked or Path(name).is_absolute() or '..' in Path(name).parts:

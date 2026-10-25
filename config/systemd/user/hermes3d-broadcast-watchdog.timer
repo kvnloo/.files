@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Hermes3D broadcast watchdog every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=hermes3d-broadcast-watchdog.service
+
+[Install]
+WantedBy=timers.target

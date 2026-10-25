@@ -1,0 +1,20 @@
+[Unit]
+Description=Hermes intake: push worker CLI finals to Telegram
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/workspace/hermes-home/hermes-agent/venv/bin/python -u /workspace/hermes-home/profiles/intake/plugins/intake_progress/watch_main.py
+WorkingDirectory=/workspace/hermes-home/profiles/intake
+Environment=PATH=/workspace/hermes-home/hermes-agent/venv/bin:/usr/bin:/home/kvn/.local/bin
+Environment=VIRTUAL_ENV=/workspace/hermes-home/hermes-agent/venv
+Environment=HERMES_HOME=/workspace/hermes-home/profiles/intake
+Environment=INTAKE_PROGRESS_WATCH=1
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Browser Bypass DSP — route browser audio directly to DAC
+After=pipewire.service wireplumber.service
+Requires=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/workspace/.files/config/pipewire/browser-bypass-dsp.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes batch Kanban worker slice
+[Slice]
+CPUWeight=100
+MemoryHigh=infinity
+MemoryMax=12G

@@ -23,6 +23,13 @@ timer = "z0int-policy.timer"
 enabled = true
 source = "/home/kvn/.local/lib/z0int-policy/current"
 
+[hosts.desktop.model_identity]
+service = "z0int-model-identity.service"
+path = "z0int-model-identity.path"
+timer = "z0int-model-identity.timer"
+enabled = true
+source = "/home/kvn/.local/lib/z0int-policy/current"
+
 
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]

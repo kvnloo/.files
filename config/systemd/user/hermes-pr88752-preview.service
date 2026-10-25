@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes PR 88752 exact 6d5f34c45 private synthetic preview
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/oss/hermes-agent/.worktrees/t_72b4d311
+Environment=HERMES_HOME=/workspace/zer0/oss/hermes-agent/.worktrees/t_72b4d311/.preview/home-isolated
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python -m uvicorn sidebar_attention_preview:app --app-dir /workspace/zer0/oss/hermes-agent/.worktrees/t_72b4d311/.preview --host 127.0.0.1 --port 9143
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

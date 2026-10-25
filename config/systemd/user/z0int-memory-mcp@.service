@@ -1,0 +1,24 @@
+[Unit]
+Description=Read-only memory MCP operator connection
+CollectMode=inactive-or-failed
+
+[Service]
+Type=exec
+WorkingDirectory=%h/.local/share/z0int-memory-mcp
+Environment=PYTHONPATH=/mnt/zer0models/host-offload/memory-mcp-releases/054d5dde71ed3c453f6599c5ba20de45e9297ce8/src
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=Z0INT_MEMORY_MCP_POLICY=%h/.config/z0int/memory-mcp-policy.json
+Environment=Z0INT_MEMORY_MCP_PRINCIPAL=operator
+Environment=Z0INT_MEMORY_MCP_STATE=%S/z0int-memory-mcp
+ExecStart=%h/.local/share/z0int-memory-mcp/.venv/bin/python -m z0int.memory_mcp
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+StateDirectory=z0int-memory-mcp
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET

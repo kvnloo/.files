@@ -11,7 +11,7 @@ Type=simple
 ExecStart=/workspace/z0-farm/llama.cpp-b11270/build/bin/llama-server --models-dir /workspace/z0-farm/models/router --models-max 1 --device CUDA0 -ngl 99 -c 8192 --parallel 2 --cache-ram 512 --host 100.113.138.100 --port 11530 --no-webui --reasoning off -t 4 --sleep-idle-seconds 120
 # Groot has 23.36 GiB RAM. Bound the whole router/child cgroup, not just its parent.
 MemoryAccounting=yes
-MemoryHigh=6G
+MemoryHigh=infinity
 MemoryMax=8G
 MemorySwapMax=512M
 ManagedOOMPreference=none

@@ -1,0 +1,14 @@
+[Unit]
+Description=ctx persistent history daemon
+
+[Service]
+Type=simple
+UnsetEnvironment=LD_AUDIT LD_LIBRARY_PATH LD_PRELOAD
+ExecStart=/usr/bin/env -i "CTX_INTERNAL_SUPERVISOR_ENVIRONMENT_FILE=/mnt/zer0models/host-offload/home_kvn_.ctx/daemon/supervisor-environment.json" "/home/kvn/.local/bin/ctx" --data-root "/mnt/zer0models/host-offload/home_kvn_.ctx" daemon run --format=json
+Restart=always
+RestartSec=2
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=default.target

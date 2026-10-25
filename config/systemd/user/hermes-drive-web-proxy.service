@@ -1,0 +1,15 @@
+[Unit]
+Description=Tailnet WebSocket proxy for persistent Hermes dashboard
+After=network-online.target hermes-web.service
+Requires=hermes-web.service
+
+[Service]
+Type=simple
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python /workspace/zer0/portfolios/chief-of-staff/scripts/tailnet_dashboard_proxy.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

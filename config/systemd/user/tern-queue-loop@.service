@@ -1,0 +1,16 @@
+[Unit]
+Description=Factory ChatGPT queue launcher (%i)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/bin/tern-queue-loop.sh %i
+Slice=agent.slice
+MemoryMax=600M
+Nice=5
+IOWeight=10
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

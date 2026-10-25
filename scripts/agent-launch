@@ -17,6 +17,12 @@ shift
 [ $# -gt 0 ] || { echo "agent-launch: no command" >&2; exit 2; }
 executable=$(type -P -- "$1") || { echo "agent-launch: executable not found: $1" >&2; exit 127; }
 set -- "$executable" "${@:2}"
+case "$name" in
+  hermes)
+    secrets="$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/bws-env-exec"
+    set -- "$secrets" --scope "$name" -- "$@"
+    ;;
+esac
 
 inline() { exec "$@"; }
 [ -n "${AGENT_LAUNCH_INLINE:-}" ] && inline "$@"

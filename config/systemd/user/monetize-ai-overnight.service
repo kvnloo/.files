@@ -1,0 +1,21 @@
+[Unit]
+Description=Monetize AI durable bounded overnight shadow scout
+ConditionPathExists=!/workspace/zer0/experiments/monetize_ai/STOP
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/experiments/monetize_ai
+ExecStart=/usr/bin/python3 /workspace/zer0/experiments/monetize_ai/durable_scout.py --config /workspace/zer0/experiments/monetize_ai/config/shadow.json --duration-seconds 27000
+Restart=on-failure
+RestartSec=30
+RuntimeMaxSec=27300
+TimeoutStopSec=20
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/workspace/zer0/experiments/monetize_ai/state /workspace/zer0/experiments/monetize_ai/output
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=256M
+CPUQuota=20%
+TasksMax=8
+UMask=0077
