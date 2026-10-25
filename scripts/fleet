@@ -112,6 +112,11 @@ def probe_path(n):
     return "~/.local/lib/fleet/fleet-node-probe" if n["kind"] == "phone" else "/usr/local/bin/fleet-node-probe"
 
 
+def probe_error(n, message, transport):
+    return {"node": n["name"], "status": "probe_error", "message": message,
+            "error": f"probe_error: {message}", "transport": transport}
+
+
 def probe(n, guest=False):
     """Return health or a named probe_error. Never parse failed transport output."""
     transport = "local"
@@ -153,8 +158,7 @@ def probe(n, guest=False):
         message = (f"{transport} probe timed out after {exc.timeout}s"
                    if isinstance(exc, subprocess.TimeoutExpired)
                    else f"{type(exc).__name__}: {exc}")
-        return {"node": n["name"], "status": "probe_error", "message": message,
-                "error": f"probe_error: {message}", "transport": transport}
+        return probe_error(n, message, transport)
 
 
 def kc(*args, check=True):
@@ -363,16 +367,24 @@ def eligible(n, args, state):
     return None
 
 
-def probe_python_guest(n):
+def probe_python_guest(n, staging=False):
     """Admit with Android health AND authenticated guest/service reachability."""
-    android = probe(n)
-    bad, _ = judge(n, android, {}, {}, {})
-    if bad:
-        return {"error": "; ".join(bad)}
-    guest = probe(n, guest=True)
-    if "error" not in guest:
-        guest["power"] = android["power"]
-    return guest
+    try:
+        android = probe(n)
+        if "error" in android:
+            return android
+        bad, _ = judge(n, android, {}, {}, {})
+        if bad:
+            return {"error": "; ".join(bad)}
+        guest = probe(n, guest=True)
+        if "error" not in guest:
+            guest["power"] = android["power"]
+            if staging:
+                guest["staging_capacity"] = phone_python.staging_capacity(
+                    phone_controller.strict_ssh(ssh_cmd(n)))
+        return guest
+    except Exception as exc:
+        return probe_error(n, f"{type(exc).__name__}: {exc}", "ssh")
 
 
 def cmd_run(args):
@@ -382,6 +394,13 @@ def cmd_run(args):
     python_guest = getattr(args, "python_venv", False)
     if python_guest:
         args.guest = True
+    staging_size = None
+    if python_guest and args.node in (None, "auto"):
+        try:
+            staging_size = phone_python.staging_bytes(
+                args.src or os.getcwd(), args.no_src, getattr(args, "input", []) or [])
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            die(f"cannot measure source staging bytes: {exc}")
     def queued_mbp():
         worker = nodes["mbp"]
         if (args.arch and args.arch != worker["arch"]) or (args.cls and args.cls not in worker["classes"] + worker["capabilities"]):
@@ -435,7 +454,8 @@ def cmd_run(args):
     k8s = k8s_nodes()
     with cf.ThreadPoolExecutor(8) as ex:
         probes = dict(zip([n["name"] for n in cands],
-                          ex.map(probe_python_guest if python_guest else lambda n: probe(n, args.guest), cands)))
+                          ex.map(lambda n: probe_python_guest(n, staging=staging_size is not None)
+                                 if python_guest else probe(n, args.guest), cands)))
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
@@ -453,6 +473,11 @@ def cmd_run(args):
             phase, reasons = host_health(p)
             if phase != "ready":
                 notes.append(f"{n['name']}: {phase}: {'; '.join(reasons)}"); continue
+        if staging_size is not None:
+            available = p["staging_capacity"]["free_bytes"]
+            if available < staging_size:
+                notes.append(f"{n['name']}: staging needs {staging_size} bytes, "
+                             f"fresh available bytes={available}"); continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
         if n["kind"] != "phone":
