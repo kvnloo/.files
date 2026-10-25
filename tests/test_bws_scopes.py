@@ -139,6 +139,31 @@ class VaultScopes(unittest.TestCase):
             self.assertEqual(dotenv.read_text(), 'OTHER=value\n')
             self.assertEqual(json.loads(native.read_text()), {'providers': [{'id': 'openrouter', 'enabled': True}]})
 
+    def test_render_is_exact_secret_free_and_never_accesses_vault(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'config').mkdir()
+            (root / 'config/bws-consumers.json').write_text(json.dumps({
+                'units': {'fixture.service': 'fixture'},
+                'scopes': {'fixture': {'TYPESAFE_API_KEY': 'fixture-secret-not-for-output'}},
+            }))
+            marker = root / 'forbidden-vault-access'
+            forbidden = root / 'forbidden'
+            forbidden.write_text('#!/bin/sh\ntouch "' + str(marker) + '"\nexit 99\n')
+            forbidden.chmod(0o700)
+            env = dict(os.environ, BWS_BIN=str(forbidden), HERMES_KEYRING_BOOTSTRAP=str(forbidden),
+                       TYPESAFE_API_KEY='fixture-secret-not-for-output')
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/install-bws-secrets'),
+                                     '--source', str(root), '--render', 'fixture.service'],
+                                    env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, '[Unit]\nRequires=bws-secrets-sync.service\nAfter=bws-secrets-sync.service\n\n'
+                             '[Service]\nEnvironmentFile=%t/bws-secrets/fixture.env\n')
+            self.assertNotIn('fixture-secret-not-for-output', result.stdout + result.stderr)
+            self.assertFalse(marker.exists())
+
 
 if __name__ == '__main__':
     unittest.main()
