@@ -564,8 +564,9 @@ def cmd_run(args):
 def cmd_kill(args):
     _, nodes = registry()
     if args.node in ("mbp", "mbp-host", "k3s-mbp"):
-        unit = shlex.quote(f"fleet-{args.job}.scope")
-        stop = f"if systemctl --user is-active --quiet {unit}; then systemctl --user stop {unit}; fi"
+        units = [shlex.quote(f"fleet-{args.job}.{kind}") for kind in ("scope", "service")]
+        stop = "; ".join(f"if systemctl --user is-active --quiet {unit}; then systemctl --user stop {unit}; fi"
+                         for unit in units)
         result = subprocess.run(ssh_cmd(nodes["mbp"]) + ["bash -c " + shlex.quote(stop)])
         if result.returncode:
             return result.returncode  # Never release host quota before host work stops.

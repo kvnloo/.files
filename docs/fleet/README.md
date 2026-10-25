@@ -72,6 +72,15 @@ stop an independently running host process during Kueue eviction.
 Host builds remain in protected `lanes`. Existing legacy jobs stay protected
 there; do not move running jobs into the borrowing benchmark queue.
 
+Observer interruption (SIGINT, SIGTERM or SIGHUP) detaches without cancelling
+the Job or removing its stage. Resume observation with `fleet-build --attach JOB`;
+this never submits or replays the command. Use `fleet kill mbp JOB` for explicit
+cancellation. Automatic cleanup requires confirmed completion.
+
+For Bend proofs, `fleet-build --node mbp --bend-tools ...` stages only
+`~/.bend/{bin,bend2,bendtt}` in a private job HOME and sets `BEND` and `PATH`.
+The local `~/.bend/check.json` is never transported.
+
 ## Devices (2026-10-20)
 
 | Device | Role | State |

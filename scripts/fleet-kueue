@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Trusted MBP host-toolchain jobs, admitted and bounded by Kubernetes/Kueue."""
 import argparse
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -36,7 +37,8 @@ def workload_evicted(workload):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--src', required=True)
+    parser.add_argument('--src')
+    parser.add_argument('--attach', metavar='JOB', help='observe an existing job without submitting or replaying it')
     parser.add_argument('--no-src', action='store_true')
     parser.add_argument('--node')
     parser.add_argument('--class', dest='job_class')
@@ -58,7 +60,35 @@ def main():
     args = parser.parse_args()
     if args.cmd[:1] == ['--']:
         args.cmd.pop(0)
-    if not args.cmd or args.timeout <= 0 or args.wait < -1:
+    state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
+    runs = state / 'runs'
+    kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml'), '-n', 'fleet-mbp']
+    if args.attach:
+        if not re.fullmatch(r'fleet-mbp-[0-9a-f]{16}', args.attach):
+            parser.error('invalid Kueue job id')
+        existing = json.loads(checked(kube + ['get', 'job', args.attach, '-o', 'json'], capture_output=True).stdout)
+        receipt = runs / f'{args.attach}.json'
+        saved = json.loads(receipt.read_text()) if receipt.exists() else {}
+        container = existing['spec']['template']['spec']['containers'][0]
+        resources = container['resources']['requests']
+        labels = existing['metadata'].get('labels', {})
+        args.cpus = str(resources['cpu'])
+        if args.cpus.endswith('m'):
+            args.cpus = str(float(args.cpus[:-1]) / 1000)
+        args.mem = str(resources['memory'])
+        args.priority_class = labels.get('kueue.x-k8s.io/priority-class', 'build')
+        args.checkpoint_safe = saved.get('checkpoint_safe', args.priority_class == 'bench')
+        args.host = saved.get('host', existing['metadata'].get('annotations', {}).get('fleet.z0.dev/host') == 'true')
+        if args.host and not saved.get('command'):
+            parser.error('host attach requires the original durable receipt containing its command')
+        args.cmd = saved.get('command', container['command'])
+        args.timeout = saved.get('timeout', existing['spec'].get('activeDeadlineSeconds', 3600))
+        args.fetch = args.fetch or saved.get('fetch', [])
+        args.out = args.out or saved.get('out')
+        args.keep |= saved.get('keep', False)
+    elif not args.src:
+        parser.error('--src is required for submission')
+    if (not args.cmd and not args.attach) or args.timeout <= 0 or args.wait < -1:
         parser.error('command, positive --timeout, and --wait >= -1 required')
     # Match fleet's binary memory units, not Kubernetes decimal G/M quantities.
     match = re.fullmatch(r'(\d+(?:\.\d+)?)([KMGT]?)I?B?', args.mem.upper())
@@ -81,7 +111,7 @@ def main():
             parser.error(f'invalid input: {value!r}')
         inputs.append((source, relative(dest)))
 
-    name = 'fleet-mbp-' + uuid.uuid4().hex[:16]
+    name = args.attach or 'fleet-mbp-' + uuid.uuid4().hex[:16]
     fleet = runpy.run_path(str(Path(__file__).resolve().with_name('fleet')))
     node = fleet['registry']()[1]['mbp']
     ssh = fleet['ssh_cmd'](node)
@@ -98,7 +128,6 @@ def main():
         parser.error('MBP SSH account must not be root')
     stage = f'{home}/.local/state/fleet/kueue/{name}'
     qstage = shlex.quote(stage)
-    kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml'), '-n', 'fleet-mbp']
     queue = json.loads(checked(kube + ['get', 'clusterqueue', 'lanes', '-o', 'json'], capture_output=True).stdout)
     quotas = {r['name']: r['nominalQuota'] for group in queue['spec']['resourceGroups']
               for flavor in group['flavors'] if flavor['name'] == 'node-mbp' for r in flavor['resources']}
@@ -109,7 +138,7 @@ def main():
         return float(match[1]) * {'': 1, 'm': .001, 'k': 1000, 'M': 1000**2,
                                   'G': 1000**3, 'T': 1000**4, 'Ki': 1024,
                                   'Mi': 1024**2, 'Gi': 1024**3, 'Ti': 1024**4}[match[2] or '']
-    if memory > quantity(quotas['memory']) or float(args.cpus) > quantity(quotas['cpu']):
+    if not args.attach and (memory > quantity(quotas['memory']) or float(args.cpus) > quantity(quotas['cpu'])):
         print(f'fleet: request exceeds MBP lane quota {quotas}; lower --mem/--cpus (exit 75)', file=sys.stderr)
         return 75
     priority = workload_class(args.priority_class, args.cmd, args.cpus, quantity(quotas['cpu']))
@@ -118,20 +147,41 @@ def main():
     queue_name = 'bench-lanes' if priority == 'bench' else 'lanes'
     if args.host and priority == 'bench':
         parser.error('bench cannot use --host; host scopes cannot be safely evicted by Kueue')
-    state = Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet')))
-    runs = state / 'runs'
-    runs.mkdir(parents=True, exist_ok=True)
     logpath = runs / f'{name}-mbp.log'
-    created = False
+    runs.mkdir(parents=True, exist_ok=True)
+    created = bool(args.attach)
     terminal = False
-    was_evicted = False
     logs = None
     rc = 1
+    detach_code = 130
 
     def stop(signum, frame):
+        nonlocal detach_code
+        detach_code = 128 + signum
         raise KeyboardInterrupt
-    signal.signal(signal.SIGTERM, stop)
-    try:
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signum, stop)
+    cache_setup = ('export UV_CACHE_DIR="$HOME/.cache/uv" npm_config_cache="$HOME/.cache/npm" '
+                   'npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
+                   'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; ')
+    unit = f'fleet-{name}.service'
+    def start_host(runtime):
+        wrapper = (
+            f'[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; {cache_setup}'
+            f'cd {qstage}/src || exit 1; export TMPDIR={qstage}/tmp; '
+            f'timeout --kill-after=30 {runtime} nice -n 5 {shlex.join(args.cmd)}; '
+            f'rc=$?; printf "%s\\n" "$rc" > {qstage}/host.exit.tmp; '
+            f'mv {qstage}/host.exit.tmp {qstage}/host.exit; exit "$rc"')
+        script = (
+            f'if [ ! -f {qstage}/host.exit ] && '
+            f'[ "$(systemctl --user show {shlex.quote(unit)} -p LoadState --value)" = not-found ]; then '
+            f'systemd-run --user --quiet --unit={shlex.quote(unit)} '
+            f'-p MemoryMax={memory} -p MemorySwapMax=512M -p CPUQuota={float(args.cpus) * 100:g}% '
+            f'-p StandardOutput=append:{qstage}/host.log -p StandardError=append:{qstage}/host.log '
+            f'-- /usr/bin/bash -c {shlex.quote(wrapper)}; fi')
+        checked(remote(script))
+    def submit():
+        nonlocal created
         checked(remote(f'mkdir -p {qstage}/src {qstage}/tmp && chmod 700 {qstage}'))
         src = Path(args.src).resolve()
         if args.no_src:
@@ -169,17 +219,6 @@ def main():
             volumes.append({'name': volume, 'hostPath': {'path': path, 'type': 'Directory'}})
             mounts.append({'name': volume, 'mountPath': path, 'readOnly': True})
         resources = {'cpu': args.cpus, 'memory': str(memory)}
-        cache_setup = ('export UV_CACHE_DIR="$HOME/.cache/uv" npm_config_cache="$HOME/.cache/npm" '
-                       'npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
-                       'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; ')
-        unit = f'fleet-{name}.scope'
-        host_script = (
-            f'[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; {cache_setup}'
-            f'cd {qstage}/src || exit 1; export TMPDIR={qstage}/tmp; '
-            f'systemd-run --user --scope --quiet --unit={shlex.quote(unit)} '
-            f'-p MemoryMax={memory} -p MemorySwapMax=512M -p CPUQuota={float(args.cpus) * 100:g}% '
-            f'-- timeout --kill-after=30 {args.timeout} nice -n 5 {shlex.join(args.cmd)}; '
-            f'rc=$?; systemctl --user stop {shlex.quote(unit)} 2>/dev/null || true; exit $rc')
         command = (['/usr/bin/bash', '-c', 'while :; do sleep 30; done'] if args.host else
                    ['/usr/bin/bash', '-c', '[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; ' +
                     cache_setup + 'exec "$@"', 'fleet-kueue', *args.cmd])
@@ -187,7 +226,8 @@ def main():
             'apiVersion': 'batch/v1', 'kind': 'Job',
             'metadata': {'name': name, 'labels': {'kueue.x-k8s.io/queue-name': queue_name,
                          'kueue.x-k8s.io/priority-class': priority,
-                         'app.kubernetes.io/managed-by': 'fleet-build'}},
+                         'app.kubernetes.io/managed-by': 'fleet-build'},
+                         'annotations': {'fleet.z0.dev/host': str(args.host).lower()}},
             # Host reservations outlive timeout's forced-stop grace, so quota
             # cannot expire before the bounded host scope after client loss.
             'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout + (90 if args.host else 0),
@@ -204,27 +244,33 @@ def main():
                              'securityContext': {'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}},
                              'resources': {'requests': resources, 'limits': resources}, 'volumeMounts': mounts}],
                          'volumes': volumes}}}}
-        checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
-        created = True
         (runs / f'{name}.json').write_text(json.dumps({
             'job_id': name, 'class': priority, 'checkpoint_safe': args.checkpoint_safe,
             'queue': queue_name,
             'stage': stage, 'cpus': args.cpus, 'memory': memory,
+            'command': args.cmd, 'host': args.host, 'timeout': args.timeout,
+            'fetch': args.fetch, 'out': args.out, 'keep': args.keep,
         }, indent=2) + '\n')
+        checked(kube + ['create', '-f', '-'], input=json.dumps(manifest), text=True)
+        created = True
         print(f'fleet: job {name} -> mbp (Kueue {queue_name}); log {logpath}; stage {stage}', file=sys.stderr, flush=True)
+    try:
+        if not args.attach:
+            submit()
+        else:
+            print(f'fleet: attached {name}; observing existing job only', file=sys.stderr, flush=True)
         # Zero preserves fleet's fail-fast contract; allow only a short
         # controller reconciliation grace. Indefinite queueing is explicit.
         admission_deadline = None if args.wait == -1 else time.monotonic() + (args.wait or 5)
         admitted = False
         pod_name = None
-        with logpath.open('wb') as logfile:
+        with logpath.open('ab' if args.attach else 'wb') as logfile:
             while True:
                 job = json.loads(checked(kube + ['get', 'job', name, '-o', 'json'], capture_output=True).stdout)
                 workload_name = job['spec'].get('template', {}).get('metadata', {}).get('annotations', {}).get('kueue.x-k8s.io/workload')
                 workload = (json.loads(checked(kube + ['get', 'workload', workload_name, '-o', 'json'], capture_output=True).stdout)
                             if workload_name else {})
                 evicted = workload_evicted(workload)
-                was_evicted |= evicted
                 suspended = job['spec'].get('suspend', False) or evicted
                 exit_code = None
                 if suspended and admitted:
@@ -256,7 +302,18 @@ def main():
                     pod_name = pod['metadata']['name']
                     statuses = pod.get('status', {}).get('containerStatuses', [])
                     if logs is None and statuses and ('running' in statuses[0]['state'] or (not args.host and 'terminated' in statuses[0]['state'])):
-                        log_command = remote(host_script) if args.host else kube + ['logs', '-f', pod_name, '-c', 'build']
+                        if args.host:
+                            runtime = args.timeout
+                            if job.get('status', {}).get('startTime'):
+                                started = datetime.fromisoformat(job['status']['startTime'].replace('Z', '+00:00')).timestamp()
+                                remaining = int(job['spec']['activeDeadlineSeconds'] - (time.time() - started) - 35)
+                                if remaining <= 0:
+                                    time.sleep(2)
+                                    continue
+                                runtime = min(runtime, remaining)
+                            start_host(runtime)
+                        log_command = (remote(f'tail -n +1 -F {qstage}/host.log') if args.host else
+                                       kube + ['logs', '-f', pod_name, '-c', 'build'])
                         logs = subprocess.Popen(log_command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                         # A reader thread streams while the controller observes terminal status.
                         import threading
@@ -268,10 +325,16 @@ def main():
                                 logfile.flush()
                         reader = threading.Thread(target=relay, daemon=True)
                         reader.start()
-                    if args.host and logs is not None and logs.poll() is not None:
-                        rc = logs.returncode
-                        terminal = True
-                        break
+                    if args.host and logs is not None:
+                        result = checked(remote(
+                            f'if [ -f {qstage}/host.exit ]; then printf "done="; cat {qstage}/host.exit; '
+                            f'else systemctl --user show {shlex.quote(unit)} -p ActiveState -p ExecMainStatus; fi'),
+                            capture_output=True, text=True).stdout
+                        status = dict(line.split('=', 1) for line in result.splitlines() if '=' in line)
+                        if 'done' in status or status.get('ActiveState') in ('inactive', 'failed'):
+                            rc = int(status.get('done', status.get('ExecMainStatus', '1')))
+                            terminal = True
+                            break
                     if statuses and 'terminated' in statuses[0]['state']:
                         exit_code = statuses[0]['state']['terminated']['exitCode']
                 # Pod termination (including 137) is not Job completion. Kueue
@@ -330,22 +393,22 @@ def main():
         print(f'fleet: job {name} on mbp exited {rc}', file=sys.stderr)
         return rc
     except KeyboardInterrupt:
-        return 130
+        return detach_code
     finally:
-        if args.host and created:
-            # Stop host work BEFORE releasing its quota, even on cancellation.
-            checked(remote(f'if systemctl --user is-active --quiet {shlex.quote(unit)}; then '
-                           f'systemctl --user stop {shlex.quote(unit)}; fi'))
+        if args.host and created and terminal:
+            # Only confirmed host completion permits releasing its reservation.
+            checked(remote(f'systemctl --user stop {shlex.quote(unit)}; '
+                           f'systemctl --user reset-failed {shlex.quote(unit)} 2>/dev/null || true'))
         if logs is not None and logs.poll() is None:
             logs.terminate()
             logs.wait()
-        # An evicted workload belongs to Kueue's readmission lifecycle, not
-        # client cleanup. Preserve both Job and stage if the observer exits.
-        if created and not (was_evicted and not terminal) and (args.host or not args.keep or not terminal):
+        # Controller loss is detach, never an implicit remote cancellation.
+        if created and terminal and (args.host or not args.keep):
             checked(kube + ['delete', 'job', name, '--cascade=foreground', '--wait=true', '--ignore-not-found=true', '--timeout=60s'])
-        if (args.checkpoint_safe or was_evicted) and not terminal:
-            print(f'fleet: retained checkpoint stage {stage}; receipt {runs / (name + ".json")}', file=sys.stderr)
-        elif not args.keep or not terminal:
+        if created and not terminal:
+            print(f'fleet: detached job {name}; retained checkpoint stage {stage}; '
+                  f'receipt {runs / (name + ".json")}; reattach: fleet-build --attach {name}', file=sys.stderr)
+        elif terminal and not args.keep:
             checked(remote(f'rm -rf -- {qstage}'))
 
 
