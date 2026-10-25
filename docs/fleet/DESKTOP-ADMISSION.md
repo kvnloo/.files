@@ -28,8 +28,11 @@ The placement binding covers every namespace selectable by the configured
 ClusterQueues: `factory`, `lanes`, `fleet-mbp`, and `z0`. The z0 `cpu` flavor
 deliberately has no node labels so its CPU quota can accompany the GPU flavor;
 it does not bypass pod admission. The verifier exercises all seven placement
-cases in each namespace (28 server dry runs). Keep queue namespace selectors
-and this binding aligned when adding queues.
+cases in each namespace plus the full MBP lane (29 server dry runs). The trusted
+`fleet-mbp` namespace retains its Kueue-owned 4-CPU/10441814016-byte budget only
+when explicitly selecting MBP; groot's per-container limits remain unchanged.
+Factory's GPU case is denied by its zero-GPU ResourceQuota. Keep queue namespace
+selectors and this binding aligned when adding queues.
 
 ## Canonical film continuation
 
