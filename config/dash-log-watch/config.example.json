@@ -11,10 +11,9 @@
   "helper_sha256": "fd3c980d7aa3df21346dc67d61b2a2db8efa39338a5592320731f2ab7288b387",
   "qualification": "/mnt/zer0models/workspace/zer0/data/operations/dash-log-watch/20261022/luna-qualification.json",
   "units": {
-    "dash-bridge-4747.service": "bridge",
-    "dash-metro-native-8108.service": "metro-native",
-    "dash-metro-preview-8098.service": "metro-preview",
-    "dash-metro-8097.service": "metro-stable"
+    "dash-bridge.service": "bridge",
+    "dash-metro.service": "metro-native",
+    "dash-metro-relay.service": "metro-relay"
   },
   "concurrency": 3,
   "calls_per_hour": 6,

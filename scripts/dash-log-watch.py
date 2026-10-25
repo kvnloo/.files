@@ -16,10 +16,9 @@ import time
 PACKAGE = "app.dash.mobile"
 MODEL = "gpt-6-luna"
 UNITS = {
-    "dash-bridge-4747.service": "bridge",
-    "dash-metro-native-8108.service": "metro-native",
-    "dash-metro-preview-8098.service": "metro-preview",
-    "dash-metro-8097.service": "metro-stable",
+    "dash-bridge.service": "bridge",
+    "dash-metro.service": "metro-native",
+    "dash-metro-relay.service": "metro-relay",
 }
 # Only finite classifications cross the model boundary. No free-text redaction gamble.
 SIGNATURES = {
