@@ -146,7 +146,10 @@ def rank_workloads(data, routed, owners, starttimes, proc=pathlib.Path('/proc'))
     """Raise disposable children only; never lower an existing score or rank a control."""
     gateways = {pid for pid, unit in owners.items()
                 if unit == 'hermes-gateway.service' or unit.startswith('hermes-gateway-')}
-    descendants = set(gateways)
+    # Ranking does not change placement. Rank children of every recognized
+    # harness even when an explicit caller-owned scope keeps them out of select().
+    controls = {pid for pid, (_, name, _) in data.items() if name in PROTECTED}
+    descendants = gateways | controls
     while True:
         more = {pid for pid, (parent, name, _) in data.items()
                 if parent in descendants and name not in DESKTOP}
