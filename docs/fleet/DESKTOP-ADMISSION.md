@@ -67,6 +67,86 @@ by this policy: ctx 2.2.8 already defaults to one preparation worker. Its
 `ExecStart` override is not needed for the resource fix. Preserve the generated
 `env -i` launch contract rather than installing that redundant override.
 
+## Report-only host drift
+
+`config/host/groot.toml` inventories managed live paths and tracked sources.
+`scripts/host-drift` prints JSON on stdout and a short summary on stderr:
+exit 0 is clean, 1 is observed drift, and 2 means at least one observation is
+unknown (observed drift remains in the report). No outcome authorizes repair.
+The checker compares bytes, mutable-checkout symlinks, managed systemd resource
+properties, tracked sysctl values, package `.pacnew` files and both persistent
+and runtime `user.control` drop-ins. Optional manifest `effective` values
+override derived scalar systemd directives when systemd exposes a different
+property representation. Managed paths are processed in lexical drop-in order.
+An `owned-upstream` classification and issue URL explain drift, never exempt it.
+An explicit `mask=true` declaration requires a `/dev/null` unit symlink.
+`secret="private-exception"` verifies only current-user ownership/mode 0600
+and the tracked nonsecret declaration; it never reads credential bytes and
+always reports private-content provenance as unknown.
+The optional `[budget]` inventory names `desktop="session.slice"` and bounded
+`groups=[{scope="user",unit="agent.slice"}, ...]`. Every audit compares physical
+RAM minus effective desktop `MemoryMin` with the largest single sibling group's
+effective `MemoryMax`. Named nested children are not double-counted. Missing or
+unbounded non-desktop groups are unknown, never discarded; finite shortfalls
+are drift. This does not claim that summed budgets fit RAM or prevent global
+OOM; memory.min is reclaim protection, not an OOM exemption.
+
+Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
+snapshot the complete tracked source closure and enable `host-drift.timer`.
+Reinstall after any manifest/source change; the installed checker never reads a
+mutable worktree. The timer runs every 30 minutes with Nice 19, idle IO and a
+256 MiB hard memory limit. It writes `~/.local/state/host-drift/latest.json`.
+ServiceWatch records finite drift/unknown counts through its existing one-hour
+incident dedupe, six-hour notification dedupe and five-notifications/hour ceiling;
+inspect the local JSON for exact paths.
+No watched desktop, gateway or agent service is restarted.
+The installer also links the tracked, stamped `config/host/z0-guard-state.json`
+to the default guard inventory. Its `host_drift` binding enables law I against
+this receipt; code activation is separate from the live z0intelligence service.
+The same installer stamps ServiceWatch's heartbeat/failure helper and units.
+A healthy heartbeat reads only its status receipt, without opening the incident
+database. Missing, malformed, stale or future heartbeats still alert through
+the normal store. Tiny reporting helpers retain nice/idle IO and hard memory
+limits, but not the old 5%/10% CPU throttles; their 90-second deadline no longer
+expires before SQLite's 30-second lock wait plus notification work. The retained
+2026-10-24 23:05–23:06 journal showed both the heartbeat and its failure handler
+timing out at the old 20-second deadline. This fixes the avoidable reporting
+path contention; it does not prove unlimited IO-stall resilience.
+The structured `~/.z0int/loop/last-tick.json` summary records exit-3 degraded or
+partial-measurement ticks as deterministic deduplicated warnings in the existing
+digest, with no model escalation or desktop notification. Exact
+`Z0INT_LOOP_TICK` JSON warning lines are not generic journal errors, and declared
+degraded full tick rows are not silent no-ops. Real failures and legacy
+unclassified no-op rows retain their existing failure paths. This receipt
+describes the latest outcome; existing timer health checks own freshness.
+
+Template and dashed-prefix resource policies compare only loaded matching
+instances. A policy with no loaded instances is explicitly not applicable,
+not a fabricated effective unit. Device latency directives are checked against
+the real unit cgroup's `io.latency`, not a nonexistent scalar systemctl property.
+External observations share a 120-second deadline; exhausted observations are
+unknown instead of monopolizing the reporting timer.
+Stamp provenance follows enablement symlink chains into the content-addressed
+home library or the approved physical `/mnt/zer0models/releases/files-live`
+root; mutable checkout targets remain drift. Generated declarations require
+`install="generated"` and a tracked offline `generator="scripts/NAME --render UNIT"`.
+Rendered bytes are compared to live bytes; missing or failing generators are
+unknown, never an exemption. The stamped closure includes the generator source.
+
+The package-file inventory is bounded to `/etc` and 16 directory descents
+(20,000 entries maximum); it never walks home/model volumes or follows directory
+symlinks. Unreadable directories or exceeded bounds yield unknown, not clean. An admin must
+review inaccessible package configuration separately. Extra bounded roots can be
+given with repeated `--pacnew-root`. This is not an unrestricted package audit.
+
+A temporary control drop-in needs a local lease in
+`~/.local/state/host-drift/leases/SHA256_OF_ABSOLUTE_PATH.json` containing
+`schema="host-drift.lease.v1"`, exact `path`, nonempty `owner`, future epoch
+`expires_at` and the drop-in's `sha256`. A changed or expired lease does not
+exempt the file. The checker never creates leases. Persistent changes belong in
+the tracked source and stamped installer, not `systemctl --user set-property`.
+
+
 ## Foreground activation gate (do not call this complete early)
 
 Native background terminal tools were exercised inside `agent.slice` with CPU max

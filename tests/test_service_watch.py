@@ -35,6 +35,72 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_healthy_heartbeat_never_opens_incident_database(self):
+        (self.root / 'status.json').write_text(json.dumps({'scan_completed_at': time.time()}))
+        with patch.object(sw, 'Watch', side_effect=AssertionError('must not open database')), \
+             patch.object(sys, 'argv', ['service-watch', '--state', str(self.root), 'heartbeat']):
+            self.assertEqual(sw.main(), 0)
+
+    def test_missing_malformed_future_and_stale_heartbeat_are_adverse(self):
+        path = self.root / 'status.json'
+        self.assertTrue(sw.heartbeat_stale(path, now=1000))
+        for content in ('{', '{}', '[]', '{"scan_completed_at":true}',
+                        '{"scan_completed_at":1001}', '{"scan_completed_at":879}'):
+            path.write_text(content)
+            self.assertTrue(sw.heartbeat_stale(path, now=1000), content)
+        path.write_text('{"scan_completed_at":880}')
+        self.assertFalse(sw.heartbeat_stale(path, now=1000))
+
+    def test_degraded_tick_is_deduplicated_warning_without_notifications(self):
+        unit = 'z0int-loop-tick.service'
+        self.watch.units[('user', unit)] = {}
+        directory = self.root / '.z0int/loop'
+        directory.mkdir(parents=True)
+        summary = {'schema': 'z0int.loop.tick_summary.v0', 'tick_id': 'fixture',
+                   'status': 'degraded', 'exit': 3, 'degraded_by': ['cognition:context_overflow'],
+                   'ended_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        (directory / 'last-tick.json').write_text(json.dumps(summary))
+        reports = directory / 'reports' / str(datetime.date.today())
+        reports.mkdir(parents=True)
+        (reports / 'ticks.jsonl').write_text(''.join(json.dumps({
+            'status': 'degraded', 'exit': 3, 'rows_added': {'shadow_decisions': 0}}) + '\n' for _ in range(3)))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.watch.loop_invariants()
+            self.watch.loop_invariants()
+        self.assertFalse(notify.called)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['decision']['severity'], 'warn')
+        self.assertEqual(self.watch.store.get('loop:last_tick')['tick_id'], 'fixture')
+
+    def test_host_drift_uses_existing_notification_dedupe(self):
+        receipt = self.root / '.local/state/host-drift/latest.json'
+        receipt.parent.mkdir(parents=True)
+        receipt.write_text(json.dumps({'schema': 'host-drift.v1', 'status': 'drift',
+                                       'drift': [{'path': '/private/not-forwarded'}], 'unknown': []}))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_config_drift', text)
+        self.assertNotIn('/private/not-forwarded', text)
+
+    def test_host_drift_missing_receipt_is_unknown_and_notifies(self):
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sys, 'argv', ['service-watch', 'host-drift']), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.assertEqual(sw.main(), 0)
+            self.assertEqual(notify.call_count, 1)
+        text = self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0]
+        self.assertIn('host_drift_unknown', text)
+
     def test_finite_projection_withholds_every_arbitrary_string(self):
         secrets = ['sk-secret-abcdef', 'Bearer abc.eyJWT.def', 'Cookie: session=SUPERSECRET',
                    'kevin@example.com', '100.117.226.39', 'https://example.test/?token=secret',

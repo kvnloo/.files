@@ -1,0 +1,6 @@
+{
+  "host_drift": {
+    "path": "~/.local/state/host-drift/latest.json",
+    "host": "groot"
+  }
+}
