@@ -1,0 +1,11 @@
+#!/bin/sh
+# Install only the farm unit; never run the general desktop onboarding path.
+set -eu
+src=$(dirname "$(readlink -f "$0")")/../config/systemd/user/z0-farm-llama.service
+dst=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+mkdir -p "$dst"
+# install replaces an existing unit symlink rather than modifying its target.
+install -m 0644 "$src" "$dst/z0-farm-llama.service"
+systemctl --user daemon-reload
+systemctl --user restart z0-farm-llama.service
+systemctl --user show z0-farm-llama.service -p ActiveState -p MainPID -p MemoryHigh -p MemoryMax -p MemorySwapMax -p ManagedOOMPreference -p ControlGroup

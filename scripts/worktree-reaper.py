@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime as dt
+import errno
 import fcntl
 import hashlib
 import json
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import shlex
@@ -119,7 +121,7 @@ def active_guard_references():
     return {os.path.realpath(path): {reason} for path, reason in ACTIVE_GUARD_SOURCES.items()}
 
 
-def symlink_references(home=None, extra_roots=None):
+def symlink_references(home=None, extra_roots=None, out=None):
     """Read link metadata only, including dangling installed-code links."""
     home = Path.home() if home is None else Path(home)
     if extra_roots is None:
@@ -128,6 +130,7 @@ def symlink_references(home=None, extra_roots=None):
         extra_roots.append(Path('/workspace/hermes-home'))
     refs = collections.defaultdict(set)
     errors = []
+    ignored = []
     visited = set()
     installed = {'plugins', 'plugin-data', 'extensions', 'managed-extensions',
                  'managed-skills', 'skills'}
@@ -138,6 +141,19 @@ def symlink_references(home=None, extra_roots=None):
             continue
         visited.add(canonical)
         def failed(error):
+            if error.errno == errno.EACCES and error.filename:
+                try:
+                    metadata = os.stat(error.filename)
+                    if (stat.S_ISDIR(metadata.st_mode) and
+                            metadata.st_uid != os.geteuid() and
+                            not metadata.st_mode & 0o055):
+                        ignored.append({'path': error.filename,
+                                        'reason': 'unreadable_foreign_owner',
+                                        'uid': metadata.st_uid,
+                                        'mode': oct(stat.S_IMODE(metadata.st_mode))})
+                        return
+                except OSError:
+                    pass
             errors.append('installed-link inventory: ' + str(error))
         for base, dirs, files in os.walk(root, followlinks=False, onerror=failed):
             location = Path(base)
@@ -152,10 +168,13 @@ def symlink_references(home=None, extra_roots=None):
                         refs[os.path.realpath(link)].add('home-symlink:' + str(link))
                 except OSError as error:
                     failed(error)
+    if out is not None:
+        emit(out, 'installed_link_scan', reference_targets=len(refs),
+             unreadable_foreign_owner=ignored, errors=errors)
     return refs, errors
 
 
-def references():
+def references(out=None):
     refs = collections.defaultdict(set)
     errors = []
     def add(path, reason):
@@ -170,7 +189,7 @@ def references():
         refs[target].update(reasons)
     for target, reasons in active_guard_references().items():
         refs[target].update(reasons)
-    installed_refs, installed_errors = symlink_references()
+    installed_refs, installed_errors = symlink_references(out=out)
     for target, reasons in installed_refs.items():
         refs[target].update(reasons)
     errors.extend(installed_errors)
@@ -505,7 +524,7 @@ def main():
         if hooks:
             target = os.path.realpath(os.path.join(path, os.path.expanduser(hooks)))
             HOOK_REFERENCES.setdefault(target, set()).add('git-core.hooksPath:' + path)
-    refs, errors = references()
+    refs, errors = references(args.output)
     reference_errors = list(errors)
     now = time.time()
     rows = []
@@ -553,7 +572,7 @@ def main():
         try:
             # Recollect links immediately before preservation, then once more
             # immediately before removal to close the inventory/activity race.
-            fresh, issues = references()
+            fresh, issues = references(args.output)
             if issues:
                 raise RuntimeError('Live reference refresh failed: ' + str(issues))
             reasons = live_reasons(row['path'], fresh)
@@ -571,7 +590,7 @@ def main():
             if (args.output / 'PAUSED').exists():
                 emit(args.output, 'removals_paused', reason='operator PAUSED marker before removal')
                 break
-            fresh, issues = references()
+            fresh, issues = references(args.output)
             reasons = live_reasons(row['path'], fresh)
             if issues or reasons:
                 raise RuntimeError('Checkout became live after archive: ' + str(reasons or issues))

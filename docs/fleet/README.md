@@ -469,6 +469,36 @@ renders everything into a temp dir without root.
 | agentjob | own user, home 0700, no groups (not docker/wheel), password locked, lingering user manager, slice caps + IP deny | host jobs cannot see the owner's files, docker or sudo |
 | updates | `fleet-updates.timer` daily: `checkupdates -d` downloads, writes `/var/lib/fleet/updates.json` | see below |
 
+### Groot model farm memory boundary
+
+`config/systemd/user/z0-farm-llama.service` owns the existing
+`/workspace/z0-farm/llama.cpp-b11270` router and its model children. Model
+files/symlinks remain in `/workspace/z0-farm/models/router`; this change does
+not download models or compile llama.cpp. Apply only this service with
+`scripts/apply-z0-farm` from the merged `deploy/live` checkout.
+
+The 2026-10-24 host snapshot measured 25,082,167,296 bytes RAM, a farm
+cgroup peak of 9,376,071,680 bytes, and 8,227,745,792 bytes currently swapped
+out (with 1,480,888,320 bytes resident). These are different measurements,
+not an additive peak. Previously both memory and swap were unlimited.
+The farm now starts reclaim at 6 GiB, is capped at 8 GiB RAM and 512 MiB
+swap across the entire service cgroup, and has normal OOM preference
+`none`. An OOM terminates the farm group rather than leaving model children.
+The router admits one resident model instead of two and sleeps idle children
+after 120 seconds instead of 900. The largest backing model is 9,001,752,960
+bytes; GPU offload does not prove every model/request fits the RAM boundary.
+Oversized requests may lose the farm, not consume unbounded host memory.
+Prompt checkpoint cache RAM is explicitly limited to 512 MiB instead of the
+installed binary's 8192 MiB default per child. This is not the GPU KV context
+size; context 8192 and two parallel slots remain unchanged.
+
+These bounds are containment, not a reservation or model throughput claim.
+The existing `groot-admit` 6144 MiB available-RAM reserve, PSI and swap gates
+remain unchanged for new jobs. No desktop slice or compositor is changed.
+After applying, inspect `systemctl --user show z0-farm-llama.service` for
+`MemoryHigh`, `MemoryMax`, `MemorySwapMax`, `MemoryCurrent`, `MemorySwapCurrent`
+and `ControlGroup`; `/models` shows router availability without loading weights.
+
 ### Updates policy (CachyOS/Arch)
 
 Arch has no security-only channel and an unattended `pacman -Syu` can break a

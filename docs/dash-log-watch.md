@@ -213,8 +213,11 @@ external ops-plane dispatcher.
 The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
 It also scans the agent configuration roots and `/workspace/hermes-home`.
 Installed plugin, extension, and skill directories are live code sources.
-Unreadable link inventories block removals. A verified archive does not permit
-removing a checkout that still serves an installed link.
+Unreadable link inventories block removals, except `EACCES` on a foreign-owned
+directory with no group/other read or execute bits. The scan receipt records
+that exclusion as `unreadable_foreign_owner`. A traversable directory such as
+mode `0711` still fails closed. A verified archive does not permit removing a
+checkout that still serves an installed link.
 Every removal, including SAFE linked worktrees and standalone clones, requires a
 verified local bundle receipt first. Linked worktrees share an immutable full
 base bundle per common Git store; WIP delta bundles preserve each checkout's
