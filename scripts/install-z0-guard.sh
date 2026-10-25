@@ -11,12 +11,13 @@ repo=$(dirname "$(dirname "$(readlink -f "$0")")")
 backend=${Z0INT_BACKEND_REPO:-/mnt/zer0models/z0-wt/bend-policy-laws}
 backend_head=$(git -C "$backend" rev-parse HEAD)
 # Content-stamped copies survive retirement of the source checkout.
-read -r version _ < <({ cat "$repo/scripts/z0-guard" "$repo/scripts/worktree-reaper.py" \
+read -r version _ < <({ cat "$repo/scripts/z0-guard" "$repo/scripts/worktree-reaper.py" "$repo/scripts/artifact-leases.py" \
   "$repo/config/systemd/user/worktree-reaper.service" \
   "$repo/config/systemd/user/worktree-reaper.timer"; printf '%s\n' "$backend_head"; } | sha256sum)
 dest="$HOME/.local/lib/z0-guard/$version"
 install -Dm755 "$repo/scripts/z0-guard" "$dest/z0-guard"
 install -Dm755 "$repo/scripts/worktree-reaper.py" "$dest/worktree-reaper.py"
+install -Dm755 "$repo/scripts/artifact-leases.py" "$dest/artifact-leases.py"
 mkdir -p "$dest/src"
 git -C "$backend" archive "$backend_head" src | tar -x --strip-components=1 -C "$dest/src"
 printf '%s\n' "$backend_head" > "$dest/backend-head"

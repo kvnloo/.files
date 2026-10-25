@@ -113,7 +113,6 @@ nodes:
       serial: R5CY93G2WNH       # hardware identity, not a pinned adb endpoint
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
-      min_disk_free_gb: 5
       min_battery_pct_on_battery: 2
       strikes: 2
       on_unhealthy: pause
@@ -139,7 +138,6 @@ nodes:
       serial: RFCTA1RZAQY       # discovery verifies every transport with ro.serialno
       revive: false
     health:
-      min_disk_free_gb: 5
       min_battery_pct_on_battery: 2
       strikes: 2
       on_unhealthy: pause

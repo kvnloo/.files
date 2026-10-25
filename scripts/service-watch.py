@@ -309,6 +309,8 @@ class Watch:
         self.pending = queue.Queue(maxsize=512)
         self.stop = threading.Event()
         self.last_scan = 0
+        self.scan_freshness_seconds = 90
+        self.scan_watchdog_at = time.monotonic()
         self.coverage = {}
         self.policy_source_cache = {}
         self.checkout_lock = threading.Lock()
@@ -493,7 +495,9 @@ class Watch:
         self.phone_caps_invariant()
         self.journals()
         self.store.digest()
-        dash.atomic(self.store.root / 'status.json', {'updated_at': time.time(), 'pid': os.getpid(),
+        completed_at = time.time()
+        dash.atomic(self.store.root / 'status.json', {'updated_at': completed_at,
+                    'scan_completed_at': completed_at, 'pid': os.getpid(),
                     'units': len(self.units), 'coverage': self.coverage, 'report_only': True,
                     'worktrees': self.store.get('worktree-reaper'),
                     'pending': self.store.db.execute('SELECT count(*) FROM pending').fetchone()[0],
@@ -857,7 +861,10 @@ class Watch:
     def watchdog(self, interval=10):
         # This path must never acquire the Store lock or wait for a scan/model.
         while not self.stop.wait(interval):
-            notify_systemd('WATCHDOG=1')
+            if time.monotonic() - self.scan_watchdog_at <= self.scan_freshness_seconds:
+                notify_systemd('WATCHDOG=1')
+            else:
+                notify_systemd('STATUS=Completed service scan is stale; withholding watchdog')
 
     def serve(self, scan_interval=15, watchdog_interval=10):
         worker = threading.Thread(target=self.worker, name='service-watch-triage', daemon=True)
@@ -867,11 +874,13 @@ class Watch:
                                     name='service-watch-checkouts', daemon=True)
         checkout.start()
         worker.start()
+        self.scan_watchdog_at = time.monotonic()
         notify_systemd('READY=1')
         watchdog.start()
         try:
             while not self.stop.is_set():
                 self.scan()
+                self.scan_watchdog_at = time.monotonic()
                 self.stop.wait(scan_interval)
         finally:
             self.stop.set()
@@ -913,7 +922,7 @@ def main():
     if args.action == 'status':
         path = args.state / 'status.json'
         status = json.loads(path.read_text()) if path.exists() else {}
-        age = int(time.time() - status.get('updated_at', 0))
+        age = int(time.time() - status.get('scan_completed_at', 0))
         print(f'service-watch {"healthy" if age < 90 else "STALE"}: {status.get("units", 0)} units, heartbeat {age}s, pending {status.get("pending", 0)}; digest {args.state}/digests/{datetime.date.today()}.md')
         return int(age >= 90)
     if args.action == 'details':
@@ -931,7 +940,7 @@ def main():
         watch.record(args.scope, args.target, [event('failed')])
     elif args.action == 'heartbeat':
         status = json.loads((args.state / 'status.json').read_text()) if (args.state / 'status.json').exists() else {}
-        if time.time() - status.get('updated_at', 0) > 120:
+        if time.time() - status.get('scan_completed_at', 0) > 120:
             watch.record('user', 'service-watch.service', [event('heartbeat_stale')])
     elif args.action == 'seed':
         watch.discover()

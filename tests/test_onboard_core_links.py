@@ -11,11 +11,26 @@ def test_core_links_install_service_executable_aliases(tmp_path: Path) -> None:
     home = tmp_path / "home"
     state = tmp_path / "state"
     home.mkdir()
+    backend = tmp_path / "backend"
+    module = backend / "src/z0int/fsm/guard.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("print('fixture-backend')\n")
+    for args in (
+        ("init", "-b", "main"),
+        ("add", "."),
+        ("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-m", "test backend"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(backend), *args],
+            check=True, capture_output=True, text=True,
+        )
     env = os.environ | {
         "HOME": str(home),
         "XDG_STATE_HOME": str(state),
         "ONBOARD_NONINTERACTIVE": "1",
         "ONBOARD_ASSUME_YES": "1",
+        "Z0INT_BACKEND_REPO": str(backend),
     }
 
     completed = subprocess.run(

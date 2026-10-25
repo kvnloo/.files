@@ -39,6 +39,7 @@ def main():
     parser.add_argument('--fetch', action='append', default=[])
     parser.add_argument('--out', type=Path)
     parser.add_argument('--snapshot', type=Path)
+    parser.add_argument('--max-api-requests', type=int, help='accounting scan request ceiling; exhaustion fails closed')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -92,6 +93,8 @@ def main():
     if args.snapshot:
         budget_args += ['--snapshot', str(args.snapshot)]
     budget_args += ['--parallel', str(args.parallel), '--overhead-minutes', '2']
+    if args.max_api_requests is not None:
+        budget_args += ['--max-api-requests', str(args.max_api_requests)]
     decision_process = subprocess.run(budget_args, text=True, stdout=subprocess.PIPE)
     if decision_process.returncode:
         print(decision_process.stdout, file=sys.stderr)

@@ -399,6 +399,7 @@ class ExecutionIntegration(TempHome):
         result = self.store.get("j")
         self.assertEqual(result["state"], "succeeded")
         self.assertEqual(result["attempt"], 1)
+        self.assertEqual((self.cwd.parent / "exit").read_text(), "0\n")
         log = (self.state / "j.log").read_text()
         self.assertIn("PAYLOAD_OK", log)
         self.assertIn(str(self.home.resolve() / "fleet-jobs/j/home"), log)
@@ -408,6 +409,7 @@ class ExecutionIntegration(TempHome):
         asyncio.run(worker.Executor(self.store, self.polite).execute(job))
         self.assertEqual(self.store.get("j")["attempt"], 0)
         self.assertFalse((self.state / "j.log").exists())
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_failed_gate_leaves_queued_not_admitted(self):
         job = self.store.submit("j", self.spec())
@@ -415,6 +417,7 @@ class ExecutionIntegration(TempHome):
             asyncio.run(worker.Executor(self.store, self.polite).execute(job))
         self.assertEqual(self.store.get("j")["state"], "queued")
         self.assertEqual(self.store.get("j")["attempt"], 0)
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_running_lease_expiry_drains_then_requires_confirmation(self):
         job = self.store.submit("j", self.spec(argv=[sys.executable, "-c", "import time; time.sleep(60)"]), ttl=0.15)
@@ -422,6 +425,7 @@ class ExecutionIntegration(TempHome):
         result = self.store.get("j")
         self.assertEqual(result["state"], "needs-confirmation")
         self.assertFalse(common.alive(result["child"]))
+        self.assertFalse((self.cwd.parent / "exit").exists())
 
     def test_concurrent_attempts_cannot_duplicate_effect(self):
         code = "from pathlib import Path; p=Path('effects'); p.open('a').write('effect\\n')"
@@ -460,6 +464,50 @@ class ExecutionIntegration(TempHome):
 
 
 class ControllerTests(TempHome):
+    def test_completion_racing_heartbeat_uses_terminal_receipt_without_replay(self):
+        for final, expected in (({"state": "succeeded", "exit": 0}, 0),
+                                ({"state": "failed", "exit": 7}, 7),
+                                ({"state": "cancelled"}, 255)):
+            with self.subTest(final=final):
+                jid = "race-" + final["state"]
+                output = []
+                responses = [{"state": "queued", "lease": "TOKEN"}, {"state": "running"},
+                             common.Blocked("terminal heartbeat"), final, "complete log\n"]
+                with patch.object(controller, "transport", side_effect=responses) as transport:
+                    rc = controller.run(self.state, "phone", jid, {"argv": ["true"]},
+                                        ["ssh", "host"], output.append)
+                self.assertEqual(rc, expected)
+                self.assertEqual([call.args[1] for call in transport.call_args_list],
+                                 ["submit", "status", "heartbeat", "status", "logs"])
+                self.assertEqual(output, ["complete log\n"])
+                record = common.read(controller.records(self.state, "phone") / f"{jid}.json")
+                self.assertEqual(record["state"], final["state"])
+                self.assertTrue(record["terminal"])
+                self.assertEqual(record["availability"], "ready")
+
+    def test_completion_racing_expired_lease_uses_read_only_terminal_evidence(self):
+        responses = [{"state": "queued", "lease": "TOKEN"}, {"state": "queued", "expires": 0},
+                     common.Blocked("terminal lease"), {"state": "succeeded"}, "done\n"]
+        with patch.object(controller, "transport", side_effect=responses) as transport:
+            self.assertEqual(controller.run(self.state, "phone", "lease-race",
+                                            {"argv": ["true"]}, ["ssh", "host"], lambda _: None), 0)
+        self.assertEqual([call.args[1] for call in transport.call_args_list],
+                         ["submit", "status", "lease", "status", "logs"])
+
+    def test_heartbeat_failure_without_terminal_evidence_stays_unavailable(self):
+        for final in ({"state": "running"}, common.Blocked("SSH unavailable")):
+            with self.subTest(final=final):
+                responses = [{"state": "queued", "lease": "TOKEN"}, {"state": "running"},
+                             common.Blocked("heartbeat failed"), final]
+                with patch.object(controller, "transport", side_effect=responses) as transport:
+                    self.assertEqual(controller.run(self.state, "phone", "unavailable",
+                                                    {"argv": ["true"]}, ["ssh", "host"], lambda _: None), 255)
+                self.assertEqual([call.args[1] for call in transport.call_args_list],
+                                 ["submit", "status", "heartbeat", "status"])
+                record = common.read(controller.records(self.state, "phone") / "unavailable.json")
+                self.assertEqual(record["availability"], "unavailable")
+                self.assertFalse(record["terminal"])
+
     def test_real_openssh_consumer_uses_strict_first_policy(self):
         # Some Kueue images run the host UID without its passwd/NSS entry.
         # Prove plain ssh -G cannot run before skipping the policy consumer.

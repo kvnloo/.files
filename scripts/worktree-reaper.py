@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime as dt
+import errno
 import fcntl
 import hashlib
 import json
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import shlex
@@ -119,7 +121,60 @@ def active_guard_references():
     return {os.path.realpath(path): {reason} for path, reason in ACTIVE_GUARD_SOURCES.items()}
 
 
-def references():
+def symlink_references(home=None, extra_roots=None, out=None):
+    """Read link metadata only, including dangling installed-code links."""
+    home = Path.home() if home is None else Path(home)
+    if extra_roots is None:
+        extra_roots = [home / name for name in
+                       ('.agents', '.claude', '.codex', '.config', '.omp', '.hermes')]
+        extra_roots.append(Path('/workspace/hermes-home'))
+    refs = collections.defaultdict(set)
+    errors = []
+    ignored = []
+    visited = set()
+    installed = {'plugins', 'plugin-data', 'extensions', 'managed-extensions',
+                 'managed-skills', 'skills'}
+    for root in [home, *extra_roots]:
+        root = Path(root)
+        canonical = os.path.realpath(root)
+        if canonical in visited or not root.exists():
+            continue
+        visited.add(canonical)
+        def failed(error):
+            if error.errno == errno.EACCES and error.filename:
+                try:
+                    metadata = os.stat(error.filename)
+                    if (stat.S_ISDIR(metadata.st_mode) and
+                            metadata.st_uid != os.geteuid() and
+                            not metadata.st_mode & 0o055):
+                        ignored.append({'path': error.filename,
+                                        'reason': 'unreadable_foreign_owner',
+                                        'uid': metadata.st_uid,
+                                        'mode': oct(stat.S_IMODE(metadata.st_mode))})
+                        return
+                except OSError:
+                    pass
+            errors.append('installed-link inventory: ' + str(error))
+        for base, dirs, files in os.walk(root, followlinks=False, onerror=failed):
+            location = Path(base)
+            if location.name in installed or (
+                    any(part in installed for part in location.parts) and
+                    ('.git' in dirs or '.git' in files)):
+                refs[os.path.realpath(base)].add('installed-code-directory:' + str(location))
+            for name in [*dirs, *files]:
+                link = location / name
+                try:
+                    if link.is_symlink():
+                        refs[os.path.realpath(link)].add('home-symlink:' + str(link))
+                except OSError as error:
+                    failed(error)
+    if out is not None:
+        emit(out, 'installed_link_scan', reference_targets=len(refs),
+             unreadable_foreign_owner=ignored, errors=errors)
+    return refs, errors
+
+
+def references(out=None):
     refs = collections.defaultdict(set)
     errors = []
     def add(path, reason):
@@ -134,12 +189,10 @@ def references():
         refs[target].update(reasons)
     for target, reasons in active_guard_references().items():
         refs[target].update(reasons)
-    for root in ['/home/kvn/.local/bin', '/home/kvn/.config/systemd/user']:
-        for base, dirs, files in os.walk(root, followlinks=False):
-            for name in [*dirs, *files]:
-                link = Path(base) / name
-                if link.is_symlink():
-                    add(str(link.resolve()), f'deployment-symlink:{link}')
+    installed_refs, installed_errors = symlink_references(out=out)
+    for target, reasons in installed_refs.items():
+        refs[target].update(reasons)
+    errors.extend(installed_errors)
     # Read every process link we are allowed to inspect, never process contents.
     for proc in Path('/proc').iterdir():
         if not proc.name.isdigit():
@@ -438,11 +491,28 @@ def report(out, rows, actions, before, after, errors, mode):
     print(json.dumps(summary, indent=2), flush=True)
 
 
+def lease_allows_reaping(path, now):
+    """Legacy CLI obeys the same lease gate as the fleet actor."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('artifact_lease_policy', Path(__file__).with_name('artifact-leases.py'))
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    target = Path(path)
+    try:
+        lease = json.loads((target / policy.SIDECAR).read_text())
+        return (policy.allowed(target, policy.ROOTS['groot'])
+                and not (target / policy.SIDECAR).is_symlink()
+                and isinstance(lease, dict) and lease.get('kind') == 'worktree'
+                and policy.validate(lease, target, 'groot', now) is None)
+    except (OSError, ValueError):
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--apply', action='store_true', help='Archive and remove every non-LIVE checkout now')
-    mode.add_argument('--daily', action='store_true', help='Remove SAFE >=3d and archive WIP >=14d')
+    mode.add_argument('--apply', action='store_true', help='Archive and remove expired, leased non-LIVE checkouts')
+    mode.add_argument('--daily', action='store_true', help='Lease-only daily worktree reclamation')
     mode.add_argument('--inventory', action='store_true', help='Read-only inventory (default)')
     parser.add_argument('--root', action='append', dest='roots')
     parser.add_argument('--output', type=Path, default=OUTPUT)
@@ -471,7 +541,7 @@ def main():
         if hooks:
             target = os.path.realpath(os.path.join(path, os.path.expanduser(hooks)))
             HOOK_REFERENCES.setdefault(target, set()).add('git-core.hooksPath:' + path)
-    refs, errors = references()
+    refs, errors = references(args.output)
     reference_errors = list(errors)
     now = time.time()
     rows = []
@@ -514,12 +584,15 @@ def main():
             break
         if not mutating or row['class'] == 'LIVE':
             continue
+        if not lease_allows_reaping(row['path'], time.time()):
+            actions.append(emit(args.output, 'kept_without_expired_lease', path=row['path']))
+            continue
         if args.daily and row['mtime_age_days'] < (3 if row['class']=='SAFE' else 14):
             continue
         try:
             # Recollect links immediately before preservation, then once more
             # immediately before removal to close the inventory/activity race.
-            fresh, issues = references()
+            fresh, issues = references(args.output)
             if issues:
                 raise RuntimeError('Live reference refresh failed: ' + str(issues))
             reasons = live_reasons(row['path'], fresh)
@@ -534,7 +607,10 @@ def main():
             # A durable verified archive receipt always precedes removal.
             archive = preserve(row, args.output, args.archive)
             actions.append({'event': 'archived', **archive})
-            fresh, issues = references()
+            if (args.output / 'PAUSED').exists():
+                emit(args.output, 'removals_paused', reason='operator PAUSED marker before removal')
+                break
+            fresh, issues = references(args.output)
             reasons = live_reasons(row['path'], fresh)
             if issues or reasons:
                 raise RuntimeError('Checkout became live after archive: ' + str(reasons or issues))
@@ -544,10 +620,15 @@ def main():
                 raise RuntimeError('HEAD changed during archival')
             if newest_mtime(row['path'], time.time()-DAY) > time.time()-DAY:
                 raise RuntimeError('Working files changed during archival')
+            if not lease_allows_reaping(row['path'], time.time()):
+                raise RuntimeError('Lease changed or renewed during archival')
             emit(args.output, 'remove_intent', path=row['path'], size_bytes=size, parent_repo=row['parent_repo'], remote=row['remote'], branch=row['branch'])
-            if row['plain_clone']:
+            # Absorbed submodules also use a .git file, but are not linked
+            # worktrees. Their Git directory is their common object store.
+            gitdir = text(row['path'], 'rev-parse', '--absolute-git-dir')
+            if row['plain_clone'] or os.path.realpath(gitdir) == row['parent_repo']:
                 linked = text(row['path'], 'worktree', 'list', '--porcelain').splitlines()
-                others = [l[9:] for l in linked if l.startswith('worktree ') and os.path.realpath(l[9:]) != row['path'] and os.path.exists(l[9:])]
+                others = [l[9:] for l in linked if l.startswith('worktree ') and os.path.realpath(l[9:]) not in {row['path'], row['parent_repo']} and os.path.exists(l[9:])]
                 if others:
                     raise RuntimeError('Primary clone still owns linked worktrees: ' + str(others))
                 shutil.rmtree(row['path'])

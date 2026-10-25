@@ -1,0 +1,11 @@
+[Unit]
+Description=Check artifact pressure every five minutes; reap hourly otherwise
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=10s
+Unit=artifact-leases.service
+
+[Install]
+WantedBy=timers.target

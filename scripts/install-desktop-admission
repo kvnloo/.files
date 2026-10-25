@@ -15,12 +15,10 @@ a = ap.parse_args()
 targets = {
     Path.home()/'.local/bin/fleet-build': repo/'scripts/fleet-build',
     Path.home()/'.local/bin/fleet-fframes-delivery': repo/'scripts/fleet-fframes-delivery',
-    Path.home()/'.local/bin/agent-resource-classify': repo/'scripts/agent-resource-classify',
+    # agent-launch, agent-resource-classify and agent.slice.d are owned by
+    # scripts/apply-agent-oom, which installs them from a content-stamped release.
     Path.home()/'.local/bin/agent-tool-run': repo/'scripts/agent-tool-run',
     Path.home()/'.config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf': repo/'config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf',
-    Path.home()/'.config/systemd/user/agent.slice.d/50-interactive-budget.conf': repo/'config/systemd/user/agent.slice.d/50-interactive-budget.conf',
-    Path.home()/'.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': repo/'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
-    Path.home()/'.local/bin/agent-launch': repo/'scripts/agent-launch',
     Path.home()/'.config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf': repo/'config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf',
     Path.home()/'.local/bin/groot-admit': repo/'scripts/groot-admit',
     Path.home()/'.config/zsh/agent-scopes.zsh': repo/'config/zsh/agent-scopes.zsh',

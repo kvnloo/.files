@@ -1,0 +1,12 @@
+{
+  "schema": "z0.artifact-controller.v1",
+  "pressure_free_percent": 10,
+  "pressure_threshold_basis": "explicit configuration, not measured calibration or a resource cap",
+  "hourly_seconds": 3600,
+  "nodes": {
+    "groot": {"transport": "local", "hostname": "groot", "user": "kvn", "pressure_path": "/mnt/zer0models"},
+    "mbp": {"transport": "ssh", "host": "mbp", "hostname": "mbp", "user": "kvn", "pressure_path": "/home/kvn"},
+    "s22": {"transport": "adb", "serial": "RFCTA1RZAQY", "model": "SM-S906U1", "roots": ["/data/local/tmp/fleet-jobs", "/data/local/tmp/edge-probe-*"], "guest": {"transport": "ssh", "host": "s22", "hostname": "localhost", "user": "root", "pressure_path": "/root"}},
+    "s25": {"transport": "adb", "serial": "R5CY93G2WNH", "model": "SM-S938U", "roots": ["/data/local/tmp/fleet-jobs", "/data/local/tmp/edge-probe-*"], "guest": {"transport": "ssh", "host": "root@100.104.42.85", "hostname": "localhost", "user": "root", "pressure_path": "/root"}}
+  }
+}

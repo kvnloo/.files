@@ -1,6 +1,5 @@
 [Unit]
-Description=Compile evidence-backed decision policy every fifteen minutes
-# Deliberately not enabled until the decision-policy CLI is deployed.
+Description=Discover model capacity and compile decision policy every fifteen minutes
 
 [Timer]
 OnCalendar=*-*-* *:00/15:00

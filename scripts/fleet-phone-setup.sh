@@ -34,7 +34,7 @@ serial=$("${SSH[@]}" "set -e
 }
 echo "==> adb device: $serial"
 
-tar -C "$REPO" -cf - scripts/fleet-polite-run scripts/fleet-node-probe scripts/fleet_phone.py scripts/fleet-phone-worker scripts/fleet-phone-supervisor scripts/fleet-phone-supervise config/fleet/phone/sv/fleet-worker/run config/fleet/phone/sv/finish config/fleet/phone/sv/log-run config/fleet/phone/services.example.json | "${SSH[@]}" "set -e
+tar -C "$REPO" -cf - scripts/fleet-polite-run scripts/fleet-node-probe scripts/fleet_phone.py scripts/fleet-phone-worker scripts/fleet-phone-supervisor scripts/fleet-phone-supervise config/fleet/phone/sv/fleet-worker/run config/fleet/phone/sv/tern-hosts/run scripts/tern-hosts-sync config/tern/hosts.names config/fleet/phone/sv/finish config/fleet/phone/sv/log-run config/fleet/phone/services.example.json | "${SSH[@]}" "set -e
   umask 022
   install -d ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs
   tmp=\$(mktemp -d); tar -xf - -C \$tmp
@@ -53,6 +53,13 @@ tar -C "$REPO" -cf - scripts/fleet-polite-run scripts/fleet-node-probe scripts/f
     install -m 0755 \$tmp/config/fleet/phone/sv/fleet-worker/run \$sv/run
     install -m 0755 \$tmp/config/fleet/phone/sv/finish \$sv/finish
     install -m 0755 \$tmp/config/fleet/phone/sv/log-run \$sv/log/run
+    th=\$HOME/.local/share/fleet/sv/tern-hosts
+    install -d -m 0700 \$th/log ~/.config/tern
+    install -m 0755 \$tmp/config/fleet/phone/sv/tern-hosts/run \$th/run
+    install -m 0755 \$tmp/config/fleet/phone/sv/finish \$th/finish
+    install -m 0755 \$tmp/config/fleet/phone/sv/log-run \$th/log/run
+    install -m 0755 \$tmp/scripts/tern-hosts-sync ~/.local/bin/tern-hosts-sync
+    install -m 0644 \$tmp/config/tern/hosts.names ~/.config/tern/hosts.names
     install -m 0755 \$tmp/scripts/fleet-phone-supervise ~/.local/bin/fleet-phone-supervise.new
     mv -f ~/.local/bin/fleet-phone-supervise.new ~/.local/bin/fleet-phone-supervise
     echo 'executor service installed: existing tree is untouched; enrolls at next supervisor start'

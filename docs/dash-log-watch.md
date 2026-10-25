@@ -96,6 +96,13 @@ unreadable policy source produces `invariant_unavailable`, not a clean pass.
 Only the finding count crosses the model projection; paths/source text stay
 local. This check does not change limits, pause jobs or remediate anything.
 
+The watchdog does not wait for the Store lock. It sends pings only while the
+last completed scan is at most 90 seconds old, with the same startup grace.
+A blocked scan cannot renew that deadline. After the deadline, the watcher
+withholds pings so systemd can restart it. `status.json` records
+`scan_completed_at`; status and heartbeat checks use that completion timestamp,
+not process liveness or the start of an unfinished scan.
+
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
@@ -158,14 +165,27 @@ O10 Git hooks are installed by `scripts/setup-phone-caps-hooks.sh` into
 `~/.local/lib/files-hooks/<content-sha256>/`; both checks derive the committing
 repository with `git rev-parse --show-toplevel`, never from the hook location
 or a temporary extraction tree.
+`uniichat-luna.service` preserves the live transient server's environment,
+resource limits, slice and port 8798 as a permanent enabled user service.
 O10 receives the actual checkout root and scans its scripts and registry.
 When these IaC PRs merge into `dev`, replace the deployment with `/workspace/.files`,
 switch the links together and build the guard release from that canonical tree.
 
-`z0int-policy.timer` declares a fifteen-minute ingest/compile cadence from
-`/mnt/zer0models/z0-wt/decision-policy`, but is intentionally **disabled** until
-the operator confirms that CLI is deployed. The service executes ingest then
-compile only on success, with a five-minute wall limit and bounded resources.
+`z0int-policy.timer` declares a fifteen-minute discovery/ingest/compile cadence
+from the policy-only immutable release at `~/.local/lib/z0int-policy/current`.
+The approved fleet declaration enables it. It first runs
+`python -m z0int.policy.autoeval tick`, then `python -m z0int.cli policy`
+ingest and compile only on success,
+with a five-minute wall limit and bounded resources. Discovery reads
+`$Z0INT_HOME/config/choice-ladder.json`; absent configuration is a no-op.
+Configured missing or near-expiry model scopes enqueue separate transient user
+services so evaluation survives completion of the timer's oneshot. Those
+workers use Kueue `bench` admission or the configured `groot-admit` CUDA lane;
+the timer itself does not perform inference. The policy-only pointer must target
+a content-stamped source release with its immutable Python runtime before
+activation. It does not repoint the shared shadow release or restart model/loop
+services. Real scorer/corpus/runtime digests and the exact serving `/props`
+build_info belong in the private `choice-ladder.json` configuration.
 The loop, intelligence and policy services declare `Z0INT_LIVE_HOME=%h/.z0int`
 through drop-ins; installing these does not restart active model/loop units.
 ServiceWatch checks contract-v1 policy files once per discovery cycle: policy
@@ -201,6 +221,14 @@ removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
 LIVE checkouts are never removed. The classifier lives in
 `scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
 external ops-plane dispatcher.
+The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
+It also scans the agent configuration roots and `/workspace/hermes-home`.
+Installed plugin, extension, and skill directories are live code sources.
+Unreadable link inventories block removals, except `EACCES` on a foreign-owned
+directory with no group/other read or execute bits. The scan receipt records
+that exclusion as `unreadable_foreign_owner`. A traversable directory such as
+mode `0711` still fails closed. A verified archive does not permit removing a
+checkout that still serves an installed link.
 Every removal, including SAFE linked worktrees and standalone clones, requires a
 verified local bundle receipt first. Linked worktrees share an immutable full
 base bundle per common Git store; WIP delta bundles preserve each checkout's
@@ -208,6 +236,9 @@ additional state without duplicating the complete history. The manifest's
 `restore_command` records both base and delta restoration when needed. A base
 clone remains when needed by LIVE linked worktrees. Archive errors prevent the
 affected removal and remain visible in the operational records.
+Absorbed submodules use a `.git` file without being linked worktrees. The reaper
+preserves their Git state in a verified bundle before removing their directory.
+It retains any common object store that still serves another linked checkout.
 The checkout baseline validates real Git roots and excludes generated Git
 fixtures beneath run, artifact, cache, and test-output containers; those fixtures
 are not checkouts and do not contribute to the watcher threshold.

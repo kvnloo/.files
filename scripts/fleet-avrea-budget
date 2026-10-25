@@ -26,6 +26,9 @@ if queueing occurs. Lower allowance_minutes if actual eligibility requires it.
 Every check paginates the explicit factory scope since the baseline, plus active
 and locally bound run IDs. Missing/failed/truncated requests fail closed. Runtime
 is an estimate, NOT an invoice: post-snapshot runtime plus a minute per Avrea job.
+The default scan budget is 2,000 API requests, not a repository/run limit.
+--max-api-requests overrides it; exhausting it still refuses admission. Successful
+decisions report api_requests so operators can size the bound from full scans.
 Locally admitted queued/running jobs retain their FULL requested reservation.
 Other active factory jobs accrue elapsed runtime only: their unknown future
 runtime is NOT reserved, and is explicitly reported in the result. This is the
@@ -180,13 +183,15 @@ def snapshot_at(path, now):
 
 
 class GitHub:
-    def __init__(self, max_requests=200):
+    def __init__(self, max_requests=2000):
         self.remaining = max_requests
+        self.requests = 0
 
     def get(self, endpoint):
         if self.remaining <= 0:
-            raise AccountingError("public scan request limit reached; accounting incomplete")
+            raise AccountingError(f"public scan request limit reached after {self.requests} requests; accounting incomplete")
         self.remaining -= 1
+        self.requests += 1
         try:
             proc = subprocess.run(["gh", "api", "--hostname", "github.com", endpoint],
                                   capture_output=True, text=True, timeout=30)
@@ -410,7 +415,8 @@ def check(args, now=None):
             return result(False, message="refused: parallel exceeds snapshot account cap",
                           max_parallel=snapshot["max_parallel"]), 75
         state = load_state(path, now.strftime("%Y-%m"))
-        incremental, retained, repo_count, active_jobs = scan(GitHub(args.max_api_requests), captured, now, args.repo, state["reservations"], snapshot)
+        api = GitHub(args.max_api_requests)
+        incremental, retained, repo_count, active_jobs = scan(api, captured, now, args.repo, state["reservations"], snapshot)
         used = number(snapshot["used_minutes"], "used_minutes") + incremental
         requested = ratio * jobs * timeout + overhead
         local = sum((number(item["minutes"], "reservation minutes") for item in retained), Decimal(0))
@@ -431,6 +437,7 @@ def check(args, now=None):
             message += f"; {active_jobs} active factory jobs: unknown future runtime not reserved (local reservations retained)"
         return result(allowed, used, reserved, allowance, message,
                       reservation_id=reservation_id, requested_minutes=float(requested),
+                      api_requests=api.requests, max_api_requests=args.max_api_requests,
                       max_parallel=snapshot["max_parallel"], source={"snapshot": snapshot["source"],
                       "captured_at": snapshot["captured_at"], "scope": "factory-actions-only",
                       "active_jobs": active_jobs, "running_accounting": "elapsed only for unknown active jobs; full durable local reservations",
@@ -455,7 +462,8 @@ def main(argv=None):
     check_parser.add_argument("--parallel", type=int, default=1, help="requested concurrent jobs; checked against account snapshot cap")
     check_parser.add_argument("--snapshot", default=os.environ.get("FLEET_AVREA_SNAPSHOT", str(DEFAULT_STATE / "snapshot.json")))
     check_parser.add_argument("--overhead-minutes", type=float, default=0, help="additional reference-minute setup reservation")
-    check_parser.add_argument("--max-api-requests", type=int, default=200)
+    check_parser.add_argument("--max-api-requests", type=int, default=2000,
+                              help="complete-scan request ceiling (default 2000); exhaustion fails closed")
     for name in ("release", "settle"):
         child = commands.add_parser(name)
         child.add_argument("--reservation-id", required=True)

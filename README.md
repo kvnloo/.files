@@ -40,6 +40,17 @@ Useful commands:
 ./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
+## Agent state packet freshness
+
+`scripts/install-state-packet-timer.sh --activate` installs content-stamped user
+units and enables `z0-state-packet.timer` on a persistent 15-minute calendar.
+The oneshot service calls `~/.local/lib/z0-state-packet/current/bin/generate-packet`,
+which must first be installed from the z0intelligence startup-packet feature.
+It publishes `~/.local/state/z0int/STATE-PACKET.md` atomically.
+OMP, Hermes and Claude Code replace packets older than two hours with a
+one-line stale warning. Unit replacements have backups under
+`~/.local/state/z0int/startup-packet-unit-backups/`.
+
 ## What this repo configures
 
 - **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
@@ -63,6 +74,19 @@ This tree is public. Treat anything that can authenticate as **out of band**:
 - Do not commit Tailscale auth keys, provider API tokens, SSH private keys, or shell history.
 - `scripts/with-secrets` loads local dotenvx material; keys never ship in git.
 - See [AGENTS.md](AGENTS.md) safety rules for agent harnesses cloning this repo.
+
+## Python tests
+
+Use a fresh virtual environment and install `requirements-test.txt`.
+Run `python -m pytest tests -q` for the clean-runner suite.
+The dependency list includes NumPy for the next-action reranker.
+The runner also needs Bash, Git, and the Lua compiler (`luac`) on `PATH`.
+
+Tests with the `live_system` marker check a deployed desktop, installed tools,
+or real provider accounts. The default suite deselects these checks.
+Run `python -m pytest tests -q --run-live-system -m live_system` on the
+configured operator machine to run those checks explicitly.
+Do not copy account credentials or desktop state into a CI runner.
 
 ## License
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=[systemd-run] /home/kvn/.local/bin/unii serve 8798
+
+[Service]
+MemoryMax=1572864000
+Nice=5
+Restart=on-failure
+Slice=agent.slice
+WorkingDirectory=/home/kvn/.local/state/uniichat-luna
+Environment="UNII_DIR=/home/kvn/.local/state/uniichat-luna" "UNII_NO_TELEMETRY=1" "HOME=/home/kvn/.local/state/uniichat-luna/server-home" "OMP_AGENT_DIR=/home/kvn/.omp/agent" "PATH=/home/kvn/.local/share/tern/omp/bin:/home/kvn/.actual/bin:/home/kvn/.empryo/bin:/home/kvn/.local/bin:/home/kvn/.local/bin:/home/kvn/.grok/bin:/home/kvn/.local/bin:/home/kvn/.kimi-code/bin:/home/kvn/.local/share/../bin:/run/user/1000/fnm_multishells/2423128_1771438712342/bin:/home/kvn/.bun/bin:/home/kvn/.hermes/profiles/chiefstaff/bin:/home/kvn/Library/Python/3.9/bin:~/.npm-global/bin:/home/kvn/.local/bin:/usr/local/sbin:/home/kvn/.elan/bin:/home/kvn/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin:/opt/cuda/bin:/home/kvn/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/usr/lib/jvm/default/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:/home/kvn/.rvm/bin:/home/kvn/android/sdk/cmdline-tools/latest/bin:/home/kvn/android/sdk/platform-tools:/home/kvn/android/sdk/emulator:/home/kvn/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin:/home/kvn/.maestro/bin"
+ExecStart="/home/kvn/.local/bin/unii" "serve" "8798"
+
+[Install]
+WantedBy=default.target

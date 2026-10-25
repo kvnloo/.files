@@ -16,6 +16,7 @@
 #   --phone          arm64 phone jobs, without an implicit resource budget
 #   --guest          explicitly use the phone's SSH Linux userland (Python/Bash/Git)
 #   --node NAME      avrea, mbp (Kueue default), mbp-host (quota-held host), k3s-mbp, phones, boat
+#                    s25|s22 = guest Python venv; phones = healthiest reachable guest.
 #   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
 #   --class test|build|bench  Kueue priority; pytest defaults test, all-CPU defaults bench
 #   --checkpoint-safe        certify bench resumes atomic checkpoints after preemption
@@ -31,7 +32,7 @@
 #   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
 #   --local-data     never send this job to Boat, even with --public
 #   --repo OWNER/REPO --sha SHA  Avrea: public exact head (otherwise clean local origin/HEAD)
-#   --runner LABEL --matrix FILE --parallel N --snapshot FILE  Avrea options
+#   --runner LABEL --matrix FILE --parallel N --snapshot FILE --max-api-requests N
 #
 # Examples:
 #   cd noop-oura/android && fleet-build --class build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
@@ -72,7 +73,7 @@ while [ $# -gt 0 ]; do
       case $2 in test|build|bench) priority_class=$2 ;; *) echo "fleet-build: --class must be test, build or bench" >&2; exit 2 ;; esac
       shift 2 ;;
     --checkpoint-safe) checkpoint_safe=1; shift ;;
-    --repo|--sha|--runner|--matrix|--parallel|--snapshot) avrea_opts+=("$1" "$2"); shift 2 ;;
+    --repo|--sha|--runner|--matrix|--parallel|--snapshot|--max-api-requests) avrea_opts+=("$1" "$2"); shift 2 ;;
     --mem) mem=$2; shift 2 ;;
     --cpus) cpus=$2; shift 2 ;;
     --timeout) timeout=$2; shift 2 ;;
@@ -131,6 +132,22 @@ if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi
 
+# Pure-Python phone jobs use the existing leased guest executor, never native adb.
+# Do not carry build-class defaults or artificial resource caps into this lane.
+python_guest=0
+case $node in
+  s25|s22|omarchy-phone|galaxy-s22plus|phones)
+    [ "$mode" != android ] && [ -z "$jdk" ] || {
+      echo "fleet-build: Android/JDK builds stay on the MBP, not phone Python guests" >&2; exit 2;
+    }
+    [ -z "$mem" ] && [ -z "$cpus" ] || {
+      echo "fleet-build: phone Python guests do not accept agent resource caps" >&2; exit 2;
+    }
+    python_guest=1; guest=1; mode=phone
+    [ "$node" != phones ] || node=""
+    ;;
+esac
+
 # Ship the whole repo, run from the same subdirectory the caller is in.
 if [ -z "$src" ]; then
   src=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -142,6 +159,7 @@ rel=${rel:-.}
 
 args=(run --src "$src")
 [ "$guest" = 0 ] || args+=(--guest)
+[ "$python_guest" = 0 ] || args+=(--python-venv)
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
   build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
@@ -222,6 +240,9 @@ fi
 if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
   state=${FLEET_STATE:-$HOME/.local/state/fleet}
   mkdir -p "$out"
+  lease_receipts=()
+  for f in "${fetch[@]}"; do lease_receipts+=(--keep-receipt "$(basename "$f")"); done
+  python3 "$(dirname "$FLEET")/artifact_lease.py" "$out" --owner "$jid" --node "$(hostname)" --kind spool "${lease_receipts[@]}"
   for f in "${fetch[@]}"; do
     p="$state/runs/$jid/$pre$f"
     [ -e "$p" ] && cp -a "$p" "$out/" && echo "fleet-build: $f -> $out/$(basename "$f")" >&2

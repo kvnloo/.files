@@ -171,3 +171,29 @@ than a second `bunx` package install. See the audit for real failure receipts.
 
 Android manages phone memory and cached apps. Do not infer a guest job budget
 from phone-wide `MemAvailable`, or reserve RAM for Android on the agent's behalf.
+
+## Artifact leases
+
+Fleet SSH/guest jobs, native adb jobs, MBP Kueue stages, fetched job
+directories and `fleet-build --out` directories receive `.artifact-lease.json`.
+The `z0.artifact-lease.v1` record names the owning job, node, canonical path,
+artifact kind, UTC epoch creation time, seven-day TTL (604800 seconds), and
+safe relative `keep_receipts` paths. A complete temporary file is published
+atomically without replacing an existing lease. Reusing an output directory
+does not renew its lease or change its owner. Execution heartbeat leases are
+separate from these artifact-retention leases.
+
+Shared phone controller/worker JSON spool records remain receipts, not
+independently leased directories. Unknown live artifacts remain protected;
+a sidecar does not grant deletion authority or expand cleanup allowlists.
+Payload-return paths publish an atomic numeric `exit` receipt for Linux jobs,
+MBP host/container jobs, and guest jobs with definitive succeeded/failed
+outcomes. Disconnected controllers, admission holds, evicted containers,
+interrupted guest jobs and retryable attempts do not synthesize terminal
+receipts. Missing terminal evidence keeps an expired spool protected.
+Caller-selected `--out` locations are not automatically cleanup roots.
+
+For new agent worktrees, use
+`scripts/agent-worktree --owner JOB_ID --node NODE [-b BRANCH] PATH [COMMIT]`.
+Optional repeated `--keep-receipt RELATIVE_PATH` entries identify receipts
+to preserve before expiry cleanup. Plain git is not globally replaced.

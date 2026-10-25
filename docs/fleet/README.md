@@ -364,6 +364,13 @@ operator input; it is not self-reported by target code.
   settles them. Refresh the baseline after unrelated metered usage. This is
   an admission guard, not a hard all-account billing ceiling.
 
+The request ceiling is 2,000 API calls per full scan, not a repository/run limit.
+Use `--max-api-requests N` through `fleet-build --node avrea` for a larger scan.
+Successful decisions report `api_requests` and `max_api_requests`. Exhaustion or
+incomplete pagination still fails closed. All configured repositories, attempts
+and explicit run IDs remain in scope. An operator can record remaining credit
+as `allowance_minutes` with `used_minutes: 0` at the screenshot capture time.
+
 Caching is colocated: `actions/cache@v4+` and language setup caches work
 without migration; package registries and supported build tools are proxied.
 Regular cache quota25GB/repo, LRU eviction, unused entries eligible after7days.
@@ -488,6 +495,36 @@ renders everything into a temp dir without root.
 | logind (laptops) | lid close on AC does nothing | a closed laptop keeps working; on battery the default applies and health cordons it under 40 % |
 | agentjob | own user, home 0700, no groups (not docker/wheel), password locked, lingering user manager, slice caps + IP deny | host jobs cannot see the owner's files, docker or sudo |
 | updates | `fleet-updates.timer` daily: `checkupdates -d` downloads, writes `/var/lib/fleet/updates.json` | see below |
+
+### Groot model farm memory boundary
+
+`config/systemd/user/z0-farm-llama.service` owns the existing
+`/workspace/z0-farm/llama.cpp-b11270` router and its model children. Model
+files/symlinks remain in `/workspace/z0-farm/models/router`; this change does
+not download models or compile llama.cpp. Apply only this service with
+`scripts/apply-z0-farm` from the merged `deploy/live` checkout.
+
+The 2026-10-24 host snapshot measured 25,082,167,296 bytes RAM, a farm
+cgroup peak of 9,376,071,680 bytes, and 8,227,745,792 bytes currently swapped
+out (with 1,480,888,320 bytes resident). These are different measurements,
+not an additive peak. Previously both memory and swap were unlimited.
+The farm now starts reclaim at 6 GiB, is capped at 8 GiB RAM and 512 MiB
+swap across the entire service cgroup, and has normal OOM preference
+`none`. An OOM terminates the farm group rather than leaving model children.
+The router admits one resident model instead of two and sleeps idle children
+after 120 seconds instead of 900. The largest backing model is 9,001,752,960
+bytes; GPU offload does not prove every model/request fits the RAM boundary.
+Oversized requests may lose the farm, not consume unbounded host memory.
+Prompt checkpoint cache RAM is explicitly limited to 512 MiB instead of the
+installed binary's 8192 MiB default per child. This is not the GPU KV context
+size; context 8192 and two parallel slots remain unchanged.
+
+These bounds are containment, not a reservation or model throughput claim.
+The existing `groot-admit` 6144 MiB available-RAM reserve, PSI and swap gates
+remain unchanged for new jobs. No desktop slice or compositor is changed.
+After applying, inspect `systemctl --user show z0-farm-llama.service` for
+`MemoryHigh`, `MemoryMax`, `MemorySwapMax`, `MemoryCurrent`, `MemorySwapCurrent`
+and `ControlGroup`; `/models` shows router availability without loading weights.
 
 ### Updates policy (CachyOS/Arch)
 
@@ -923,3 +960,100 @@ unit lookup paths. Live unit archives, cron before/after receipts and exact
 rollback commands are in
 `operations/host-hygiene/RETIREMENT-20261024.md` under the operations data tree.
 Do not reactivate archived experiment services as part of fleet enrollment.
+
+## Artifact lease timer and disk pressure
+
+`config/fleet/artifact-leases.json` fixes the controller targets: groot owner
+`kvn`, strict SSH alias `mbp` (hostname `mbp`, owner `kvn`, home `/home/kvn`),
+and Android hardware identities S22 `RFCTA1RZAQY` / `SM-S906U1` and S25
+`R5CY93G2WNH` / `SM-S938U`. Existing SDK adb transports are discovered without
+port scanning, pairing, UI interaction or changes to serving paths.
+
+`scripts/artifact-lease-controller.py --output /ABS/reports` gathers all four
+reports. Add `--enroll` for seven-day retroleases from now; add `--apply` only
+under authorized cleanup. Linux execution ships the same `artifact-leases.py`
+and existing #63 `worktree-reaper.py` classifier together; there is no second
+Linux deletion policy. Core receipts remain at
+`~/.local/state/artifact-leases/core/NODE`, controller reports at the requested
+output directory. A node transport/identity failure is a nonzero controller
+result with a per-node error receipt, never permission to delete.
+
+Native Android has no Python requirement. Its shell inventory covers only
+`/data/local/tmp/fleet-jobs/*` and `/data/local/tmp/edge-probe-*`, excludes
+symlink entries, inspects lease sidecars and probes process stat/cwd visibility.
+Any denied process read is explicit unknown visibility; all native entries stay
+KEEP. Native `--apply` is an explicit safe no-op with zero would-reap bytes, not
+a claim that lease expiry or complete live-reference classification was established.
+
+Phone reports nest `guest` (the same Python core over strict SSH) and `native`
+inventory, summing would-reap bytes. S25 guest is pinned to
+`root@100.104.42.85`, Python hostname `localhost`, home `/root`.
+S22 alias `s22` timed out during identity discovery; its null hostname is
+deliberately failclosed pending an observed identity and config update.
+Unavailable guest/native lanes retain the other lane's receipt and mark the
+report incomplete; incomplete reports produce a nonzero controller result.
+Repeatable `--node s22 --node s25` restricts a real apply to those nodes.
+
+The report-only `artifact-leases.timer` checks every five minutes. It targets
+groot, MBP and S22 only; S25 is excluded pending its separate cleanup review.
+It neither enrolls leases nor deletes artifacts. `--monitor` runs each node
+hourly otherwise and immediately on a check below 10% free
+space. **10% is explicit configuration, not measured calibration and not a
+resource cap.** Pressure does not shorten leases or override live/unknown
+protection; expired-oldest removal remains the core's ordering policy.
+Timer runs serialize through a controller lock; the core has its own lock.
+
+After source settles and the parent authorizes deployment, coordinate the
+deploy window with WorktreeReaper-2, FarmFix and ServiceWatch-2, then run:
+
+```sh
+bash scripts/install-artifact-leases.sh --activate
+```
+
+The installer reads committed source into an immutable SHA directory, backs
+up owned unit links, and enables the report-only lease timer. It leaves
+`worktree-reaper.timer` unchanged. The classifier, archive/report behavior
+and immutable worktree-reaper live links remain intact. It does not restart
+phone services. Deletion mode requires a separate review and authorization.
+For a read-only four-node receipt after authorization to run the core:
+
+```sh
+python3 scripts/artifact-lease-controller.py --output "$HOME/.local/state/artifact-leases/reports"
+```
+
+Controller tests (run on MBP together with the settled core tests):
+`python3 -m unittest discover -s tests -p 'test_artifact_lease*.py'`.
+## Coding-agent launch isolation
+
+Use `agent-launch NAME EXECUTABLE [args...]` for Tern panes and direct shell
+launches. It resolves the executable before entering an agent.slice scope,
+preserves arguments and exit status, and refuses an unbounded launch if the
+user manager is unavailable. An explicit `AGENT_LAUNCH_INLINE=1` is reserved
+for intentional container use, not desktop fallback. Existing agent.slice
+children do not create nested scopes. Each new session gets MemoryHigh=2G,
+MemoryMax=4G and MemorySwapMax=512M; the aggregate policy is 8G/10G/2G.
+
+After a normal deploy/live merge, run `python3 scripts/apply-agent-oom`
+first, then `python3 scripts/apply-agent-oom --apply`. The installer refuses
+to mutate when current usage exceeds 8GiB or current+swap exceeds 9GiB.
+It backs up and removes only the two conflicting user.control MemoryHigh
+and MemoryMax override files, snapshots the complete five-file installed
+closure into `~/.local/lib/files-live/<sha256>/`, links only that release and
+daemon-reloads. The stamp covers paths, contents and executable modes; a
+tampered existing release is rejected. No installed link points at a worktree.
+It never restarts a service or moves existing PIDs.
+If staging is reported, wait for jobs to finish naturally; do not kill them.
+Newly configured limits do not prove every old scope has a per-session cap.
+
+Explicit Tern pane commands are:
+`tern new tab --cwd DIR -- ~/.local/bin/agent-launch omp ~/.local/share/tern/omp/bin/omp`
+and `tern new tab --cwd DIR -- ~/.local/bin/agent-launch hermes ~/.local/bin/hermes`.
+The HUD uses this same seam. Tern's internal Carly is application-owned and
+is not intercepted by shell functions; do not claim universal isolation from
+these pane wrappers alone. A report-only placement guard detects bypasses.
+
+No user-unit desktop `ManagedOOMPreference=avoid` is installed: systemd ignores
+UID-owned preferences for root-ancestor swap victim selection. These workload
+limits reduce the failure mechanism, not a universal no-OOM guarantee; the
+privileged reservation/candidate-policy proposal is in the private operations
+`groot-oom/SYSTEM-OOMD.md`. Keep groot-admit's RAM reserve gate unchanged.

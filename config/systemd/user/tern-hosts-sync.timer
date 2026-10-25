@@ -1,0 +1,7 @@
+[Unit]
+Description=Keep the Tern host list in sync with Tailscale
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+[Install]
+WantedBy=timers.target

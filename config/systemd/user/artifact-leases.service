@@ -1,0 +1,7 @@
+[Unit]
+Description=Lease-only fleet reclamation report (hourly and disk-pressure)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/lib/artifact-leases/current/scripts/artifact-lease-controller.py --monitor --node groot --node mbp --node s22 --output %h/.local/state/artifact-leases/reports
+TimeoutStartSec=15min
