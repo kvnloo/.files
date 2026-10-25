@@ -933,3 +933,54 @@ unit lookup paths. Live unit archives, cron before/after receipts and exact
 rollback commands are in
 `operations/host-hygiene/RETIREMENT-20261024.md` under the operations data tree.
 Do not reactivate archived experiment services as part of fleet enrollment.
+
+## Artifact lease timer and disk pressure
+
+`config/fleet/artifact-leases.json` fixes the controller targets: groot owner
+`kvn`, strict SSH alias `mbp` (hostname `mbp`, owner `kvn`, home `/home/kvn`),
+and Android hardware identities S22 `RFCTA1RZAQY` / `SM-S906U1` and S25
+`R5CY93G2WNH` / `SM-S938U`. Existing SDK adb transports are discovered without
+port scanning, pairing, UI interaction or changes to serving paths.
+
+`scripts/artifact-lease-controller.py --output /ABS/reports` gathers all four
+reports. Add `--enroll` for seven-day retroleases from now; add `--apply` only
+under authorized cleanup. Linux execution ships the same `artifact-leases.py`
+and existing #63 `worktree-reaper.py` classifier together; there is no second
+Linux deletion policy. Core receipts remain at
+`~/.local/state/artifact-leases/core/NODE`, controller reports at the requested
+output directory. A node transport/identity failure is a nonzero controller
+result with a per-node error receipt, never permission to delete.
+
+Native Android has no Python requirement. Its shell inventory covers only
+`/data/local/tmp/fleet-jobs/*` and `/data/local/tmp/edge-probe-*`, excludes
+symlink entries, reports unknown process visibility and keeps all entries.
+Native `--apply` is an explicit safe no-op with zero would-reap bytes, not a
+claim that lease expiry or complete `/proc` visibility was established.
+
+The enabled `artifact-leases.timer` checks every five minutes. `--monitor`
+runs each node hourly otherwise and immediately on a check below 10% free
+space. **10% is explicit configuration, not measured calibration and not a
+resource cap.** Pressure does not shorten leases or override live/unknown
+protection; expired-oldest removal remains the core's ordering policy.
+Timer runs serialize through a controller lock; the core has its own lock.
+
+After source settles and the parent authorizes deployment, coordinate the
+deploy window with WorktreeReaper-2, FarmFix and ServiceWatch-2, then run:
+
+```sh
+bash scripts/install-artifact-leases.sh --activate
+```
+
+The installer reads committed source into an immutable SHA directory, backs
+up owned unit links, disables the old age-only `worktree-reaper.timer` mutation
+schedule, and enables the lease timer. The classifier, archive/report behavior
+and immutable worktree-reaper live links remain intact. It does not restart
+phone services. Do not run it during sibling edits.
+For a read-only four-node receipt after authorization to run the core:
+
+```sh
+python3 scripts/artifact-lease-controller.py --output "$HOME/.local/state/artifact-leases/reports"
+```
+
+Controller tests (run on MBP together with the settled core tests):
+`python3 -m unittest discover -s tests -p 'test_artifact_lease*.py'`.
