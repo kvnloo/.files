@@ -224,6 +224,7 @@ run_core_links() {
   for unit in agent.slice performance-pressure.service taildrop-portal.service taildrop-receive.service \
     dash-log-watch.service service-watch.service service-watch-failure@.service uniichat-luna.service \
     service-watch-heartbeat.service service-watch-heartbeat.timer z0int-policy.service z0int-policy.timer \
+    z0int-model-identity.service z0int-model-identity.path z0int-model-identity.timer \
     workspace-copilot-rerank.service workspace-copilot-rerank.timer tern-hosts-sync.service tern-hosts-sync.timer; do
     [[ -e "$repo/config/systemd/user/$unit" ]] && \
       onboard_link "$repo/config/systemd/user/$unit" "$HOME/.config/systemd/user/$unit"

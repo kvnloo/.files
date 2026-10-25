@@ -208,8 +208,13 @@ from the policy-only immutable release at `~/.local/lib/z0int-policy/current`.
 The approved fleet declaration enables it. It first runs
 `python -m z0int.policy.autoeval tick`, then `python -m z0int.cli policy`
 ingest and compile only on success,
-with a five-minute wall limit and bounded resources. Discovery reads
-`$Z0INT_HOME/config/choice-ladder.json`; absent configuration is a no-op.
+with a five-minute wall limit and bounded resources. The tick only reads cached
+identities; uncached weights report `identity_pending` with capacity zero.
+`z0int-model-identity.service` populates stat-keyed digests and metadata at nice
+19 / idle I/O priority, separately from policy compilation. Its path unit
+watches model directories and the serving registry; a daily timer is the
+backstop. Discovery reads `$Z0INT_HOME/config/choice-ladder.json`; absent
+configuration is a no-op.
 Configured missing or near-expiry model scopes enqueue separate transient user
 services so evaluation survives completion of the timer's oneshot. Those
 workers use Kueue `bench` admission or the configured `groot-admit` CUDA lane;
@@ -218,6 +223,12 @@ a content-stamped source release with its immutable Python runtime before
 activation. It does not repoint the shared shadow release or restart model/loop
 services. Real scorer/corpus/runtime digests and the exact serving `/props`
 build_info belong in the private `choice-ladder.json` configuration.
+During a schema cutover, keep the timer stopped until one manual
+`systemctl --user start z0int-policy.service` succeeds and the published policy
+matches the new contract. Only then start the timer. `enabled` alone does not
+prove that a timer is active. The 2026-10-24 19:37:12 SIGTERM was the explicit
+agent stop used to prevent a publication race, not evidence of an OOM kill;
+matching MemoryPeak and MemoryMax alone must not trigger a cap increase.
 The loop, intelligence and policy services declare `Z0INT_LIVE_HOME=%h/.z0int`
 through drop-ins; installing these does not restart active model/loop units.
 ServiceWatch checks contract-v1 policy files once per discovery cycle: policy

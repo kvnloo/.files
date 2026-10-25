@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh model identity cache daily as publication watch backstop
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=10min
+Unit=z0int-model-identity.service
+
+[Install]
+WantedBy=timers.target
