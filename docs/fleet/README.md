@@ -76,7 +76,7 @@ Builds and test suites do **not** run on groot. Use `scripts/fleet-build`
 [BUILDS.md](BUILDS.md).
 
 ```sh
-cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/full/debug --out /tmp/apk -- ./gradlew assembleFullDebug
+cd noop-oura/android && fleet-build --class build --fetch app/build/outputs/apk/full/debug --out /tmp/apk -- ./gradlew assembleFullDebug
 fleet-build --node avrea -- bash -lc 'bun install --frozen-lockfile && bun test'
 fleet-build --phone -- python3 -m pytest    # an arm64 phone job
 ```

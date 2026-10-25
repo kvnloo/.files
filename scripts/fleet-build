@@ -32,8 +32,8 @@
 #   --runner LABEL --matrix FILE --parallel N --snapshot FILE  Avrea options
 #
 # Examples:
-#   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
-#   cd lawnchair && fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
+#   cd noop-oura/android && fleet-build --class build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
+#   cd lawnchair && fleet-build --class build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
 #   fleet-build -- bun test
 #   fleet-build --light -- python3 -m pytest tests/unit
 #
