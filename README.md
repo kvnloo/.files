@@ -51,6 +51,13 @@ OMP, Hermes and Claude Code replace packets older than two hours with a
 one-line stale warning. Unit replacements have backups under
 `~/.local/state/z0int/startup-packet-unit-backups/`.
 
+`scripts/install-look-first-refresh.sh` adds the capability-index generator to
+the same oneshot service. It requires the reviewed LookFirst release first.
+The added command runs under `nice` and `ionice`, after packet generation.
+It refreshes GitHub metadata and the offline SQLite FTS5 index. No second
+timer is created. The installer reloads units but does not start a service.
+Do not apply this integration before the bundled AODL and IntentService review.
+
 ## What this repo configures
 
 - **Desktop**: Hyprland, Noctalia, Waybar, Rofi, phone display via Sunshine
