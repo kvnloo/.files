@@ -42,6 +42,10 @@ persistent working directory, and resume them when the command starts again.
 Do not append partial measurements to completed results. Kueue may terminate
 the pod at any point; do not rely solely on a SIGTERM handler. The source stage
 survives eviction and the submitter reconnects to the replacement pod.
+`--wait` bounds initial admission only; after admission, Kueue controls subsequent
+eviction/readmission without a client wait timer deleting checkpoints.
+Cancellation stops the Job but retains an unfinished checkpoint-safe source
+stage; its exact path remains in the JSON receipt for recovery.
 Unmodified, non-resumable benchmarks are rejected instead of silently losing
 progress or pretending that Kubernetes checkpoints arbitrary processes.
 Use explicit `--class build` for all-CPU builds, not to disguise benchmarks.
