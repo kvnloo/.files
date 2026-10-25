@@ -154,8 +154,8 @@ live = "~/.config/systemd/user/bws-secrets-sync.service"
 source = "config/systemd/user/bws-secrets-sync.service"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-bws-secrets"
+reason = "Refresh only protected per-consumer runtime credentials from the existing keyring-backed vault."
 migration_sha256 = "261a6fe866ebf9057da5093987cd635c171d5d34b46b4bab8eea11526005916f"
 
 [[user]]
@@ -163,8 +163,8 @@ live = "~/.config/systemd/user/bws-secrets-sync.timer"
 source = "config/systemd/user/bws-secrets-sync.timer"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-bws-secrets"
+reason = "Refresh scoped runtime credentials without persistent plaintext dotenv exports."
 migration_sha256 = "e91d2b131c7f978e732961c478188643200e8147eb42598f034f6b2497bcc99c"
 
 [[user]]
@@ -2756,8 +2756,8 @@ live = "~/.config/systemd/user/timers.target.wants/bws-secrets-sync.timer"
 source = "config/systemd/user/bws-secrets-sync.timer"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+owner = "scripts/install-bws-secrets"
+reason = "Enable the scoped vault refresh timer; no agent or desktop restart."
 migration_sha256 = "e91d2b131c7f978e732961c478188643200e8147eb42598f034f6b2497bcc99c"
 
 [[user]]
@@ -3791,8 +3791,8 @@ live = "~/.local/bin/omp-boat"
 source = "scripts/boat"
 scope = "user"
 install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+owner = "scripts/install-bws-secrets"
+reason = "Read the protected Boat runtime scope instead of plaintext agent dotenv files."
 migration_sha256 = "179b313bd784cf8dc2d40aaeef327373d8e05af79cd3aa2e4db48cddd8f142c8"
 
 [[user]]
@@ -3824,12 +3824,11 @@ migration_sha256 = "5d21b1f715630593648c25d35e1916b6537c47f3f54c5faf3c8ec2a4d2e5
 
 [[user]]
 live = "~/.config/environment.d/typesafe.conf"
-source = "config/host/private-environment.json"
+source = "config/environment.d/typesafe.conf"
 scope = "user"
-install = "copy"
-owner = "private-secret-owner"
-reason = "Preserve private credential mode0600 pending approved consumer-scoped secret migration."
-secret = "private-exception"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Secret-free mode0600 policy. Native OMP auth and scoped BWS consumers verified; private exception resolved."
 
 [[user]]
 live = "~/.local/bin/agent-resource-classify"
@@ -3911,3 +3910,147 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-dash-services"
 reason = "Minimal non-secret Metro proxy routing preserves installed phone launch URL."
+
+[[user]]
+live = "~/.local/bin/bws-env-exec"
+source = "scripts/bws-env-exec"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Inject only the named consumer allowlist; vault values never enter argv or persistent config."
+
+[[user]]
+live = "~/.local/bin/bws-apply-local-secrets"
+source = "scripts/bws-apply-local-secrets.sh"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Refresh mode0600 environment files beneath a mode0700 runtime directory."
+
+[[user]]
+live = "~/.local/bin/hermes"
+source = "scripts/hermes"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Direct Hermes launches use explicit per-profile vault scopes."
+
+[[user]]
+live = "~/.local/bin/hermes-agent"
+source = "scripts/hermes-agent"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "The alternate agent entrypoint uses the same scoped vault launcher."
+
+[[user]]
+live = "~/.local/bin/codexbar"
+source = "scripts/codexbar"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Complete stamped CodexBar closure loads its vault runtime scope before native login fallbacks."
+
+[[user]]
+live = "~/.local/bin/codexbar-noctalia"
+source = "scripts/codexbar-noctalia"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Noctalia and CLI share the stamped scoped-credential dependency closure."
+
+[[user]]
+live = "~/.local/bin/agent-launch"
+source = "scripts/agent-launch"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Hermes pane entrypoints use the same vault scope as direct launches; native OMP keeps its login store."
+
+[[user]]
+live = "~/.local/share/files-bws/consumers.json"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Name-only consumer allowlists and verified legacy-secret retirement mappings."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the root Hermes runtime scope and refresh dependency from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-cluster.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the root Hermes cluster runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-web.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the Hermes web runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes-gateway.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the clean-profile gateway runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the clean-profile Hermes runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/z0live-hermes.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the clean-profile z0live Hermes runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-chiefstaff.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the chiefstaff gateway runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-intake.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Generate the intake gateway runtime scope from the consumer map."
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Only the Jev consumer receives the TypeSafe runtime credential."
+
+[[user]]
+live = "~/.config/systemd/user/boat-reaper.service.d/60-bws-secrets.conf"
+source = "config/bws-consumers.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-bws-secrets"
+reason = "Only the Boat consumer receives the Boat runtime credential."
