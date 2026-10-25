@@ -108,7 +108,7 @@ spec:
         values: [lanes, fleet-mbp]
   queueingStrategy: BestEffortFIFO
   preemption:
-    withinClusterQueue: LowerPriority
+    withinClusterQueue: Never
   resourceGroups:
     - coveredResources: [cpu, memory]
       flavors:
