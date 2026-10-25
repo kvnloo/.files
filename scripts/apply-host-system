@@ -213,7 +213,7 @@ def install(source, root, apply=False, oomd=False):
                 print('RESTARTED: systemd-journald.service; no vacuum operation requested')
             subprocess.run(['journalctl', '--disk-usage'], check=True)
             subprocess.run(['systemd-analyze', 'cat-config', 'systemd/journald.conf'], check=True)
-            print('STAGED: zram resize only at next controlled reboot; no swapoff/restart performed')
+            print('UNCHANGED: zram logical=ram resident=ram/2 zstd priority=200; no resize/reboot change')
             print('SEPARATE MAINTENANCE: scripts/setup-k3s.sh server (20Gi reserve; k3s restart explicit, not performed)')
     print(f'APPLIED stage={"oomd" if oomd else "system"} changed={len(changes)} retired={len(removals)} backup={backup or "none (already converged)"}; only earlyoom/journald restarted if their config changed')
     return 0

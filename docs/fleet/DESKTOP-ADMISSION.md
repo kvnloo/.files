@@ -106,10 +106,10 @@ its tracked configuration changed, with activation/verification logs.
 | watermark_scale_factor | 200 | retain 200, not claimed optimum | Historical 36% direct reclaim; earlier 125 files conflict |
 | page-cluster / VFS pressure | 0 / 50 | distro-owned, no duplicate | Installed `70-cachyos-settings.conf` |
 | dirty limits | bytes=0/background=0, ratios20/10 | 256MiB/64MiB byte caps, ratios become zero | Runtime differed from last-on-disk file; distro already supplies these caps |
-| overcommit | mode1, ratio100 | mode0, ratio100 | Last-on-disk latency policy was mode0; restore heuristic checks, not promise no OOM |
+| overcommit | mode1, ratio100 | retain mode1, ratio100 | No measured reason to risk ENOMEM for large llama.cpp/Node/Bun/JVM mmap reservations |
 | old CFS scheduler keys | absent | remove invalid writes | Current 7.2.9 scheduler has no latency/min/wakeup/migration-cost sysctls |
 | other local networking/watch/process limits | existing custom values | preserve, not claimed tuned optimum | No measured reason to change working network/container semantics during memory repair |
-| zram | logical25,081,937,920 bytes, resident limit12,540,968,960; failed_writes8,655,925 | next reboot: logical=ram/8, resident=ram/8 (~2.92GiB each) | Historical allocator maximum12,541,140,992 reached cap; SYSTEM-OOMD.md; never resize live |
+| zram | logical=ram, resident=ram/2, zstd, priority200; failed_writes8,655,925 | kept; reconsider only with measured A/B (PSI + failed_writes + OOM count over >=24h) | Current11.63GB swapped/5.14GB resident supports keeping capacity; correct overcommitted workload budgets first |
 | sdb SSD scheduler | mq-deadline | keep distro mq-deadline | Two current samples: util99.4/98.9%, r_await8.81/8.10ms, w_await15.27/13.94ms; no controlled BFQ A/B evidence |
 | NVMe scheduler | kyber | distro-owned kyber, retire older local `none` writes | Installed `60-ioschedulers.rules` wins over both local singular rules |
 | mounts | sdb2 btrfs noatime/compress=zstd:3; root/workspace NVMe XFS noatime/lazytime; sda unmounted NTFS | preserve, no remount | fstab, mnt-zer0models.mount, findmnt/lsblk snapshot |
@@ -153,7 +153,7 @@ sudo python3 scripts/apply-host-system --apply
 
 Expected sysctl verification: swappiness180, watermark_scale_factor200,
 page-cluster0, dirty_bytes268435456, dirty_background_bytes67108864,
-overcommit_memory0. The two corresponding dirty ratios should read zero.
+overcommit_memory1. The two corresponding dirty ratios should read zero.
 Expected oomd verification: `oomctl` prints no `Path:` entries and
 `VERIFIED: oomctl monitored set empty`; if any candidate remains the stage
 fails rather than claiming protection. Oomd's configured thresholds remain
@@ -165,9 +165,9 @@ anchored harness/session avoid; no --prefer`. Its TERM gate requires BOTH
 available memory below5% (~1.17GiB) and free swap below65% (used above35%,
 ~8.18GiB with current23.36GiB logical zram). The default KILL gates halve
 those free percentages to2.5%/32.5%. Zram uses real RAM, so a large logical
-swap size is not a physical reserve. After the smaller reboot policy the
-swap-used TERM gate is ~1.02GiB. Keep thresholds; do not infer capacity from
-them. Earlyoom remains an active **single-process** killer (no `-g`).
+swap size is not a physical reserve. Keep existing capacity and thresholds;
+do not infer capacity from them. Earlyoom remains an active **single-process**
+killer (no `-g`).
 `--avoid` is a preference, not immunity; kernel global OOM remains possible.
 T3's observed `node-MainThread` comm is shared by some Node tool workers,
 so those workers are also avoided: comm matching is not process identity.
@@ -176,10 +176,10 @@ not avoided. Claude/codex were absent from the live census; their exact launch
 names are defensively included, not falsely claimed observed. The other
 observed broker identity is `omp daemon brok` (Linux comm truncation).
 
-Zram's new size is **staged only**, effective after Kevin checkpoints work and
-chooses a controlled reboot; never run swapoff, generator restart or reduce
-`mem_limit` online. Verify logical size and resident limit after that reboot,
-not immediately after install. Kernel allocator overhead still needs headroom.
+Zram capacity is **unchanged**: logical=ram, resident=ram/2, zstd, priority200.
+Only stale safety claims in its comment are corrected. No resize, swapoff,
+generator restart or zram reboot step belongs to this deployment. Reconsider
+only after measured A/B PSI, failed_writes and OOM counts over at least24h.
 
 The k3s20Gi host reserve is already owned by `scripts/setup-k3s.sh server`.
 Run `sudo bash scripts/setup-k3s.sh server` only in a separately approved k3s
@@ -190,8 +190,8 @@ It is not invoked automatically here.
 Rollback is receipt-based: restore each saved file/symlink to its same absolute
 path; for receipt entries with `existed=false`, remove only that newly installed
 file. Restore retired files from the same backup. Then daemon-reload and
-sysctl --system; zram rollback also waits for a controlled reboot. Backups and
-receipts are never deleted by this installer.
+sysctl --system. Zram capacity is unchanged. Backups and receipts are never
+deleted by this installer.
 
 ### Scope and residual risk
 
