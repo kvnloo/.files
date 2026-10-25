@@ -1,0 +1,21 @@
+[Unit]
+Description=AgentsView one-shot archive sync (shared quiet-lane lock, no daemon)
+Documentation=file:///mnt/zer0models/z0-wt/wiring/ops/agentsview/README.md
+
+[Service]
+Type=oneshot
+# Live archive (~/.agentsview is a symlink, which agentsview refuses for its runtime dir).
+Environment=AGENTSVIEW_DATA_DIR=/mnt/zer0models/sft-svlm/data/agentsview
+# Write directly and exit; plain `agentsview sync` would start a background
+# serve daemon that keeps running. If an MCP-started daemon is already up,
+# sync is routed through it instead.
+Environment=AGENTSVIEW_NO_DAEMON=1
+# ~/.claude and ~/.claude-home are both listed in config.toml
+# ([agents.claude] homes), so every invoker sees the same Claude roots and no
+# CLAUDE_CONFIG_DIR is needed here.
+# Shared lock: wait up to 60 s, then skip this run quietly (-E 0) while
+# another lane holds an exclusive window.
+ExecStart=/usr/bin/flock -s -w 60 -E 0 /mnt/zer0models/cua-lane-tmp/locks/quiet-lane.lock /home/kvn/.local/bin/agentsview sync
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=50min

@@ -1,0 +1,25 @@
+[Unit]
+Description=z0intelligence shared host capability router (canonical tree)
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Repointed from the Codex desktop-app worktree to the canonical checkout at f960e7b.
+# The credential-loader ExecStart is preserved verbatim: it is the proven path and
+# docs/intelligence-operations.md says existing host installations may retain it.
+WorkingDirectory=/home/kvn/tmp/z0int-canonical
+EnvironmentFile=%h/.config/z0intelligence/service.env
+ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/python /mnt/zer0models/workspace/zer0/oss/tools/dsh-env-exec.py --allow GROQ_API_KEY --allow CEREBRAS_API_KEY --allow DEEPSEEK_API_KEY --allow OPENROUTER_API_KEY --allow AI_GATEWAY_API_KEY --allow NVIDIA_API_KEY -- /home/kvn/tmp/openjev/.venv/bin/python -m z0int.intelligence_service --bind 127.0.0.1 --bind 172.19.0.1
+ExecStartPost=/usr/bin/python3 /home/kvn/tmp/z0int-canonical/scripts/intelligence-readiness.py ready
+ExecStopPost=/usr/bin/python3 /home/kvn/tmp/z0int-canonical/scripts/intelligence-readiness.py not-ready
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=125
+KillMode=control-group
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

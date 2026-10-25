@@ -1,0 +1,12 @@
+[Unit]
+Description=Dash qualified native Turbo Metro on 8212
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/dash/.worktrees/voice-controls/app
+EnvironmentFile=/home/kvn/.config/dash-services/env-metro-qualified-20261022.systemd
+ExecStart=/home/kvn/.bun/bin/bun x expo start --dev-client --host lan --port 8212
+Restart=on-failure
+Nice=10
+CPUQuota=100%
+IOWeight=1

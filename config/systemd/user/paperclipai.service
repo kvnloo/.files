@@ -1,0 +1,20 @@
+[Unit]
+Description=Paperclip AI (default)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=all
+ExecStart="/home/kvn/.local/bin/paperclipai" run --instance "default"
+Environment="PAPERCLIP_SERVICE_MANAGED=1"
+Environment="PAPERCLIP_INSTANCE_ID=default"
+Environment="PAPERCLIP_HOME=/home/kvn/.paperclip"
+WorkingDirectory=%h
+Restart=always
+RestartSec=5
+TimeoutStopSec=300
+
+[Install]
+WantedBy=default.target

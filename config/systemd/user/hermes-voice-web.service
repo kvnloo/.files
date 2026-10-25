@@ -1,0 +1,19 @@
+[Unit]
+Description=Hermes Android continuous voice web shell
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/zer0/services/hermes-voice-web
+ExecStart=/usr/bin/python3 /workspace/zer0/services/hermes-voice-web/server.py --host 127.0.0.1 --port 8793 --session-id 20260813_232102_875938
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/workspace/hermes-home /home/kvn/.hermes /workspace/zer0/portfolios/chief-of-staff
+
+[Install]
+WantedBy=default.target

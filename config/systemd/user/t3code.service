@@ -8,6 +8,8 @@ Type=simple
 WorkingDirectory=%h
 Environment=T3CODE_HOME=/home/kvn/.t3
 Environment=T3_BOOT_SERVICE_UNIT=t3code.service
+# Applied by patched T3 builds (upstream #24708); old 0.1.2 ignores this setting.
+Environment=T3CODE_AGENT_MEMORY_POLICY=inherit
 ExecStart=/home/kvn/.t3/runtime/versions/0.1.2/t3 __service-launcher
 KillMode=mixed
 OOMPolicy=continue

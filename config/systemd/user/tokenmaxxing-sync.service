@@ -1,0 +1,7 @@
+[Unit]
+Description=tokenmaxxing automatic usage sync
+
+[Service]
+Type=oneshot
+ExecStart="/home/kvn/.config/tokenmaxxing/tokenmaxxing.sh"
+TimeoutStartSec=30min

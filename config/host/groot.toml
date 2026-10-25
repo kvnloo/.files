@@ -1,3 +1,3877 @@
+# Groot managed path inventory. Activation is preserved; secrets remain private.
+user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json"]
+user_control_cleanup = [
+  { live = "~/.config/systemd/user.control/session.slice.d/50-CPUWeight.conf", sha256 = "1874a8f0d15364fee9d6453aa719e6ce79f3ee7da231ae5a730cee8b0cbf731d" },
+  { live = "~/.config/systemd/user.control/session.slice.d/50-IOWeight.conf", sha256 = "f5330f3d1517adbc8a3e32f8f664924393069574848ca7ec025803a47a3f1344" },
+  { live = "~/.config/systemd/user.control/session.slice.d/50-MemoryLow.conf", sha256 = "eef81cedb81f8c281231bea49ec9d49bc00e1cff0e239cf7fa75b324789ba351" },
+  { live = "/run/user/1000/systemd/user.control/agent.slice.d/50-ManagedOOMMemoryPressure.conf", sha256 = "0d38eb6ae95ae67ca7a6bf182fc7d2caabca5d80c4587be711a04b7dad5cd137" },
+  { live = "/run/user/1000/systemd/user.control/app-t3code-agents.slice.d/50-MemoryHigh.conf", sha256 = "98a3e91d1d4546d77123616dddbdc135c25ec7fc8477e34e2fc723b75b2e0419" },
+  { live = "/run/user/1000/systemd/user.control/app-t3code-agents.slice.d/50-MemoryMax.conf", sha256 = "1351bef04e2b139ca6b1df2f7cd84c7a10de9590f911e25eff134522f43d85cf" },
+  { live = "/run/user/1000/systemd/user.control/session.slice.d/50-IODeviceLatencyTargetUSec.conf", sha256 = "2a3d69a6fd996e198d5dd674cce3f2fcc6466311802b976d86ee49c1d7239431" },
+]
+user_retired_links = [
+  { live = "~/.config/systemd/user/zer0-voice-maxine-full.service", target = "/workspace/zer0/products/pm/voice/systemd/zer0-voice-maxine-full.service", retired = "never-tracked, superseded by zer0-voice-direct (pm 8fe26d0)" },
+  { live = "~/.config/systemd/user/default.target.wants/zer0-voice-maxine-full.service", target = "/workspace/zer0/products/pm/voice/systemd/zer0-voice-maxine-full.service", retired = "never-tracked, superseded by zer0-voice-direct (pm 8fe26d0)" },
+]
+
+[[user]]
+live = "~/.config/systemd/user/agent-resource-classify.service"
+source = "config/systemd/user/agent-resource-classify.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0da755f125df4be26fcbc9142776c8844e54da70f42f6f5c071fb7207f06e3f5"
+
+[[user]]
+live = "~/.config/systemd/user/agent-resource-classify.timer"
+source = "config/systemd/user/agent-resource-classify.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fc0538aca05285e239b7b480f3d231a47696ba771f94f0a3cd631fc5d0b32911"
+
+[[user]]
+live = "~/.config/systemd/user/agent-telemetry-refresh.service"
+source = "config/systemd/user/agent-telemetry-refresh.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "019c6b1978523392074d6304014cfb636ec8dd2e8c4383b01a7069b8fce60b17"
+
+[[user]]
+live = "~/.config/systemd/user/agent-telemetry-refresh.timer"
+source = "config/systemd/user/agent-telemetry-refresh.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fddee4cbed7f14f06c123b2ff1b052f35ec50edcd2fdd25d10c88cf6c0989b82"
+
+[[user]]
+live = "~/.config/systemd/user/agent.slice"
+source = "config/systemd/user/agent.slice"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9939ab9e5cfdb7f30ced4630c452b4d6de49fac049bd373820a6a14f99905ac8"
+
+[[user]]
+live = "~/.config/systemd/user/agentsview-sync.service"
+source = "config/systemd/user/agentsview-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e1e4bb2af1f436e7a0118b23c8a193b14b82bfe01479c5f165eaf386977697dc"
+
+[[user]]
+live = "~/.config/systemd/user/agentsview-sync.timer"
+source = "config/systemd/user/agentsview-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fc7ba1bd03b9cd7a060573d197dc537ffd52eebf49112cd356079398f262f2be"
+
+[[user]]
+live = "~/.config/systemd/user/agentweb-ad-arena.service"
+source = "config/systemd/user/agentweb-ad-arena.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d03555a8858a28748ddf63de7e9bd751154933bdfdbbb8f008565750cd6bbe22"
+
+[[user]]
+live = "~/.config/systemd/user/artifact-leases.service"
+source = "config/systemd/user/artifact-leases.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e383a1026d7c20953f398d5ae805c4945e9080f0fcf18d7cdfa4a6f5c7ee1b29"
+
+[[user]]
+live = "~/.config/systemd/user/artifact-leases.timer"
+source = "config/systemd/user/artifact-leases.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3ef71fdcffb53fa414688a483dbe0f41cd3f4f73583ccc2e75c7a415b3ea9bfc"
+
+[[user]]
+live = "~/.config/systemd/user/awatcher.service"
+source = "config/systemd/user/awatcher.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "feabed2a65cf72a10a25c0927b0a35353a174edbc4f8b84ab4cbbe64bc4d1514"
+
+[[user]]
+live = "~/.config/systemd/user/boat-reaper.service"
+source = "config/systemd/user/boat-reaper.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "dc39a2557438ee01150615a8702896e50730ec01c8364081afcf01821a41682b"
+
+[[user]]
+live = "~/.config/systemd/user/boat-reaper.timer"
+source = "config/systemd/user/boat-reaper.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "19317ae9a02f2093692d1eeb16d0f85d1db6d06e175f47f6cd0c3ac674df8735"
+
+[[user]]
+live = "~/.config/systemd/user/browser-bypass-dsp.service"
+source = "config/systemd/user/browser-bypass-dsp.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8a4a07ac77ac4ece5d97d5e370fc950a2e332382518d077d7307a6ccc06d9aa4"
+
+[[user]]
+live = "~/.config/systemd/user/buildkit-workspace.service"
+source = "config/systemd/user/buildkit-workspace.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8efaeab1d0e61d1514c6c0deb6ad3ebc35b8b12a9634115794125256f52163c6"
+
+[[user]]
+live = "~/.config/systemd/user/bws-secrets-sync.service"
+source = "config/systemd/user/bws-secrets-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "261a6fe866ebf9057da5093987cd635c171d5d34b46b4bab8eea11526005916f"
+
+[[user]]
+live = "~/.config/systemd/user/bws-secrets-sync.timer"
+source = "config/systemd/user/bws-secrets-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e91d2b131c7f978e732961c478188643200e8147eb42598f034f6b2497bcc99c"
+
+[[user]]
+live = "~/.config/systemd/user/cardtwin-8462.service"
+source = "config/systemd/user/cardtwin-8462.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0a37c7ceab5c2b2b790126970c5327c3add80aa5202e46edfefcc683f398e432"
+
+[[user]]
+live = "~/.config/systemd/user/cardtwin-flux-tiled-ab.service"
+source = "config/systemd/user/cardtwin-flux-tiled-ab.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "99f4938b5f69de4d7ddb963c40ff785c2bbe449dbe80835fb2c52727e08b1d15"
+
+[[user]]
+live = "~/.config/systemd/user/chat-poller.service"
+source = "config/systemd/user/chat-poller.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9373070ac4beabeb9b96e5969a70b9c980e05971af2fcd994d9f099204d895ec"
+
+[[user]]
+live = "~/.config/systemd/user/ctx.service"
+source = "config/systemd/user/ctx.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "22a187f26ca4efd459ec48585320b1b7ba40334620b5185a5bee8b58012b2d55"
+
+[[user]]
+live = "~/.config/systemd/user/dash-log-watch.service"
+source = "config/systemd/user/dash-log-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "253437117ba7013bb29f7352e33e223cd503a0441bb9825df05ef967b3763bc6"
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-native-8108.service"
+source = "config/systemd/user/dash-metro-native-8108.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76"
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-qualified-8212.service"
+source = "config/systemd/user/dash-metro-qualified-8212.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860"
+
+[[user]]
+live = "~/.config/systemd/user/dev.cribble.agent.sync.service"
+source = "config/systemd/user/dev.cribble.agent.sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7a2c97ea2f5709d3ec2f33c82e1180faf207602f435d0c2f5ea5c65cb0aa7773"
+
+[[user]]
+live = "~/.config/systemd/user/dev.cribble.agent.sync.timer"
+source = "config/systemd/user/dev.cribble.agent.sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6fa55e97558884366e7e66a69cb7ceccd35c9328d8a81c8c624792ebd6089584"
+
+[[user]]
+live = "~/.config/systemd/user/dunst.service"
+source = "config/systemd/user/dunst.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+mask = true
+
+[[user]]
+live = "~/.config/systemd/user/fleet-health.service"
+source = "config/systemd/user/fleet-health.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "88aa8f5bdc582e1ddf30d1cceacf60aee9ca19f4a6d0eb3db1f3b3ee8293c849"
+
+[[user]]
+live = "~/.config/systemd/user/fleet-health.timer"
+source = "config/systemd/user/fleet-health.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fd2ef99ec346857939a1d8e55b206670ddae65df19fd0849413fc833f745acc1"
+
+[[user]]
+live = "~/.config/systemd/user/free-model-inventory.service"
+source = "config/systemd/user/free-model-inventory.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cea1acf592d361402326dc980e8f1a08cdf8cdc903dda4af942308e253bda089"
+
+[[user]]
+live = "~/.config/systemd/user/free-model-inventory.timer"
+source = "config/systemd/user/free-model-inventory.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5ddbaff339c5d5b48705f498cc40f9f6b6174bf2c27b7de5a502a4bcd314079a"
+
+[[user]]
+live = "~/.config/systemd/user/frontier-kb.service"
+source = "config/systemd/user/frontier-kb.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a95fa9e4566a6a5d81868c2c105ea4a9c837942ada81d433d662fcadcc1e516c"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes-gateway.service"
+source = "config/systemd/user/garden-room-hermes-gateway.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4fe6516ad9ba7977bf2287596229904c02e0c6105d4ffba121c16c287d752ef6"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes.service"
+source = "config/systemd/user/garden-room-hermes.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "02c3a62cc6c02385ae3004c775f47c54c61e450e02096cbe0e203771e96b8323"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room.service"
+source = "config/systemd/user/garden-room.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "81a80b51ff0ccbc67b7616b2bf62118e3b62c8c6f22ede31770e2aeb6232dc98"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-batch.slice"
+source = "config/systemd/user/hermes-batch.slice"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "43e92012d14313f43a2ee17c79769a15702e7a3bfd082ebbe5cde92f1bda8e78"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-cluster.service"
+source = "config/systemd/user/hermes-cluster.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "564cf5e21e11edb7495b740160db2d52c66e3aff9269a09cb3f09bd18eacc8b3"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-community-review-factory.service"
+source = "config/systemd/user/hermes-community-review-factory.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7028eeeda5af167e592f248b31dd58308b2711d4426956a739ad7cc45014c41b"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-community-review-factory.timer"
+source = "config/systemd/user/hermes-community-review-factory.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "570fc44f7327ae4ef2abfba96bb831d9a39361f461d0aca76dbf90f3667e0771"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-dashboard-tailnet-proxy.service"
+source = "config/systemd/user/hermes-dashboard-tailnet-proxy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "311fe429ab96460858d9972049656b4ad58bc0e5b3a04f1d19a0560ca4a300ba"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-voice-proxy.service"
+source = "config/systemd/user/hermes-drive-voice-proxy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2325f4587dbda5f0940d775236721345cdbb1909172183479b169aa90f1239cc"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-voice.service"
+source = "config/systemd/user/hermes-drive-voice.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e22d0b1d8a95a50f395f134029618f7336c038baa84c16d7345e281deda755db"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-web-proxy.service"
+source = "config/systemd/user/hermes-drive-web-proxy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "95322ae43aa9f07af81bccf7a1839810db41c3422daede86a10da09f3b8afc12"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-restart-once.service"
+source = "config/systemd/user/hermes-gateway-restart-once.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "115dc54ec790e3f31ca0cbe308a828afaf3c60317b4e817dfd8d4b25c6fa19e2"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-restart-once.timer"
+source = "config/systemd/user/hermes-gateway-restart-once.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "555677f1d943590a24233d26d9b03766f085d1554e906032e180005b90cf023f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway.service"
+source = "config/systemd/user/hermes-gateway.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e06ccc105fc934f9f6834a3b266739e8295712733540dcda2a91e4a1cd728def"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-grok-mcp.service"
+source = "config/systemd/user/hermes-grok-mcp.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0166aff7c07679cd2be4333452a65a850a57cf269452c9af045562ba48902532"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-heavy.slice"
+source = "config/systemd/user/hermes-heavy.slice"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "85e937e7ad77d4ad528a5f5e0fbeec7f4fb38f2eea6b3506eeb0ff53a1731fae"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-intake-progress-watch.service"
+source = "config/systemd/user/hermes-intake-progress-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bebe694b3303765f3acea805bfc069dcb5cea84a47dbef176127cb05dd21dc00"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-interactive.slice"
+source = "config/systemd/user/hermes-interactive.slice"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "db46c7c6a1d9f1a0b826244a53c546ecbc8e3b52748de046118b414b1d135296"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-keel-lf006-supervisor.service"
+source = "config/systemd/user/hermes-keel-lf006-supervisor.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a72bb92b30e4811294ccaeed85496879fd395b386b23dc93179fe2e9a5eba004"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-pr87494-preview.service"
+source = "config/systemd/user/hermes-pr87494-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0ed640e1c69fd81302f90833920bc04fa4a388b8afcd678d71cfdd253d17b634"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-pr87495-preview.service"
+source = "config/systemd/user/hermes-pr87495-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bf882984d57923f47778361502ca91ee25bcf6d24fd841f18cf54bce673196c2"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-pr88716-a58cc427-preview.service"
+source = "config/systemd/user/hermes-pr88716-a58cc427-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-pr88716-preview.service"
+source = "config/systemd/user/hermes-pr88716-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-pr88752-preview.service"
+source = "config/systemd/user/hermes-pr88752-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b512b46177ea9e1564ea0340e2e8dded7e78def227a661691cad1d34fbb8fa2f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-voice-web.service"
+source = "config/systemd/user/hermes-voice-web.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3841b9cba813f4cc30028d6de0e85c267301335a70cc735586a23b2204d51997"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-web.service"
+source = "config/systemd/user/hermes-web.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "20f8ef1847d2c6f681a8499cbc2d26da4e29861ff7105aee42ad7e5f20e9f94c"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-broadcast-health.service"
+source = "config/systemd/user/hermes3d-broadcast-health.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2dfb2e70d489678bc59a9140a4ca745d61ee6305dba6775e00a3af1c5cd93b5f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-broadcast-watchdog.service"
+source = "config/systemd/user/hermes3d-broadcast-watchdog.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3f0de353ad49835095decfec6bf4bcda8d04912080e6e2ec5893eb9b8ad767c0"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-broadcast-watchdog.timer"
+source = "config/systemd/user/hermes3d-broadcast-watchdog.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b0f8cc9cf6b6331fcb005e4204f399355ce6c48250b4fa070d7fd9b305de7221"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-demo-gateway.service"
+source = "config/systemd/user/hermes3d-demo-gateway.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a302666ec8e2fc93c79adef8b6df1fd9437187b79d9ee3f4053f1dda09b59d2b"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-renderer.service"
+source = "config/systemd/user/hermes3d-renderer.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "dc3e515849d65e58b1c06f102d083c59190dfd2a1dd2c3601d8624b9d7aee040"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-stream.service"
+source = "config/systemd/user/hermes3d-stream.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "33706ac9c41ab353b99ee4a613575f4bc4be14aa80ba99023eb8b08aaeb8b7ee"
+
+[[user]]
+live = "~/.config/systemd/user/hyprcaffeine.service"
+source = "config/systemd/user/hyprcaffeine.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fabe3299c0795c965f79f3435ee17b764d5c00895d0443e78168590915d795a1"
+
+[[user]]
+live = "~/.config/systemd/user/kvnloo-fork-sync.service"
+source = "config/systemd/user/kvnloo-fork-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4a1f0e8bfa327730780f45db6ce028f2505e6399141413f05156d3b993727794"
+
+[[user]]
+live = "~/.config/systemd/user/kvnloo-fork-sync.timer"
+source = "config/systemd/user/kvnloo-fork-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3521105b3b59602b5f3aecc054d88ef747400d703d8b8e69a978777730d72f17"
+
+[[user]]
+live = "~/.config/systemd/user/lumenfold-final-blog-8457.service"
+source = "config/systemd/user/lumenfold-final-blog-8457.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "82962be3a95e099868638ef9f40cecb0d75c42a11c2db662609ec5ab24c82bca"
+
+[[user]]
+live = "~/.config/systemd/user/lumenfold-final-origin.service"
+source = "config/systemd/user/lumenfold-final-origin.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "79f729f0148e72899c902a12b871f7c906d3deb3fe76f8992e566ea3b2387510"
+
+[[user]]
+live = "~/.config/systemd/user/lumenfold-private-blog-8456.service"
+source = "config/systemd/user/lumenfold-private-blog-8456.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b8ae8ca0ea75d8c7a2be4a57e289615813c8c75970ebe4f5f0383ace5decf13d"
+
+[[user]]
+live = "~/.config/systemd/user/lumenfold-study-origin.service"
+source = "config/systemd/user/lumenfold-study-origin.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a4d70f3f60cc8bf2e6938040ccdaab3ffba40d568f39c87ae342ea6721e17e3c"
+
+[[user]]
+live = "~/.config/systemd/user/lumenfold-tailnet-fallback.service"
+source = "config/systemd/user/lumenfold-tailnet-fallback.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "75565d6e923c14dfc6412f287cd665959d7a7b56d414040ce6878c446c44dc64"
+
+[[user]]
+live = "~/.config/systemd/user/mode-border.service"
+source = "config/systemd/user/mode-border.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "68916fcf8fd539602f9a8954edf90b64a8a90e735f6c2fa4b0fe589d6f49cd92"
+
+[[user]]
+live = "~/.config/systemd/user/monetize-ai-overnight.service"
+source = "config/systemd/user/monetize-ai-overnight.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c533163f618f3d56bc07356fd2505136319b5f3b6aee6692510f6c76a6a11164"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-anki-bridge.service"
+source = "config/systemd/user/neuroforge-anki-bridge.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ffb5b59651f735c0e389f00d06c0728be1705d2cabc1dce144d13a77422b439b"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-dashboard.service"
+source = "config/systemd/user/neuroforge-dashboard.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "38fd306bdac7cb30f56241459681f838429ce043e9693f1ddbf0967abfe0f76f"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-game.service"
+source = "config/systemd/user/neuroforge-game.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b904f960ff988b3c7bf7e988dffbb564e0be36d37893b52b4c5c32709d19e02c"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-import.service"
+source = "config/systemd/user/neuroforge-import.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "08ebad77005f272020c666664c2312dd8ff3e580b28ec455f0044e939350e35a"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-import.timer"
+source = "config/systemd/user/neuroforge-import.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "514a61bbe4f2a3206664266dd936b4177fde1f6e840d5a94cd927e908a0403ec"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter.service"
+source = "config/systemd/user/night-filter.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b2bf904e06c17ed4f35b51fd57762a76e93e414812fc1959d88bcae8d8678cb4"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter.timer"
+source = "config/systemd/user/night-filter.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d675dc8def741aef204aaf2e208efe828aae99279c9e032ab2a773b95afbb2b6"
+
+[[user]]
+live = "~/.config/systemd/user/nvibrant.service"
+source = "config/systemd/user/nvibrant.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d906446877cc3cc06df224e677d975421f7c5b8a616917028d3c7979b4a6ead7"
+
+[[user]]
+live = "~/.config/systemd/user/ollama-gguf.service"
+source = "config/systemd/user/ollama-gguf.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "92d99e2a3692262ef76f7b80971c236f1a3c39204b3277eda319f40b53600134"
+
+[[user]]
+live = "~/.config/systemd/user/paperclipai.service"
+source = "config/systemd/user/paperclipai.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "804806422ebe46f89bc5a58eac93a444f094e3ecfbe6370fef2fb9a4e78dd3b9"
+
+[[user]]
+live = "~/.config/systemd/user/pokemon-field-os-preview.service"
+source = "config/systemd/user/pokemon-field-os-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "54c01ece3ee8117f95fe879bcca1f2639cdd71b482eb8b6eb95ec46b03af06b6"
+
+[[user]]
+live = "~/.config/systemd/user/quackles-arbiter.service"
+source = "config/systemd/user/quackles-arbiter.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e50b60835a7b0e05a14143e07bdebcdcddb1ca8abda37c3db60744589d5fcc4f"
+
+[[user]]
+live = "~/.config/systemd/user/quackles-arbiter.timer"
+source = "config/systemd/user/quackles-arbiter.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5f1792e460e4da4a1e31a50d06930d6df8269ec894df03c433971fd6ed2c81e5"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-failure@.service"
+source = "config/systemd/user/service-watch-failure@.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ad52c8f7cf752ccd2caa2ef125b5111b96f6d4cd4f5c258ab0b358a4d23f00a0"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-heartbeat.service"
+source = "config/systemd/user/service-watch-heartbeat.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d5a06e115c5bed7eeefccc7b8c64dd8208d6e6bae8e097179957433cd441bbbc"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-heartbeat.timer"
+source = "config/systemd/user/service-watch-heartbeat.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a632773d6329f353cbfea2faa3d83bd424e47ba44ab0e426862d0dd486dced2d"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch.service"
+source = "config/systemd/user/service-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "df7a728abb507ab79bcd90796d7e3ca4864c4ef7c94c6ccf5e7ed723c44df8f3"
+
+[[user]]
+live = "~/.config/systemd/user/t3code.service"
+source = "config/systemd/user/t3code.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "59123dc767f1a9e92cceced2ea6c2bf77160e4c33e1af73551a51109cc46f530"
+
+[[user]]
+live = "~/.config/systemd/user/taildrop-portal.service"
+source = "config/systemd/user/taildrop-portal.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "433bba9cf8f0e3d6f1fec396b22c85cc499d9d8324925c953d6396b017100833"
+
+[[user]]
+live = "~/.config/systemd/user/temple-guard-story-preview.service"
+source = "config/systemd/user/temple-guard-story-preview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "00dce0cf909d9a3ab85853ba848b4e658e4e2e6299e4f7e88b292d835bd9f979"
+
+[[user]]
+live = "~/.config/systemd/user/tencentdb-memory.service"
+source = "config/systemd/user/tencentdb-memory.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8b6eb0641099f9f3c1fea15a3fdacbc66ed565c29916088c4d240c9fc86b2eb5"
+
+[[user]]
+live = "~/.config/systemd/user/tern-hosts-sync.service"
+source = "config/systemd/user/tern-hosts-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9fdba7756602cc596452af02cccf9c8b565234fd47c04845861affcd85333014"
+
+[[user]]
+live = "~/.config/systemd/user/tern-hosts-sync.timer"
+source = "config/systemd/user/tern-hosts-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "80610ddc72280675aa9c035d885f9bfc06ac7b21e339ce3a22ffcb41d48fa033"
+
+[[user]]
+live = "~/.config/systemd/user/tern-queue-loop@.service"
+source = "config/systemd/user/tern-queue-loop@.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6c7cb02d6a3803a1f55509790b4d9443e2de5bf8e2aab487597fbedd651acb81"
+
+[[user]]
+live = "~/.config/systemd/user/tern-remote.service"
+source = "config/systemd/user/tern-remote.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4ad1ac314f675628fd0f6f91846b4e7b1dbf7582cc58cb4f7cbb52726903db5d"
+
+[[user]]
+live = "~/.config/systemd/user/tmux.service"
+source = "config/systemd/user/tmux.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27439aee4435212d252854d5d885d5aa060350def95f92f502a7e69e04e4ec96"
+
+[[user]]
+live = "~/.config/systemd/user/tokenmaxxing-sync.service"
+source = "config/systemd/user/tokenmaxxing-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6f6d8d979f9c3f4679423a1c7db35eddc5821210a65a6486f604f055c4bdee4e"
+
+[[user]]
+live = "~/.config/systemd/user/tokenmaxxing-sync.timer"
+source = "config/systemd/user/tokenmaxxing-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "edc8754b8d5d4b0ef465d00c393a5035f593510da62a39e318d104b1f8ed5ecf"
+
+[[user]]
+live = "~/.config/systemd/user/uniichat-luna.service"
+source = "config/systemd/user/uniichat-luna.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8018e1017d8297f5bb48a3055bba8d94e4b85398bb5a97b565311fbceaf100ab"
+
+[[user]]
+live = "~/.config/systemd/user/whisperflow-kind-bridge.service"
+source = "config/systemd/user/whisperflow-kind-bridge.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9f9782e7d33e127baf54e4b593f1cace628ae6a7aac97e997ac0d2453f9d7d40"
+
+[[user]]
+live = "~/.config/systemd/user/whisperflow.service"
+source = "config/systemd/user/whisperflow.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot-rerank.service"
+source = "config/systemd/user/workspace-copilot-rerank.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "98e7a1383b8f0c7718735e53be4d562339d68bc956d9d91e9d69134831c6de34"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot-rerank.timer"
+source = "config/systemd/user/workspace-copilot-rerank.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8b83ea9ac4ab910f2df7aa3b3400b19545e48f031fcc7c9d1407dae460173428"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot.service"
+source = "config/systemd/user/workspace-copilot.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e4845226ec372178313acea86bc55046a97bb46f275c8b5f3ae74b163600a1b9"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-reaper.service"
+source = "config/systemd/user/worktree-reaper.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "db39efc70005d00478ee8049b9ae185ffa6286abafda500e50de7fdf2a410a52"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-reaper.timer"
+source = "config/systemd/user/worktree-reaper.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0b485652312ce64671485b6da9e55f6e3383a32f3fc033431576316f81d7dde5"
+
+[[user]]
+live = "~/.config/systemd/user/z0-farm-llama.service"
+source = "config/systemd/user/z0-farm-llama.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e5442ed0f320921e637987314e6a8d2bcdbee74ce15d6ffb27b8950e606a4be4"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghcache.service"
+source = "config/systemd/user/z0-ghcache.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "740ff472b351ba1eb40e155be4bfd85d6ee9176c0e7f04c585a46e1b1f160dfb"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghsnapshot.service"
+source = "config/systemd/user/z0-ghsnapshot.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "19b179e74238d38299939b1d7fe09069ea696bfa24e2c8f5ed7328d48b2a3e42"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghsnapshot.timer"
+source = "config/systemd/user/z0-ghsnapshot.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "30b48604417b73830df03a4cc8907c65e7edbf545eddb5b47c5b580d9652bf95"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-gateway-watch.service"
+source = "config/systemd/user/z0-guard-gateway-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3de2487fe86b1adb4c26c4c65fe94e52f5fba388bc65ee034290a4596681bf70"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-gateway-watch.timer"
+source = "config/systemd/user/z0-guard-gateway-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c76759d11b4e9cf8b59a755a3475c1493723ddf639982108b3c2d1a29b4d058b"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-routing.service"
+source = "config/systemd/user/z0-guard-routing.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27577c0b1d6c0bae44869775e2e544ec799cf224733bb011097949507fa187e7"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-routing.timer"
+source = "config/systemd/user/z0-guard-routing.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0103082f7e570ffa64c43d9ed0681310218ccfe22aeccd27a95a12e2d4b7cb68"
+
+[[user]]
+live = "~/.config/systemd/user/z0-state-packet.service"
+source = "config/systemd/user/z0-state-packet.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "857e994cd74405aaf5bd711255bcc49a36bb4277df80610b1f99c31245db3aa4"
+
+[[user]]
+live = "~/.config/systemd/user/z0-state-packet.timer"
+source = "config/systemd/user/z0-state-packet.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "150984f0318034172a0f8f30bf183dc48e93cede97807ee3dec49dbfc763aaf5"
+
+[[user]]
+live = "~/.config/systemd/user/z0-worker-supervision.service"
+source = "config/systemd/user/z0-worker-supervision.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8e6eef86bc3737f41a9147d44c8250ae3ff6a6c612c2cf059e5bb4c7fdf32357"
+
+[[user]]
+live = "~/.config/systemd/user/z0-worker-supervision.timer"
+source = "config/systemd/user/z0-worker-supervision.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2f8eff3a1066e43c29feb028e67e2a8a0f4eff38dbcb651413be396147be5b97"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service"
+source = "config/systemd/user/z0int-loop-tick.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "625acceee64616977544c7fbc043f856628e976fa5273b08ce3fe9f535d545c6"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.timer"
+source = "config/systemd/user/z0int-loop-tick.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a0d6c4b157dc2bc712177b83f7b644454ab862195a458914d0143d9cbe5e8e59"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp.socket"
+source = "config/systemd/user/z0int-memory-mcp.socket"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "781da54bd0d74e4439e81ab9021cc28a1bacff706b8fe39ef254b0c40f75bb58"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@.service"
+source = "config/systemd/user/z0int-memory-mcp@.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9cd8197c80ac39aa5a38352ad7ee84deaa11ab8403084bd107a3119890871fe4"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-policy.service"
+source = "config/systemd/user/z0int-policy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e9eb3720c3bd6c21aae96101239df6da5c849ab996a34a21d50725fad377d61f"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-policy.timer"
+source = "config/systemd/user/z0int-policy.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "93668c915329fb00b7bc6f728883b3233bf0a6800174c8141d0c168990e418b8"
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service"
+source = "config/systemd/user/z0intelligence.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d0c7eecea4b9f052153e3c881be19abd5903fab323628d4632fb5b2b48346018"
+
+[[user]]
+live = "~/.config/systemd/user/z0live-hermes.service"
+source = "config/systemd/user/z0live-hermes.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7607f7455f1ae0c4e03b2830e8f480d0c8f0f53b7540ad5086ed13f60c0a0392"
+
+[[user]]
+live = "~/.config/systemd/user/z0live.service"
+source = "config/systemd/user/z0live.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "92ed092bcde1d498d997b37d26cf5b573b917648f78cf6c053dd5c8d7e3f9d3a"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-kanban-linear-sync.service"
+source = "config/systemd/user/zer0-kanban-linear-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f71b1b3c7441f71f088281cb176ae8acbd879ae7cf733c396fa688d7c2f26030"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-kanban-linear-sync.timer"
+source = "config/systemd/user/zer0-kanban-linear-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "30be1b73ba0445a737753b611138ef7339aa7971a0e8daf4b77a47a7c2cfd6df"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-maxine-full.service"
+source = "config/systemd/user/zer0-maxine-full.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ca1d3da608d979dacec667412777a6c4259007dd55ba89dda7d2418556464b7d"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-maxine-stable.service"
+source = "config/systemd/user/zer0-maxine-stable.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c04d1c3808925f676f9aa2fe8d967e21f7ca955aebf928829be709633644b0ae"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-storage-autotier.service"
+source = "config/systemd/user/zer0-storage-autotier.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0d4256e67fcba44648b6dfb1b25653cf95945c81ecfd7c8faf6b6438ad18235d"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-storage-autotier.timer"
+source = "config/systemd/user/zer0-storage-autotier.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "285c24f631734febbcd05668d5bc3d9abf2b74371c30309f393e64f8466c48e3"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-voice-direct-watchdog.service"
+source = "config/systemd/user/zer0-voice-direct-watchdog.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "07300362866be02326ee04f8cd1c7850dca63122d99a82e5249e39aed9beabb8"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-voice-direct.service"
+source = "config/systemd/user/zer0-voice-direct.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d713c322ba98e6b6d5280e31f891cfa482be37938a9d5854f15f5da8d4d4a9ca"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-voice-stable.service"
+source = "config/systemd/user/zer0-voice-stable.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fcaec65b55fd954e561768060df70838e90ee195b88baa400da1df6b0b974a59"
+
+[[user]]
+live = "~/.config/systemd/user/agent-hermes-21128-1792861599.scope.d/90-service-watch.conf"
+source = "config/systemd/user/agent-hermes-21128-1792861599.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "411c66df2c87c2a8f981578fb894e4430c408834f98511f22f45bf1a38e48307"
+
+[[user]]
+live = "~/.config/systemd/user/agent-omp-19454-1792861579.scope.d/90-service-watch.conf"
+source = "config/systemd/user/agent-omp-19454-1792861579.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "904a2e500a89f0e882b62e3bb0eed875558ff6b14c858c52226edd5cfb60284c"
+
+[[user]]
+live = "~/.config/systemd/user/agent-omp-19454-control.scope.d/90-service-watch.conf"
+source = "config/systemd/user/agent-omp-19454-control.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "45d252f5f52b4a909aa681d502bfb2006f7dd922160012b01e5652afaa68b3ac"
+
+[[user]]
+live = "~/.config/systemd/user/agent-resource-classify.service.d/90-service-watch.conf"
+source = "config/systemd/user/agent-resource-classify.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ec0a297d0e1a0b5cd84d3864337bc8960bffde173de7cf31acee63004959c383"
+
+[[user]]
+live = "~/.config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf"
+source = "config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "196498249d86b529e8f82ae245890e85afae15777f482798ed9a51fd1f055e0c"
+
+[[user]]
+live = "~/.config/systemd/user/agent-telemetry-refresh.service.d/90-service-watch.conf"
+source = "config/systemd/user/agent-telemetry-refresh.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5674112320d3151545667a5a7e693ba38f8a80ae59b7fef6b8a0c059859f806d"
+
+[[user]]
+live = "~/.config/systemd/user/agent-telemetry-refresh.timer.d/90-service-watch.conf"
+source = "config/systemd/user/agent-telemetry-refresh.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a7757f964319e9789e013848db573a9219cd7bd2f5b60e58597c08fdce4cab8b"
+
+[[user]]
+live = "~/.config/systemd/user/agent-workloads-v2.scope.d/90-service-watch.conf"
+source = "config/systemd/user/agent-workloads-v2.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ad0415f3773b9888f0e12a6068380e401a058a9cfe322a49016f62e2dddbf891"
+
+[[user]]
+live = "~/.config/systemd/user/agent.slice.d/50-interactive-budget.conf"
+source = "config/systemd/user/agent.slice.d/50-interactive-budget.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fb91a3694d93026d988e75ea36032ebcf07b2118a6a37137c736dd5db3b5eed2"
+
+[[user]]
+live = "~/.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf"
+source = "config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2a00307d979172b1d00bf21908c0bb69b857d00b3ede5839adffef1dc3aa951b"
+
+[[user]]
+live = "~/.config/systemd/user/agentsview-sync.service.d/90-service-watch.conf"
+source = "config/systemd/user/agentsview-sync.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "1fb4f30c3cba3bff5e2233afe69ba3de46b2ddd205d6338750ee853e06336a2f"
+
+[[user]]
+live = "~/.config/systemd/user/agentsview-sync.timer.d/90-service-watch.conf"
+source = "config/systemd/user/agentsview-sync.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d51e2cde2334f7730561ab9d8df6cbef179b0a20cc82869fd2fae20ba6a3b85e"
+
+[[user]]
+live = "~/.config/systemd/user/app-o8@autostart.service.d/90-service-watch.conf"
+source = "config/systemd/user/app-o8@autostart.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "67b464e2005673d738b505f102e4e8d71f5b318c019167a97590d3d87b9331c2"
+
+[[user]]
+live = "~/.config/systemd/user/app-org.kde.kdeconnect.daemon@autostart.service.d/90-service-watch.conf"
+source = "config/systemd/user/app-org.kde.kdeconnect.daemon@autostart.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5ad3780bc6a2416a3cb2fd2ce3afb385b60edcce8a2e3819d9ccee73abc5f9a3"
+
+[[user]]
+live = "~/.config/systemd/user/artifact-leases.service.d/90-service-watch.conf"
+source = "config/systemd/user/artifact-leases.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "97b226d3a6d30c9343748c66652840aea5f9db55ee117dfc2760b90fe4ab5cd5"
+
+[[user]]
+live = "~/.config/systemd/user/artifact-leases.timer.d/90-service-watch.conf"
+source = "config/systemd/user/artifact-leases.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "559a53a3a0b23d7688bec99ad8f63e84543e4303b225c83fe652e3e19933507e"
+
+[[user]]
+live = "~/.config/systemd/user/at-spi-dbus-bus.service.d/90-service-watch.conf"
+source = "config/systemd/user/at-spi-dbus-bus.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8014ab8cdcedbe24ac94558c381be6022c8f95117fd5a9d704c83881d12e9afd"
+
+[[user]]
+live = "~/.config/systemd/user/awatcher.service.d/90-service-watch.conf"
+source = "config/systemd/user/awatcher.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "79ca25fac35b264eaef1dac07c71f56923aaf2f1a8c315867c4ac41c1f0b1748"
+
+[[user]]
+live = "~/.config/systemd/user/awatcher.service.d/storage.conf"
+source = "config/systemd/user/awatcher.service.d/storage.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2239479053c8b5f18c5e32f5daf07f7f3f7f6b39f44bdf78cd0e020efda450f0"
+
+[[user]]
+live = "~/.config/systemd/user/boat-reaper.service.d/90-service-watch.conf"
+source = "config/systemd/user/boat-reaper.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d9f39133795b08d98006a190acf7396f19d4ee0258b951e30b7d66c935ea322a"
+
+[[user]]
+live = "~/.config/systemd/user/boat-reaper.timer.d/90-service-watch.conf"
+source = "config/systemd/user/boat-reaper.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f1795d478757010a233b19543d5aa3557eae9ddd26a46341d92245cb7ba18e62"
+
+[[user]]
+live = "~/.config/systemd/user/browser-bypass-dsp.service.d/90-service-watch.conf"
+source = "config/systemd/user/browser-bypass-dsp.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "66630312528d68fe85a85ca809fc5d2b68422243c005db1cd342d00cff86f965"
+
+[[user]]
+live = "~/.config/systemd/user/buildkit-workspace.service.d/90-service-watch.conf"
+source = "config/systemd/user/buildkit-workspace.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "02f18609d4c39a8eae1c27a87e7efc55ae696a2edf26b1af919a5f4845b0615a"
+
+[[user]]
+live = "~/.config/systemd/user/bws-secrets-sync.service.d/90-service-watch.conf"
+source = "config/systemd/user/bws-secrets-sync.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "249cfb544c2dafa9bfda527f6d9f728ce38982dd24b124c245da3dd95c6c0324"
+
+[[user]]
+live = "~/.config/systemd/user/bws-secrets-sync.timer.d/90-service-watch.conf"
+source = "config/systemd/user/bws-secrets-sync.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e7165645b73d4eda8821b26453dd60ac7c399e452c6d59c695b9f601e18bf602"
+
+[[user]]
+live = "~/.config/systemd/user/chat-poller.service.d/90-service-watch.conf"
+source = "config/systemd/user/chat-poller.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f7009ac0302024842ac5dbd0e57f2610793717f646dc444e8ba3eabb835fe11a"
+
+[[user]]
+live = "~/.config/systemd/user/company-os-live.service.d/90-service-watch.conf"
+source = "config/systemd/user/company-os-live.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c6e55ffb70a48aafdb32884fabdb1ee7935714451df338985b3108bff318a2f0"
+
+[[user]]
+live = "~/.config/systemd/user/ctx.service.d/50-resource-policy.conf"
+source = "config/systemd/user/ctx.service.d/50-resource-policy.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-ctx-policy"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "eac6735cdfe8a21313b719fa4f490ee1914d046a9eb50f7e997ebba3b64db83e"
+
+[[user]]
+live = "~/.config/systemd/user/ctx.service.d/90-service-watch.conf"
+source = "config/systemd/user/ctx.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "244f4a7f86b55633f08f11ec5712e82a0909a0923a0590cfea23997a2382162c"
+
+[[user]]
+live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf"
+source = "config/systemd/user/dash-bridge-4747.service.d/identity.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea"
+
+[[user]]
+live = "~/.config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf"
+source = "config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bdac16c8e3cf2b102d9056adfb77855cfcdb76b776b4e2bbf5b4c02105098c76"
+
+[[user]]
+live = "~/.config/systemd/user/dash-log-watch.service.d/90-service-watch.conf"
+source = "config/systemd/user/dash-log-watch.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b287e6027c06c1162595432d524be7647da48eec617cd5c87da82c5cd819a0c9"
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf"
+source = "config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d"
+
+[[user]]
+live = "~/.config/systemd/user/dbus-:1.1-org.freedesktop.secrets@0.service.d/90-service-watch.conf"
+source = "config/systemd/user/dbus-:1.1-org.freedesktop.secrets@0.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "313326a1ccbfbdfe8d8395512f4192213e3836a6450dd114fcee14f0b9c6645d"
+
+[[user]]
+live = "~/.config/systemd/user/dbus-:1.11504-org.a11y.atspi.Registry@0.service.d/90-service-watch.conf"
+source = "config/systemd/user/dbus-:1.11504-org.a11y.atspi.Registry@0.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "169aa35364986c4eb073cfe6da300ad4b4f4f9436c93a5d8a34c175c3f8b4827"
+
+[[user]]
+live = "~/.config/systemd/user/dbus-:1.56-org.a11y.atspi.Registry@0.service.d/90-service-watch.conf"
+source = "config/systemd/user/dbus-:1.56-org.a11y.atspi.Registry@0.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e8cb7f05cfbe76f63af0793da023cff670e3433b80b0fd020872ea1a1f3d6e74"
+
+[[user]]
+live = "~/.config/systemd/user/dbus-broker.service.d/90-service-watch.conf"
+source = "config/systemd/user/dbus-broker.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "715847b28a25f2546d245b6513efe90c4c46eb99bf6df5903070ff42981a22fb"
+
+[[user]]
+live = "~/.config/systemd/user/dbus.socket.d/90-service-watch.conf"
+source = "config/systemd/user/dbus.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "80f15d432b2855627a9db96b0b8d51ebcde918ff75b61c86b45b40e5b8e84f87"
+
+[[user]]
+live = "~/.config/systemd/user/dconf.service.d/90-service-watch.conf"
+source = "config/systemd/user/dconf.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "10a45871de7f50498491c355f0054e2dd79645968d605a10aea69e6392ce0500"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/browser-bypass-dsp.service"
+source = "config/systemd/user/browser-bypass-dsp.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8a4a07ac77ac4ece5d97d5e370fc950a2e332382518d077d7307a6ccc06d9aa4"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/buildkit-workspace.service"
+source = "config/systemd/user/buildkit-workspace.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8efaeab1d0e61d1514c6c0deb6ad3ebc35b8b12a9634115794125256f52163c6"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/chat-poller.service"
+source = "config/systemd/user/chat-poller.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9373070ac4beabeb9b96e5969a70b9c980e05971af2fcd994d9f099204d895ec"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/ctx.service"
+source = "config/systemd/user/ctx.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "22a187f26ca4efd459ec48585320b1b7ba40334620b5185a5bee8b58012b2d55"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/dash-log-watch.service"
+source = "config/systemd/user/dash-log-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "253437117ba7013bb29f7352e33e223cd503a0441bb9825df05ef967b3763bc6"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/frontier-kb.service"
+source = "config/systemd/user/frontier-kb.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a95fa9e4566a6a5d81868c2c105ea4a9c837942ada81d433d662fcadcc1e516c"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/garden-room-hermes-gateway.service"
+source = "config/systemd/user/garden-room-hermes-gateway.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4fe6516ad9ba7977bf2287596229904c02e0c6105d4ffba121c16c287d752ef6"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/garden-room-hermes.service"
+source = "config/systemd/user/garden-room-hermes.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "02c3a62cc6c02385ae3004c775f47c54c61e450e02096cbe0e203771e96b8323"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/garden-room.service"
+source = "config/systemd/user/garden-room.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "81a80b51ff0ccbc67b7616b2bf62118e3b62c8c6f22ede31770e2aeb6232dc98"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-cluster.service"
+source = "config/systemd/user/hermes-cluster.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "564cf5e21e11edb7495b740160db2d52c66e3aff9269a09cb3f09bd18eacc8b3"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-dashboard-tailnet-proxy.service"
+source = "config/systemd/user/hermes-dashboard-tailnet-proxy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "311fe429ab96460858d9972049656b4ad58bc0e5b3a04f1d19a0560ca4a300ba"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-drive-web-proxy.service"
+source = "config/systemd/user/hermes-drive-web-proxy.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "95322ae43aa9f07af81bccf7a1839810db41c3422daede86a10da09f3b8afc12"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-intake-progress-watch.service"
+source = "config/systemd/user/hermes-intake-progress-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bebe694b3303765f3acea805bfc069dcb5cea84a47dbef176127cb05dd21dc00"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-voice-web.service"
+source = "config/systemd/user/hermes-voice-web.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3841b9cba813f4cc30028d6de0e85c267301335a70cc735586a23b2204d51997"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-web.service"
+source = "config/systemd/user/hermes-web.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "20f8ef1847d2c6f681a8499cbc2d26da4e29861ff7105aee42ad7e5f20e9f94c"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hyprcaffeine.service"
+source = "config/systemd/user/hyprcaffeine.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fabe3299c0795c965f79f3435ee17b764d5c00895d0443e78168590915d795a1"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/neuroforge-anki-bridge.service"
+source = "config/systemd/user/neuroforge-anki-bridge.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ffb5b59651f735c0e389f00d06c0728be1705d2cabc1dce144d13a77422b439b"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/neuroforge-dashboard.service"
+source = "config/systemd/user/neuroforge-dashboard.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "38fd306bdac7cb30f56241459681f838429ce043e9693f1ddbf0967abfe0f76f"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/neuroforge-game.service"
+source = "config/systemd/user/neuroforge-game.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b904f960ff988b3c7bf7e988dffbb564e0be36d37893b52b4c5c32709d19e02c"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/nvibrant.service"
+source = "config/systemd/user/nvibrant.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d906446877cc3cc06df224e677d975421f7c5b8a616917028d3c7979b4a6ead7"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/ollama-gguf.service"
+source = "config/systemd/user/ollama-gguf.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "92d99e2a3692262ef76f7b80971c236f1a3c39204b3277eda319f40b53600134"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/service-watch.service"
+source = "config/systemd/user/service-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "df7a728abb507ab79bcd90796d7e3ca4864c4ef7c94c6ccf5e7ed723c44df8f3"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/t3code.service"
+source = "config/systemd/user/t3code.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "59123dc767f1a9e92cceced2ea6c2bf77160e4c33e1af73551a51109cc46f530"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/tencentdb-memory.service"
+source = "config/systemd/user/tencentdb-memory.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8b6eb0641099f9f3c1fea15a3fdacbc66ed565c29916088c4d240c9fc86b2eb5"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/tmux.service"
+source = "config/systemd/user/tmux.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27439aee4435212d252854d5d885d5aa060350def95f92f502a7e69e04e4ec96"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/uniichat-luna.service"
+source = "config/systemd/user/uniichat-luna.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8018e1017d8297f5bb48a3055bba8d94e4b85398bb5a97b565311fbceaf100ab"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/whisperflow.service"
+source = "config/systemd/user/whisperflow.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0-farm-llama.service"
+source = "config/systemd/user/z0-farm-llama.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e5442ed0f320921e637987314e6a8d2bcdbee74ce15d6ffb27b8950e606a4be4"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0-ghcache.service"
+source = "config/systemd/user/z0-ghcache.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "740ff472b351ba1eb40e155be4bfd85d6ee9176c0e7f04c585a46e1b1f160dfb"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0intelligence.service"
+source = "config/systemd/user/z0intelligence.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "37891aafe4e622568774073f78bc2477c2d5263e0ad2e3f0d288aabc47f3688e"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0live-hermes.service"
+source = "config/systemd/user/z0live-hermes.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7607f7455f1ae0c4e03b2830e8f480d0c8f0f53b7540ad5086ed13f60c0a0392"
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/z0live.service"
+source = "config/systemd/user/z0live.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "92ed092bcde1d498d997b37d26cf5b573b917648f78cf6c053dd5c8d7e3f9d3a"
+
+[[user]]
+live = "~/.config/systemd/user/dirmngr.socket.d/90-service-watch.conf"
+source = "config/systemd/user/dirmngr.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6169f1885b2671c01477b9ae426d018f32764e5eccd232f3954a77f789b5d7be"
+
+[[user]]
+live = "~/.config/systemd/user/fettl-shadow-summary-final-20261025.service.d/90-service-watch.conf"
+source = "config/systemd/user/fettl-shadow-summary-final-20261025.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c07a5c3795b9e872d6388cf4ff1612a0c43f723f2bc5f8db7dfc3fe196581a6c"
+
+[[user]]
+live = "~/.config/systemd/user/fettl-shadow-summary-final-20261025.timer.d/90-service-watch.conf"
+source = "config/systemd/user/fettl-shadow-summary-final-20261025.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "db5320a8d28c6148349f85bce3f5143a60a9a1110740fcd3490708ed86bf4fa1"
+
+[[user]]
+live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf"
+source = "config/systemd/user/fleet-health.service.d/50-admission-owner.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c"
+
+[[user]]
+live = "~/.config/systemd/user/fleet-health.service.d/90-service-watch.conf"
+source = "config/systemd/user/fleet-health.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "645af08641160637a073a238cdbc8945470476ee47c05a514d48aa11dabda668"
+
+[[user]]
+live = "~/.config/systemd/user/fleet-health.timer.d/90-service-watch.conf"
+source = "config/systemd/user/fleet-health.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "eaef8f362f526954794aa72c9a5621ff991a18a0c676711bd4c57cd087277813"
+
+[[user]]
+live = "~/.config/systemd/user/free-model-inventory.service.d/90-service-watch.conf"
+source = "config/systemd/user/free-model-inventory.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4a935155494d6367c237bad41783cda5c321a8eab8ee1d6b06cd7a7bad30280b"
+
+[[user]]
+live = "~/.config/systemd/user/free-model-inventory.timer.d/90-service-watch.conf"
+source = "config/systemd/user/free-model-inventory.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5985e47762308af156bdd2c047d84c9dc72262991afea1b51d95e863eb6f7928"
+
+[[user]]
+live = "~/.config/systemd/user/frontier-kb.service.d/90-service-watch.conf"
+source = "config/systemd/user/frontier-kb.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f812918b079835039067faa1cd139a0b65e473d1d24b0048b27959605e1a682d"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes-gateway.service.d/90-service-watch.conf"
+source = "config/systemd/user/garden-room-hermes-gateway.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "126b3b4bb2f0acac0aa289eabf10ce85fd0a96de6cf23ff272320773f5061765"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-hermes.service.d/90-service-watch.conf"
+source = "config/systemd/user/garden-room-hermes.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "16832cb20b97c4ca05a28ce436d2fcaab413378a885836d0082aa3a8a389a379"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room-scan-live.service.d/90-service-watch.conf"
+source = "config/systemd/user/garden-room-scan-live.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b257e9a0d4ee9d02ad45f24fd9a25be03cc6983603e3304d72560f1f90ef3323"
+
+[[user]]
+live = "~/.config/systemd/user/garden-room.service.d/90-service-watch.conf"
+source = "config/systemd/user/garden-room.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2ba0c47049b90f411cc2ec5ba23995ee9ebb0ae10f438d878270ab831dd39450"
+
+[[user]]
+live = "~/.config/systemd/user/gnome-keyring-daemon.service.d/90-service-watch.conf"
+source = "config/systemd/user/gnome-keyring-daemon.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "564e7d1a7898f9e10fd376e41488aac53a6f8c256a5e26257804667c077de603"
+
+[[user]]
+live = "~/.config/systemd/user/gnome-keyring-daemon.socket.d/90-service-watch.conf"
+source = "config/systemd/user/gnome-keyring-daemon.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fc0a2ca9ff455131fd218526f5803940750ad43a804a14c1532946ca485ac7f1"
+
+[[user]]
+live = "~/.config/systemd/user/gpg-agent-browser.socket.d/90-service-watch.conf"
+source = "config/systemd/user/gpg-agent-browser.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7abd63a4afc21cd17854c2ce0ad74839029e7fb2b2637245ffb57c4bc3078825"
+
+[[user]]
+live = "~/.config/systemd/user/gpg-agent-extra.socket.d/90-service-watch.conf"
+source = "config/systemd/user/gpg-agent-extra.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b0a6814ee5f2aa3127660db0476e4058d15ac3b04a05ff0f8920c4dea0ed5513"
+
+[[user]]
+live = "~/.config/systemd/user/gpg-agent-ssh.socket.d/90-service-watch.conf"
+source = "config/systemd/user/gpg-agent-ssh.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7bff96acd85a11bfb7d19ac8d1c9127e6b020ab7fced6e2b0850ddb7135e7235"
+
+[[user]]
+live = "~/.config/systemd/user/gpg-agent.socket.d/90-service-watch.conf"
+source = "config/systemd/user/gpg-agent.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d3579b8dcce25247aa422ff5af8a25629104fa94f311e48225ac05bfc31ae0dc"
+
+[[user]]
+live = "~/.config/systemd/user/graphical-session.target.wants/awatcher.service"
+source = "config/systemd/user/awatcher.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "feabed2a65cf72a10a25c0927b0a35353a174edbc4f8b84ab4cbbe64bc4d1514"
+
+[[user]]
+live = "~/.config/systemd/user/graphical-session.target.wants/mode-border.service"
+source = "config/systemd/user/mode-border.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "68916fcf8fd539602f9a8954edf90b64a8a90e735f6c2fa4b0fe589d6f49cd92"
+
+[[user]]
+live = "~/.config/systemd/user/graphical-session.target.wants/taildrop-portal.service"
+source = "config/systemd/user/taildrop-portal.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "433bba9cf8f0e3d6f1fec396b22c85cc499d9d8324925c953d6396b017100833"
+
+[[user]]
+live = "~/.config/systemd/user/graphical-session.target.wants/workspace-copilot.service"
+source = "config/systemd/user/workspace-copilot.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e4845226ec372178313acea86bc55046a97bb46f275c8b5f3ae74b163600a1b9"
+
+[[user]]
+live = "~/.config/systemd/user/gvfs-daemon.service.d/90-service-watch.conf"
+source = "config/systemd/user/gvfs-daemon.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "955f85f0ac5a5690f020791839892b58bf3f7f1b98db7fcc01b9cec04773a7ca"
+
+[[user]]
+live = "~/.config/systemd/user/gvfs-metadata.service.d/90-service-watch.conf"
+source = "config/systemd/user/gvfs-metadata.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "50565b120ef11e04c25a3b0642865dabbb7ff24a16b5d0a0e1d0fd7de51ea337"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-cluster.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-cluster.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7c4475ae9d3b933b7dbcf532f284a17c3093f30a439d94824f82d6833b6145f8"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-core.scope.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-core.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3625bc3e93cf2ba73a21f872640ce70ebcaacb332a1444f9f439bedca6268fb6"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-dashboard-tailnet-proxy.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-dashboard-tailnet-proxy.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "be5111eee14a80b8f1552c4eb6d2d383cafb3bc2ba3c17cd51db18f653b5046d"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-web-proxy.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-drive-web-proxy.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bb3e494c5ba82ea82e2182e31964028fff1161a2e938568f9349ac333886e624"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-chiefstaff.service.d/storage-root.conf"
+source = "config/systemd/user/hermes-gateway-chiefstaff.service.d/storage-root.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bda89c6150a8bc415d4ddbe22e50e15086ebf85c21bf9929b0bbc180d239046f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-intake.service.d/envfile.conf"
+source = "config/systemd/user/hermes-gateway-intake.service.d/envfile.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d57c7d64caff31df90caee85b4b82c2a47501215f3788fd9a6c4456419d8465c"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf"
+source = "config/systemd/user/hermes-gateway.service.d/50-memory-envelope.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f5659d30ca7e77557d9b3bbee8ecd62f232964a58d006da8bfe353b67d8ec1d2"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-gateway.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "df87aa524788de00f06449c6120e18d28ad2a169475d9791358f2b727a3caa04"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-intake-progress-watch.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-intake-progress-watch.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9a0d78c06170c57649a9a31c6b35cf5d06259642e5be120afebaaa4bce15a7b7"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-mesh-keel.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-mesh-keel.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d3f05aa9fb93794d65552ce5fe78b752d7e9593dd0a12678311a9352638facc1"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-voice-web.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-voice-web.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27aba596f441ec8064b898fea74173835e098bfc0fc6a1770c66ccbade8a3056"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-web.service.d/90-service-watch.conf"
+source = "config/systemd/user/hermes-web.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "567ef91569df5f026f265ba9c0fba90be3273393e6a196d670d804b1f18d71ed"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-web.service.d/google-oidc.conf"
+source = "config/systemd/user/hermes-web.service.d/google-oidc.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "966913b5355ace8a79ebf5b9ea881bcf49a97fa4f646950b33e8c426ef5b6777"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf"
+source = "config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3099ce47dfaf434ca143946370f9dcb4a785eaecfde6c10bb966d85594b26686"
+
+[[user]]
+live = "~/.config/systemd/user/hermes3d-stream.service.d/no-autorelaunch.conf"
+source = "config/systemd/user/hermes3d-stream.service.d/no-autorelaunch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f208679eb3ba3af9636b84b87f38430ff46d12e239b847d9149152118438025c"
+
+[[user]]
+live = "~/.config/systemd/user/hyprcaffeine.service.d/90-service-watch.conf"
+source = "config/systemd/user/hyprcaffeine.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f663159cf1c57dcc18abe8ce3a2dfffbbf565b777d95f65deb8ab939c77e8a97"
+
+[[user]]
+live = "~/.config/systemd/user/keyboxd.socket.d/90-service-watch.conf"
+source = "config/systemd/user/keyboxd.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "84373795ce2416cc29d575e173ee0ef6d744c1caef4e3a4d9524f7ed44460faf"
+
+[[user]]
+live = "~/.config/systemd/user/kvnloo-fork-sync.service.d/90-service-watch.conf"
+source = "config/systemd/user/kvnloo-fork-sync.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5dfa1b4fb618250fb0cda972378f15cc70d10c8846ad7371f9501099247ba254"
+
+[[user]]
+live = "~/.config/systemd/user/kvnloo-fork-sync.service.d/disable-upstream-main-reset.conf"
+source = "config/systemd/user/kvnloo-fork-sync.service.d/disable-upstream-main-reset.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f438f23441ce6826b81502080fde87f9e894d755f474c60c1bef3fe962142d62"
+
+[[user]]
+live = "~/.config/systemd/user/kvnloo-fork-sync.timer.d/90-service-watch.conf"
+source = "config/systemd/user/kvnloo-fork-sync.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8d2e700e5b2cc04048ec04ad90f6f6dd2da3f1e7ad2480669795952eb1f4dd6e"
+
+[[user]]
+live = "~/.config/systemd/user/mode-border.service.d/90-service-watch.conf"
+source = "config/systemd/user/mode-border.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d415ad25f7f608327bf2331d65a71b0cec61d81a1cd64f6583afe79139e3550b"
+
+[[user]]
+live = "~/.config/systemd/user/multi-user.target.wants/frontier-kb.service"
+source = "config/systemd/user/frontier-kb.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a95fa9e4566a6a5d81868c2c105ea4a9c837942ada81d433d662fcadcc1e516c"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-anki-bridge.service.d/90-service-watch.conf"
+source = "config/systemd/user/neuroforge-anki-bridge.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7b9048a1aa07ddc41166acbee797ac9d78cd4a67fb0a149d5e13fc12e6d67f86"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-dashboard.service.d/90-service-watch.conf"
+source = "config/systemd/user/neuroforge-dashboard.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9018e9b26f244def4082683ec2d5ad526aced66a1a128f18b6e7b052b0bde5b8"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-game.service.d/90-service-watch.conf"
+source = "config/systemd/user/neuroforge-game.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "28818e4c661dd4e9f40f68e55811479ad1f0494c4a3fc0b561bac4fdfe100e43"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-import.service.d/90-service-watch.conf"
+source = "config/systemd/user/neuroforge-import.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6699f8e2c21f6b588d1a270509b2bcf44d7dd5e0641f9dfa437aa27efed8c3d1"
+
+[[user]]
+live = "~/.config/systemd/user/neuroforge-import.timer.d/90-service-watch.conf"
+source = "config/systemd/user/neuroforge-import.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ce1000f0f328eb70c1800aea57525b6127ddc135ab75053e169b4ecee9c64a68"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter-sunset.service.d/90-service-watch.conf"
+source = "config/systemd/user/night-filter-sunset.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "baa42d507214dde238c2c078282c09a7c7a0740ff2b89a7eabefe5a23bc8c73a"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter-sunset.timer.d/90-service-watch.conf"
+source = "config/systemd/user/night-filter-sunset.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a556766ca059262875ef769f542223c00121e6b979ba94a96ca602d5f868a567"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter.service.d/90-service-watch.conf"
+source = "config/systemd/user/night-filter.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bcc9eb036c6cf5b34bcfd3b8af7903ceec1ffbc0371ec8c410a5ae3d23158f52"
+
+[[user]]
+live = "~/.config/systemd/user/night-filter.timer.d/90-service-watch.conf"
+source = "config/systemd/user/night-filter.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5bbe6d6ccfc1db998c959064d904450a9e021846d8321652ced084d97b007163"
+
+[[user]]
+live = "~/.config/systemd/user/no-mistakes-daemon-3d3e90e3.service.d/90-service-watch.conf"
+source = "config/systemd/user/no-mistakes-daemon-3d3e90e3.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fd4d084b39d20bfc4cf4d630ec9a8a90c7b1cebb6f0f98a992c99f43d7a63aff"
+
+[[user]]
+live = "~/.config/systemd/user/noctalia-shell.service.d/90-service-watch.conf"
+source = "config/systemd/user/noctalia-shell.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ab13377b14e5bbcf611c1c7909452bed378d808e45a584302f97211f1cb88e48"
+
+[[user]]
+live = "~/.config/systemd/user/nvibrant.service.d/90-service-watch.conf"
+source = "config/systemd/user/nvibrant.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "efae8c2ff5c802c39055fe469626b91ed04ccd2c7ca8e475d18d4949f416c77c"
+
+[[user]]
+live = "~/.config/systemd/user/ollama-gguf.service.d/90-service-watch.conf"
+source = "config/systemd/user/ollama-gguf.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "60231a3630420a78c07f2238467f191f89131e75bff2409f17bf0f845c318119"
+
+[[user]]
+live = "~/.config/systemd/user/omp-agentdb-repair.service.d/90-service-watch.conf"
+source = "config/systemd/user/omp-agentdb-repair.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c85a2fe55a27bace7bffdc1b3029b579a326b0488e4bdfc70822266e04b81b50"
+
+[[user]]
+live = "~/.config/systemd/user/p11-kit-server.socket.d/90-service-watch.conf"
+source = "config/systemd/user/p11-kit-server.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d4fac5d0d264fe14e5722674d2ff71a89306d26b88a2726d6c83db23517ad4fb"
+
+[[user]]
+live = "~/.config/systemd/user/pipeline-studio-web.service.d/90-service-watch.conf"
+source = "config/systemd/user/pipeline-studio-web.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4bf3ac4061153230886400d3cb2610f25b5aa05c1d94539f3d2d569bcb01ca37"
+
+[[user]]
+live = "~/.config/systemd/user/pipewire-pulse.service.d/90-service-watch.conf"
+source = "config/systemd/user/pipewire-pulse.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "62d3dbf2e31560c8e4709a8867d52a24668230bdd1c5d23a6666ef252fbfdbb0"
+
+[[user]]
+live = "~/.config/systemd/user/pipewire-pulse.socket.d/90-service-watch.conf"
+source = "config/systemd/user/pipewire-pulse.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "07da83b26ef7ef5ddf43026a35566b3a9bc77d15bcb6438f0d101709b908f6cf"
+
+[[user]]
+live = "~/.config/systemd/user/pipewire.service.d/90-service-watch.conf"
+source = "config/systemd/user/pipewire.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "364cd9e11fb9601aa7578dd4cb0c0d4756a33270e58bf610d2c4a095d43dd80c"
+
+[[user]]
+live = "~/.config/systemd/user/pipewire.socket.d/90-service-watch.conf"
+source = "config/systemd/user/pipewire.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6e663eddf45d3d566a555c7c8fb69661f00d81c8119c9e0387166eebc4a7cf76"
+
+[[user]]
+live = "~/.config/systemd/user/quackles-arbiter.service.d/90-service-watch.conf"
+source = "config/systemd/user/quackles-arbiter.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b8d506ba38763f5344c655d52727c65dafb4937b9860d3dba30f4f24ef00a491"
+
+[[user]]
+live = "~/.config/systemd/user/quackles-arbiter.timer.d/90-service-watch.conf"
+source = "config/systemd/user/quackles-arbiter.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "40d067db7d4831a3278615a95e02da6d854b3325ac766008ec1e74148cab41a2"
+
+[[user]]
+live = "~/.config/systemd/user/rax200-inspector.service.d/90-service-watch.conf"
+source = "config/systemd/user/rax200-inspector.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f5ac30d1f79ec7a5bc8e4e10fcf4bb0395b1d9673a7055f6d7b965768bec8920"
+
+[[user]]
+live = "~/.config/systemd/user/run-p2905047-i2921678.service.d/90-service-watch.conf"
+source = "config/systemd/user/run-p2905047-i2921678.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "56d3902ed759b2fb43f7b1bbf5cdfd95cb99005016fe2f6a3869a9564a8420ac"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-heartbeat.service.d/90-service-watch.conf"
+source = "config/systemd/user/service-watch-heartbeat.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "1e8f8f44c09653215d6295d5ce1d2b5a5daf2a4daf98709d8674521b7666d851"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-heartbeat.timer.d/90-service-watch.conf"
+source = "config/systemd/user/service-watch-heartbeat.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "27aac38a77a9cbc1433bde974ac6d7c2f63dd18b7b29179062292bfd6769c202"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-seed.service.d/90-service-watch.conf"
+source = "config/systemd/user/service-watch-seed.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5859a5a3c48d621f713928294cfe2a780c6cea53ce5156c684d5fa9f52ff4090"
+
+[[user]]
+live = "~/.config/systemd/user/service-watch.service.d/90-service-watch.conf"
+source = "config/systemd/user/service-watch.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c577d4444fbdd4ace69380c073ab4d79f3f923f88fb32b9272653339419c018e"
+
+[[user]]
+live = "~/.config/systemd/user/sockets.target.wants/z0int-memory-mcp.socket"
+source = "config/systemd/user/z0int-memory-mcp.socket"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "781da54bd0d74e4439e81ab9021cc28a1bacff706b8fe39ef254b0c40f75bb58"
+
+[[user]]
+live = "~/.config/systemd/user/systemd-ask-password.socket.d/90-service-watch.conf"
+source = "config/systemd/user/systemd-ask-password.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "1240c741f1befff8323555c372953f0c0e23bb29b3156ecffaf28eaa32ced428"
+
+[[user]]
+live = "~/.config/systemd/user/systemd-importd.socket.d/90-service-watch.conf"
+source = "config/systemd/user/systemd-importd.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3c9f6a1ed2da5192e317c5ceb2bce8648ece756f74dac576f5237306093cb249"
+
+[[user]]
+live = "~/.config/systemd/user/systemd-journalctl.socket.d/90-service-watch.conf"
+source = "config/systemd/user/systemd-journalctl.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9019114c4f7fa906b68f5530ca4cf8fff9930ae17132b90942c7caaedf2a9f3f"
+
+[[user]]
+live = "~/.config/systemd/user/systemd-machined.socket.d/90-service-watch.conf"
+source = "config/systemd/user/systemd-machined.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "60b3769920d77f571945193ca838f5c0bf51718160b4f49df00c9df644d34e5d"
+
+[[user]]
+live = "~/.config/systemd/user/systemd-storage-fs.socket.d/90-service-watch.conf"
+source = "config/systemd/user/systemd-storage-fs.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a20d165275e2f821a40a164f4b2636d9aa3dff2dea83f2b2182fa2a200aadae7"
+
+[[user]]
+live = "~/.config/systemd/user/t3code.service.d/90-service-watch.conf"
+source = "config/systemd/user/t3code.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e1f302127767d668476b82794fb1441f4c11a23c717b0c55da45921de3fdbe31"
+
+[[user]]
+live = "~/.config/systemd/user/taildrop-portal.service.d/90-service-watch.conf"
+source = "config/systemd/user/taildrop-portal.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7d5d199840cdc822c106aaa087ea7bb19a2350dfa88de34308c211a3ee1292cb"
+
+[[user]]
+live = "~/.config/systemd/user/temple-guard-story-luna.service.d/90-service-watch.conf"
+source = "config/systemd/user/temple-guard-story-luna.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8fc1c766a596065e6de5ef9027f0223eba07bf8e74547b66ceadf8575d804517"
+
+[[user]]
+live = "~/.config/systemd/user/tencentdb-memory.service.d/90-service-watch.conf"
+source = "config/systemd/user/tencentdb-memory.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a2e86b742e4c2ec4e1db779db45a4678d853540e0e0549e3ed97ce6bc64a6092"
+
+[[user]]
+live = "~/.config/systemd/user/tern-hosts-sync.timer.d/90-service-watch.conf"
+source = "config/systemd/user/tern-hosts-sync.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a5cf758baf4fa1cf61b723550c12a8141262bd9ece95f40f4272e735ea02dc63"
+
+[[user]]
+live = "~/.config/systemd/user/tern-queue-loop@s22.service.d/90-service-watch.conf"
+source = "config/systemd/user/tern-queue-loop@s22.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "34f65360b4b0ad963280fd4119ee9b233bf84cadc58b86eb129c00386c5937b3"
+
+[[user]]
+live = "~/.config/systemd/user/tern-queue-loop@s25.service.d/90-service-watch.conf"
+source = "config/systemd/user/tern-queue-loop@s25.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e9ec357408b54a431c73be418eaf849022142cbbe1d550533e7223de05757919"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/agent-resource-classify.timer"
+source = "config/systemd/user/agent-resource-classify.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fc0538aca05285e239b7b480f3d231a47696ba771f94f0a3cd631fc5d0b32911"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/agent-telemetry-refresh.timer"
+source = "config/systemd/user/agent-telemetry-refresh.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fddee4cbed7f14f06c123b2ff1b052f35ec50edcd2fdd25d10c88cf6c0989b82"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/agentsview-sync.timer"
+source = "config/systemd/user/agentsview-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fc7ba1bd03b9cd7a060573d197dc537ffd52eebf49112cd356079398f262f2be"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/artifact-leases.timer"
+source = "config/systemd/user/artifact-leases.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3ef71fdcffb53fa414688a483dbe0f41cd3f4f73583ccc2e75c7a415b3ea9bfc"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/boat-reaper.timer"
+source = "config/systemd/user/boat-reaper.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "19317ae9a02f2093692d1eeb16d0f85d1db6d06e175f47f6cd0c3ac674df8735"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/bws-secrets-sync.timer"
+source = "config/systemd/user/bws-secrets-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e91d2b131c7f978e732961c478188643200e8147eb42598f034f6b2497bcc99c"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/fleet-health.timer"
+source = "config/systemd/user/fleet-health.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fd2ef99ec346857939a1d8e55b206670ddae65df19fd0849413fc833f745acc1"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/free-model-inventory.timer"
+source = "config/systemd/user/free-model-inventory.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5ddbaff339c5d5b48705f498cc40f9f6b6174bf2c27b7de5a502a4bcd314079a"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/kvnloo-fork-sync.timer"
+source = "config/systemd/user/kvnloo-fork-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3521105b3b59602b5f3aecc054d88ef747400d703d8b8e69a978777730d72f17"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/neuroforge-import.timer"
+source = "config/systemd/user/neuroforge-import.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "514a61bbe4f2a3206664266dd936b4177fde1f6e840d5a94cd927e908a0403ec"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/night-filter.timer"
+source = "config/systemd/user/night-filter.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d675dc8def741aef204aaf2e208efe828aae99279c9e032ab2a773b95afbb2b6"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/quackles-arbiter.timer"
+source = "config/systemd/user/quackles-arbiter.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5f1792e460e4da4a1e31a50d06930d6df8269ec894df03c433971fd6ed2c81e5"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/service-watch-heartbeat.timer"
+source = "config/systemd/user/service-watch-heartbeat.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a632773d6329f353cbfea2faa3d83bd424e47ba44ab0e426862d0dd486dced2d"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/tern-hosts-sync.timer"
+source = "config/systemd/user/tern-hosts-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "80610ddc72280675aa9c035d885f9bfc06ac7b21e339ce3a22ffcb41d48fa033"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/workspace-copilot-rerank.timer"
+source = "config/systemd/user/workspace-copilot-rerank.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8b83ea9ac4ab910f2df7aa3b3400b19545e48f031fcc7c9d1407dae460173428"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0-ghsnapshot.timer"
+source = "config/systemd/user/z0-ghsnapshot.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "30b48604417b73830df03a4cc8907c65e7edbf545eddb5b47c5b580d9652bf95"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0-guard-gateway-watch.timer"
+source = "config/systemd/user/z0-guard-gateway-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c76759d11b4e9cf8b59a755a3475c1493723ddf639982108b3c2d1a29b4d058b"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0-guard-routing.timer"
+source = "config/systemd/user/z0-guard-routing.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0103082f7e570ffa64c43d9ed0681310218ccfe22aeccd27a95a12e2d4b7cb68"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0-state-packet.timer"
+source = "config/systemd/user/z0-state-packet.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "150984f0318034172a0f8f30bf183dc48e93cede97807ee3dec49dbfc763aaf5"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0-worker-supervision.timer"
+source = "config/systemd/user/z0-worker-supervision.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2f8eff3a1066e43c29feb028e67e2a8a0f4eff38dbcb651413be396147be5b97"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0int-loop-tick.timer"
+source = "config/systemd/user/z0int-loop-tick.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a0d6c4b157dc2bc712177b83f7b644454ab862195a458914d0143d9cbe5e8e59"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0int-policy.timer"
+source = "config/systemd/user/z0int-policy.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "93668c915329fb00b7bc6f728883b3233bf0a6800174c8141d0c168990e418b8"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/zer0-storage-autotier.timer"
+source = "config/systemd/user/zer0-storage-autotier.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "285c24f631734febbcd05668d5bc3d9abf2b74371c30309f393e64f8466c48e3"
+
+[[user]]
+live = "~/.config/systemd/user/tmux-spawn-35240a0f-c94f-41f6-8465-56a09b3f30d6.scope.d/90-service-watch.conf"
+source = "config/systemd/user/tmux-spawn-35240a0f-c94f-41f6-8465-56a09b3f30d6.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "068275f42ccc679a17b203c4b14fa42570715c3526a64c4a391d7aa4081752ec"
+
+[[user]]
+live = "~/.config/systemd/user/tmux-spawn-4ee3b051-1083-4d74-b0db-0b4109fcc230.scope.d/90-service-watch.conf"
+source = "config/systemd/user/tmux-spawn-4ee3b051-1083-4d74-b0db-0b4109fcc230.scope.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "25c6feefb91cf7d36bac331f67d2ca68c5903c67a6e3e755f588e6243fbadf44"
+
+[[user]]
+live = "~/.config/systemd/user/tmux.service.d/90-service-watch.conf"
+source = "config/systemd/user/tmux.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6ab6e231f4ea0524345a3172bfd1a2500d6b9675f8db02568609aa21e9d63717"
+
+[[user]]
+live = "~/.config/systemd/user/tokenmaxxing-sync.service.d/claude-profiles.conf"
+source = "config/systemd/user/tokenmaxxing-sync.service.d/claude-profiles.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2ba14d0c3b2ed5dcc864e3ef2de361aae6dafc1dc9b37c1a18deb7ca267be591"
+
+[[user]]
+live = "~/.config/systemd/user/unii-memory-nudge.timer.d/90-service-watch.conf"
+source = "config/systemd/user/unii-memory-nudge.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3f447d70281338433346f9ef7ebb8c11574e11fb0faafab2f58f3f814c96969f"
+
+[[user]]
+live = "~/.config/systemd/user/uniichat-luna.service.d/90-service-watch.conf"
+source = "config/systemd/user/uniichat-luna.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2654c986b0639d89102f16002cce79662d1e63311ea7beb47654fe09797e4d1a"
+
+[[user]]
+live = "~/.config/systemd/user/wan-watch.service.d/90-service-watch.conf"
+source = "config/systemd/user/wan-watch.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fae1b99744998a297793d026b3e862bc95f540c382613be5d1a8eaea862bae49"
+
+[[user]]
+live = "~/.config/systemd/user/wayland-session-bindpid@5058.service.d/90-service-watch.conf"
+source = "config/systemd/user/wayland-session-bindpid@5058.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ee8c752371e92e4edb65657410d9de878a66749f341a57f916dcbcbc2814fe16"
+
+[[user]]
+live = "~/.config/systemd/user/wayland-session-bindpid@622972.service.d/90-service-watch.conf"
+source = "config/systemd/user/wayland-session-bindpid@622972.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ec07af01c98399aaf2f6b9dfbce63e39d4af08add024bd76dd22a087206ed432"
+
+[[user]]
+live = "~/.config/systemd/user/wayland-wm-env@hyprland.desktop.service.d/90-service-watch.conf"
+source = "config/systemd/user/wayland-wm-env@hyprland.desktop.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fb0034dc092d20457fa49f3f99d4b1fb581c53460331edb2ce1c23288922a282"
+
+[[user]]
+live = "~/.config/systemd/user/wayland-wm@hyprland.desktop.service.d/90-service-watch.conf"
+source = "config/systemd/user/wayland-wm@hyprland.desktop.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "742b94a3295f7a5e073979bcab073f35f8dc41f4c75cdaeffdffabe3d5cb5a05"
+
+[[user]]
+live = "~/.config/systemd/user/whisperflow.service.d/90-service-watch.conf"
+source = "config/systemd/user/whisperflow.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "7ea10a6d2dca108d80f6f37318e631aa5832544abc7b0c3bfb55b05c019d6645"
+
+[[user]]
+live = "~/.config/systemd/user/wireplumber.service.d/90-service-watch.conf"
+source = "config/systemd/user/wireplumber.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2d4c9bb92bbab6aecaf2b7bc2db2a82f489647a474435148d82a4b246581910b"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot-rerank.service.d/90-service-watch.conf"
+source = "config/systemd/user/workspace-copilot-rerank.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "aedcdd269fbcec016afc6c70843df34cf4478bbf7f25f33e22fffd154aa5486b"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot-rerank.timer.d/90-service-watch.conf"
+source = "config/systemd/user/workspace-copilot-rerank.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cc6245ce5216566d991a24a1ab019ddc9da5f8e3cbc7d32db64d23a50335f158"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot.service.d/90-service-watch.conf"
+source = "config/systemd/user/workspace-copilot.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "da24558271890e0fb033e36c7081817098c1c1aa7974481b41d8672f0ab80349"
+
+[[user]]
+live = "~/.config/systemd/user/workspace-copilot.service.d/storage.conf"
+source = "config/systemd/user/workspace-copilot.service.d/storage.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b9933b0c15fafe8fc573caa881e79d2db9178da0294ca42edbd51bc57273b358"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-fixtures-once-20261024.service.d/90-service-watch.conf"
+source = "config/systemd/user/worktree-fixtures-once-20261024.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "561a9e58836e3589360d507d7c755eab4cf142410f31a0e27b477c907929ceb9"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-reaper-once-20261024.service.d/90-service-watch.conf"
+source = "config/systemd/user/worktree-reaper-once-20261024.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c2415cc38f4dcedc6447f2b667ac57aa581f855f4b13becdf204bc7be84753e8"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-reaper-resume-20261025-r2.service.d/90-service-watch.conf"
+source = "config/systemd/user/worktree-reaper-resume-20261025-r2.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "078b6c26dc99894761de5294d62f8a78f859aaef0f62c1e0d6f3e9cfeda47ba5"
+
+[[user]]
+live = "~/.config/systemd/user/worktree-reaper.timer.d/90-service-watch.conf"
+source = "config/systemd/user/worktree-reaper.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fccc97a5b780e900e6ee9119ec30e6d8a7edb1bf9242d6c08356915e5f751a26"
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-gtk.service.d/90-service-watch.conf"
+source = "config/systemd/user/xdg-desktop-portal-gtk.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a7161c1144ce139760105df8c39c90a0d91063a3784d943876581abe767d61bb"
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-hyprland.service.d/90-service-watch.conf"
+source = "config/systemd/user/xdg-desktop-portal-hyprland.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "52ad2580e26e3e65d674ab52c6524ff50efb5d076be94794032fb27c04094d66"
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal.service.d/90-service-watch.conf"
+source = "config/systemd/user/xdg-desktop-portal.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "86e968231c4074bf1fc57078396435109088feab6924648a6092744ce109addb"
+
+[[user]]
+live = "~/.config/systemd/user/xdg-document-portal.service.d/90-service-watch.conf"
+source = "config/systemd/user/xdg-document-portal.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5fc6dfa7037b1d6bf8cc20c4806ff4e0d9c4d247da67461d575d5a92ee1b08a2"
+
+[[user]]
+live = "~/.config/systemd/user/xdg-permission-store.service.d/90-service-watch.conf"
+source = "config/systemd/user/xdg-permission-store.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "bf5301d5c3e33a739c63532d6b0eefc995bb904abff53eb307a3ed4bd0ea70d2"
+
+[[user]]
+live = "~/.config/systemd/user/z0-farm-llama.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-farm-llama.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cf70f9531a5acb73cf1e1c477c9c2151157db9c6ccf12ea064c63143e06b83e9"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghcache.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-ghcache.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "88daa40b2b8ba24523a7ef6661e52d2f315c5575c3abfabc14a86d5e5e0a0410"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghcache.service.d/integrate-20261020.conf"
+source = "config/systemd/user/z0-ghcache.service.d/integrate-20261020.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d307d489fa0473fd1d8cd6201c7428ccffe4bd5271a4de53042d130e54fcbdb9"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghsnapshot.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-ghsnapshot.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "73ee272b3416f5aad1b48ce8c9da9adad79e5310c31066b77312206d40d781bc"
+
+[[user]]
+live = "~/.config/systemd/user/z0-ghsnapshot.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0-ghsnapshot.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "76e8773c8d80131fff7aba60861f1679f21ab73686a728906e202292aed79e01"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-gateway-watch.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-guard-gateway-watch.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e3f12925a2d1c31da583180571de168b29db70725c5bf450a91a157cbe504180"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-gateway-watch.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0-guard-gateway-watch.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "322515318f5bd018b55e34773e74f3087102a310670d4def3cb207277594b3fa"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-routing.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-guard-routing.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "94a23748dc6dcb5840bc8b0eefe43dac585ff43e7e151fb7a12d5b65fa5146fe"
+
+[[user]]
+live = "~/.config/systemd/user/z0-guard-routing.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0-guard-routing.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a0d11076dc1eb08bc9ae38d37932c10f052edd551a606a474a0b32ba317bb6b9"
+
+[[user]]
+live = "~/.config/systemd/user/z0-state-packet.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-state-packet.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0251b0f469e24d56424faee8f76472b490abbd51823109d7e5b9f66ff6e4a157"
+
+[[user]]
+live = "~/.config/systemd/user/z0-state-packet.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0-state-packet.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cbcbdec2d838de1167c7851b546f561fa846b8d4238db8f28b44efb761ddef30"
+
+[[user]]
+live = "~/.config/systemd/user/z0-worker-supervision.service.d/50-bounded-operational.conf"
+source = "config/systemd/user/z0-worker-supervision.service.d/50-bounded-operational.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "d653e90a0ecb917cdfca7620872515193237bbd2d346495eca09332efc801377"
+
+[[user]]
+live = "~/.config/systemd/user/z0-worker-supervision.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0-worker-supervision.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c2521808d03b55030551dcf967a5c60af8501f20f860ced76bd8cb1337d87e87"
+
+[[user]]
+live = "~/.config/systemd/user/z0-worker-supervision.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0-worker-supervision.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "75730afc3ddd04cc35fbd8bce7c8b6256170d73f144488dcc40aea5970a6778b"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-choice-30800133fdabf8c0f46da0dcb00a7128871a6838b3ea54fc9aa4468ef731cd9c.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-choice-30800133fdabf8c0f46da0dcb00a7128871a6838b3ea54fc9aa4468ef731cd9c.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "9c8c1dfc8896b96167e8481a2354d9dc74e52009b891b47168c1f67435600de9"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/20-shadow-learning.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/20-shadow-learning.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "c65caa0b17c81e796100bb53fb35a984661b7380f9f4229223668bc6605c5b15"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/30-live-home.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/30-live-home.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6f971f79177c5c69787a9d21a93e8c5fcbae613dd08955fbf55560b73a833766"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cffcab81d3e02761d58b46ea50994981eb2783453fe1a034135b86fdf3cdf481"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3e209f701081895aaa405807d679be5bf13668ec44c0f177f46c099a8d04630f"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp.socket.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp.socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a20994807f3778373e681a915923b171d7b973340a4204cd22809c84689c5f34"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@0-4097-5890_20814-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@0-4097-5890_20814-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a284a141669234a6c8e072701488e1d884a30ec3c796a0b66d03a3263302db79"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@1-12289-19699_33852-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@1-12289-19699_33852-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0dc7281dbfc22e8c45b138df45fd4c2a5112d904d2b7df17f2e67e07abc2389e"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@104-65550-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@104-65550-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "4a6cfd29af9e043c141d20004475f9bf74173f51563ee462cd0c365cfa059def"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@105-28684-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@105-28684-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "023955e3ab9ce34962bb2256a8206a8b60ca2dd3e59a1d6aaa2880912c56348c"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@106-53346-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@106-53346-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f122fa1478d1d7e83ad64610fb38ed1cbbdd7edba3638724b71952d32a4c0f50"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@107-8200-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@107-8200-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "b282a82d1c46f8bbf07eb9a1240398cd6d463c158aeacea948a4c8ae9a81515e"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@108-28685-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@108-28685-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ce833509924f9af36cca3cd1ab3468fce0a447d9628d899c7ee1e9fa4ddf6442"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@109-57356-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@109-57356-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3cd5822ba41ee04accac7c85266bb9259a5ee240f7a21330c242893a65898674"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@112-12325-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@112-12325-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "05477362cf56a4431daebe656f954949a9d7c98d850638c682573c7d1c1f7607"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@113-28686-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@113-28686-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3939563621edaa4c63d9dcfcf5033da86677169b0674094983c6eda80d24ef5a"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@137-69643-3741239_3698641-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@137-69643-3741239_3698641-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f0751876154f2bb90f0f1fb7ba86c8bdff4edd98ee08d5ae5901805247e6361a"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@167-61460-3741239_3698641-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@167-61460-3741239_3698641-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "1945896bbc95854786b8eed3f5be1213b52d097e4008db1d428a3ab04b8d81eb"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@19-49165-2613112_2642069-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@19-49165-2613112_2642069-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "ce8c1d0010e68a08c0d576c64e70628337a94a31cef260a5928c670c314488f4"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@194-69647-650302_4870552-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@194-69647-650302_4870552-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "e35071169ce8409e11cad99950c484a232e5be0a0e5f434a174b5dcc9c6eec0e"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@205-16413-969048_5147489-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@205-16413-969048_5147489-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "dc8648591c0b77685e4b9fe3c3e01a5276264f53328e803c9f4a1a2816ecf269"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@207-17-1053631_5252494-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@207-17-1053631_5252494-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8d1992fe9223a2932487cb6ded72483f3c060a6800a0c0af36e8b422c967870a"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@208-57362-1098074_5317021-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@208-57362-1098074_5317021-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8d5403909d96a35ec540e7a558719f377648d143f0335f82b15084f53bf08d08"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@209-69704-1306589_5482932-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@209-69704-1306589_5482932-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f890ce2ccce3f2639aa68a447c5c99b5009c7bfb159446e107b7f0e56cc40f3a"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@211-77845-1349863_5535882-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@211-77845-1349863_5535882-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "3dd32caeda59efbbec2158c8b9cf64bdc708c87a4ba13372d44c532d05b532fe"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@212-69705-1353024_5547467-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@212-69705-1353024_5547467-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "486a98a8d8a2ef9bc28904e4b163b822949ae0131a88ee39716ba7a20f8fdb81"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@213-12330-1824201_6042193-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@213-12330-1824201_6042193-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f6c5cf16d29aa21ddd5bc81aa2ec1fa02131651568f78e171c8b3aa543ade30c"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@214-57363-1826214_6000279-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@214-57363-1826214_6000279-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "1ff158b0deb47d02a580cabcd3505327b4bbfd60271508b3bad952a66bd8b056"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@222-49174-2236686_6448042-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@222-49174-2236686_6448042-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "deeba60740dcad0c7826c9232497eceae2171220810c5569e752823b5212c4f5"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@223-36875-2236686_6448042-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@223-36875-2236686_6448042-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f6ab1dcc5e45864e8ec2040f749c74b9cc3b357a01b8c4754164eeb4f470edad"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@26-53342-3310942_3288526-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@26-53342-3310942_3288526-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "26f069624063571ca8b5f56e590b9d59f8ef10f04fd233b3e10c2cccde27056f"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@37-24588-3328760_3351227-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@37-24588-3328760_3351227-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "2498ea5428b1698c47409c06a0809ca7e9b616206a3104b9789510f5905fa0b0"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@85-36872-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@85-36872-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f91bcf42eaae0ed8f203c1c548cebc006d7711cfd5249eda545d743a32beeda0"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-memory-mcp@89-9-3449065_3423058-1000.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-memory-mcp@89-9-3449065_3423058-1000.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "fce9c93ecdc6a7a5989124a0281037a2af40aac7a7521cc1216f0d30b03e9dd4"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-policy.service.d/30-live-home.conf"
+source = "config/systemd/user/z0int-policy.service.d/30-live-home.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6f971f79177c5c69787a9d21a93e8c5fcbae613dd08955fbf55560b73a833766"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-policy.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-policy.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "39f9d08f818b0c0b9e25ed8274c6bb21fd7324276e73e5629de8dd8084447d22"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-policy.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-policy.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "0191f7e5502806c38f0965736280af38635c6e4cb98a61fe9eccb3a9e07dd620"
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/30-live-home.conf"
+source = "config/systemd/user/z0intelligence.service.d/30-live-home.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "6f971f79177c5c69787a9d21a93e8c5fcbae613dd08955fbf55560b73a833766"
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0intelligence.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "5d576a3e39604211da24f1390fa3b6a92fe72ed4d2c9fa253d8485e69c2e6bbd"
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/zz-release.conf"
+source = "config/systemd/user/z0intelligence.service.d/zz-release.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "877d6dc6856a631a8b3752abca14c16ad24fa1a1b7739ffdc2419ef073fa4338"
+
+[[user]]
+live = "~/.config/systemd/user/z0live-hermes.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0live-hermes.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "272b87f1b65d9dbe229b1fe28e9ddb27fb0bd14aafd3b4db9caea7200402a134"
+
+[[user]]
+live = "~/.config/systemd/user/z0live.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0live.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "41a238debb657ade40f0bd4c25eb0c146540f17a1217195adac93a987a601075"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-storage-autotier.service.d/90-service-watch.conf"
+source = "config/systemd/user/zer0-storage-autotier.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "66235f9b2b0bf3a45a06ad6c06d29c12119e178fd620a2513af4126099aecf80"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-storage-autotier.timer.d/90-service-watch.conf"
+source = "config/systemd/user/zer0-storage-autotier.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "472d55923983eb8736fef7dce448219ac559d3e5446ecbee29c970524f50b48b"
+
+[[user]]
+live = "~/.config/systemd/user/zer0-voice-direct.service.d/t_0ef29cb5-canary.conf"
+source = "config/systemd/user/zer0-voice-direct.service.d/t_0ef29cb5-canary.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "8fc56d6696c33d1ceaed4657f0934c69f7a12ec44e1abe8535878174e0207622"
+
+[[user]]
+live = "~/.config/environment.d/90-zer0-model-storage.conf"
+source = "config/environment.d/90-zer0-model-storage.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "382aa367ce1ce711337aa15fc45dab2a8042324c47a026236807c6693c8677ff"
+
+[[user]]
+live = "~/.config/environment.d/agentsview.conf"
+source = "config/environment.d/agentsview.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "a466312849f061f8834bbf95a5c505ab1b97f7cfb0ce0ac313e833f5e3ea837c"
+
+[[user]]
+live = "~/.config/environment.d/bend-cuda.conf"
+source = "config/environment.d/bend-cuda.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "f460d5db316c436f45d16451d36ae33769bf859855c89724099182f30d31ec77"
+
+[[user]]
+live = "~/.config/environment.d/ctx.conf"
+source = "config/environment.d/ctx.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "827b81ce1e6a7e15b61a84ed9566ecc607a14bf002408d98608bc736e60138ee"
+
+[[user]]
+live = "~/.config/environment.d/hermes-home.conf"
+source = "config/environment.d/hermes-home.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "cf094d3bbf537f8d8f654533c79534757b4156c96720c1d39a4e6243c7997a02"
+
+[[user]]
+live = "~/.config/environment.d/qt-theme.conf"
+source = "config/environment.d/qt-theme.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "08effefcffcc977f3ea65e1fd7d01607ec4f217d474bef80ec029c606dfc224d"
+
+[[user]]
+live = "~/.config/environment.d/tokenmaxxing-claude.conf"
+source = "config/environment.d/tokenmaxxing-claude.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
+migration_sha256 = "780c28228f7ebb23988457f6f2e1beb49e8b8fe4d7ed4a8f1b6d7aaf4370d863"
+
+[[user]]
+live = "~/.config/systemd/user/session.slice.d/50-desktop-protection.conf"
+source = "config/systemd/user/session.slice.d/50-desktop-protection.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Measured policy; docs/fleet/DESKTOP-ADMISSION.md user layer."
+
+[[user]]
+live = "~/.config/systemd/user/app-t3code-agents.slice.d/50-host-budget.conf"
+source = "config/systemd/user/app-t3code-agents.slice.d/50-host-budget.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Measured policy; docs/fleet/DESKTOP-ADMISSION.md user layer."
+drift = "owned-upstream"
+issue = "https://github.com/pingdotgg/t3code/issues/24708"
+
+[[user]]
+live = "~/.local/bin/dash-log-watch"
+source = "scripts/dash-log-watch.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "ce469ee19a3ea2b13c531a51039062e811f503483a5e173fd6d81b27947690d1"
+
+[[user]]
+live = "~/.local/bin/service-watch"
+source = "scripts/service-watch.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "bb0bfeb3669f50df1ca15776fba6d6e8a86837fe559c77112a8dd4c16a6a82d0"
+
+[[user]]
+live = "~/.local/bin/taildrop-portal"
+source = "scripts/taildrop-portal.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "35031d54d9930f28dc38020ba24be64b76a591464cc3cfe2a0f2cbf891bee954"
+
+[[user]]
+live = "~/.local/bin/omp-boat"
+source = "scripts/boat"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "179b313bd784cf8dc2d40aaeef327373d8e05af79cd3aa2e4db48cddd8f142c8"
+
+[[user]]
+live = "~/.local/bin/tern-hosts-sync"
+source = "scripts/tern-hosts-sync"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "821606af4b9382ff817d7c80fad4a8592c76187fe5d69424c7b977face242ad5"
+
+[[user]]
+live = "~/.local/bin/workspace-copilot"
+source = "scripts/workspace-copilot"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "ff0f2ad09d1e38117584ff2bd58f50e491ba3f00835ea5507021e095bd5ce405"
+
+[[user]]
+live = "~/.local/bin/hyprcaffeine"
+source = "scripts/hyprcaffeine"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Replace mutable helper link with content-stamped dependency closure; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "5d21b1f715630593648c25d35e1916b6537c47f3f54c5faf3c8ec2a4d2e56ce0"
+
+[[user]]
+live = "~/.config/environment.d/typesafe.conf"
+source = "config/host/private-environment.json"
+scope = "user"
+install = "copy"
+owner = "private-secret-owner"
+reason = "Preserve private credential mode0600 pending approved consumer-scoped secret migration."
+secret = "private-exception"
+
+[[user]]
+live = "~/.local/bin/agent-resource-classify"
+source = "scripts/agent-resource-classify"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Recover disposable tool OOM ranking without changing harness or service MainPIDs; DESKTOP-ADMISSION.md user layer."
+migration_sha256 = "9bc9ffa5c1d9b9bcaa17a7abbf11d5eb4f9892e5cccef28d20050c7b520b35a4"
+
+[[user]]
+live = "~/.config/systemd/user/noctalia-shell.service.d/50-desktop-session.conf"
+source = "config/systemd/user/noctalia-shell.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start desktop shell, launcher and notifications join protected session.slice; no restart."
+
+[[user]]
+live = "~/.config/systemd/user/waybar-session.service.d/50-desktop-session.conf"
+source = "config/systemd/user/waybar-session.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start alternate desktop bar joins protected session.slice; no activation or restart."
+
+[[user]]
+live = "~/.config/systemd/user/hyprcaffeine.service.d/50-desktop-session.conf"
+source = "config/systemd/user/hyprcaffeine.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start interactive idle inhibitor joins protected session.slice; no restart."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-gtk.service.d/50-desktop-session.conf"
+source = "config/systemd/user/xdg-desktop-portal-gtk.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start GTK desktop portal joins protected session.slice like existing base/Hyprland portals; no restart."
+
 [[user]]
 live = "~/.config/systemd/user/dash-bridge.service"
 source = "config/systemd/user/dash-bridge.service"

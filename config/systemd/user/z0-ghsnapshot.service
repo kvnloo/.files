@@ -1,0 +1,12 @@
+[Unit]
+Description=z0 factory: bulk GitHub snapshot of registered projects through ghcache
+Wants=z0-ghcache.service
+After=z0-ghcache.service
+
+[Service]
+Type=oneshot
+Environment=FACTORY_TOOLS=/mnt/zer0models/worktrees/oss-factory-substrate/tools/factory
+ExecStartPre=/usr/bin/curl -fsS --retry 15 --retry-connrefused --retry-delay 1 -o /dev/null http://127.0.0.1:18090/_ghcache/stats
+ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghsnapshot.py --workers 4 --keep-days 7
+Nice=10
+MemoryMax=256M

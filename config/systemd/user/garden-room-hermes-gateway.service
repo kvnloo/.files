@@ -1,0 +1,18 @@
+[Unit]
+Description=garden_room Hermes native API host (no messaging or schedulers)
+After=network-online.target
+
+[Service]
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/garden_room
+Environment=HERMES_HOME=/workspace/hermes-home/profiles/clean
+Environment=GARDEN_HERMES_HOME=/workspace/hermes-home/profiles/clean
+Environment=TERMINAL_CWD=/mnt/zer0models/workspace/zer0/products/garden_room
+Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/garden_room/tools/hermes_link_gateway.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=180
+UMask=0077
+
+[Install]
+WantedBy=default.target

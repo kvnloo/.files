@@ -1,0 +1,15 @@
+[Unit]
+Description=Rootless BuildKit with NVMe workspace cache
+After=default.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/mkdir -p /workspace/buildkit/state /workspace/buildkit/run
+ExecStartPre=/usr/bin/rm -f /workspace/buildkit/run/buildkitd.sock
+ExecStart=/usr/bin/unshare --user --map-root-user --mount --pid --fork --mount-proc /workspace/buildkit/bin/buildkitd --rootless --containerd-worker=false --oci-worker=true --oci-worker-snapshotter=native --root /workspace/buildkit/state --addr unix:///workspace/buildkit/run/buildkitd.sock --oci-worker-gc --oci-worker-gc-keepstorage 30720,8192,49152
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

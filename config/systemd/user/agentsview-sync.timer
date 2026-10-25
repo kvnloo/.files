@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentsView archive sync every 30 minutes
+Documentation=file:///mnt/zer0models/z0-wt/wiring/ops/agentsview/README.md
+
+[Timer]
+OnCalendar=*:00/30
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
