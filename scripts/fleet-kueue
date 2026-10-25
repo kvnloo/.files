@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 import uuid
+import socket
+from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command
 
 
 def checked(argv, **kwargs):
@@ -124,6 +126,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     try:
         checked(remote(f'mkdir -p {qstage}/src {qstage}/tmp && chmod 700 {qstage}'))
+        checked(remote(artifact_lease_command(qstage, name, 'mbp', 'spool', ['exit', 'stdout', 'stderr'])))
         src = Path(args.src).resolve()
         if args.no_src:
             sender = tar = None
@@ -277,6 +280,7 @@ def main():
             for value in args.fetch:
                 dest = runs / name
                 dest.mkdir(exist_ok=True)
+                create_artifact_lease(dest, name, socket.gethostname(), 'spool', args.fetch)
                 tar = subprocess.Popen(remote(f'tar -C {qstage} -czf - {shlex.quote(value)}'), stdout=subprocess.PIPE)
                 receive = subprocess.Popen(['tar', '-xzf', '-', '-C', str(dest)], stdin=tar.stdout)
                 tar.stdout.close()
@@ -287,6 +291,7 @@ def main():
                 if args.out:
                     output = Path(args.out)
                     output.mkdir(parents=True, exist_ok=True)
+                    create_artifact_lease(output, name, socket.gethostname(), 'spool', [Path(item).name for item in args.fetch])
                     artifact = dest / value
                     target = output / artifact.name
                     if artifact.is_dir():

@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Create a git worktree with an explicit seven-day artifact lease."""
+import argparse
+from pathlib import Path
+import socket
+import subprocess
+
+from artifact_lease import create
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--owner', required=True, help='owning job ID')
+    parser.add_argument('--node', default=socket.gethostname())
+    parser.add_argument('--keep-receipt', action='append', default=[])
+    parser.add_argument('-b', '--branch')
+    parser.add_argument('--detach', action='store_true')
+    parser.add_argument('path')
+    parser.add_argument('commit', nargs='?', default='HEAD')
+    args = parser.parse_args()
+    # Validate before git creates anything.
+    from artifact_lease import payload
+    payload(str(Path(args.path).resolve()), args.owner, args.node, 'worktree', args.keep_receipt)
+    command = ['git', 'worktree', 'add']
+    if args.branch:
+        command += ['-b', args.branch]
+    if args.detach:
+        command += ['--detach']
+    subprocess.run(command + ['--', args.path, args.commit], check=True)
+    create(args.path, args.owner, args.node, 'worktree', args.keep_receipt)
+
+
+if __name__ == '__main__':
+    main()

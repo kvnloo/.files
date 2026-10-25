@@ -204,6 +204,9 @@ fi
 if [ -n "$out" ] && [ -n "$jid" ] && [ ${#fetch[@]} -gt 0 ]; then
   state=${FLEET_STATE:-$HOME/.local/state/fleet}
   mkdir -p "$out"
+  lease_receipts=()
+  for f in "${fetch[@]}"; do lease_receipts+=(--keep-receipt "$(basename "$f")"); done
+  python3 "$(dirname "$FLEET")/artifact_lease.py" "$out" --owner "$jid" --node "$(hostname)" --kind spool "${lease_receipts[@]}"
   for f in "${fetch[@]}"; do
     p="$state/runs/$jid/$pre$f"
     [ -e "$p" ] && cp -a "$p" "$out/" && echo "fleet-build: $f -> $out/$(basename "$f")" >&2

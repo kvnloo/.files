@@ -35,12 +35,14 @@ import shutil
 import subprocess
 import sys
 import time
+import socket
 from pathlib import Path
 
 import yaml
 from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
 import fleet_phone_python as phone_python
+from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -484,6 +486,7 @@ def cmd_run(args):
         log.write_text(f"# fleet job {jid} node={n['name']} cmd={shlex.join(args.cmd)}\n"
                        f"# guest_before={json.dumps(before, sort_keys=True)}\n")
     subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
+    subprocess.run(ssh + [artifact_lease_command(jdir, jid, n["name"], "spool", ["exit", "stdout", "stderr"])], check=True)
     if not args.no_src:
         src = Path(args.src or os.getcwd()).resolve()
         if (src / ".git").exists():
@@ -541,6 +544,7 @@ def cmd_run(args):
             for path in args.fetch or []:
                 dest = logdir / jid
                 dest.mkdir(exist_ok=True)
+                create_artifact_lease(dest, jid, socket.gethostname(), "spool", args.fetch or [])
                 t = subprocess.Popen(ssh + [f"tar -C {jdir} -czf - {shlex.quote(path)}"], stdout=subprocess.PIPE)
                 subprocess.run(["tar", "-xzf", "-", "-C", str(dest)], stdin=t.stdout, check=True)
                 if t.wait():
@@ -590,6 +594,7 @@ def cmd_run(args):
     for path in args.fetch or []:
         dest = logdir / jid
         dest.mkdir(exist_ok=True)
+        create_artifact_lease(dest, jid, socket.gethostname(), "spool", args.fetch or [])
         t = subprocess.Popen(ssh + [f"tar -C {jdir} -czf - {shlex.quote(path)}"], stdout=subprocess.PIPE)
         subprocess.run(["tar", "-xzf", "-", "-C", str(dest)], stdin=t.stdout)
         t.wait()
