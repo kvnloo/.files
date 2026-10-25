@@ -51,6 +51,30 @@ class Contracts(unittest.TestCase):
         path.write_text('{"scan_completed_at":880}')
         self.assertFalse(sw.heartbeat_stale(path, now=1000))
 
+    def test_degraded_tick_is_deduplicated_warning_without_notifications(self):
+        unit = 'z0int-loop-tick.service'
+        self.watch.units[('user', unit)] = {}
+        directory = self.root / '.z0int/loop'
+        directory.mkdir(parents=True)
+        summary = {'schema': 'z0int.loop.tick_summary.v0', 'tick_id': 'fixture',
+                   'status': 'degraded', 'exit': 3, 'degraded_by': ['cognition:context_overflow'],
+                   'ended_at': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        (directory / 'last-tick.json').write_text(json.dumps(summary))
+        reports = directory / 'reports' / str(datetime.date.today())
+        reports.mkdir(parents=True)
+        (reports / 'ticks.jsonl').write_text(''.join(json.dumps({
+            'status': 'degraded', 'exit': 3, 'rows_added': {'shadow_decisions': 0}}) + '\n' for _ in range(3)))
+        with patch.object(sw.Path, 'home', return_value=self.root), \
+             patch.object(self.watch.store, 'notify') as notify:
+            self.watch.loop_invariants()
+            self.watch.loop_invariants()
+        self.assertFalse(notify.called)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertEqual(data['decision']['severity'], 'warn')
+        self.assertEqual(self.watch.store.get('loop:last_tick')['tick_id'], 'fixture')
+
     def test_host_drift_uses_existing_notification_dedupe(self):
         receipt = self.root / '.local/state/host-drift/latest.json'
         receipt.parent.mkdir(parents=True)

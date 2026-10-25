@@ -91,8 +91,9 @@ snapshot the complete tracked source closure and enable `host-drift.timer`.
 Reinstall after any manifest/source change; the installed checker never reads a
 mutable worktree. The timer runs every 30 minutes with Nice 19, idle IO and a
 256 MiB hard memory limit. It writes `~/.local/state/host-drift/latest.json`.
-ServiceWatch records finite drift/unknown counts through its existing incident,
-notification and one-hour dedupe path; inspect the local JSON for exact paths.
+ServiceWatch records finite drift/unknown counts through its existing one-hour
+incident dedupe, six-hour notification dedupe and five-notifications/hour ceiling;
+inspect the local JSON for exact paths.
 No watched desktop, gateway or agent service is restarted.
 The installer also links the tracked, stamped `config/host/z0-guard-state.json`
 to the default guard inventory. Its `host_drift` binding enables law I against
@@ -106,6 +107,20 @@ expires before SQLite's 30-second lock wait plus notification work. The retained
 2026-10-24 23:05–23:06 journal showed both the heartbeat and its failure handler
 timing out at the old 20-second deadline. This fixes the avoidable reporting
 path contention; it does not prove unlimited IO-stall resilience.
+The structured `~/.z0int/loop/last-tick.json` summary records exit-3 degraded or
+partial-measurement ticks as deterministic deduplicated warnings in the existing
+digest, with no model escalation or desktop notification. Exact
+`Z0INT_LOOP_TICK` JSON warning lines are not generic journal errors, and declared
+degraded full tick rows are not silent no-ops. Real failures and legacy
+unclassified no-op rows retain their existing failure paths. This receipt
+describes the latest outcome; existing timer health checks own freshness.
+
+Template and dashed-prefix resource policies compare only loaded matching
+instances. A policy with no loaded instances is explicitly not applicable,
+not a fabricated effective unit. Device latency directives are checked against
+the real unit cgroup's `io.latency`, not a nonexistent scalar systemctl property.
+External observations share a 120-second deadline; exhausted observations are
+unknown instead of monopolizing the reporting timer.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory

@@ -3,11 +3,13 @@
 import argparse
 import datetime
 from decimal import Decimal
+import fnmatch
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -20,8 +22,8 @@ PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMa
               'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
 
 
-def command(args):
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=10)
+def command(args, timeout=10):
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if proc.returncode:
         raise ValueError(f'{args[0]} exited {proc.returncode}: {proc.stderr.strip()[:200]}')
     return proc.stdout
@@ -42,8 +44,16 @@ def normalized(value):
             'realtime': '1'}.get(value, ' '.join(value.split()))
 
 
-def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
+def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup')):
     drift, unknown = [], []
+    if run is command:
+        deadline = time.monotonic() + 120
+        def bounded_run(args):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, 120)
+            return command(args, min(10, remaining))
+        run = bounded_run
     def add(rows, kind, path, detail):
         rows.append(dict(kind=kind, path=str(path), detail=detail))
     def problem(kind, path, detail):
@@ -63,6 +73,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
         add(unknown, 'manifest_unavailable', root, str(exc))
         entries, tracked = [], set()
     expected = {}
+    io_latency = {}
     for entry in entries:
         try:
             rel = entry['source']
@@ -124,7 +135,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                     if line.startswith('['):
                         section = line
                     if section in ('[Service]', '[Slice]', '[Scope]') and '=' in line and not line.startswith(('#', ';')):
-                        key, value = line.split('=', 1)
+                        key, value = map(str.strip, line.split('=', 1))
                         if key in PROPERTIES:
                             values[key] = value
                         elif key == 'CPUQuota':
@@ -133,9 +144,52 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                             values[key.replace('Sec', 'USec')] = value or 'infinity'
                         elif key == 'ManagedOOMMemoryPressureLimit':
                             values[key] = str(int(Decimal(value.rstrip('%')) * Decimal(4294967295) / 100)) if value else '0'
+                        elif key == 'IODeviceLatencyTargetSec':
+                            targets = io_latency.setdefault((scope, unit), {})
+                            if not value:
+                                targets.clear()
+                            else:
+                                device, duration = shlex.split(value)
+                                number = Path(device).stat().st_rdev
+                                targets[f'{os.major(number)}:{os.minor(number)}'] = int(normalized(duration))
                 values.update(entry.get('effective', {}))
         except (OSError, KeyError, ValueError, TypeError, ArithmeticError, UnicodeError, subprocess.SubprocessError) as exc:
             add(unknown, 'observation_failed', entry.get('live', '?'), str(exc))
+    not_applicable = []
+    instance_cache = {}
+    def instances(scope, unit):
+        key = (scope, unit)
+        if key in instance_cache:
+            return instance_cache[key]
+        pattern = unit.replace('@.', '@*.')
+        if '-.' in pattern:
+            pattern = pattern.replace('-.', '-*.', 1)
+        if pattern == unit:
+            return [unit]
+        rows = run(['systemctl', '--user' if scope == 'user' else '--system', 'list-units',
+                    '--all', '--plain', '--no-legend', '--no-pager', pattern]).splitlines()
+        names = sorted({row.split()[0] for row in rows if row.split()
+                        and fnmatch.fnmatchcase(row.split()[0], pattern)})
+        if len(names) > 1024:
+            raise ValueError('managed instance observation exceeded 1024 units')
+        if not names:
+            not_applicable.append(dict(kind='no_loaded_instances', path=unit,
+                                       detail='tracked template/prefix has no loaded effective unit'))
+        instance_cache[key] = names
+        return names
+    def expand_units(mapping, keep_empty=False):
+        expanded = {}
+        for (scope, unit), values in sorted(mapping.items()):
+            if not values and not keep_empty:
+                continue
+            try:
+                for target in instances(scope, unit):
+                    expanded.setdefault((scope, target), {}).update(values)
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                add(unknown, 'instance_inventory_unavailable', unit, str(exc))
+        return expanded
+    expected = expand_units(expected)
+    io_latency = expand_units(io_latency, keep_empty=True)
     for (scope, unit), values in sorted(expected.items()):
         if not values:
             continue
@@ -151,6 +205,24 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
                     problem('systemd_effective', unit, dict(property=key, expected=value, actual=actual[key]))
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             add(unknown, 'systemd_unavailable', unit, str(exc))
+    for (scope, unit), targets in sorted(io_latency.items()):
+        try:
+            group = run(['systemctl', '--user' if scope == 'user' else '--system', 'show', unit,
+                         '-p', 'ControlGroup', '--value']).strip()
+            if not group.startswith('/') or '..' in Path(group).parts:
+                raise ValueError('no valid unit cgroup path')
+            path = cgroup_root / group.lstrip('/') / 'io.latency'
+            actual = {}
+            for line in path.read_text().splitlines():
+                device, *fields = line.split()
+                actual[device] = int(dict(field.split('=', 1) for field in fields)['target'])
+            for device, target in targets.items():
+                if actual.get(device, 0) != target:
+                    problem('io_latency_effective', unit, dict(device=device, expected=target, actual=actual.get(device, 0)))
+            if not targets and any(actual.values()):
+                problem('io_latency_effective', unit, 'expected no per-device latency target')
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            add(unknown, 'io_latency_unavailable', unit, str(exc))
     budget_observation = None
     if entries and manifest.get('budget'):
         try:
@@ -256,6 +328,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command):
     # Unknown takes precedence: drift is still retained and alertable.
     status = 'unknown' if unknown else 'drift' if drift else 'clean'
     return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown, budget=budget_observation,
+                not_applicable=not_applicable,
                 host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 summary=f'host drift: {len(drift)} drift, {len(unknown)} unknown', executed=False)
 

@@ -66,6 +66,13 @@ class DriftTests(unittest.TestCase):
         (self.root / 'config/host/groot.toml').unlink()
         self.assertEqual(self.run_audit()['status'], 'unknown')
 
+    def test_exhausted_command_deadline_is_unknown(self):
+        with patch.object(drift.time, 'monotonic', side_effect=[0, 121]), \
+             patch.object(drift, 'command') as run:
+            report = drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run=run)
+        self.assertEqual(report['status'], 'unknown')
+        self.assertFalse(run.called)
+
     def test_untracked_source(self):
         self.source = 'config/host/not-tracked.conf'
         self.manifest()
@@ -123,13 +130,59 @@ class DriftTests(unittest.TestCase):
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['detail']['property'], 'MemoryHigh')
 
+    def test_prefix_and_template_compare_loaded_instances_not_fake_units(self):
+        for name in ('hermes-worker-.scope', 'worker@.service'):
+            self.live = self.home / '.config/systemd/user' / (name + '.d') / '50-budget.conf'
+            self.live.parent.mkdir(parents=True)
+            text = '[Scope]\nMemoryMax=256M\n'
+            (self.root / self.source).write_text(text)
+            self.live.write_text(text)
+            self.manifest(scope='user')
+            names = ['hermes-worker-123.scope' if name.endswith('scope') else 'worker@123.service']
+            def run(args):
+                if args[0] == 'git':
+                    return self.source
+                if args[2] == 'list-units':
+                    return '\n'.join(unit + ' loaded active running fixture' for unit in names)
+                self.assertIn(args[3], names)
+                return 'MemoryMax=268435456'
+            def audit():
+                return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc], run)
+            self.assertEqual(audit()['status'], 'clean')
+            names.clear()
+            report = audit()
+            self.assertEqual(report['status'], 'clean')
+            self.assertEqual(len(report['not_applicable']), 1)
+
+    def test_io_latency_uses_kernel_target_not_missing_systemctl_scalar(self):
+        self.live = self.home / '.config/systemd/user/session.slice.d/50-io.conf'
+        self.live.parent.mkdir(parents=True)
+        text = '[Slice]\nIODeviceLatencyTargetSec=/dev/null 10ms\n'
+        (self.root / self.source).write_text(text)
+        self.live.write_text(text)
+        self.manifest(scope='user')
+        cgroup = self.base / 'cgroups/session.slice'
+        cgroup.mkdir(parents=True)
+        path = cgroup / 'io.latency'
+        path.write_text('1:3 target=10000\n')
+        def run(args):
+            return self.source if args[0] == 'git' else '/session.slice'
+        def audit():
+            return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc],
+                               run=run, cgroup_root=self.base / 'cgroups')
+        self.assertEqual(audit()['status'], 'clean')
+        path.write_text('1:3 target=0\n')
+        self.assertEqual(audit()['drift'][0]['kind'], 'io_latency_effective')
+        path.unlink()
+        self.assertEqual(audit()['status'], 'unknown')
+
     def test_private_exception_never_claims_verified_content(self):
-        self.live.write_text('private content must not enter output')
+        self.live.write_text('SENSITIVE_FIXTURE_must_not_enter_output')
         self.live.chmod(0o600)
         self.manifest('secret=\"private-exception\"')
         report = self.run_audit()
         self.assertEqual(report['status'], 'unknown')
-        self.assertNotIn('private content', json.dumps(report))
+        self.assertNotIn('SENSITIVE_FIXTURE', json.dumps(report))
         self.assertEqual(report['drift'], [])
         self.live.chmod(0o644)
         self.assertEqual(self.run_audit()['drift'][0]['kind'], 'private_file_permissions')
@@ -145,7 +198,7 @@ class DriftTests(unittest.TestCase):
 
     def test_owned_upstream_drift_stays_nonclean(self):
         self.live.write_text('changed')
-        self.manifest('drift=\"owned-upstream\"\\nissue=\"https://example.test/issue/1\"')
+        self.manifest('drift="owned-upstream"\nissue="https://example.test/issue/1"')
         report = self.run_audit()
         self.assertEqual(report['status'], 'drift')
         self.assertEqual(report['drift'][0]['classification'], 'owned-upstream')
@@ -178,9 +231,9 @@ class InstallerTests(unittest.TestCase):
             for name in installer.CLOSURE:
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('fixture\\n')
+                path.write_text('fixture\n')
             (source / 'config/host/groot.toml').write_text('')
-            with patch.object(installer.subprocess, 'check_output', return_value='\\n'.join(installer.CLOSURE)), \
+            with patch.object(installer.subprocess, 'check_output', return_value='\n'.join(installer.CLOSURE)), \
                  patch.object(installer.subprocess, 'run') as run:
                 self.assertEqual(installer.install(source, home, False), 0)
                 self.assertFalse(home.exists())
