@@ -20,6 +20,8 @@
 #   --mem 4G --cpus 4 --timeout 3600   explicit job requests (Linux defaults per mode)
 #   --class test|build|bench  Kueue priority; pytest defaults test, all-CPU defaults bench
 #   --checkpoint-safe        certify bench resumes atomic checkpoints after preemption
+#   --attach JOB     reattach to an existing MBP job; never replay its command
+#   --bend-tools     stage ~/.bend/{bin,bend2,bendtt}, excluding check.json (MBP only)
 #   --wait SECS      0 = don't wait; Kueue allows a 5s controller admission grace.
 #                    Positive = bounded wait (default 1800); MBP -1 = indefinite.
 #                    Oversized Kueue requests exit 75; never fall back to groot.
@@ -33,8 +35,8 @@
 #   --runner LABEL --matrix FILE --parallel N --snapshot FILE --max-api-requests N
 #
 # Examples:
-#   cd noop-oura/android && fleet-build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
-#   cd lawnchair && fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
+#   cd noop-oura/android && fleet-build --class build --fetch app/build/outputs/apk/debug --out /tmp/apk -- ./gradlew assembleFullDebug
+#   cd lawnchair && fleet-build --class build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
 #   fleet-build -- bun test
 #   fleet-build --light -- python3 -m pytest tests/unit
 #
@@ -50,6 +52,9 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0; guest=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 priority_class=""; checkpoint_safe=0
+attach=""
+bend_tools=0; bend_stage=""; err=""
+trap '[ -z "$err" ] || rm -f -- "$err"; [ -z "$bend_stage" ] || rm -rf -- "$bend_stage"' EXIT
 while [ $# -gt 0 ]; do
   case $1 in
     --android) mode=android; shift ;;
@@ -62,6 +67,8 @@ while [ $# -gt 0 ]; do
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
     --node) node=$2; shift 2 ;;
+    --attach) attach=$2; shift 2 ;;
+    --bend-tools) bend_tools=1; shift ;;
     --class)
       case $2 in test|build|bench) priority_class=$2 ;; *) echo "fleet-build: --class must be test, build or bench" >&2; exit 2 ;; esac
       shift 2 ;;
@@ -82,6 +89,28 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+if [ -n "$attach" ]; then
+  [ $# -eq 0 ] && [ -z "$src$mem$cpus$timeout$priority_class$jdk" ] && [ ${#inputs[@]} -eq 0 ] && [ "$mode" = build ] && [ "$bend_tools" = 0 ] || {
+    echo "fleet-build: --attach observes an existing job; submission options/commands are not allowed" >&2; exit 2;
+  }
+  case $node in ""|mbp|k3s-mbp|mbp-host) ;; *) echo "fleet-build: --attach is an MBP Kueue operation" >&2; exit 2 ;; esac
+  attach_args=(--attach "$attach" --wait "$wait_s")
+  [ "$keep" = 0 ] || attach_args+=(--keep)
+  [ -z "$out" ] || attach_args+=(--out "$out")
+  for f in "${fetch[@]}"; do attach_args+=(--fetch "$f"); done
+  exec python3 "$(dirname "$FLEET")/fleet-kueue" "${attach_args[@]}"
+fi
+if [ "$bend_tools" = 1 ]; then
+  case $node in ""|mbp|k3s-mbp|mbp-host) ;; *) echo "fleet-build: --bend-tools is an MBP operation" >&2; exit 2 ;; esac
+  [ "$mode" != phone ] && [ "$public" = 0 ] || { echo "fleet-build: Bend tools cannot route to phones/public overflow" >&2; exit 2; }
+  for part in bin bend2 bendtt; do
+    [ -d "$HOME/.bend/$part" ] || { echo "fleet-build: missing Bend tools: $HOME/.bend/$part" >&2; exit 2; }
+  done
+  [ -x "$HOME/.bend/bin/bend" ] || { echo "fleet-build: missing executable $HOME/.bend/bin/bend" >&2; exit 2; }
+  bend_stage=$(mktemp -d)
+  tar --exclude=check.json -czf "$bend_stage/bend-tools.tar.gz" -C "$HOME/.bend" bin bend2 bendtt
+  inputs+=("$bend_stage/bend-tools.tar.gz:.fleet-bend-tools.tar.gz")
+fi
 if [ "$node" = avrea ]; then
   [ "$local_data" = 0 ] || { echo "fleet-build: --local-data cannot use Avrea" >&2; exit 2; }
   [ ${#inputs[@]} -eq 0 ] && [ "$keep" = 0 ] && [ -z "$jdk" ] && [ "$mode" = build ] && [ -z "$mem" ] && [ -z "$cpus" ] || {
@@ -146,7 +175,14 @@ for f in "${fetch[@]}"; do args+=(--fetch "$pre$f"); done
 
 # Remote side: cd to the same subdirectory, pick the JDK, run CMD unchanged.
 # JAVA17_HOME/JAVA21_HOME come from the node's /etc/fleet/toolchain.env.
-script='cd "$1" && shift
+script='if [ "${FLEET_BUILD_BEND_TOOLS:-0}" = 1 ]; then
+  export HOME="$PWD/.fleet-bend-home"
+  mkdir -p "$HOME/.bend" || exit $?
+  tar -xzf .fleet-bend-tools.tar.gz -C "$HOME/.bend" || exit $?
+  export BEND="$HOME/.bend/bin/bend"
+  export PATH="$HOME/.bend/bin:$PATH"
+fi
+cd "$1" && shift
 case ${FLEET_BUILD_JDK:-} in
   17) [ -n "${JAVA17_HOME:-}" ] || { echo "fleet-build: no JDK 17 on $(hostname)" >&2; exit 3; }; export JAVA_HOME=$JAVA17_HOME ;;
   21) [ -n "${JAVA21_HOME:-}" ] || { echo "fleet-build: no JDK 21 on $(hostname)" >&2; exit 3; }; export JAVA_HOME=$JAVA21_HOME ;;
@@ -162,7 +198,7 @@ case $1 in
 esac
 exec "$@"'
 [ "$mode" = android ] || gradle_args=""
-args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" sh -c "$script" fleet-build "$rel" "$@")
+args+=(-- env "FLEET_BUILD_JDK=$jdk" "FLEET_GRADLE_ARGS=$gradle_args" "FLEET_BUILD_BEND_TOOLS=$bend_tools" sh -c "$script" fleet-build "$rel" "$@")
 use_kueue=0
 runner=("$FLEET"); run_args=("${args[@]}")
 if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -z "$node" ] && [ "$mode" != phone ]; }; then
@@ -175,7 +211,7 @@ if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -
   run_args=("${args[@]:1}")
 fi
 
-err=$(mktemp); trap 'rm -f "$err"' EXIT
+err=$(mktemp)
 deadline=$(( $(date +%s) + wait_s ))
 while :; do
   set +e

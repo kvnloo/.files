@@ -7,7 +7,7 @@ suites go to the workers by default:
 | Work | Where | Command |
 | --- | --- | --- |
 | Public-source heavy installs/full suites/compiler gates | Avrea (4 vCPU by default) | `fleet-build --node avrea -- bash -lc 'npm ci && npm test'` |
-| Local/private data, native-toolchain Gradle/Android | MBP Kueue, subject to quota | `fleet-build --node mbp -- ./gradlew assembleFullDebug` |
+| Local/private data, native-toolchain Gradle/Android | MBP Kueue, subject to quota | `fleet-build --node mbp --class build -- ./gradlew assembleFullDebug` |
 | Local-data Bun/Node/Python suites, `make` | MBP Kueue | `fleet-build --node mbp -- bun test` |
 | Light arm64-safe tests, scans, git work | phones | `fleet-build --phone -- python3 -m pytest tests/unit` |
 | x86 overflow and Docker | boat (trial allowance) | pin the admitted boat host lane |
@@ -41,16 +41,18 @@ Use `mbp-host` only for exceptional native-host requirements.
 
 ```sh
 cd /mnt/zer0models/noop-oura/android
-fleet-build --fetch app/build/outputs/apk/full/debug --out /tmp/noop-apk -- ./gradlew assembleFullDebug
+fleet-build --class build --fetch app/build/outputs/apk/full/debug --out /tmp/noop-apk -- ./gradlew assembleFullDebug
 # -> /tmp/noop-apk/debug/app-full-debug.apk, signed with the repo's fork-debug.keystore
 
 cd /mnt/zer0models/lawnchair-z0live
-fleet-build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
+fleet-build --class build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDebug
 ```
 
 - `./gradlew ...` implies `--android`: capability `android-build` (mbp), 6 GiB
   job memory, 4 CPUs, JDK 17. `--jdk 21` for Lawnchair. Override with `--mem`,
   `--cpus`, `--node`.
+  Full-CPU builds must set `--class build`; otherwise an all-CPU request
+  defaults to checkpoint-safe benchmark priority.
 - `--fetch PATH` is relative to the directory you ran from; `--out DIR` copies
   the fetched files there (otherwise they stay under
   `~/.local/state/fleet/runs/<job>/`).
