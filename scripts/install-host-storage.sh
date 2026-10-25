@@ -5,7 +5,11 @@ set -euo pipefail
 mountpoint -q /mnt/zer0models || { echo 'bulk disk is not mounted' >&2; exit 1; }
 repo=$(dirname "$(dirname "$(readlink -f "$0")")")
 sha=$(git -C "$repo" rev-parse HEAD)
-exec 9>/tmp/files-live-deploy.lock
+# Reuse the caller's descriptor for a merge/stamp/apply/push transaction.
+# Reacquiring an inherited lock is safe; reopening it would self-deadlock.
+if [[ $(readlink "/proc/$$/fd/9" 2>/dev/null || true) != /tmp/files-live-deploy.lock ]]; then
+  exec 9>/tmp/files-live-deploy.lock
+fi
 flock 9
 stage() {
   local name=$1 tree=$2 revision=$3 dest="/mnt/zer0models/releases/$1/$3"
