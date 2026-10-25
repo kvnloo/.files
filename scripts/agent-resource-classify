@@ -116,7 +116,7 @@ def process_starttime(path):
 
 def service_owners():
     result = subprocess.run(
-        ['systemctl', '--user', 'show', '--state=active', '--type=service',
+        ['systemctl', '--user', 'show', '--type=service',
          '-p', 'Id,MainPID', '*'], capture_output=True, text=True, timeout=15, check=True)
     owners = {}
     for block in result.stdout.strip().split('\n\n'):

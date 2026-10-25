@@ -3840,3 +3840,35 @@ owner = "scripts/apply-agent-oom"
 reason = "Recover disposable tool OOM ranking without changing harness or service MainPIDs; DESKTOP-ADMISSION.md user layer."
 migration_sha256 = "9bc9ffa5c1d9b9bcaa17a7abbf11d5eb4f9892e5cccef28d20050c7b520b35a4"
 
+[[user]]
+live = "~/.config/systemd/user/noctalia-shell.service.d/50-desktop-session.conf"
+source = "config/systemd/user/noctalia-shell.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start desktop shell, launcher and notifications join protected session.slice; no restart."
+
+[[user]]
+live = "~/.config/systemd/user/waybar-session.service.d/50-desktop-session.conf"
+source = "config/systemd/user/waybar-session.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start alternate desktop bar joins protected session.slice; no activation or restart."
+
+[[user]]
+live = "~/.config/systemd/user/hyprcaffeine.service.d/50-desktop-session.conf"
+source = "config/systemd/user/hyprcaffeine.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start interactive idle inhibitor joins protected session.slice; no restart."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-gtk.service.d/50-desktop-session.conf"
+source = "config/systemd/user/xdg-desktop-portal-gtk.service.d/50-desktop-session.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Next-start GTK desktop portal joins protected session.slice like existing base/Hyprland portals; no restart."
+

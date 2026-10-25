@@ -33,10 +33,14 @@ def file_record(path):
     else:
         row['provenance'] = 'local-unattested'
     try:
-        data = path.read_bytes()
-        row['sha256'] = hashlib.sha256(data).hexdigest()
-        # Never export unit Environment values or helper bodies: they may contain credentials.
-        row['size'] = len(data)
+        size = path.stat().st_size
+        row['size'] = size
+        # Large native tools remain application-managed; do not repeatedly read
+        # hundreds of MiB of installed binaries merely to report a config census.
+        if size <= 1024 * 1024:
+            row['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        else:
+            row['fingerprint'] = 'size-only: external binary; content attestation not refreshed'
     except OSError as error:
         row['error'] = str(error)
     return row
@@ -114,7 +118,8 @@ def inventory():
             'timers': command('systemctl', '--user', 'list-timers', '--all', '--no-pager'),
             'lingering': command('loginctl', 'show-user', str(os.getuid()), '-p', 'Linger'),
             'manager': command('systemctl', 'show', f'user@{os.getuid()}.service', '-p', 'FragmentPath', '-p', 'DropInPaths'),
-            'errors': [r for r in (listing, shown) if r.get('returncode', 0)]}
+            'errors': [{k: r.get(k) for k in ('returncode', 'stderr')}
+                       for r in (listing, shown) if r.get('returncode', 0)]}
 
 if __name__ == '__main__':
     json.dump(inventory(), sys.stdout, indent=2)

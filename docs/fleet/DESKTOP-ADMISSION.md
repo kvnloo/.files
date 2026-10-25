@@ -200,3 +200,25 @@ the never-tracked experiment was superseded by `zer0-voice-direct` (PM commit
 Both direct voice and its watchdog were disabled/inactive when explicitly queried;
 neither is started by this installer.
 
+### Desktop placement: next login, not a live desktop restart
+
+| Component | Observed current slice | Declared next-start slice |
+| --- | --- | --- |
+| Noctalia (also its notification/launcher surfaces) | app.slice | session.slice |
+| Alternate Waybar transient service | not active in snapshot | session.slice |
+| HyprCaffeine idle inhibitor | app.slice | session.slice |
+| GTK desktop portal | app.slice | session.slice |
+| Base/Hyprland desktop portals, compositor, PipeWire | session.slice | unchanged |
+| Chrome interactive scope | app.slice | gap: packaged desktop entry, no tracked Chrome launcher |
+
+The existing bar-mode launcher also explicitly requests session.slice for
+future Noctalia/Waybar services. Four service drop-ins stage the same placement
+independent of existing launcher paths. A daemon-reload can expose the new
+configured Slice while a running service's actual cgroup remains app.slice;
+only its next owned start/login moves it. No desktop service is restarted here.
+Clipboard watchers are launched directly by the tracked compositor autostart,
+not by separate app.slice units. UWSM is present, but the active Lua entrypoint
+does not use the separate `config/binds.lua` browser shortcut. No user-local
+Chrome desktop entry or tracked Chrome launcher was found, so this change does
+not claim future Chrome placement is fixed.
+

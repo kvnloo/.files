@@ -1,6 +1,6 @@
 {
   "schema": "files.user-executable-attestation.v1",
-  "observed_at": 1792899522.3395615,
+  "observed_at": 1792900882.8839638,
   "helpers": [
     {
       "path": "/home/kvn/.local/bin/agent-resource-classify",
@@ -43,6 +43,14 @@
       "size": 26441
     },
     {
+      "path": "/home/kvn/.local/bin/dotenvx",
+      "target": "/home/kvn/.local/bin/dotenvx",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "c5b1f571d61133e55b161422e28d6304ae6e8f462dc44fcc9a834173afb27e57",
+      "size": 55766652
+    },
+    {
       "path": "/home/kvn/.local/bin/hyprcaffeine",
       "target": "/home/kvn/.local/bin/hyprcaffeine",
       "symlink": false,
@@ -59,6 +67,14 @@
       "size": 18266
     },
     {
+      "path": "/home/kvn/.local/bin/paperclipai",
+      "target": "/home/kvn/.local/bin/paperclipai",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "c89cc07713def631247df343dcad91e77388d3843511e52a3b00623c30bf3113",
+      "size": 213
+    },
+    {
       "path": "/home/kvn/.local/bin/service-watch",
       "target": "/mnt/zer0models/worktrees/files-live/scripts/service-watch.py",
       "symlink": true,
@@ -73,6 +89,14 @@
       "provenance": "mutable-checkout",
       "sha256": "35031d54d9930f28dc38020ba24be64b76a591464cc3cfe2a0f2cbf891bee954",
       "size": 10879
+    },
+    {
+      "path": "/home/kvn/.local/bin/tern",
+      "target": "/home/kvn/.local/bin/tern",
+      "symlink": false,
+      "provenance": "local-unattested",
+      "sha256": "40c75e76f9b0d03ed3696f7c6c37c5eddf5e62980a7d7c743ae3acc4e32c27db",
+      "size": 178622760
     },
     {
       "path": "/home/kvn/.local/bin/tern-hosts-sync",
@@ -107,5 +131,5 @@
       "size": 602
     }
   ],
-  "note": "Native executables remain application-managed; SHA256 is an inventory observation, not a supplied rebuild/install recipe."
+  "note": "Includes dormant Exec* helpers. Native executables and paperclipai generated shim remain application-managed; hashes are inventory observations, not supplied binary rebuild recipes. Future census avoids rehashing large native tools."
 }
