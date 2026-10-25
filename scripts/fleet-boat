@@ -185,7 +185,6 @@ def run(args):
     except boat.BoatError as exc:
         print("fleet: boat admission held: " + str(exc), file=sys.stderr)
         return 75
-    state = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
     jid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
     from fleet_paths import runs_dir
     runs = runs_dir()
