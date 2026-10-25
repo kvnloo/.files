@@ -22,6 +22,50 @@ fleet = importlib.util.module_from_spec(spec)
 loader.exec_module(fleet)
 
 
+class ProbeErrorTests(unittest.TestCase):
+    def test_s22_ssh_timeout_is_not_an_empty_stdout_index_error(self):
+        node = fleet.registry()[1]['galaxy-s22plus']
+        result = subprocess.CompletedProcess([], 255, '', 'ssh: connect to host X port 8022: Connection timed out\nSECRET')
+        with patch.object(fleet.subprocess, 'run', return_value=result):
+            value = fleet.probe(node, guest=True)
+        self.assertEqual(value['status'], 'probe_error')
+        self.assertEqual(value['node'], 'galaxy-s22plus')
+        self.assertIn('ssh probe exited 255: connection timed out', value['message'])
+        self.assertNotIn('IndexError', value['message'])
+        self.assertNotIn('SECRET', json.dumps(value))
+
+    def test_empty_or_invalid_output_is_a_named_probe_error(self):
+        node = fleet.registry()[1]['galaxy-s22plus']
+        for output, message in (('', 'no JSON output'), ('[]', 'not an object'),
+                                ('not JSON', 'JSONDecodeError')):
+            with self.subTest(output=output):
+                with patch.object(fleet.subprocess, 'run',
+                                  return_value=subprocess.CompletedProcess([], 0, output, '')):
+                    value = fleet.probe(node, guest=True)
+                self.assertEqual(value['status'], 'probe_error')
+                self.assertIn(message, value['message'])
+
+    def test_probe_exceptions_cannot_escape_the_scheduler(self):
+        node = fleet.registry()[1]['galaxy-s22plus']
+        for error, message in ((OSError('probe executable missing'), 'probe executable missing'),
+                               (IndexError('malformed probe'), 'malformed probe'),
+                               (subprocess.TimeoutExpired('ssh', 90), 'timed out after 90s')):
+            with self.subTest(error=type(error).__name__):
+                with patch.object(fleet.subprocess, 'run', side_effect=error):
+                    value = fleet.probe(node, guest=True)
+                self.assertEqual(value['status'], 'probe_error')
+                self.assertIn(message, value['message'])
+
+    def test_adb_and_boat_failures_use_the_same_probe_error_contract(self):
+        nodes = fleet.registry()[1]
+        for node in (nodes['galaxy-s22plus'], nodes['boat']):
+            with self.subTest(node=node['name']):
+                with patch.object(fleet.subprocess, 'run', side_effect=OSError('unavailable')):
+                    value = fleet.probe(node)
+                self.assertEqual(value['status'], 'probe_error')
+                self.assertEqual(value['node'], node['name'])
+
+
 class GuestLifetimeTests(unittest.TestCase):
     def before(self):
         return {'uptime': 1000.0, 'boot_id': 'android-boot', 'guest_identity': [200, '1234']}
