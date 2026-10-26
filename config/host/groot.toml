@@ -4685,3 +4685,75 @@ paths = ["/etc/NetworkManager/system-connections", "/etc/audit/plugins.d", "/etc
 owner = "scripts/apply-host-system"
 command = "cd /mnt/zer0models/worktrees/files-live && sudo scripts/apply-host-system --audit"
 reason = "ROOT-APPLY.md stage 1 closes permission-limited inventory gaps without printing credential values; unreadable paths remain unknown until audited."
+
+[[user]]
+live = "~/.config/systemd/user/bws-secrets-sync.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/bws-secrets-sync.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-turbo-relay.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/dash-metro-turbo-relay.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/dash-channel-relay.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/dash-channel-relay.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/tmux.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/tmux.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/nvibrant.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/nvibrant.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/service-watch.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/service-watch.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/adb.service"
+source = "config/systemd/user/adb.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/adb.service"
+source = "config/systemd/user/adb.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/hermes-gateway.service"
+source = "config/systemd/user/hermes-gateway.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening: the messaging gateway (Telegram intake) was never enabled, so a reboot left it down (drift noted since 2026-09-22)."

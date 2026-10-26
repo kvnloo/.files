@@ -1,0 +1,16 @@
+[Unit]
+Description=adb server for the USB agent phone (boot start; skipped when a server already listens)
+Documentation=man:adb(1)
+
+[Service]
+Type=simple
+# Never fight a server that fleet-adb or a client already started: that kill
+# would reset every phone connection. Exit 1 here skips the start cleanly.
+ExecCondition=/bin/sh -c '/usr/bin/ss -Hltn "sport = :5037" | grep -q . && exit 1 || exit 0'
+ExecStart=%h/android/sdk/platform-tools/adb -L tcp:5037 server nodaemon
+Restart=on-failure
+RestartSec=10
+MemoryMax=512M
+
+[Install]
+WantedBy=default.target
