@@ -196,6 +196,22 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(policy.scan(root, cache)[5].args[-1], '--tui')
             self.assertEqual(policy.scan(root, {}, uid=os.getuid() + 1), {})
 
+    def test_settled_processes_are_reused_without_reading_proc(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.make(root, 5, 'hermes', [*HERMES, '--tui'])
+            self.make(root, 6, 'bash', ['bash'])
+            settled = P(5, 1, 'hermes', HERMES, 'python3.14', SCOPE)
+            procs = policy.scan(root, {}, reuse={5: settled, 99: P(99, 1, 'gone')})
+            self.assertIs(procs[5], settled)
+            self.assertEqual(procs[6].comm, 'bash')
+            self.assertNotIn(99, procs)   # vanished from /proc: dropped, never reused
+            foreign = set()
+            self.assertEqual(policy.scan(root, {}, uid=os.getuid() + 1, foreign=foreign), {})
+            self.assertEqual(foreign, {5, 6})
+            os.unlink(root / '6' / 'stat')  # a partial pass must not even read a foreign PID
+            self.assertEqual(policy.scan(root, {}, reuse={}, foreign=foreign), {})
+
 
 if __name__ == '__main__':
     unittest.main()

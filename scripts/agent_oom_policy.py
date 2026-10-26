@@ -71,23 +71,41 @@ def _static(base: Path, uid: int):
         return False
 
 
-def scan(proc: Path = Path('/proc'), cache: dict | None = None, uid: int | None = None) -> dict:
+def scan(proc: Path = Path('/proc'), cache: dict | None = None, uid: int | None = None,
+         reuse: dict | None = None, foreign: set | None = None) -> dict:
     """This user's processes. `cache` keeps cmdline/exe/cgroup per (pid, start, comm):
-    exec keeps pid and start time but changes comm, so a re-exec is read again."""
+    exec keeps pid and start time but changes comm, so a re-exec is read again.
+    `reuse`: settled processes from the previous pass, kept without re-reading /proc;
+    apply() re-checks start time before every write, so a reused PID is never written.
+    `foreign`: PIDs found to belong to other users (root, kernel threads -- most of
+    /proc); filled on every pass and skipped on partial passes (reuse given)."""
     uid = os.getuid() if uid is None else uid
     cache = {} if cache is None else cache
     out = {}
+    root = str(proc)
     try:
-        names = os.listdir(proc)
+        names = os.listdir(root)
     except OSError:
         return out
+    # Runs every second over ~1000 processes: raw os calls, no pathlib, in this loop.
     for name in names:
         if not name.isdigit():
             continue
+        if reuse is not None:
+            if int(name) in reuse:
+                out[int(name)] = reuse[int(name)]
+                continue
+            if foreign is not None and int(name) in foreign:
+                continue
         try:
-            stat = (proc / name / 'stat').read_text()
-            comm = stat[stat.index('(') + 1:stat.rindex(')')]
-            fields = stat[stat.rindex(')') + 2:].split()
+            fd = os.open(f'{root}/{name}/stat', os.O_RDONLY)
+            try:
+                stat = os.read(fd, 4096).decode(errors='replace')
+            finally:
+                os.close(fd)
+            close = stat.rindex(')')
+            comm = stat[stat.index('(') + 1:close]
+            fields = stat[close + 2:].split(None, 20)
             ppid, tty, start = int(fields[1]), int(fields[4]), fields[19]
         except (OSError, ValueError, IndexError):
             continue
@@ -96,6 +114,8 @@ def scan(proc: Path = Path('/proc'), cache: dict | None = None, uid: int | None 
         if static is None:
             static = cache[key] = _static(proc / name, uid)
         if static is False:
+            if foreign is not None:
+                foreign.add(int(name))
             continue
         exe, args, cgroup = static
         out[int(name)] = Proc(int(name), ppid, comm, exe, args, cgroup, start, tty)

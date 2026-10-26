@@ -29,6 +29,8 @@ import agent_oom_policy as policy  # noqa: E402
 
 STATE = Path(os.environ.get('AGENT_OOM_STATE', Path.home() / '.local/state/agent-oom'))
 TICK = 1.0
+FULL = 5.0           # re-read every /proc/PID/stat; in between only new or young processes
+YOUNG = 5.0          # a process may still exec into its final identity this long after appearing
 REFRESH = 15.0       # re-read cgroups/cmdlines, re-check every score, refresh unit mains
 KILL_POLL = 20.0
 SUMMARY = 300.0
@@ -110,7 +112,19 @@ def tick(state: dict, dry_run: bool = False) -> dict:
         state['checked'].clear()
         state['mains'] = unit_mains()
         state['refreshed'] = now
-    procs = policy.scan(cache=state['cache'])
+    full = now - state['full'] >= FULL
+    if full:
+        state['full'] = now
+        state['foreign'].clear()
+    first = state['first_seen']
+    reuse = None if full else {pid: p for pid, p in state['procs'].items()
+                               if now - first.get((pid, p.start), now) >= YOUNG}
+    procs = policy.scan(cache=state['cache'], reuse=reuse, foreign=state['foreign'])
+    for key in [k for k in first if k[0] not in procs or procs[k[0]].start != k[1]]:
+        del first[key]
+    for p in procs.values():
+        first.setdefault((p.pid, p.start), now)
+    state['procs'] = procs
     protected, disposable = policy.decide(procs, state['mains'])
     lowered = dict(state['lowered']) if dry_run else state['lowered']
     before = dict(lowered)
@@ -132,6 +146,7 @@ def main() -> int:
     dry_run = '--dry-run' in sys.argv
     STATE.mkdir(parents=True, exist_ok=True)
     state = {'cache': {}, 'checked': set(), 'mains': {}, 'refreshed': float('-inf'),
+             'full': float('-inf'), 'procs': {}, 'first_seen': {}, 'foreign': set(),
              'lowered': load(STATE / 'lowered.json'), 'history': {}}
     if once:
         result = tick(state, dry_run)
