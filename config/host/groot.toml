@@ -4554,6 +4554,55 @@ owner = "scripts/apply-agent-oom"
 reason = "OMP update and rollback retain the scoped entry through a stamped installer."
 
 # Pending actions annotate evidence; they never waive drift or authorize execution.
+
+[[user]]
+live = "~/.config/systemd/user/memory-recall-check.service"
+source = "config/systemd/user/memory-recall-check.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Memory recall gate (canon reaches every turn, MCP finds owner words, harness sources reconciled); codified from the hand-placed unit, byte-identical."
+
+[[user]]
+live = "~/.config/systemd/user/memory-recall-check.timer"
+source = "config/systemd/user/memory-recall-check.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Memory recall gate (canon reaches every turn, MCP finds owner words, harness sources reconciled); codified from the hand-placed unit, byte-identical."
+
+[[user]]
+live = "~/.config/systemd/user/memory-corrections-capture.service"
+source = "config/systemd/user/memory-corrections-capture.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Owner-corrections capture for the per-prompt seam (z0intelligence #239); memory-replay-eval REPORT.md."
+
+[[user]]
+live = "~/.config/systemd/user/memory-corrections-capture.timer"
+source = "config/systemd/user/memory-corrections-capture.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Owner-corrections capture for the per-prompt seam (z0intelligence #239); memory-replay-eval REPORT.md."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/memory-recall-check.timer"
+source = "config/systemd/user/memory-recall-check.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Memory recall gate (canon reaches every turn, MCP finds owner words, harness sources reconciled); codified from the hand-placed unit, byte-identical."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/memory-corrections-capture.timer"
+source = "config/systemd/user/memory-corrections-capture.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Owner-corrections capture for the per-prompt seam (z0intelligence #239); memory-replay-eval REPORT.md."
+
 [[pending_action]]
 paths = ["/etc/default/earlyoom", "/etc/sysctl.d/99-groot.conf", "/etc/systemd/journald.conf.d/50-groot-retention.conf", "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf", "/etc/systemd/zram-generator.conf", "vm.dirty_bytes", "vm.dirty_background_bytes", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter", "net.netfilter.nf_conntrack_max", "user-1000.slice", "user.slice", "user@1000.service"]
 owner = "scripts/apply-host-system"

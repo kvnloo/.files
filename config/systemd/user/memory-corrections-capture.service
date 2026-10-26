@@ -1,0 +1,13 @@
+[Unit]
+Description=Capture Kevin's new re-explain complaints as owner corrections (injected per prompt in every harness)
+OnFailure=service-watch-failure@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/capture.py
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=90min

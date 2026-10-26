@@ -1,0 +1,11 @@
+[Unit]
+Description=Recall check: owner canon reaches every turn and memory search finds his words
+OnFailure=service-watch-failure@%n.service
+Wants=agentsview.service
+After=agentsview.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/memory-repair-20261025/recall_check.py
+Nice=10
+TimeoutStartSec=5min
