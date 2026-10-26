@@ -170,8 +170,11 @@ helpers and journal reads instead of waiting through their full deadlines.
 
 The package-file inventory is bounded to `/etc` and 16 directory descents
 (20,000 entries maximum); it never walks home/model volumes or follows directory
-symlinks. Unreadable directories or exceeded bounds yield unknown, not clean. An admin must
-review inaccessible package configuration separately. Extra bounded roots can be
+symlinks. Exceeded bounds yield unknown, not clean. An unreadable directory is
+`not_applicable` (`pacnew_impossible`) only when the readable pacman local
+database lists no package backup file under it, because pacman writes a `.pacnew`
+only beside a backup file; otherwise, or when that database is unreadable, it stays
+unknown and an admin must review it separately. Extra bounded roots can be
 given with repeated `--pacnew-root`. This is not an unrestricted package audit.
 
 A temporary control drop-in needs a local lease in
