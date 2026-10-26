@@ -1,15 +1,7 @@
 [Unit]
-Description=Keep ctx history current: incremental import of every registered provider
-# ctx indexing mode is manual and ctx.service is off (desktop IO policy), so nothing else imports.
-# Roots come from `z0int memory sources --apply` (memory-recall-check); import failures surface there.
-OnFailure=service-watch-failure@%n.service
-
+Description=ctx hourly history import (replaces auto mode's ~5 min full rebuilds; runtime-audit-20261025)
 [Service]
 Type=oneshot
-Environment=CTX_DATA_ROOT=/mnt/zer0models/host-offload/home_kvn_.ctx CTX_QUIET=1
-Environment=PATH=%h/.local/bin:/usr/bin:/bin
-WorkingDirectory=/tmp
-ExecStart=/usr/bin/bash -c 'for p in pi claude hermes opencode codex; do ctx import --provider "$p" --incremental --resume --no-blame --format json >/dev/null 2>&1; echo "ctx import $p rc=$?"; done'
-Nice=19
+Nice=15
 IOSchedulingClass=idle
-TimeoutStartSec=4h
+ExecStart=/home/kvn/.local/bin/ctx-import-hourly

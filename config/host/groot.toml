@@ -4609,7 +4609,8 @@ source = "config/systemd/user/ctx-import.service"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness: ctx indexing is manual and ctx.service is off, so this timer is the only importer (z0intelligence #241 surfaced 0 OMP sessions indexed)."
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+migration_sha256 = "fc6bbd0cb63b39fd7b2ed04b3aa9f483dfd3d430c1dfacc87016b178492d2bb4"
 
 [[user]]
 live = "~/.config/systemd/user/ctx-import.timer"
@@ -4617,7 +4618,35 @@ source = "config/systemd/user/ctx-import.timer"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness: ctx indexing is manual and ctx.service is off, so this timer is the only importer (z0intelligence #241 surfaced 0 OMP sessions indexed)."
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+migration_sha256 = "9265cb6a9bb50c325fdf7e78e867add21170ebfe4c564cde96c23301301b1495"
+
+[[user]]
+live = "~/.config/systemd/user/ctx-import.service.d/90-service-watch.conf"
+source = "config/systemd/user/ctx-import.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+migration_sha256 = "0f5672113ea89ab212cbb39b9f86d67477b7bba4a08a118eff3f1ec40d785338"
+
+[[user]]
+live = "~/.config/systemd/user/ctx-import.timer.d/90-service-watch.conf"
+source = "config/systemd/user/ctx-import.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+migration_sha256 = "339a12ed4f11ac896c74a3aed787606e20bf0290bcf93abb811b09aba4b7741a"
+
+[[user]]
+live = "~/.local/bin/ctx-import-hourly"
+source = "scripts/ctx-import-hourly"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
 
 [[user]]
 live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
@@ -4625,7 +4654,7 @@ source = "config/systemd/user/ctx-import.timer"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness: ctx indexing is manual and ctx.service is off, so this timer is the only importer (z0intelligence #241 surfaced 0 OMP sessions indexed)."
+reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
 
 [[pending_action]]
 paths = ["/etc/default/earlyoom", "/etc/sysctl.d/99-groot.conf", "/etc/systemd/journald.conf.d/50-groot-retention.conf", "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf", "/etc/systemd/zram-generator.conf", "vm.dirty_bytes", "vm.dirty_background_bytes", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter", "net.netfilter.nf_conntrack_max", "user-1000.slice", "user.slice", "user@1000.service"]

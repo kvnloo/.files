@@ -1,0 +1,13 @@
+#!/bin/bash
+# Hourly ctx refresh (runtime-audit-20261025). Auto mode republished a full index generation about
+# every 5 min (~80 MB/s of writes). Manual `ctx import` can't read live Hermes state.db files
+# (source_changed). So once an hour: switch auto on, let the daemon catch up, switch back to manual.
+C=/home/kvn/.local/bin/ctx; R=/mnt/zer0models/host-offload/home_kvn_.ctx; LOG=/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log
+gen() { $C --data-root $R index --format json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['lexical'].get('generation_id','')[:12])"; }
+g0=$(gen); t0=$(date +%s)
+$C --data-root $R index mode auto >/dev/null 2>&1
+sleep 20; timeout 2400 $C --data-root $R search "ctx hourly refresh" --refresh wait --format json >/dev/null 2>&1; rc=$?
+sleep 20  # let the daemon finish publishing
+$C --data-root $R index mode manual >/dev/null 2>&1
+echo "$(date -Is) wait_rc=$rc gen $g0 -> $(gen) took $(( $(date +%s)-t0 ))s" >> $LOG
+exit $rc

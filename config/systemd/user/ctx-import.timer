@@ -1,10 +1,8 @@
 [Unit]
-Description=Incremental ctx import an hour after the previous one finished
-
+Description=ctx hourly history import
 [Timer]
-OnBootSec=30min
-OnUnitInactiveSec=1h
+OnBootSec=10min
+OnUnitActiveSec=1h
 Persistent=true
-
 [Install]
 WantedBy=timers.target
