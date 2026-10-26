@@ -14,6 +14,7 @@ CRITICAL priority and sent to the desktop: that is a broken guarantee, not routi
   agent-oom-guard            run (systemd user service agent-oom-guard.service)
   agent-oom-guard --once     one pass, print the JSON result
   agent-oom-guard --dry-run  with --once: classify only, write nothing
+  agent-oom-guard --check    exit 1 and list every way root protection is broken now
 """
 from __future__ import annotations
 
@@ -106,6 +107,55 @@ def record_kills(history: dict) -> None:
             + ', '.join(f"{r['comm']}({r['class']},adj={r['oom_score_adj']})" for r in rows), 4)
 
 
+def check(state: dict | None = None) -> list:
+    """Every way root protection could silently regress; [] means it holds right now."""
+    state = state or {'cache': {}, 'mains': unit_mains()}
+    problems = []
+    procs = policy.scan(cache=state['cache'])
+    protected, _, _ = policy.decide(procs, state['mains'] or unit_mains())
+    for pid in sorted(protected):
+        try:
+            value = int(Path(f'/proc/{pid}/oom_score_adj').read_text())
+        except (OSError, ValueError):
+            continue
+        if value > policy.FLOOR_ADJ:
+            problems.append(f'protected {procs[pid].comm} pid={pid} at oom_score_adj {value}')
+    legacy = [pid for pid, p in procs.items()
+              if p.comm == 'bash' and len(p.args) > 1 and Path(p.args[1]).name == 'agent-launch']
+    if legacy:
+        problems.append(f'legacy agent-launch watchers raising scores: {legacy}')
+    units = sorted({policy.unit_of(procs[pid].cgroup) for pid in protected} - {''})
+    if units:
+        out = subprocess.run(['systemctl', '--user', 'show', '-p', 'Id', '-p', 'OOMPolicy', *units],
+                             capture_output=True, text=True, timeout=15).stdout
+        for block in out.strip().split('\n\n'):
+            row = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+            if row.get('OOMPolicy') == 'stop':
+                problems.append(f"{row.get('Id')} holds a protected process but has OOMPolicy=stop")
+    try:
+        dump = subprocess.run(['oomctl', 'dump'], capture_output=True, text=True, timeout=15).stdout
+        watched = [line.split(':', 1)[1].strip() for line in dump.splitlines()
+                   if line.strip().startswith('Path:')]
+        for pid in protected:
+            cg = procs[pid].cgroup
+            hit = [w for w in watched if w != '/' and (cg == w or cg.startswith(w.rstrip('/') + '/'))]
+            if hit:
+                problems.append(f'systemd-oomd can kill cgroup {hit[0]} holding {procs[pid].comm} pid={pid}')
+                break
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', 'agent-oom-guard.service']).returncode:
+        problems.append('agent-oom-guard.service is not active')
+    try:
+        for line in (STATE / 'kills.jsonl').read_text().splitlines():
+            row = json.loads(line)
+            if row.get('class') == 'protected':
+                problems.append(f"protected process was OOM-killed: {row}")
+    except (OSError, ValueError):
+        pass
+    return problems
+
+
 def tick(state: dict, dry_run: bool = False) -> dict:
     now = time.monotonic()
     if now - state['refreshed'] >= REFRESH:
@@ -152,6 +202,10 @@ def main() -> int:
     state = {'cache': {}, 'checked': set(), 'mains': {}, 'refreshed': float('-inf'),
              'full': float('-inf'), 'procs': {}, 'first_seen': {}, 'foreign': set(),
              'lowered': load(STATE / 'lowered.json'), 'history': {}}
+    if '--check' in sys.argv:
+        problems = check()
+        print(json.dumps({'ok': not problems, 'problems': problems}, indent=1))
+        return 1 if problems else 0
     if once:
         result = tick(state, dry_run)
         print(json.dumps(result))
@@ -159,7 +213,7 @@ def main() -> int:
     log(f'started; protected={policy.FLOOR_ADJ} disposable={policy.DISPOSABLE_ADJ} '
         f'batch={policy.BATCH_ADJ} tick={TICK}s')
     totals = {'raised': 0, 'handed_back': 0, 'failures': 0}
-    last_kills = last_summary = float('-inf')
+    last_kills = last_summary = last_check = float('-inf')
     protected = 0
     while True:
         try:
@@ -176,6 +230,14 @@ def main() -> int:
             if now - last_kills >= KILL_POLL:
                 record_kills(state['history'])
                 last_kills = now
+            if now - last_check >= SUMMARY:
+                last_check = now
+                problems = check(state)
+                for problem in problems:
+                    log(f'ROOT PROTECTION BROKEN: {problem}', 2)
+                if problems:
+                    subprocess.run(['notify-send', '-u', 'critical', 'Agent root protection broken',
+                                    '; '.join(problems)[:500]], capture_output=True, timeout=10, check=False)
             if now - last_summary >= SUMMARY:
                 log(f'protected={protected} since-last: {totals}')
                 totals = dict.fromkeys(totals, 0)
