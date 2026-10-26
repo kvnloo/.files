@@ -4,4 +4,10 @@ Description=ctx hourly history import (replaces auto mode's ~5 min full rebuilds
 Type=oneshot
 Nice=15
 IOSchedulingClass=idle
+# A refresh peaks near 3 GiB; under memory pressure skip this hour instead of feeding the OOM killer.
+ExecCondition=/usr/bin/awk '/^MemAvailable:/ { exit !($2 > 4194304) }' /proc/meminfo
 ExecStart=/home/kvn/.local/bin/ctx-import-hourly
+# The script switches ctx to auto mode; if it is killed (OOM, 2026-10-26 00:01) ctx would stay in auto
+# (a full rebuild every ~5 min). Runs after any exit, including SIGKILL.
+ExecStopPost=/home/kvn/.local/bin/ctx --data-root /mnt/zer0models/host-offload/home_kvn_.ctx index mode manual
+TimeoutStartSec=50min
