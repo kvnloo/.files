@@ -40,3 +40,69 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-host-drift"
 reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."
+
+# z0intelligence shadow-learning tick: the same stamped units and drop-ins groot runs.
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service"
+source = "config/systemd/user/z0int-loop-tick.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+migration_sha256 = "c1bb93acc3b82f8925243adeb8ab3953ee2eefdd9ef65b2e0c8d869f954ba3cd"
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.timer"
+source = "config/systemd/user/z0int-loop-tick.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/20-shadow-learning.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/20-shadow-learning.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/30-live-home.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/30-live-home.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
+source = "config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-failure@.service"
+source = "config/systemd/user/service-watch-failure@.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/40-claude-projects.conf"
+source = "config/host/mbp/systemd/z0int-loop-tick.service.d/40-claude-projects.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp Claude Code sessions live in the default projects dir."
