@@ -1,6 +1,13 @@
 # mbp managed path inventory. Starts with the host-drift layer; units are adopted as they are stamped.
 # Home-relative and host-generic only: sensitive per-host values live in the private z0-hosts instance.
 
+# T3's packaged runtime writes these runtime property overrides at start (pingdotgg/t3code#24708); they outrank the
+# tracked budget drop-in below. Exact mbp bytes, removed only while unchanged (a changed one may be a lease).
+user_control_cleanup = [
+  { live = "/run/user/1000/systemd/user.control/app-t3code-agents.slice.d/50-MemoryHigh.conf", sha256 = "8cd837bc1d804e88606fe548bc0b34b51f83c70c87aacf04dd821084e778d099" },
+  { live = "/run/user/1000/systemd/user.control/app-t3code-agents.slice.d/50-MemoryMax.conf", sha256 = "9141d91c1599e82234121b84e4b30017368bdff97b03343eedf3c6cff4bb7c0a" },
+]
+
 [[user]]
 live = "~/.config/systemd/user/host-drift.service"
 source = "config/systemd/user/host-drift.service"
@@ -106,3 +113,24 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "mbp Claude Code sessions live in the default projects dir."
+
+# Same measured T3 agent budget as groot: hard 4G ceiling, no MemoryHigh reclaim stalls. mbp peak was
+# 916M resident + 138M swap (2026-10-26), so 4G keeps >3x headroom and is far below T3's own 11.6G default.
+[[user]]
+live = "~/.config/systemd/user/app-t3code-agents.slice.d/50-host-budget.conf"
+source = "config/systemd/user/app-t3code-agents.slice.d/50-host-budget.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Measured policy; docs/fleet/DESKTOP-ADMISSION.md user layer."
+drift = "owned-upstream"
+issue = "https://github.com/pingdotgg/t3code/issues/24708"
+
+# Reviewed 2026-10-26 per file; none needs merging. The live files carry the installer's locale, the operator's
+# pacman options and repos, rate-mirrors output and NetworkManager's resolver, so those leftovers are deleted.
+# tpm2-tss 4.x renamed the FAPI profile fields and the FAPI keystore is empty, so the new profiles are taken.
+[[pending_action]]
+paths = ["/etc/locale.gen.pacnew", "/etc/pacman.conf.pacnew", "/etc/pacman.d/mirrorlist.pacnew", "/etc/pacman.d/cachyos-mirrorlist.pacnew", "/etc/pacman.d/cachyos-v3-mirrorlist.pacnew", "/etc/pacman.d/cachyos-v4-mirrorlist.pacnew", "/etc/resolv.conf.pacnew", "/etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json.pacnew", "/etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json.pacnew"]
+owner = "operator package configuration review"
+command = "sudo rm /etc/locale.gen.pacnew /etc/pacman.conf.pacnew /etc/pacman.d/mirrorlist.pacnew /etc/pacman.d/cachyos-mirrorlist.pacnew /etc/pacman.d/cachyos-v3-mirrorlist.pacnew /etc/pacman.d/cachyos-v4-mirrorlist.pacnew /etc/resolv.conf.pacnew && sudo mv /etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json.pacnew /etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json && sudo mv /etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json.pacnew /etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json"
+reason = "Root-only; the per-file review above found nothing to merge."
