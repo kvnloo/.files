@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +15,25 @@ loader = importlib.machinery.SourceFileLoader('host_user_installer', str(ROOT / 
 spec = importlib.util.spec_from_loader(loader.name, loader)
 installer = importlib.util.module_from_spec(spec)
 loader.exec_module(installer)
+
+
+class SiblingClosureTests(unittest.TestCase):
+    def test_stamped_helper_carries_the_modules_it_imports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp)
+            (src / 'scripts').mkdir()
+            (src / 'scripts/helper').write_text('#!/usr/bin/env python3\nimport json, policy\n')
+            (src / 'scripts/policy.py').write_text('from shared import X\n')
+            (src / 'scripts/shared.py').write_text('X = 1\n')
+            (src / 'scripts/unit.service').write_text('[Service]\nExecStart=import policy\n')
+            self.assertEqual(installer.sibling_imports(src, {'scripts/helper'}),
+                             {'scripts/helper', 'scripts/policy.py', 'scripts/shared.py'})
+            self.assertEqual(installer.sibling_imports(src, {'scripts/unit.service'}), {'scripts/unit.service'})
+
+    def test_live_manifest_closure_contains_agent_oom_policy(self):
+        manifest = tomllib.loads((ROOT / 'config/host/groot.toml').read_text())
+        sources = {row['source'] for row in manifest['user'] if 'source' in row and not row.get('secret')}
+        self.assertIn('scripts/agent_oom_policy.py', installer.sibling_imports(ROOT, sources))
 
 
 class UserLayerTests(unittest.TestCase):

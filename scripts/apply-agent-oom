@@ -2,6 +2,7 @@
 """Stage by default; --apply links agent policy only when aggregate usage is safe."""
 from __future__ import annotations
 import argparse
+import ast
 import hashlib
 import os
 from pathlib import Path
@@ -140,6 +141,38 @@ def install(source: Path, home: Path, apply: bool) -> int:
     return 0
 
 
+def sibling_imports(source: Path, relatives) -> set[str]:
+    """Close a stamped set over the Python siblings its scripts import.
+
+    Helpers put their own directory on sys.path and import companions (agent-resource-classify
+    imports agent_oom_policy). A release missing one breaks the helper on its next run, so the
+    closure is derived from the code, not kept by hand.
+    """
+    seen, todo = set(relatives), list(relatives)
+    while todo:
+        path = source / todo.pop()
+        try:
+            text = path.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not (path.suffix == '.py' or (text.startswith('#!') and 'python' in text.split('\n', 1)[0])):
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        names = {alias.name.split('.')[0] for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+        names |= {node.module.split('.')[0] for node in ast.walk(tree)
+                  if isinstance(node, ast.ImportFrom) and node.module and not node.level}
+        for name in names:
+            sibling = path.parent / f'{name}.py'
+            relative = str(sibling.relative_to(source))
+            if sibling.is_file() and relative not in seen:
+                seen.add(relative)
+                todo.append(relative)
+    return seen
+
+
 def user_path(value: str, home: Path) -> Path:
     if not value.startswith('~/'):
         raise ValueError(f'user install path must be home-relative: {value}')
@@ -252,6 +285,7 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
     closure = {row['source'] for row in entries}
     # Helpers resolve companions relative to __file__; keep their complete local closure.
     closure.update(manifest.get('user_release_closure', []))
+    closure = sibling_imports(source, closure)
     for relative in closure:
         if Path(relative).is_absolute() or '..' in Path(relative).parts:
             raise ValueError(f'unsafe closure path: {relative}')
