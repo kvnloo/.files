@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 import json
 from pathlib import Path
+import socket
 import tempfile
 import time
 import unittest
@@ -19,6 +20,12 @@ installer = importlib.util.module_from_spec(spec)
 loader.exec_module(installer)
 
 
+def write_fleet(root):
+    """Fixture fleet declaring this machine's hostname as the manifest host."""
+    (root / 'fleet.toml').write_text('[hosts.fixture]\nmatch_hostnames = [' + json.dumps(socket.gethostname()) +
+                                     ']\nmanifest = "config/host/groot.toml"\n')
+
+
 class DriftTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -31,6 +38,7 @@ class DriftTests(unittest.TestCase):
         self.etc = self.base / 'etc'
         self.etc.mkdir()
         (self.root / 'config/host').mkdir(parents=True)
+        write_fleet(self.root)
         self.source = 'config/host/source.conf'
         (self.root / self.source).write_text('safe\n')
         self.live = self.etc / 'source.conf'
@@ -49,6 +57,8 @@ class DriftTests(unittest.TestCase):
             if args[0] == 'sysctl':
                 return (properties or {}).get(args[-1], '42')
             if args[0] == 'systemctl':
+                if 'UnitFileState' in args:
+                    return 'UnitFileState=enabled\nExecStart={ path=/usr/bin/true ; argv[]=/usr/bin/true }\n'
                 if properties is None:
                     raise ValueError('manager unavailable')
                 return '\n'.join(f'{key}={value}' for key, value in properties.items())
@@ -320,7 +330,8 @@ class InstallerTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture\n')
             (source / 'config/host/groot.toml').write_text('')
-            with patch.object(installer.subprocess, 'check_output', return_value='\n'.join(installer.CLOSURE)), \
+            write_fleet(source)
+            with patch.object(installer.subprocess, 'check_output', return_value='\n'.join((*installer.CLOSURE, 'config/host/groot.toml'))), \
                  patch.object(installer.subprocess, 'run') as run:
                 self.assertEqual(installer.install(source, home, False), 0)
                 self.assertFalse(home.exists())

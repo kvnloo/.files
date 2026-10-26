@@ -1,0 +1,42 @@
+# mbp managed path inventory. Starts with the host-drift layer; units are adopted as they are stamped.
+# Home-relative and host-generic only: sensitive per-host values live in the private z0-hosts instance.
+
+[[user]]
+live = "~/.config/systemd/user/host-drift.service"
+source = "config/systemd/user/host-drift.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."
+
+[[user]]
+live = "~/.config/systemd/user/host-drift.timer"
+source = "config/systemd/user/host-drift.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."
+
+[[user]]
+live = "~/.config/z0-guard/state.json"
+source = "config/host/z0-guard-state.json"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."
+
+[[user]]
+live = "~/.local/bin/host-drift"
+source = "scripts/host-drift"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."
+
+[[user]]
+live = "~/.local/bin/service-watch"
+source = "scripts/service-watch.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Stamped host-drift checker and timer for mbp (same closure as groot)."

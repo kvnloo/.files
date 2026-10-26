@@ -8,8 +8,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import shlex
+import sys
 import tempfile
 import tomllib
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import host_layout  # noqa: E402
 
 CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-watch.py',
            'scripts/dash-log-watch-model.py', 'scripts/service-watch-confirm.ts',
@@ -17,13 +21,14 @@ CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-w
            'config/systemd/user/host-drift.service', 'config/systemd/user/host-drift.timer',
            'config/systemd/user/service-watch-failure@.service',
            'config/systemd/user/service-watch-heartbeat.service',
-           'config/host/groot.toml', 'config/host/z0-guard-state.json')
+           'config/host/z0-guard-state.json', 'scripts/host_layout.py', 'fleet.toml')
 
 
 def install(source, home, apply):
     tracked = set(subprocess.check_output(['git', '-C', str(source), 'ls-files'], text=True).splitlines())
-    manifest = tomllib.loads((source / 'config/host/groot.toml').read_text())
-    names = set(CLOSURE)
+    layout = host_layout.resolve(source, home=home)
+    manifest = tomllib.loads((source / layout.manifest).read_text())
+    names = set(CLOSURE) | {layout.manifest}
     names.update(row['source'] for scope in ('system', 'user') for row in manifest.get(scope, []))
     for scope in ('system', 'user'):
         for row in manifest.get(scope, []):
@@ -73,6 +78,8 @@ def install(source, home, apply):
                  'service-watch-heartbeat.service'):
         links[home / '.config/systemd/user' / unit] = release / 'config/systemd/user' / unit
     backup = home / '.local/state/host-drift/backups' / digest.hexdigest()
+    for dest in links:
+        host_layout.admit_live(dest, host_layout.Live.ABSENT)
     for dest, target in links.items():
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_symlink() and dest.resolve() == target:

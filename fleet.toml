@@ -15,9 +15,12 @@ user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-lu
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
+# Managed-path manifest read by apply-agent-oom, host-drift and install-host-drift.
+manifest = "config/host/groot.toml"
 
 [hosts.desktop.storage]
 release_root = "/mnt/zer0models/releases"
+release_mount = "/mnt/zer0models"
 fleet_policy = "config/fleet/storage.toml"
 root_reserve_gib = 20
 root_admission_floor_gib = 15
@@ -61,9 +64,14 @@ package_groups = ["core", "desktop", "dev", "shell", "fonts"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
 system_services = ["tailscaled.service"]
 user_services = []
-user_timers = ["z0int-loop-tick.timer"]
+user_timers = ["z0int-loop-tick.timer", "host-drift.timer"]
 nix_profile = "mbp"
 hypr_host = "mbp"
+manifest = "config/host/mbp.toml"
+
+# Single internal SSD: physical stamped trees stay on it, beside the home aliases.
+[hosts.mbp.storage]
+release_root = "~/.local/lib/releases"
 
 # Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
 # Use the explicit logical id: the guest kernel hostname is "localhost".
