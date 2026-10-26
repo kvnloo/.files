@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""burn-pace: pace Claude/Codex plan usage so the weekly window lands near 100% at reset.
+
+Fresh usage comes from `codexbar usage --source oauth`. z0intelligence's posture engine
+(src/z0int/posture.py, imported from the stamped release) does the projection. On top of
+that, this script turns the weekly numbers into concrete knobs for the agent:
+
+  sustainable %/h = remaining% / hours_until_reset
+  pace ratio      = observed %/h (window average) / sustainable %/h
+  ratio > 1  -> burning too fast: shrink workflows, offload to free lanes
+  ratio < 1  -> under-burning: spend more on high-value work
+
+Usage: burn-pace [--json]
+"""
+import json, subprocess, sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# The stamped z0intelligence release, never a mutable checkout; Z0INT_SRC overrides.
+Z0_SRC = __import__("os").environ.get("Z0INT_SRC") or str(Path.home() / ".local/lib/z0int-shadow/current/src")
+STATE = Path.home() / ".z0int/state/posture"
+FRESH = STATE / "codexbar-fresh.json"
+SAMPLES = STATE / "burn-pace.jsonl"
+FREE_LANE = "opencode run -m opencode/deepseek-v4.1-flash-free"
+
+
+ERRORS = []
+
+
+def fetch(provider):
+    # Minimal claude+codex config: the user config may be written by a newer CodexBar build.
+    env = dict(__import__("os").environ)
+    minimal = Path.home() / ".config/codexbar/burn-pace.json"
+    if minimal.exists():
+        env.setdefault("CODEXBAR_CONFIG", str(minimal))
+    proc = subprocess.run(["codexbar", "usage", "--provider", provider, "--source", "oauth", "--json-only"],
+                          capture_output=True, text=True, timeout=90, env=env)
+    try:
+        rows = json.loads(proc.stdout or "[]")
+    except ValueError:
+        rows = []
+    # A failed probe is "unknown", never "no budget": keep the error visible.
+    for r in rows:
+        if "usage" not in r:
+            ERRORS.append({"provider": provider, "error": r.get("error") or r})
+    if not rows:
+        ERRORS.append({"provider": provider, "error": (proc.stderr or "no output").strip()[:300]})
+    return [r for r in rows if "usage" in r]
+
+
+def knobs(ratio):
+    # Map pace ratio to how hard the agent may spend. Bands are deliberately coarse.
+    if ratio is None:
+        return {"band": "unknown", "max_workflow_agents": 4, "effort": "medium", "offload": "bulk"}
+    if ratio >= 1.5:
+        return {"band": "hard-throttle", "max_workflow_agents": 0, "effort": "low", "offload": "all-mechanical+reading"}
+    if ratio >= 1.1:
+        return {"band": "throttle", "max_workflow_agents": 3, "effort": "low", "offload": "bulk+implementation"}
+    if ratio >= 0.8:
+        return {"band": "on-pace", "max_workflow_agents": 6, "effort": "medium", "offload": "bulk"}
+    return {"band": "under-burn", "max_workflow_agents": 12, "effort": "high", "offload": "none-required"}
+
+
+def main():
+    now = datetime.now(timezone.utc)
+    rows = fetch("claude") + fetch("codex")
+    STATE.mkdir(parents=True, exist_ok=True)
+    FRESH.write_text(json.dumps(rows))
+
+    sys.path.insert(0, Z0_SRC)
+    from z0int.posture import evaluate, pools_from_codexbar  # noqa: E402
+    result = evaluate(pools_from_codexbar(rows, now), now)
+
+    out = {"at": now.isoformat(timespec="seconds"), "z0_factory": result.get("factory"), "lanes": {}}
+    for r in rows:
+        sec = r["usage"].get("secondary") or {}
+        if not sec.get("resetsAt"):
+            continue
+        reset = datetime.fromisoformat(sec["resetsAt"].replace("Z", "+00:00"))
+        hours_left = max((reset - now).total_seconds() / 3600, 0.01)
+        window_h = sec.get("windowMinutes", 10080) / 60
+        elapsed_h = max(window_h - hours_left, 0.01)
+        used = float(sec.get("usedPercent", 0))
+        sustainable = (100 - used) / hours_left
+        observed = used / elapsed_h
+        ratio = observed / sustainable if sustainable > 0 else None
+        out["lanes"][r["provider"]] = {
+            "weekly_used_pct": used, "hours_to_reset": round(hours_left, 1),
+            "sustainable_pct_per_h": round(sustainable, 3), "observed_pct_per_h": round(observed, 3),
+            "pace_ratio": round(ratio, 2) if ratio else None,
+            "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio)}
+    out["free_lane"] = FREE_LANE
+    if ERRORS:
+        out["probe_errors"] = ERRORS
+        out["status"] = "unknown"
+    with SAMPLES.open("a") as f:
+        f.write(json.dumps(out) + "\n")
+
+    if "--json" in sys.argv:
+        print(json.dumps(out, indent=1))
+        return
+    f = out["z0_factory"] or {}
+    print(f"z0 posture: {f.get('posture')} - {f.get('action', '')}")
+    for name, l in out["lanes"].items():
+        print(f"{name}: {l['weekly_used_pct']}% used, {l['hours_to_reset']}h to reset | "
+              f"burn {l['observed_pct_per_h']}%/h vs sustainable {l['sustainable_pct_per_h']}%/h "
+              f"(ratio {l['pace_ratio']}) -> {l['band']}: workflows<={l['max_workflow_agents']} agents, "
+              f"effort {l['effort']}, offload {l['offload']}")
+    print(f"free lane: {FREE_LANE}")
+
+
+if __name__ == "__main__":
+    main()
