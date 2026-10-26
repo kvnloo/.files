@@ -1,0 +1,64 @@
+#!/usr/bin/env sh
+# route-build -- mbp-side thin wrapper (WP1-B enactment).
+#
+# Wraps exactly the named heavy build commands. On mbp lag AND groot Admit it
+# runs the command on groot via the remote-exec plane; otherwise it runs locally
+# (fail OPEN to current behaviour -- it never blocks the owner).
+#
+# Hot path is cheap (R8 leak 2): no Python on mbp, one 2s-bounded ssh to groot
+# for the verdict, then either the remote exec or the local exec. A running
+# process is never touched (R5); this only steers NEW invocations.
+#
+# Usage:   route-build <job-class> -- <command> [args...]
+#   e.g.   route-build build/test -- tsc -p app
+# Rollback / kill switch:
+#   touch ~/tmp/network/network-optimizer.OFF   (on groot)  -> always LOCAL
+#   or remove this wrapper from PATH / alias.
+set -eu
+
+PEER_SELF="${NETOPT_SELF_HOST:-mbp}"
+GROOT="${NETOPT_GROOT_HOST:-groot}"
+OPTDIR="${NETOPT_OPTDIR:-\$HOME/.local/share/network-optimizer}"
+
+class="${1:-build/test}"; shift || true
+if [ "${1:-}" = "--" ]; then shift; fi
+if [ "$#" -eq 0 ]; then
+  echo "route-build: no command given" >&2
+  exit 2
+fi
+
+run_local() {
+  echo "[route-build] LOCAL on ${PEER_SELF}: $*" >&2
+  exec "$@"
+}
+
+# Ask groot for a verdict (bounded 2s; fish login noise -> /dev/null).
+verdict="$(timeout 4 ssh -o BatchMode=yes -o ConnectTimeout=2 "$GROOT" \
+  "python3 $OPTDIR/decide.py $(printf '%q ' "$class" "$@")" 2>/dev/null \
+  | head -1 || true)"
+
+case "$verdict" in
+  ROUTE\ *)
+    plan_json="${verdict#ROUTE }"
+    # argv is a JSON array in plan.argv; hand it to python once to exec safely.
+    echo "[route-build] ROUTE ${PEER_SELF}->${GROOT}: $*" >&2
+    # make-before-break: run on groot; if the remote start fails, fall open local.
+    if python3 - "$plan_json" <<'PY'
+import json, os, sys
+plan = json.loads(sys.argv[1])
+argv = plan["argv"]
+os.execvp(argv[0], argv)
+PY
+    then :; else
+      echo "[route-build] remote start failed -> fail open LOCAL" >&2
+      run_local "$@"
+    fi
+    ;;
+  WAIT)
+    echo "[route-build] groot gate=WAIT -> running LOCAL (no silent stall)" >&2
+    run_local "$@"
+    ;;
+  *)
+    run_local "$@"
+    ;;
+esac

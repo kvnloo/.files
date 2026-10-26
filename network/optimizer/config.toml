@@ -1,0 +1,34 @@
+# Network meta-optimizer tunables (host-drift managed; no IPs / host literals).
+# Host aliases resolve via ~/.ssh/config. Runtime overrides come from the
+# environment (NETOPT_*), which the systemd unit and the wrapper set.
+schema = 1
+
+[hosts]
+self = "groot"     # where the optimizer runs (reads local /proc, free)
+peer = "mbp"       # the laptop, read via one cheap ssh pull (R8)
+
+[thresholds]
+# L-P4 host-wide lag guard (OR of the three). mbp is above these while it lags.
+lag_psi_mem_full_avg60 = 5.0
+lag_psi_cpu_some_avg10 = 60.0
+lag_swap_frac = 0.6
+# R7 hysteresis: sustained lag before a route is actionable; cooldown per host.
+sustained_lag_seconds = 300
+accept_back_seconds = 600
+host_cooldown_seconds = 1800
+fleet_moves_per_10min = 1
+
+[groot_gate]
+# Read-only pre-check mirroring the real gate (agent-oom-guard). Never writes.
+min_avail_mib = 3072
+kill_storm_window_s = 600
+kill_storm_max = 0
+
+[paths]
+base = "~/tmp/network"                                   # state, decisions, kill switch, rollback
+kills = "~/.local/state/agent-oom/kills.jsonl"           # gate storm signal (read-only)
+scratch = "/mnt/zer0models/.netopt-tmp"                  # groot / is 91% full -> build scratch here
+
+[engine]
+build_parallelism = "nproc/2"        # groot has 20 -> 10
+inference_endpoint_env = "Z0_LLAMA_ENDPOINT"   # discovered at runtime, never embedded

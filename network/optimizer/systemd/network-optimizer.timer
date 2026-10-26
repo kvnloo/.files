@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the z0 network meta-optimizer cycle every 60s (jittered)
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+# Avoid the :00/:15/:30 timer pile-up that coincided with the 13:43 OOM storm.
+RandomizedDelaySec=20s
+AccuracySec=5s
+Persistent=false
+Unit=network-optimizer.service
+
+[Install]
+WantedBy=timers.target
