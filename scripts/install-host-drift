@@ -21,7 +21,7 @@ CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-w
            'config/systemd/user/host-drift.service', 'config/systemd/user/host-drift.timer',
            'config/systemd/user/service-watch-failure@.service',
            'config/systemd/user/service-watch-heartbeat.service',
-           'config/host/z0-guard-state.json', 'scripts/host_layout.py', 'fleet.toml')
+           'config/host/z0-guard-state.json', 'scripts/host_layout.py', 'scripts/host_admission.py', 'fleet.toml')
 
 
 def install(source, home, apply):

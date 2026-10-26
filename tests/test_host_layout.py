@@ -203,6 +203,24 @@ class CheckoutDirectoryLinkTests(unittest.TestCase):
         green = audit('static', stamped)
         self.assertNotIn('exec_from_checkout', {row['kind'] for row in green['drift']})
 
+    def test_stamped_host_drift_closure_runs(self):
+        # 2026-10-26: the stamped release lacked host_admission.py and crashed on import.
+        installer_mod = load('host_layout_drift_installer', 'scripts/install-host-drift')
+        tracked = set(subprocess.run(['git', '-C', str(ROOT), 'ls-files'], capture_output=True, text=True,
+                                     check=True).stdout.split())
+        names = set(installer_mod.CLOSURE)
+        for name in sorted(names):
+            self.assertIn(name, tracked, name)
+        with tempfile.TemporaryDirectory() as temp:
+            stamp = Path(temp)
+            for name in names:
+                (stamp / name).parent.mkdir(parents=True, exist_ok=True)
+                (stamp / name).write_bytes((ROOT / name).read_bytes())
+            (stamp / 'scripts/host-drift').chmod(0o755)
+            proc = subprocess.run([sys.executable, '-I', str(stamp / 'scripts/host-drift'), '--help'],
+                                  capture_output=True, text=True, cwd=temp)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
     def test_materialize_refuses_non_checkout_links(self):
         other = self.home / 'plain'
         other.mkdir()
