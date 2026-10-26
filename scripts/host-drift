@@ -96,7 +96,25 @@ def checkout_root(path):
     return None
 
 
-def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup')):
+def package_backups(db):
+    """Absolute paths of every installed package's backup files, or None when the local db is unreadable.
+    pacman writes a .pacnew only beside a file in some package's backup array."""
+    try:
+        paths = set()
+        for files in sorted(Path(db).glob('*/files')):
+            section = None
+            for line in files.read_text().splitlines():
+                if line.startswith('%') and line.endswith('%'):
+                    section = line
+                elif section == '%BACKUP%' and line:
+                    paths.add('/' + line.split('\t', 1)[0].lstrip('/'))
+        return paths if paths or any(Path(db).glob('*/desc')) else None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup'),
+          pacman_db=Path('/var/lib/pacman/local')):
     drift, unknown = [], []
     manifest = {}
     if run is command:
@@ -393,6 +411,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         except (OSError, ValueError, TypeError) as exc:
             add(unknown, 'control_unavailable', control, str(exc))
     # No whole-home or model-volume scan. Bound /etc by 20k entries/16 levels.
+    backups = package_backups(pacman_db) if pacnew_roots else None
     for base in pacnew_roots:
         try:
             count = 0
@@ -401,7 +420,14 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                 try:
                     children = sorted(directory.iterdir())
                 except OSError as exc:
-                    add(unknown, 'pacnew_unavailable', directory, str(exc))
+                    # An unreadable directory can only hide a .pacnew beside some package's backup file.
+                    prefix = str(directory).rstrip('/') + '/'
+                    if backups is not None and not any(path.startswith(prefix) for path in backups):
+                        not_applicable.append(dict(kind='pacnew_impossible', path=str(directory),
+                                                   detail=f'{exc.strerror}; no installed package declares a '
+                                                          'backup file under it, so pacman cannot place a .pacnew'))
+                    else:
+                        add(unknown, 'pacnew_unavailable', directory, str(exc))
                     return
                 for path in children:
                     count += 1
@@ -453,10 +479,12 @@ def main():
     parser.add_argument('--runtime', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/1000')))
     parser.add_argument('--leases', type=Path)
     parser.add_argument('--pacnew-root', type=Path, action='append')
+    parser.add_argument('--pacman-db', type=Path, default=Path('/var/lib/pacman/local'))
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     report = audit(args.root, args.home, args.runtime,
-                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')])
+                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')],
+                   pacman_db=args.pacman_db)
     text = json.dumps(report, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

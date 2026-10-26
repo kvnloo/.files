@@ -2,6 +2,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import os
 from pathlib import Path
 import socket
 import tempfile
@@ -213,6 +214,28 @@ class DriftTests(unittest.TestCase):
         (self.etc / 'new.pacnew').write_text('new')
         kinds = {row['kind'] for row in self.run_audit({'vm.swappiness': '43'})['drift']}
         self.assertEqual(kinds, {'pacnew', 'sysctl_effective'})
+
+    @unittest.skipIf(os.geteuid() == 0, 'root reads every directory')
+    def test_unreadable_directory_without_package_backups_cannot_hide_pacnew(self):
+        hidden = self.etc / 'credstore'
+        hidden.mkdir()
+        hidden.chmod(0)
+        self.addCleanup(hidden.chmod, 0o700)
+        db = self.base / 'pacman-local'
+        (db / 'pkg-1').mkdir(parents=True)
+        (db / 'pkg-1/desc').write_text('%NAME%\npkg\n')
+        def audit(db_path):
+            return drift.audit(self.root, self.home, self.runtime, self.leases, [self.etc],
+                               lambda args: 'config/host/source.conf\n', pacman_db=db_path)
+        (db / 'pkg-1/files').write_text(f'%FILES%\netc/\n\n%BACKUP%\n{str(self.etc)[1:]}/other.conf\tabc\n')
+        report = audit(db)
+        self.assertEqual(report['status'], 'clean')
+        self.assertEqual([(row['kind'], row['path']) for row in report['not_applicable']],
+                         [('pacnew_impossible', str(hidden))])
+        # A backup file under it, or an unreadable package db, keeps the gap unknown.
+        (db / 'pkg-1/files').write_text(f'%BACKUP%\n{str(hidden)[1:]}/key.conf\tabc\n')
+        self.assertEqual([row['kind'] for row in audit(db)['unknown']], ['pacnew_unavailable'])
+        self.assertEqual([row['kind'] for row in audit(self.base / 'missing-db')['unknown']], ['pacnew_unavailable'])
 
     def test_effective_resource_values_and_unknown_manager(self):
         self.live = self.home / '.config/systemd/user/a.service.d/50-budget.conf'
