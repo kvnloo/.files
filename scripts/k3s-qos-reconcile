@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""k3s-qos-reconcile: keep groot's infrastructure pods in the Guaranteed QoS class.
+
+Why (ROOT-CAUSE-AND-LAWS K2 / L2, 2026-10-26): kubelet gives Burstable pods an
+oom_score_adj of 979-999 and BestEffort pods 1000. Under a global OOM the kernel
+therefore killed coredns, kueue and the gpu-slot plugin (13 MB each) before any
+800-adj agent subagent, so coredns and kueue crash-looped (restarts 78 and 76).
+Guaranteed pods (requests == limits for cpu and memory) get adj -997 from
+kubelet, which puts them behind every agent process, as the owner policy wants
+("kill subagents only").
+
+Several of these workloads are not owned by one manifest: coredns,
+metrics-server and local-path-provisioner are k3s addons that k3s re-applies on
+restart, kueue comes from the pinned upstream manifest, and the gpu-slot plugin
+and executor come from other repos. So this reconciler is the single owner of
+their resources and runs on a user timer. It only writes when a container
+differs from the table, so a no-op run makes no API writes.
+
+    k3s-qos-reconcile            patch drifted workloads, then report
+    k3s-qos-reconcile --check    report only; exit 1 when any pod is not Guaranteed
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# namespace, kind, name, container, cpu, memory. Sizes: >= 2x the measured
+# working set (kubectl top, 2026-10-26) and never below the previous limit.
+# Sum of memory = 1322Mi, inside the ~2.36Gi allocatable that the d5dd764
+# kubelet reserve leaves (tests/test_k3s_qos.py checks this).
+TABLE = (
+    ('kube-system', 'deployment', 'coredns', 'coredns', '200m', '170Mi'),
+    ('kube-system', 'deployment', 'metrics-server', 'metrics-server', '100m', '128Mi'),
+    ('kube-system', 'deployment', 'local-path-provisioner', 'local-path-provisioner', '50m', '64Mi'),
+    ('kube-system', 'daemonset', 'nvidia-device-plugin', 'plugin', '50m', '64Mi'),
+    ('kueue-system', 'deployment', 'kueue-controller-manager', 'manager', '500m', '512Mi'),
+    ('quackles', 'daemonset', 'quackles-gpu-slot-plugin', 'plugin', '100m', '64Mi'),
+    ('z0', 'deployment', 'factory-gateway', 'forward', '200m', '64Mi'),
+    ('hermes-lab', 'deployment', 'z0intelligence-executor', 'executor', '1', '256Mi'),
+)
+
+
+def kubectl(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    env.setdefault('KUBECONFIG', str(Path.home() / '.kube/k3s.yaml'))
+    return subprocess.run(['kubectl', *args], input=stdin, text=True, capture_output=True, env=env, timeout=60)
+
+
+def want(cpu: str, mem: str) -> dict:
+    return {'requests': {'cpu': cpu, 'memory': mem}, 'limits': {'cpu': cpu, 'memory': mem}}
+
+
+def drift(obj: dict, container: str, cpu: str, mem: str) -> str | None:
+    """Why this workload's template is not the table's Guaranteed shape, or None."""
+    spec = obj['spec']['template']['spec']
+    names = [c['name'] for c in spec.get('containers', [])]
+    if container not in names:
+        return f'container {container!r} not found (have {names})'
+    for c in spec.get('containers', []) + spec.get('initContainers', []):
+        res = c.get('resources') or {}
+        if c['name'] == container:
+            if res.get('requests') != want(cpu, mem)['requests'] or res.get('limits') != want(cpu, mem)['limits']:
+                return f'{container}: requests={res.get("requests")} limits={res.get("limits")}'
+        elif res.get('requests') != res.get('limits') or not res.get('limits'):
+            return f'untabled container {c["name"]!r} is not Guaranteed-shaped'
+    return None
+
+
+def patch_body(container: str, cpu: str, mem: str) -> str:
+    return json.dumps({'spec': {'template': {'spec': {'containers': [
+        {'name': container, 'resources': want(cpu, mem)}]}}}})
+
+
+def pod_qos(ns: str, kind: str, name: str) -> list[tuple[str, str]]:
+    obj = kubectl('-n', ns, 'get', kind, name, '-o', 'json')
+    if obj.returncode:
+        return []
+    labels = json.loads(obj.stdout)['spec']['selector'].get('matchLabels', {})
+    sel = ','.join(f'{k}={v}' for k, v in labels.items())
+    pods = kubectl('-n', ns, 'get', 'pods', '-l', sel, '-o', 'json')
+    if pods.returncode:
+        return []
+    return [(p['metadata']['name'], p.get('status', {}).get('qosClass', '?'))
+            for p in json.loads(pods.stdout)['items']
+            if p.get('status', {}).get('phase') in ('Running', 'Pending')]
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--check', action='store_true', help='report only; never patch')
+    a = ap.parse_args(argv)
+    bad = 0
+    for ns, kind, name, container, cpu, mem in TABLE:
+        got = kubectl('-n', ns, 'get', kind, name, '-o', 'json')
+        if got.returncode:
+            print(f'skip {ns}/{kind}/{name}: {got.stderr.strip()[:120]}')
+            continue
+        why = drift(json.loads(got.stdout), container, cpu, mem)
+        if why and not a.check:
+            res = kubectl('-n', ns, 'patch', kind, name, '--type=strategic', '-p', patch_body(container, cpu, mem))
+            print(f'patched {ns}/{kind}/{name}: {why}' if res.returncode == 0
+                  else f'FAILED {ns}/{kind}/{name}: {res.stderr.strip()[:200]}')
+            bad += res.returncode != 0
+            continue
+        pods = pod_qos(ns, kind, name)
+        nonq = [p for p, q in pods if q != 'Guaranteed']
+        state = 'drift: ' + why if why else ('rolling' if nonq else 'ok')
+        print(f'{state:8s} {ns}/{kind}/{name} pods={",".join(q for _, q in pods) or "-"}')
+        bad += bool(why) or bool(nonq)
+    return 1 if (a.check and bad) else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

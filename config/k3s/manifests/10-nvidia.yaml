@@ -30,6 +30,10 @@ spec:
           image: nvcr.io/nvidia/k8s-device-plugin:v0.20.1
           env:
             - {name: FAIL_ON_INIT_ERROR, value: "false"}
+          # requests == limits: Guaranteed QoS, adj -997 (scripts/k3s-qos-reconcile)
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 50m, memory: 64Mi}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}

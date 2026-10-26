@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Stage by default; --apply installs the k3s QoS reconciler from a content-stamped release.
+
+Uses apply-agent-oom's stamp_release, so the installed files live in the same
+immutable release library (never linked to a mutable checkout). Only user-level
+changes: links in ~/.local/bin and ~/.config/systemd/user, a user daemon-reload,
+and `enable --now` of the timer. Rollback: `--remove` unlinks and disables.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import os
+import subprocess
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+LINKS = {
+    'scripts/k3s-qos-reconcile': '.local/bin/k3s-qos-reconcile',
+    'config/systemd/user/k3s-qos-reconcile.service': '.config/systemd/user/k3s-qos-reconcile.service',
+    'config/systemd/user/k3s-qos-reconcile.timer': '.config/systemd/user/k3s-qos-reconcile.timer',
+}
+TIMER = 'k3s-qos-reconcile.timer'
+
+
+def stamp_release(source: Path, home: Path) -> Path:
+    loader = importlib.machinery.SourceFileLoader('apply_agent_oom', str(HERE / 'apply-agent-oom'))
+    spec = importlib.util.spec_from_loader('apply_agent_oom', loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod.stamp_release(source, home, files=tuple(LINKS))
+
+
+def link(release: Path, home: Path) -> list[str]:
+    done = []
+    for rel, dest in LINKS.items():
+        target = home / dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() and not target.is_symlink():
+            raise SystemExit(f'refusing to replace a non-link: {target}')
+        tmp = target.with_name(f'.{target.name}.k3s-qos-tmp')
+        if tmp.is_symlink() or tmp.exists():
+            tmp.unlink()
+        tmp.symlink_to(release / rel)
+        os.replace(tmp, target)
+        done.append(f'{target} -> {release / rel}')
+    return done
+
+
+def systemctl(*args: str) -> None:
+    subprocess.run(['systemctl', '--user', *args], check=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--apply', action='store_true')
+    ap.add_argument('--remove', action='store_true', help='rollback: disable the timer and unlink')
+    ap.add_argument('--source', type=Path, default=HERE.parent)
+    a = ap.parse_args(argv)
+    home = Path.home()
+    if a.remove:
+        subprocess.run(['systemctl', '--user', 'disable', '--now', TIMER], check=False)
+        for dest in LINKS.values():
+            if (home / dest).is_symlink():
+                (home / dest).unlink()
+        systemctl('daemon-reload')
+        print('removed')
+        return 0
+    if not a.apply:
+        for rel, dest in LINKS.items():
+            print(f'would link ~/{dest} <- {rel}')
+        return 0
+    release = stamp_release(a.source.resolve(strict=True), home)
+    print('\n'.join(link(release, home)))
+    systemctl('daemon-reload')
+    systemctl('enable', '--now', TIMER)
+    systemctl('start', 'k3s-qos-reconcile.service')
+    print(f'release {release}')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
