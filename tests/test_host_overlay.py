@@ -130,6 +130,12 @@ control_plane = "desktop"
         overlay = self.resolve(env={**self.env, 'Z0_HOST_ID': 'spare'})
         self.assertEqual(overlay.storage['model_root'], '/spare')
 
+    def test_z0_host_id_cannot_leave_hosts_dir(self):
+        self.host('desktop', '', self.FILES)
+        for bad in ('../desktop', '/etc', 'a/b', '.'):
+            with self.assertRaisesRegex(ValueError, 'Z0_HOST_ID'):
+                self.resolve(env={**self.env, 'Z0_HOST_ID': bad})
+
     def test_ambiguous_match_fails_closed(self):
         self.host('desktop', '', self.FILES)
         self.host('twin', 'fleet_host = "desktop"\n', self.FILES)

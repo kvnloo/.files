@@ -50,6 +50,7 @@ DEFAULTS = {
 ADDRESS_KEY = re.compile(
     r'(?i)(^|_)(ip|ip4|ip6|ipv4|ipv6|addr|address|cidr|tailnet|tailscale_ip|magicdns|dns_name|fqdn)(_|$)')
 TAILNET_V4 = re.compile(r'(?<![\d.])100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}(?!\d)')
+HOST_ID = re.compile(r'[a-z0-9][a-z0-9_-]{0,62}')
 TAILNET_NAME = re.compile(r'(?i)\.ts\.net\b|\btail[0-9a-f]{4,}\b')
 
 
@@ -103,6 +104,8 @@ def find_overlay_dir(instance, fleet_host, hostname, env=None):
     if not hosts.is_dir():
         return None
     if env.get('Z0_HOST_ID'):
+        if not HOST_ID.fullmatch(env['Z0_HOST_ID']):
+            raise ValueError('z0-hosts: Z0_HOST_ID must match [a-z0-9][a-z0-9_-]*')
         chosen = hosts / env['Z0_HOST_ID']
         return chosen if chosen.is_dir() else None
     matches = []
