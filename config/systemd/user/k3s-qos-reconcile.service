@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep groot infrastructure pods Guaranteed QoS (adj -997, behind agent subagents)
+Documentation=file://%h/.local/bin/k3s-qos-reconcile
+
+[Service]
+Type=oneshot
+Slice=background.slice
+Environment=KUBECONFIG=%h/.kube/k3s.yaml
+ExecStart=%h/.local/bin/k3s-qos-reconcile
+MemoryMax=256M
+TimeoutStartSec=5min

@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-apply Guaranteed QoS after k3s restarts or manifest re-applies revert it
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
