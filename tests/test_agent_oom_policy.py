@@ -65,28 +65,28 @@ MAINS = {'wayland-wm@hyprland.desktop.service': 10, 'hermes-gateway.service': 30
 
 class DecideTests(unittest.TestCase):
     def test_roots_their_renderers_and_everything_above_them_are_protected(self):
-        protected, disposable = policy.decide(session_tree(), MAINS)
+        protected, disposable, _ = policy.decide(session_tree(), MAINS)
         # Victims of 2026-10-25 20:30-20:44 at adj 800: Hermes TUI renderers, tern, omp.
         self.assertEqual(protected, {10, 11, 12, 20, 21, 22, 23, 30, 40, 41, 50, 51, 52})
         # Tools, MCP servers, the omp language-server broker and one-shot subagents.
         self.assertEqual(disposable, {24, 25, 26, 27, 31, 32, 33, 42, 53})
 
     def test_unrelated_work_and_desktop_programs_keep_their_score(self):
-        protected, disposable = policy.decide(session_tree(), MAINS)
+        protected, disposable, _ = policy.decide(session_tree(), MAINS)
         for pid in (1, 28, 29, 34):
             self.assertNotIn(pid, protected | disposable)
 
     def test_renamed_process_is_not_a_root(self):
         procs = session_tree()
         procs[60] = P(60, 21, 'hermes', ['bash', 'evil.sh'], 'bash', SCOPE)
-        protected, _ = policy.decide(procs, MAINS)
+        protected, _, _ = policy.decide(procs, MAINS)
         self.assertNotIn(60, protected)
 
     def test_interactive_session_an_agent_opened_on_its_own_terminal_is_a_root(self):
         procs = session_tree()
         procs[61] = P(61, 31, 'hermes', [*HERMES, '-p', 'clean'], 'python3.14', GATEWAY, tty=34900)
         procs[62] = P(62, 31, 'hermes', [*HERMES, '-p', 'clean'], 'python3.14', GATEWAY, tty=0)
-        protected, disposable = policy.decide(procs, MAINS)
+        protected, disposable, _ = policy.decide(procs, MAINS)
         self.assertIn(61, protected)
         self.assertIn(62, disposable)
 
@@ -97,16 +97,26 @@ class DecideTests(unittest.TestCase):
         procs[71] = P(71, 70, 'ffmpeg', ['ffmpeg'], 'ffmpeg', USER + '/app.slice/garden-room-hermes-gateway.service')
         procs[72] = P(72, 1, 'python3', ['python3', 'x.py'], 'python3.14', USER + '/app.slice/myhermesx.service')
         mains = {**MAINS, 'garden-room-hermes-gateway.service': 70, 'myhermesx.service': 72}
-        protected, disposable = policy.decide(procs, mains)
+        protected, disposable, _ = policy.decide(procs, mains)
         self.assertIn(70, protected)
         self.assertIn(71, disposable)
         self.assertNotIn(72, protected)
+
+    def test_background_maintenance_units_are_batch(self):
+        procs = session_tree()
+        for pid, unit in ((90, 'agentsview-sync.service'), (91, 'ctx-import.service'),
+                          (92, 'z0int-choice-ef6bedc1.service'), (93, 'agentsview.service')):
+            procs[pid] = P(pid, 1, 'x', ['x'], 'x', USER + '/app.slice/' + unit)
+        procs[94] = P(94, 92, 'python', ['python'], 'python', USER + '/app.slice/z0int-choice-ef6bedc1.service')
+        protected, disposable, batch = policy.decide(procs, MAINS)
+        self.assertEqual(batch, {90, 91, 92, 94})
+        self.assertFalse(batch & (protected | disposable))
 
     def test_dashboard_launched_as_module_is_a_root(self):
         procs = session_tree()
         procs[80] = P(80, 1, 'hermes', ['/x/python3', '-m', 'hermes_cli.main', 'dashboard'], 'python3.14',
                       USER + '/app.slice/web.service')
-        protected, _ = policy.decide(procs, MAINS)
+        protected, _, _ = policy.decide(procs, MAINS)
         self.assertIn(80, protected)
 
 
@@ -147,11 +157,17 @@ class ApplyTests(unittest.TestCase):
         result, lowered, checked = self.run_apply(fake, procs, {2, 3, 6}, {4, 5})
         self.assertEqual([fake.score(p) for p in (2, 3, 4, 5, 6)], [100, 100, 800, 999, 0])
         self.assertEqual(lowered, {'2:100': 200, '3:100': 800})
-        self.assertEqual(fake.refused, 3)
-        # The refused -900 is remembered: the next second does not retry it.
+        # Never below the unprivileged floor: no write is ever refused.
         self.run_apply(fake, procs, {2, 3, 6}, {4, 5}, lowered, checked)
-        self.assertEqual(fake.refused, 3)
+        self.assertEqual(fake.refused, 0)
         self.assertEqual(result['failures'], [])
+
+    def test_batch_jobs_rank_above_tools(self):
+        procs = {pid: P(pid, 1, f'p{pid}') for pid in (2, 3)}
+        fake = FakeProc({2: 200, 3: 200})
+        with patch.object(policy, '_write_adj', fake.write):
+            policy.apply(procs, set(), {3}, {}, set(), fake.root, batch={2})
+        self.assertEqual([fake.score(2), fake.score(3)], [policy.BATCH_ADJ, policy.DISPOSABLE_ADJ])
 
     def test_reused_pid_is_never_written(self):
         procs = {7: P(7, 1, 'p7', start='100'), 8: P(8, 1, 'p8', start='100')}

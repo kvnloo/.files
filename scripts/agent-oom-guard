@@ -2,7 +2,8 @@
 """Keep kernel OOM kills off coding-agent roots; record every kill durably.
 
 Applies scripts/agent_oom_policy.py once a second: roots, their renderers and the
-shells, terminals and units above them are lowered; tools and subagents are raised.
+shells, terminals and units above them are lowered; tools and subagents are raised,
+background batch jobs higher still.
 It is the only writer of agent oom_score_adj values (agent-launch and
 agent-resource-classify no longer write them).
 
@@ -125,10 +126,11 @@ def tick(state: dict, dry_run: bool = False) -> dict:
     for p in procs.values():
         first.setdefault((p.pid, p.start), now)
     state['procs'] = procs
-    protected, disposable = policy.decide(procs, state['mains'])
+    protected, disposable, batch = policy.decide(procs, state['mains'])
     lowered = dict(state['lowered']) if dry_run else state['lowered']
     before = dict(lowered)
-    result = policy.apply(procs, protected, disposable, lowered, state['checked'], dry_run=dry_run)
+    result = policy.apply(procs, protected, disposable, lowered, state['checked'], dry_run=dry_run,
+                          batch=batch)
     if not dry_run and lowered != before:
         save(STATE / 'lowered.json', lowered)
     wall = time.time()
@@ -136,6 +138,8 @@ def tick(state: dict, dry_run: bool = False) -> dict:
         state['history'][pid] = (procs[pid].comm[:15], 'protected', wall)
     for pid in disposable:
         state['history'][pid] = (procs[pid].comm[:15], 'disposable', wall)
+    for pid in batch:
+        state['history'][pid] = (procs[pid].comm[:15], 'batch', wall)
     for pid in [pid for pid, (_, _, ts) in state['history'].items() if wall - ts > HISTORY]:
         del state['history'][pid]
     return result
@@ -152,8 +156,8 @@ def main() -> int:
         result = tick(state, dry_run)
         print(json.dumps(result))
         return 1 if result['failures'] else 0
-    log(f'started; protect={policy.PROTECT_ADJ} (floor {policy.FLOOR_ADJ}) '
-        f'disposable={policy.DISPOSABLE_ADJ} tick={TICK}s')
+    log(f'started; protected={policy.FLOOR_ADJ} disposable={policy.DISPOSABLE_ADJ} '
+        f'batch={policy.BATCH_ADJ} tick={TICK}s')
     totals = {'raised': 0, 'handed_back': 0, 'failures': 0}
     last_kills = last_summary = float('-inf')
     protected = 0

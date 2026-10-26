@@ -15,12 +15,20 @@ PROTECTED   Roots; a Hermes root's TUI renderer (node .../entry.js) and that ren
 DISPOSABLE  Everything else under a harness -- tools, MCP servers, language-server
             brokers, subagent harnesses and their trees -- and anything else left in
             agent.slice. Desktop programs (browsers, terminals) keep their score.
+BATCH       Processes of background maintenance units (BATCH_UNIT). They are killed
+            before interactive tools: tonight's hogs (ctx import, agentsview sync) sat
+            at 200 while every tool at 800 had to die before them.
 
-Scores only move one way: protected processes are lowered, disposable ones raised.
-An unprivileged process may lower a score only to the floor the user manager started
-with (oom_score_adj_min: 100 under user@.service), so PROTECT_ADJ is tried first and
-FLOOR_ADJ is the fallback. A child forked by a lowered shell inherits the low score;
-it gets back the score its parent had before (see hand_back).
+Resulting kill order: batch 900, disposable 800, other user processes 200, protected
+FLOOR_ADJ 100, system services 0. 100 is the lowest score an unprivileged process may
+set under user@.service (its inherited oom_score_adj_min), and it is deliberately not
+lowered further with root: below 0 the kernel would kill system daemons (tailscaled,
+NetworkManager, journald) before a root, freeing nothing. A root therefore dies only
+if it alone outgrows its own cgroup cap, or after every other user process is gone.
+
+Scores only move one way: protected processes are lowered, the others raised. A child
+forked by a lowered shell inherits the low score; it gets back the score its parent
+had before (see hand_back).
 """
 from __future__ import annotations
 
@@ -29,9 +37,12 @@ from pathlib import Path, PurePath
 import re
 from typing import NamedTuple
 
-PROTECT_ADJ = -900
 FLOOR_ADJ = 100
 DISPOSABLE_ADJ = 800
+BATCH_ADJ = 900
+BATCH_UNIT = re.compile(r'^(agentsview-sync|ctx-import|worktree-reaper|artifact-leases|z0-state-packet'
+                        r'|dev\.cribble\.agent\.sync|agent-telemetry-refresh'
+                        r'|z0int-(policy|loop-tick|choice-[0-9a-f]+))\.service$')
 HARNESSES = frozenset({'hermes', 'claude', 'omp', 'codex', 'pi', 'opencode'})
 # Services that host agent sessions under a generic interpreter name (the gateway,
 # dashboard, garden-room and z0live hosts): their unit's main process is a root.
@@ -175,8 +186,8 @@ def unit_of(cgroup: str) -> str:
     return ''
 
 
-def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set]:
-    """(protected, disposable) PIDs for one snapshot."""
+def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set, set]:
+    """(protected, disposable, batch) PIDs for one snapshot."""
     unit_mains = unit_mains or {}
     managers = {pid for pid, p in procs.items() if p.comm == 'systemd'}
 
@@ -222,7 +233,9 @@ def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set]:
     in_slice = {pid for pid, p in procs.items() if '/agent.slice/' in p.cgroup}
     disposable = {pid for pid in (tree | in_slice) - protected
                   if procs[pid].comm not in DESKTOP and pid not in managers}
-    return protected, disposable
+    batch = {pid for pid, p in procs.items()
+             if BATCH_UNIT.match(unit_of(p.cgroup)) and pid not in protected and pid not in managers}
+    return protected, disposable - batch, batch
 
 
 def _read_adj(proc: Path, pid: int) -> int:
@@ -247,8 +260,8 @@ def _same(proc: Path, p: Proc) -> bool:
 
 
 def apply(procs: dict, protected: set, disposable: set, lowered: dict, checked: set,
-          proc: Path = Path('/proc'), dry_run: bool = False) -> dict:
-    """Lower protected, raise disposable, hand inherited low scores back.
+          proc: Path = Path('/proc'), dry_run: bool = False, batch: set = frozenset()) -> dict:
+    """Lower protected, raise disposable and batch, hand inherited low scores back.
 
     lowered: {'pid:start': score before lowering}; the caller persists it.
     checked: (pid, start) already examined as disposable/inheritor; scores only change
@@ -274,47 +287,34 @@ def apply(procs: dict, protected: set, disposable: set, lowered: dict, checked: 
         p = procs[pid]
         try:
             current = _read_adj(proc, pid)
-            if current <= PROTECT_ADJ or not _same(proc, p):
+            if current <= FLOOR_ADJ or not _same(proc, p):
                 continue
-            target = None
-            for value in (PROTECT_ADJ, FLOOR_ADJ):
-                if current <= value:
-                    break
-                if value == PROTECT_ADJ and ('floor', pid, p.start) in checked:
-                    continue  # refused before; retried when the caller clears `checked`
-                if dry_run:
-                    target = value
-                    break
-                try:
-                    _write_adj(proc, pid, value)
-                    target = value
-                    break
-                except PermissionError:
-                    checked.add(('floor', pid, p.start))
-                    continue
-            if target is not None:
-                lowered.setdefault(f'{pid}:{p.start}', current)
-                result['lowered'].append([pid, p.comm, current, target])
+            if not dry_run:
+                _write_adj(proc, pid, FLOOR_ADJ)
+            lowered.setdefault(f'{pid}:{p.start}', current)
+            result['lowered'].append([pid, p.comm, current, FLOOR_ADJ])
         except FileNotFoundError:
             continue
         except (OSError, ValueError) as error:
             result['failures'].append({'pid': pid, 'error': str(error)})
-    for pid in sorted(disposable):
+    targets = [(pid, BATCH_ADJ) for pid in sorted(batch)] + [(pid, DISPOSABLE_ADJ) for pid in sorted(disposable)]
+    for pid, target in targets:
         p = procs[pid]
         if (pid, p.start) in checked:
             continue
         checked.add((pid, p.start))
         try:
             current = _read_adj(proc, pid)
-            if current < DISPOSABLE_ADJ and _same(proc, p):
+            if current < target and _same(proc, p):
                 if not dry_run:
-                    _write_adj(proc, pid, DISPOSABLE_ADJ)
-                result['raised'].append([pid, p.comm, current, DISPOSABLE_ADJ])
+                    _write_adj(proc, pid, target)
+                result['raised'].append([pid, p.comm, current, target])
         except FileNotFoundError:
             continue
         except (OSError, ValueError) as error:
             result['failures'].append({'pid': pid, 'error': str(error)})
-    result['handed_back'] = hand_back(procs, protected, disposable, lowered, checked, proc, dry_run)
+    result['handed_back'] = hand_back(procs, protected, set(disposable) | set(batch), lowered, checked,
+                                      proc, dry_run)
     return result
 
 
