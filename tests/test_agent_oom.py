@@ -23,7 +23,7 @@ class InstallerTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / 'home'
         self.source = Path(self.tmp.name) / 'live source'
-        for rel in installer.LINKS:
+        for rel in (*installer.LINKS, *installer.CLOSURE):
             path = self.source / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('tracked source\n')
@@ -124,8 +124,14 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue(target.is_relative_to(self.home / '.local/lib/files-live'))
             self.assertNotEqual(target, self.source / rel)
             self.assertEqual(target.read_bytes(), (self.source / rel).read_bytes())
-        self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'daemon-reload'])
-        self.assertEqual(run.call_count, 3)
+        calls = [c.args[0] for c in run.call_args_list]
+        self.assertEqual(calls[2:], [['systemctl', '--user', 'daemon-reload'],
+                                     ['systemctl', '--user', 'enable', installer.GUARD],
+                                     ['systemctl', '--user', 'restart', installer.GUARD]])
+        # The policy module ships inside the stamped release next to the linked helpers.
+        guard = (self.home / installer.LINKS['scripts/agent-oom-guard']).resolve()
+        for rel in installer.CLOSURE:
+            self.assertEqual((guard.parent.parent / rel).read_bytes(), (self.source / rel).read_bytes())
 
     def test_release_survives_source_change_and_rejects_tampering(self):
         release = installer.stamp_release(self.source, self.home)
@@ -190,6 +196,29 @@ class LauncherTests(unittest.TestCase):
         scopes = (ROOT / 'config/zsh/agent-scopes.zsh').read_text()
         self.assertIn('commands[', scopes)
         self.assertNotIn(' command ${_agent_cli}', scopes)
+
+    def test_only_the_guard_writes_oom_scores(self):
+        # Two writers fought before: agent-launch raised every process but its own PID
+        # (the Hermes TUI renderer included) while the classifier raised others.
+        writers = []
+        for path in sorted((ROOT / 'scripts').iterdir()):
+            if not path.is_file() or path.name in {'agent_oom_policy.py', 'agent-oom-guard'}:
+                continue
+            try:
+                text = path.read_text()
+            except UnicodeDecodeError:
+                continue
+            code = [line for line in text.splitlines()
+                    if 'oom_score_adj' in line and not line.lstrip().startswith('#')]
+            if code:
+                writers.append((path.name, code[:2]))
+        self.assertEqual(writers, [])
+
+    def test_every_user_service_and_scope_survives_one_oom_kill(self):
+        for rel, section in (('service.d', 'Service'), ('scope.d', 'Scope')):
+            text = (ROOT / 'config/systemd/user' / rel / '50-oom-continue.conf').read_text()
+            self.assertIn(f'[{section}]\nOOMPolicy=continue', text)
+            self.assertIn(f'config/systemd/user/{rel}/50-oom-continue.conf', installer.LINKS)
 
     def test_source_envelope(self):
         policy = (ROOT / 'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf').read_text()

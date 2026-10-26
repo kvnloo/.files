@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Keep kernel OOM kills off coding-agent roots; record every kill durably.
+
+Applies scripts/agent_oom_policy.py once a second: roots, their renderers and the
+shells, terminals and units above them are lowered; tools and subagents are raised.
+It is the only writer of agent oom_score_adj values (agent-launch and
+agent-resource-classify no longer write them).
+
+Every kernel OOM kill is appended to ~/.local/state/agent-oom/kills.jsonl with the
+class the victim had at its last observation. A protected victim is logged at
+CRITICAL priority and sent to the desktop: that is a broken guarantee, not routine.
+
+  agent-oom-guard            run (systemd user service agent-oom-guard.service)
+  agent-oom-guard --once     one pass, print the JSON result
+  agent-oom-guard --dry-run  with --once: classify only, write nothing
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import agent_oom_policy as policy  # noqa: E402
+
+STATE = Path(os.environ.get('AGENT_OOM_STATE', Path.home() / '.local/state/agent-oom'))
+TICK = 1.0
+REFRESH = 15.0       # re-read cgroups/cmdlines, re-check every score, refresh unit mains
+KILL_POLL = 20.0
+SUMMARY = 300.0
+HISTORY = 900.0      # how long a vanished PID keeps its last class for kill attribution
+KILLED = re.compile(r'Killed process (\d+) \((.*?)\).*?anon-rss:(\d+)kB.*?oom_score_adj:(-?\d+)')
+
+
+def log(message: str, priority: int = 6) -> None:
+    # <N> prefixes are journald priorities (2 = critical, 4 = warning, 6 = info).
+    print(f'<{priority}>{message}', flush=True)
+
+
+def unit_mains() -> dict:
+    try:
+        out = subprocess.run(['systemctl', '--user', 'show', '--type=service', '--state=active',
+                              '-p', 'Id', '-p', 'MainPID', '*'],
+                             capture_output=True, text=True, timeout=15).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    mains = {}
+    for block in out.strip().split('\n\n'):
+        row = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+        if row.get('MainPID', '0').isdigit() and int(row.get('MainPID', '0')):
+            mains[row['Id']] = int(row['MainPID'])
+    return mains
+
+
+def load(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text())
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save(path: Path, value) -> None:
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(json.dumps(value, sort_keys=True))
+    os.replace(tmp, path)
+
+
+def record_kills(history: dict) -> None:
+    """Append new kernel OOM kills; attribute each to the victim's last known class."""
+    try:
+        out = subprocess.run(['journalctl', '-k', '--no-pager', '-o', 'short-unix', '-q',
+                              f'--cursor-file={STATE / "kmsg.cursor"}', '-g', 'Killed process'],
+                             capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        log(f'kill log unavailable: {error}', 4)
+        return
+    rows = []
+    for line in out.splitlines():
+        match = KILLED.search(line)
+        if not match:
+            continue
+        pid, comm, anon_kb, adj = int(match[1]), match[2], int(match[3]), int(match[4])
+        seen = history.get(pid)
+        kind = seen[1] if seen and seen[0] == comm[:15] else 'unknown'
+        row = {'ts': float(line.split()[0]), 'pid': pid, 'comm': comm, 'anon_mb': anon_kb // 1024,
+               'oom_score_adj': adj, 'class': kind}
+        rows.append(row)
+        if kind == 'protected':
+            log(f'OOM killed PROTECTED {comm} pid={pid} adj={adj}: root protection failed', 2)
+            subprocess.run(['notify-send', '-u', 'critical', 'OOM killed a protected agent process',
+                            f'{comm} (pid {pid}, adj {adj}); see {STATE / "kills.jsonl"}'],
+                           capture_output=True, timeout=10, check=False)
+    if rows:
+        with (STATE / 'kills.jsonl').open('a') as handle:
+            for row in rows:
+                handle.write(json.dumps(row) + '\n')
+        log(f'recorded {len(rows)} OOM kill(s): '
+            + ', '.join(f"{r['comm']}({r['class']},adj={r['oom_score_adj']})" for r in rows), 4)
+
+
+def tick(state: dict, dry_run: bool = False) -> dict:
+    now = time.monotonic()
+    if now - state['refreshed'] >= REFRESH:
+        state['cache'].clear()
+        state['checked'].clear()
+        state['mains'] = unit_mains()
+        state['refreshed'] = now
+    procs = policy.scan(cache=state['cache'])
+    protected, disposable = policy.decide(procs, state['mains'])
+    lowered = dict(state['lowered']) if dry_run else state['lowered']
+    before = dict(lowered)
+    result = policy.apply(procs, protected, disposable, lowered, state['checked'], dry_run=dry_run)
+    if not dry_run and lowered != before:
+        save(STATE / 'lowered.json', lowered)
+    wall = time.time()
+    for pid in protected:
+        state['history'][pid] = (procs[pid].comm[:15], 'protected', wall)
+    for pid in disposable:
+        state['history'][pid] = (procs[pid].comm[:15], 'disposable', wall)
+    for pid in [pid for pid, (_, _, ts) in state['history'].items() if wall - ts > HISTORY]:
+        del state['history'][pid]
+    return result
+
+
+def main() -> int:
+    once = '--once' in sys.argv
+    dry_run = '--dry-run' in sys.argv
+    STATE.mkdir(parents=True, exist_ok=True)
+    state = {'cache': {}, 'checked': set(), 'mains': {}, 'refreshed': float('-inf'),
+             'lowered': load(STATE / 'lowered.json'), 'history': {}}
+    if once:
+        result = tick(state, dry_run)
+        print(json.dumps(result))
+        return 1 if result['failures'] else 0
+    log(f'started; protect={policy.PROTECT_ADJ} (floor {policy.FLOOR_ADJ}) '
+        f'disposable={policy.DISPOSABLE_ADJ} tick={TICK}s')
+    totals = {'raised': 0, 'handed_back': 0, 'failures': 0}
+    last_kills = last_summary = float('-inf')
+    protected = 0
+    while True:
+        try:
+            result = tick(state)
+            protected = len(result['protected'])
+            for key in ('lowered', 'restored'):
+                for row in result[key]:
+                    log(f'{key} {row}')
+            for key in totals:
+                totals[key] += len(result[key])
+            for failure in result['failures']:
+                log(f'write failed {failure}', 4)
+            now = time.monotonic()
+            if now - last_kills >= KILL_POLL:
+                record_kills(state['history'])
+                last_kills = now
+            if now - last_summary >= SUMMARY:
+                log(f'protected={protected} since-last: {totals}')
+                totals = dict.fromkeys(totals, 0)
+                last_summary = now
+        except Exception as error:  # one bad snapshot must not stop the guard
+            log(f'tick failed: {type(error).__name__}: {error}', 3)
+        time.sleep(TICK)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -129,37 +129,5 @@ class UserLayerTests(unittest.TestCase):
         self.assertEqual(saved[0].read_text(), 'retired declaration')
 
 
-class OomRankingTests(unittest.TestCase):
-    def test_fake_proc_protects_mainpids_controls_and_reused_pids(self):
-        loader = importlib.machinery.SourceFileLoader(
-            'ranking_classifier', str(ROOT / 'scripts/agent-resource-classify'))
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        classifier = importlib.util.module_from_spec(spec)
-        loader.exec_module(classifier)
-        cg = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/gateway.service'
-        data = {10: (1, 'python', cg), 11: (10, 'tool', cg),
-                12: (10, 'agent-control', cg), 13: (12, 'tool', cg),
-                14: (10, 'qs', cg), 15: (10, 'worker', cg),
-                16: (10, 'worker', cg), 17: (10, 'service', cg)}
-        with tempfile.TemporaryDirectory() as directory:
-            proc = Path(directory)
-            for pid in data:
-                p = proc / str(pid)
-                p.mkdir()
-                (p / 'stat').write_text(f'{pid} (name with ) spaces) ' + ' '.join(['S'] + ['0'] * 18 + ['100']))
-                (p / 'oom_score_adj').write_text('900' if pid == 15 else '200')
-            result = classifier.rank_workloads(
-                data, [11, 12, 14, 15, 16, 17],
-                {10: 'hermes-gateway.service', 17: 'other.service'},
-                {pid: 'different-start' if pid == 16 else '100' for pid in data}, proc)
-            self.assertEqual(result['oom_ranked'], [11, 13, 15])
-            self.assertEqual(result['oom_rank_failures'], [])
-            for pid in (10, 12, 14, 16, 17):
-                self.assertEqual((proc / str(pid) / 'oom_score_adj').read_text(), '200')
-            for pid in (11, 13):
-                self.assertEqual((proc / str(pid) / 'oom_score_adj').read_text(), '800\n')
-            self.assertEqual((proc / '15/oom_score_adj').read_text(), '900')
-
-
 if __name__ == '__main__':
     unittest.main()
