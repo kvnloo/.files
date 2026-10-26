@@ -2,7 +2,9 @@
 Description=ctx hourly history import
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=1h
+# OnUnitActiveSec alone goes "elapsed" after a daemon-reload and never fires again (stopped after 21:14 on 2026-10-25).
+OnCalendar=hourly
+RandomizedDelaySec=5min
 Persistent=true
 [Install]
 WantedBy=timers.target
