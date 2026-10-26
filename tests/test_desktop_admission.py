@@ -122,29 +122,6 @@ class Admission(unittest.TestCase):
             (root / 'memory.max').mkdir()
             self.assertTrue(classifier.explicitly_bounded('0::/', root))
 
-    def test_bounded_children_ranked_without_moving_harness(self):
-        prefix = f'0::/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service'
-        data = {1: (0, 'agent-control', prefix + '/session.slice/compositor.service'),
-                2: (1, 'python3', prefix + '/background.slice/controller.scope'),
-                3: (2, 'worker', prefix + '/background.slice/controller.scope'),
-                4: (1, 'chrome', prefix + '/app.slice/browser.scope'),
-                5: (4, 'renderer', prefix + '/app.slice/browser.scope')}
-        with tempfile.TemporaryDirectory() as td:
-            proc = pathlib.Path(td)
-            for pid in data:
-                path = proc / str(pid)
-                path.mkdir()
-                (path / 'stat').write_text(f'{pid} (worker) ' +
-                                         ' '.join(['S'] + ['0'] * 18 + ['100']))
-                (path / 'oom_score_adj').write_text('900' if pid == 3 else '200')
-            result = classifier.rank_workloads(
-                data, [], {}, {pid: '100' for pid in data}, proc)
-            self.assertEqual(result['oom_ranked'], [2, 3])
-            self.assertEqual((proc / '1/oom_score_adj').read_text(), '200')
-            self.assertEqual((proc / '2/oom_score_adj').read_text(), '800\n')
-            self.assertEqual((proc / '3/oom_score_adj').read_text(), '900')
-            self.assertEqual((proc / '5/oom_score_adj').read_text(), '200')
-
     def test_failed_workload_scope_is_reset_and_recreated(self):
         # A failed transient scope stays loaded; StartTransientUnit alone then fails forever.
         calls = []

@@ -32,7 +32,14 @@ LINKS = {
     'config/systemd/user/agent.slice': '.config/systemd/user/agent.slice',
     'config/systemd/user/agent.slice.d/50-interactive-budget.conf': '.config/systemd/user/agent.slice.d/50-interactive-budget.conf',
     'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': '.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
+    'scripts/agent-oom-guard': '.local/bin/agent-oom-guard',
+    'config/systemd/user/agent-oom-guard.service': '.config/systemd/user/agent-oom-guard.service',
+    'config/systemd/user/service.d/50-oom-continue.conf': '.config/systemd/user/service.d/50-oom-continue.conf',
+    'config/systemd/user/scope.d/50-oom-continue.conf': '.config/systemd/user/scope.d/50-oom-continue.conf',
 }
+# Imported relative to the linked helpers' real path; stamped with them, never linked.
+CLOSURE = ('scripts/agent_oom_policy.py',)
+GUARD = 'agent-oom-guard.service'
 
 
 def safe_usage(text: str) -> bool:
@@ -87,7 +94,7 @@ def stamp_release(source: Path, home: Path, files=None) -> Path:
 
 def install(source: Path, home: Path, apply: bool) -> int:
     source = source.resolve(strict=True)
-    for rel in LINKS:
+    for rel in (*LINKS, *CLOSURE):
         if not (source / rel).is_file():
             raise ValueError(f'missing tracked source: {rel}')
     result = subprocess.run(['systemctl', '--user', 'show', 'agent.slice',
@@ -99,7 +106,7 @@ def install(source: Path, home: Path, apply: bool) -> int:
     if not apply:
         print('DRY RUN: safe aggregate; would back up exact cap overrides, link agent policy and daemon-reload')
         return 0
-    release = stamp_release(source, home)
+    release = stamp_release(source, home, (*LINKS, *CLOSURE))
     # Take ownership of Tern's legacy absolute entry before publishing the new
     # local wrapper. This never restarts a daemon, window, pane or agent.
     subprocess.run(['python3', str(release / 'scripts/install-tern-omp'),
@@ -124,7 +131,12 @@ def install(source: Path, home: Path, apply: bool) -> int:
             path.unlink()
         path.symlink_to(release / rel)
     subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
-    print(f'APPLIED: agent policy release={release}; backups={backup}; no services restarted')
+    # The guard is the only writer of agent OOM scores. Restarting it (to run the new
+    # release) touches no session; nothing else is restarted.
+    subprocess.run(['systemctl', '--user', 'enable', GUARD], check=True)
+    subprocess.run(['systemctl', '--user', 'restart', GUARD], check=True)
+    print(f'APPLIED: agent policy release={release}; backups={backup}; (re)started {GUARD}; '
+          'no other service restarted')
     return 0
 
 
