@@ -52,6 +52,18 @@ class FleetResolutionTests(unittest.TestCase):
         self.assertIsNone(layout.release_mount)
         self.assertTrue((ROOT / layout.manifest).is_file())
 
+    def test_operations_state_follows_the_host(self):
+        """service-watch state: desktop keeps its model-volume path, mbp stays in its home, never /mnt."""
+        self.assertEqual(host_layout.resolve(ROOT, hostname='groot', home=FAKE_HOME).operations_root,
+                         Path('/mnt/zer0models/workspace/zer0/data/operations'))
+        mbp = host_layout.resolve(ROOT, hostname='mbp', home=FAKE_HOME).operations_root
+        self.assertEqual(mbp, FAKE_HOME / '.local/state/z0/operations')
+        watch = load('host_layout_service_watch', 'scripts/service-watch.py')
+        with patch('socket.gethostname', return_value='mbp'):
+            self.assertEqual(watch.operations_root(ROOT, home=FAKE_HOME), mbp)
+        with tempfile.TemporaryDirectory() as tmp:  # an older closure without fleet.toml
+            self.assertEqual(watch.operations_root(Path(tmp), home=FAKE_HOME), watch.LEGACY_OPERATIONS)
+
     def test_every_declared_manifest_exists(self):
         import tomllib
         fleet = tomllib.loads((ROOT / 'fleet.toml').read_text())

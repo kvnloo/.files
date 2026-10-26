@@ -33,6 +33,7 @@ class HostLayout:
     manifest: str  # repo-relative host manifest
     release_root: Path | None  # physical <family>/<digest> trees; None keeps home-local stamps
     release_mount: Path | None  # must be a mount point before a new physical tree is staged
+    operations_root: Path | None = None  # report-only operations state (service-watch, host hygiene)
 
 
 def resolve(root, hostname=None, home=None):
@@ -49,13 +50,21 @@ def resolve(root, hostname=None, home=None):
         isinstance(manifest, str) and not Path(manifest).is_absolute() and '..' not in Path(manifest).parts
         and manifest.startswith('config/host/')))
     storage = cfg.get('storage') or {}
-    release_root = storage.get('release_root')
     release_mount = storage.get('release_mount')
-    if release_root is not None:
-        release_root = home / release_root[2:] if release_root.startswith('~/') else Path(release_root)
-        if not release_root.is_absolute() or '..' in release_root.parts:
-            raise ValueError(f'fleet host {host_id!r} release_root must be absolute or ~/')
-    return HostLayout(host_id, manifest, release_root, Path(release_mount) if release_mount else None)
+    release_root, operations_root = (storage_path(host_id, storage, key, home)
+                                     for key in ('release_root', 'operations_root'))
+    return HostLayout(host_id, manifest, release_root, Path(release_mount) if release_mount else None,
+                      operations_root)
+
+
+def storage_path(host_id, storage, key, home):
+    value = storage.get(key)
+    if value is None:
+        return None
+    path = home / value[2:] if value.startswith('~/') else Path(value)
+    if not path.is_absolute() or '..' in path.parts:
+        raise ValueError(f'fleet host {host_id!r} {key} must be absolute or ~/')
+    return path
 
 
 def physical_releases(root, family, home):

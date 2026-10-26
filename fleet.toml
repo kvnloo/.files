@@ -21,6 +21,7 @@ manifest = "config/host/groot.toml"
 [hosts.desktop.storage]
 release_root = "/mnt/zer0models/releases"
 release_mount = "/mnt/zer0models"
+operations_root = "/mnt/zer0models/workspace/zer0/data/operations"
 fleet_policy = "config/fleet/storage.toml"
 root_reserve_gib = 20
 root_admission_floor_gib = 15
@@ -72,6 +73,8 @@ manifest = "config/host/mbp.toml"
 # Single internal SSD: physical stamped trees stay on it, beside the home aliases.
 [hosts.mbp.storage]
 release_root = "~/.local/lib/releases"
+# No model volume: report-only operations state (service-watch incidents, digests) stays in the home.
+operations_root = "~/.local/state/z0/operations"
 
 # Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
 # Use the explicit logical id: the guest kernel hostname is "localhost".
