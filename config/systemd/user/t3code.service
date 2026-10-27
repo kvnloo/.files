@@ -1,0 +1,23 @@
+[Unit]
+Description=T3 Code server
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+Environment=T3CODE_HOME=/home/kvn/.t3
+Environment=T3_BOOT_SERVICE_UNIT=t3code.service
+ExecStart=/home/kvn/.t3/runtime/versions/0.1.2/t3 __service-launcher
+KillMode=mixed
+OOMPolicy=continue
+Restart=always
+RestartSec=5
+CPUWeight=1000
+IOWeight=1000
+ManagedOOMPreference=avoid
+StandardOutput=append:/home/kvn/.t3/userdata/logs/boot-service.log
+StandardError=append:/home/kvn/.t3/userdata/logs/boot-service.log
+
+[Install]
+WantedBy=default.target

@@ -71,3 +71,24 @@ def test_arch_override_resolves_package_name():
         },
     }
     assert plan.desired_packages(packages, ["apps"]) == {"cursor-bin"}
+
+
+def test_plan_tracks_user_socket_activation_without_enabling_template_service():
+    fleet = {"hosts": {"desktop": {
+        "match_hostnames": ["groot"],
+        "user_sockets": ["z0int-memory-mcp.socket"],
+    }}}
+    observed = {"host": {"hostname": "groot"}, "observations": {}}
+
+    missing = plan.build_plan(fleet, {}, observed)
+    assert missing["status"] == "DRIFT"
+    assert missing["user_sockets"]["missing_enabled"] == ["z0int-memory-mcp.socket"]
+    assert missing["user_services"]["missing_enabled"] == []
+
+    observed["observations"]["user_sockets_enabled"] = {
+        "data": ["z0int-memory-mcp.socket enabled enabled", "other.socket enabled enabled"]
+    }
+    enabled = plan.build_plan(fleet, {}, observed)
+    assert enabled["status"] == "MATCH"
+    assert enabled["user_sockets"]["missing_enabled"] == []
+    assert enabled["user_sockets"]["observed_unmanaged_count"] == 1

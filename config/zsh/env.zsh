@@ -11,6 +11,16 @@ export BROWSER='zen-browser'
 export TERMINAL='kitty'
 export MAIL='thunderbird'
 
+# Relocated memory archives need canonical roots, not their home-directory links.
+# environment.d covers user services, but terminal-launched agents can miss it.
+# Preserve an explicit caller override and leave other hosts unchanged.
+if [[ -d /mnt/zer0models/host-offload/home_kvn_.ctx && -z ${CTX_DATA_ROOT:-} ]]; then
+  export CTX_DATA_ROOT=/mnt/zer0models/host-offload/home_kvn_.ctx
+fi
+if [[ -d /mnt/zer0models/sft-svlm/data/agentsview && -z ${AGENTSVIEW_DATA_DIR:-} ]]; then
+  export AGENTSVIEW_DATA_DIR=/mnt/zer0models/sft-svlm/data/agentsview
+fi
+
 # Desktop toolkit theming
 export QT_QPA_PLATFORMTHEME='qt5ct'
 export GTK2_RC_FILES="$HOME/.gtkrc-2.0"

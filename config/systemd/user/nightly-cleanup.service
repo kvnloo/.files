@@ -1,0 +1,6 @@
+[Unit]
+Description=Remove old regenerable caches and safely archive stale worktrees
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ionice -c3 /usr/bin/nice -n19 /usr/bin/python3 %h/.local/lib/infra-monitor/nightly-cleanup.py

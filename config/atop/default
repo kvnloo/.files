@@ -1,5 +1,5 @@
 # Native low-overhead performance archive for local and LLM-assisted diagnosis.
 LOGOPTS=""
 LOGINTERVAL=10
-LOGGENERATIONS=365
+LOGGENERATIONS=8
 LOGPATH=/mnt/zer0models/hw_monitor/atop

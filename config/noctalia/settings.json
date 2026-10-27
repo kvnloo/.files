@@ -179,12 +179,22 @@
                     "id": "plugin:aural-evolution"
                 },
                 {
+                    "colorizeSystemIcon": "none",
+                    "colorizeSystemText": "none",
+                    "generalTooltipText": "",
                     "hideMode": "hidden",
                     "icon": "sparkles",
+                    "iconPosition": "left",
                     "id": "CustomButton",
                     "ipcIdentifier": "next-action",
                     "leftClickExec": "/workspace/.files/scripts/workspace-copilot --json commit-next",
                     "leftClickUpdateText": true,
+                    "maxTextLength": {
+                        "horizontal": 10,
+                        "vertical": 10
+                    },
+                    "middleClickExec": "",
+                    "middleClickUpdateText": false,
                     "parseJson": true,
                     "rightClickExec": "/workspace/.files/scripts/workspace-copilot --json dismiss-next",
                     "rightClickUpdateText": true,
@@ -194,7 +204,14 @@
                     "textCollapse": "/^$/",
                     "textCommand": "/workspace/.files/scripts/workspace-copilot next-action --bar",
                     "textIntervalMs": 10000,
-                    "textStream": false
+                    "textStream": false,
+                    "wheelDownExec": "",
+                    "wheelDownUpdateText": false,
+                    "wheelExec": "",
+                    "wheelMode": "unified",
+                    "wheelUpExec": "",
+                    "wheelUpUpdateText": false,
+                    "wheelUpdateText": false
                 },
                 {
                     "icon": "brand-openai",

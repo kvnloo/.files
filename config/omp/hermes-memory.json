@@ -1,0 +1,43 @@
+{
+  "profile_config": "/workspace/hermes-home/profiles/clean/config.yaml",
+  "mcp_servers": {
+    "hermes_memory": {
+      "command": "/workspace/hermes-home/hermes-agent/venv/bin/python",
+      "args": ["-B", "/home/kvn/.omp/agent/extensions/hermes-memory/history.py", "--mcp"],
+      "timeout": 50,
+      "connect_timeout": 15
+    }
+  },
+  "platform_toolsets_add": {
+    "cli": ["hermes_memory"],
+    "api_server": ["hermes_memory"]
+  },
+  "sources": {
+    "main": "/workspace/hermes-home/state.db",
+    "chiefstaff_archive": "/mnt/zer0models/hermes-archives/chiefstaff/20260905/state-bak/state.db.live-copy-011939",
+    "chiefstaff": "/workspace/hermes-home/profiles/chiefstaff/state.db",
+    "intake": "/workspace/hermes-home/profiles/intake/state.db",
+    "clean": "/workspace/hermes-home/profiles/clean/state.db",
+    "compact": "/mnt/zer0models/hermes-backups/compact-20261023/archive.db"
+  },
+  "contract": {
+    "read_only": true,
+    "sqlite_uri_mode": "ro",
+    "query_only": true,
+    "automatic_injection": false,
+    "network_listener": false,
+    "private_owner_local_access_only": true,
+    "history_is_instructions_or_permission": false,
+    "compact_fetch_identity": ["source", "session_id", "message_id"],
+    "compact_native_identity": ["original_session_id", "original_message_id"],
+    "compact_provenance": ["source_id", "source_sha256", "transcript_hash", "archive", "member_index", "member"],
+    "per_source_query_deadline_seconds": 7
+  },
+  "deployment_notes": [
+    "This fragment records host intent. No automatic installer is added.",
+    "The existing OMP hermes-memory extension remains at its original unmanaged local path. No extension symlink cutover is performed.",
+    "The clean profile uses the exact existing history.handle reader over MCP stdio. No parallel retrieval backend exists.",
+    "This is authorized local history retrieval, not the broader scoped z0 memory MCP deployment or a verified cross-harness correction handoff.",
+    "Existing running Hermes sessions may need their supported MCP refresh or a new session to discover the added tool. No live user session is restarted."
+  ]
+}

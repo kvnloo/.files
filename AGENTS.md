@@ -52,6 +52,7 @@ Supported labels include `cursor`, `claude`, `codex`, `opencode`, `gemini`, `omp
 - Prefer the tracked helpers under `scripts/` and `config/`; do not invent new absolute secrets paths.
 - Sunshine runtime secrets live only in `~/.config/sunshine/` (not in this git tree).
 - When unsure, run `./scripts/onboard doctor` and report findings before changing system files.
+- scratch → /workspace/cache, heavy builds → MBP via fleet-build
 
 ## Canonical docs
 

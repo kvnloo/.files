@@ -1,0 +1,13 @@
+[Unit]
+Description=Private read-only memory MCP operator socket
+
+[Socket]
+ListenStream=%t/z0int-memory-mcp/operator.sock
+Accept=yes
+SocketMode=0600
+DirectoryMode=0700
+RemoveOnStop=yes
+MaxConnections=16
+
+[Install]
+WantedBy=sockets.target

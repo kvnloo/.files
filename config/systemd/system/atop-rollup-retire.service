@@ -1,0 +1,18 @@
+[Unit]
+Description=Retire only unchanged atop archives with verified aggregate coverage
+After=atop-rollup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/infra-monitor/atop-rollup.py maintain --retire
+Nice=19
+IOSchedulingClass=idle
+IOWeight=10
+CPUWeight=10
+MemoryMax=256M
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/mnt/zer0models/hw_monitor/atop /mnt/zer0models/hw_monitor/rollups
+PrivateTmp=true

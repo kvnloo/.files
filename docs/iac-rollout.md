@@ -113,3 +113,33 @@ Report:
 - rollback result if used
 - READY FOR CUTOVER yes/no
 ```
+
+## Groot read-only memory MCP
+
+`scripts/setup-z0int-memory-mcp.sh apply MERGED_SHA` installs the policy, stdio
+bridge, and user units after the operator has deployed that exact merged commit
+at `~/.local/share/z0int-memory-mcp`. It provisions a minimal Python 3.11 virtual
+environment with the upstream MCP dependency pin; no model runtime is installed.
+Never start it from an unmerged PR checkout.
+
+`z0int-memory-mcp.socket` is the enabled fleet unit. It accepts only the private
+0600 Unix socket at `$XDG_RUNTIME_DIR/z0int-memory-mcp/operator.sock`; each
+connection starts `z0int-memory-mcp@.service` with stdio attached to that socket.
+There is no public TCP listener. Clients launch
+`/home/kvn/.local/bin/z0int-memory-mcp` without arguments, on groot as `kvn`.
+Remote clients require an authenticated stdio tunnel to that same command,
+not a new listener or credentials copied to another host.
+
+The deployed policy is `~/.config/z0int/memory-mcp-policy.json`: the operator
+can search/fetch only native AgentsView `history` messages in project
+`zer0models`, with privacy `private`; the `chatgpt` grant is empty. The adapter
+reuses `~/.agentsview/config.toml` in place (owner-only 0600) and its existing
+loopback API. It exposes no write tools. Session audit metadata lives in the
+private `~/.local/state/z0int-memory-mcp` directory; retrieved memory remains
+untrusted evidence, never authorization.
+
+Inspect deployment with `systemctl --user status z0int-memory-mcp.socket` and
+`systemctl --user list-units 'z0int-memory-mcp@*'`. To stop accepting connections,
+use `systemctl --user disable --now z0int-memory-mcp.socket`; already-connected
+instances finish independently. Client registration and protocol proofs are a
+separate operator step.

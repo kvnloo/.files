@@ -49,3 +49,10 @@ def test_write_observed_is_atomic_enough_for_single_writer(tmp_path):
     iac.write_observed(payload, out)
     assert json.loads(out.read_text()) == payload
     assert not out.with_suffix(".json.tmp").exists()
+
+
+def test_user_socket_inventory_uses_the_user_manager():
+    assert iac.COMMANDS["user_sockets_enabled"] == [
+        "systemctl", "--user", "list-unit-files", "--type=socket", "--state=enabled",
+        "--no-legend", "--no-pager", "--plain",
+    ]

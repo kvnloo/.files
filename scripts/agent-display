@@ -1,0 +1,199 @@
+#!/usr/bin/python3
+"""Owned nested Sway on AGENT-1. Never focus or inject into the host seat."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess as sp
+import sys
+import time
+
+ROOT = Path('/run/user/1000/agent-display')
+SWAY = '/home/kvn/.local/opt/sway-nested/bin/sway'
+MSG = '/home/kvn/.local/opt/sway-nested/bin/swaymsg'
+TERN = '/home/kvn/.local/bin/tern'
+CONF = Path('/workspace/.files/config/agent-display')
+
+
+def run(args, **kw):
+    return sp.check_output(args, text=True, timeout=15, **kw)
+
+
+def host():
+    instances = json.loads(run(['/usr/bin/hyprctl', '-j', 'instances']))
+    if len(instances) != 1:
+        raise SystemExit('Expected exactly one host Hyprland instance')
+    return instances[0]
+
+
+def hypr(*args):
+    return run(['/usr/bin/hyprctl', '-i', host()['instance'], *args])
+
+
+def baseline():
+    monitors = json.loads(hypr('-j', 'monitors'))
+    return {'active_window': json.loads(hypr('-j', 'activewindow')).get('address'),
+            'physical': [{k: m[k] for k in ('name', 'activeWorkspace', 'specialWorkspace', 'focused')}
+                         for m in monitors if m['name'] != 'AGENT-1']}
+
+
+def state():
+    data = json.loads((ROOT / 'state.json').read_text())
+    pid = data['pid']
+    if Path(f'/proc/{pid}/exe').resolve() != Path(SWAY):
+        raise SystemExit('Owned Sway PID identity changed; refusing stale socket')
+    if Path(f'/proc/{pid}/stat').read_text().split()[21] != data['starttime']:
+        raise SystemExit('Owned Sway PID reused; refusing stale socket')
+    return data
+
+
+def msg(*args):
+    return run([MSG, '-s', state()['swaysock'], *args])
+
+
+def nested_env():
+    data = state()
+    env = os.environ.copy()
+    for key in ('DISPLAY', 'WAYLAND_SOCKET', 'HYPRLAND_INSTANCE_SIGNATURE', 'LD_LIBRARY_PATH', 'WLR_BACKENDS'):
+        env.pop(key, None)
+    (ROOT / 'cache').mkdir(mode=0o700, exist_ok=True)
+    # Native account/keyring/portal services belong to Kevin's user runtime.
+    # An absolute Wayland socket keeps the GUI on our compositor regardless.
+    env.update(HOME='/home/kvn', XDG_RUNTIME_DIR='/run/user/1000',
+               WAYLAND_DISPLAY=str(ROOT / data['wayland']),
+               SWAYSOCK=data['swaysock'], DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1000/bus',
+               TERN_DAEMON_SOCKET='/run/user/1000/tern/daemon.sock',
+               FONTCONFIG_FILE=str(CONF / 'fonts.conf'), STENCIL_LOG_DIR=str(ROOT / 'tern-logs'),
+               XDG_CACHE_HOME=str(ROOT / 'cache'), STENCIL_GPU='cpu')
+    return env
+
+
+def start():
+    ROOT.mkdir(mode=0o700, exist_ok=True)
+    if (ROOT / 'state.json').exists():
+        state()
+        print(ROOT / 'state.json')
+        return
+    before = baseline()
+    (ROOT / 'focus-before.json').write_text(json.dumps(before, indent=2))
+    # Install routing BEFORE the output or nested client exists. No host focus dispatches.
+    print(hypr('keyword', 'source', str(CONF / 'hyprland.conf')).strip())
+    if any(m['name'] == 'AGENT-1' for m in json.loads(hypr('-j', 'monitors'))):
+        raise SystemExit('AGENT-1 already exists without our state; refusing adoption')
+    print(hypr('output', 'create', 'headless', 'AGENT-1').strip())
+    # This runtime is exclusively owned; remove socket names left by a killed run.
+    for pattern in ('wayland-*', 'sway-ipc.*.sock'):
+        for path in ROOT.glob(pattern):
+            path.unlink()
+    config = ROOT / 'sway.conf'
+    config.write_text('xwayland disable\noutput WL-1 mode 1440x1000\n'
+                      'seat seat0 fallback false\nseat seat-agent1 fallback true\n'
+                      'seat seat-agent1 xcursor_theme Adwaita 24\n'
+                      'seat seat-agent2 fallback false\n'
+                      'default_border none\nfocus_follows_mouse no\n')
+    env = os.environ.copy()
+    for key in ('DISPLAY', 'SWAYSOCK', 'WAYLAND_SOCKET', 'HYPRLAND_INSTANCE_SIGNATURE'):
+        env.pop(key, None)
+    env.update(XDG_RUNTIME_DIR=str(ROOT), WAYLAND_DISPLAY='/run/user/1000/' + host()['wl_socket'],
+               WLR_BACKENDS='wayland', WLR_WL_OUTPUTS='1', WLR_RENDERER='pixman',
+               FONTCONFIG_FILE=str(CONF / 'fonts.conf'),
+               LD_LIBRARY_PATH='/home/kvn/.local/opt/sway-nested/lib')
+    with (ROOT / 'sway.log').open('w') as log:
+        proc = sp.Popen([SWAY, '-c', str(config), '-d'], env=env, stdout=log, stderr=log,
+                        start_new_session=True)
+    for _ in range(100):
+        sockets = list(ROOT.glob(f'sway-ipc.1000.{proc.pid}.sock'))
+        displays = [p for p in ROOT.glob('wayland-*') if p.is_socket()]
+        if proc.poll() is not None:
+            raise SystemExit(f'Sway exited; see {ROOT}/sway.log')
+        if sockets and displays:
+            break
+        time.sleep(.1)
+    else:
+        raise SystemExit(f'Sway socket timeout; see {ROOT}/sway.log')
+    data = {'pid': proc.pid, 'starttime': Path(f'/proc/{proc.pid}/stat').read_text().split()[21],
+            'swaysock': str(sockets[0]), 'wayland': displays[0].name}
+    (ROOT / 'state.json').write_text(json.dumps(data, indent=2))
+    print(msg('-t', 'get_outputs'))
+    after = baseline()
+    (ROOT / 'focus-after-start.json').write_text(json.dumps(after, indent=2))
+    if before != after:
+        raise SystemExit('Host focus/workspace changed; inspect focus receipts (no automatic restore)')
+    print(ROOT / 'state.json')
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else ''
+    args = sys.argv[2:]
+    if command == 'start':
+        start()
+    elif command == 'status':
+        print(json.dumps(state(), indent=2))
+        print(msg('-t', 'get_outputs'))
+        print(msg('-t', 'get_seats'))
+    elif command == 'swaymsg':
+        print(msg(*args))
+    elif command == 'env':
+        for key in ('HOME', 'XDG_RUNTIME_DIR', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'TERN_DAEMON_SOCKET',
+                    'DBUS_SESSION_BUS_ADDRESS', 'XDG_CACHE_HOME', 'FONTCONFIG_FILE', 'STENCIL_GPU'):
+            print(f'export {key}={json.dumps(nested_env()[key])}')
+    elif command == 'screenshot':
+        sp.check_call(['/usr/bin/grim', '-o', 'WL-1', args[0]], env=nested_env())
+    elif command == 'tern':
+        # Hold the cross-lead lock for the entire new signed-window lifetime.
+        with open('/tmp/tern-signed-window.lock', 'a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit('Another signed Tern run owns /tmp/tern-signed-window.lock')
+            child = sp.Popen([TERN, '--control', str(ROOT / 'tern.sock'), *args],
+                             env=nested_env(), cwd='/workspace')
+            def terminate(signum, frame):
+                child.terminate()
+            signal.signal(signal.SIGTERM, terminate)
+            signal.signal(signal.SIGINT, terminate)
+            raise SystemExit(child.wait())
+    elif command == 'ctl':
+        sp.check_call([TERN, 'ctl', '--control', str(ROOT / 'tern.sock'), *args], env=nested_env())
+    elif command == 'focus-proof':
+        before = json.loads((ROOT / 'focus-before.json').read_text())
+        after = baseline()
+        receipt = {'before': before, 'after': after, 'unchanged': before == after}
+        (ROOT / 'focus-proof.json').write_text(json.dumps(receipt, indent=2))
+        print(json.dumps(receipt, indent=2))
+    elif command == 'stop':
+        with open('/tmp/tern-signed-window.lock', 'a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit('Signed Tern run still active; refusing display stop')
+            tree = json.loads(msg('-t', 'get_tree'))
+            if any(c.get('pid') for c in walk(tree)):
+                raise SystemExit('Nested clients still mapped; close only your probe first')
+            owned = state()
+            try:
+                msg('exit')
+            except sp.CalledProcessError:
+                # Sway can close IPC before replying to its successful exit.
+                pass
+            for _ in range(100):
+                if Path(f"/proc/{owned['pid']}/exe").resolve() != Path(SWAY):
+                    break
+                time.sleep(.05)
+            else:
+                raise SystemExit('Owned Sway has not exited; preserving output and state')
+            (ROOT / 'state.json').unlink()
+            print(hypr('output', 'remove', 'AGENT-1'))
+    else:
+        raise SystemExit('usage: agent-display start|status|env|swaymsg ...|screenshot PATH|tern [ARGS...]|ctl ...|focus-proof|stop')
+
+
+def walk(node):
+    yield node
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        yield from walk(child)
+
+
+if __name__ == '__main__':
+    main()

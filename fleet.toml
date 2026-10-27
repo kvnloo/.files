@@ -6,15 +6,28 @@ schema = 1
 [hosts.desktop]
 match_hostnames = ["0", "groot"]
 platform = "cachyos"
-package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
+package_groups = ["core", "monitoring", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
-system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service"]
-system_timers = ["tern-remote-refresh.timer"]
-system_sockets = ["keyd-layers.socket"]
-user_services = ["hermes-gateway.service"]
+system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service", "netdata.service", "atop.service", "atopacct.service"]
+system_timers = ["tern-remote-refresh.timer", "atop-rollup.timer", "atop-rotate.timer"]
+system_sockets = ["keyd-layers.socket", "netdata-desktop-notify.socket"]
+user_services = ["hermes-gateway.service", "t3code.service"]
+user_sockets = ["z0int-memory-mcp.socket"]
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
+
+[hosts.desktop.t3code]
+channel = "stable"
+version = "0.1.2"
+home = "~/.t3"
+service = "t3code.service"
+role = "light-orchestration"
+listen_host = "127.0.0.1"
+port = 3773
+desktop_binary = "/mnt/zer0models/apps/t3code/T3-Code.AppImage"
+desktop_asset = "T3-Code-0.1.2-x86_64.AppImage"
+desktop_sha256 = "cf01e2d167eff9d01c4c1004d31b2c0da9e2522cc94262e41644d1cb15dfdb5c"
 
 # Verified upstream release; per-user default explorer, no portal takeover.
 [hosts.desktop.strata]
@@ -33,13 +46,23 @@ runtime_packages = ["bubblewrap", "ffmpeg", "ffmpegthumbnailer", "fontconfig", "
 [hosts.mbp]
 match_hostnames = ["mbp"]
 platform = "cachyos"
-package_groups = ["core", "desktop", "dev", "shell", "fonts"]
+package_groups = ["core", "monitoring", "desktop", "dev", "shell", "fonts"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
-system_services = ["tailscaled.service"]
-user_services = []
+system_services = ["tailscaled.service", "netdata.service"]
+system_sockets = ["netdata-desktop-notify.socket"]
+user_services = ["t3code.service"]
 user_timers = ["z0int-loop-tick.timer"]
 nix_profile = "mbp"
 hypr_host = "mbp"
+
+[hosts.mbp.t3code]
+channel = "stable"
+version = "0.1.2"
+home = "~/.t3"
+service = "t3code.service"
+role = "heavy-threads"
+listen_host = "127.0.0.1"
+port = 3773
 
 # Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
 # Use the explicit logical id: the guest kernel hostname is "localhost".
@@ -55,8 +78,10 @@ tern_plugin_source = "config/tern-phone/phone-controls"
 # Workload ownership stays in the workload repo. This declaration only says
 # where the local lab belongs once the repo URL is published.
 [clusters.hermes-lab]
-enabled = false
+enabled = true
 host = "desktop"
-distribution = "kind"
-owner_repo = "hermes-k8s-lab"
-purpose = "local-hermes-experimentation"
+distribution = "k3s"
+owner_repo = "https://github.com/kvnloo/hermes-k8s-lab"
+queue = "lanes"
+queue_namespace = "fleet-mbp"
+purpose = "hermes-workloads-and-mbp-kueue"
