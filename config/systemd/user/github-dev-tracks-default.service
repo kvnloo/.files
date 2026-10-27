@@ -1,0 +1,8 @@
+[Unit]
+Description=Keep dev containing the default branch in owned kvnloo repos (OSS-2)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/github-dev-tracks-default
+Nice=10

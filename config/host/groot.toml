@@ -4763,3 +4763,43 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Travel hardening: the messaging gateway (Telegram intake) was never enabled, so a reboot left it down (drift noted since 2026-09-22)."
+
+[[user]]
+live = "~/.local/bin/github-dev-tracks-default"
+source = "scripts/github-dev-tracks-default"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
+
+[[user]]
+live = "~/.config/systemd/user/github-dev-tracks-default.service"
+source = "config/systemd/user/github-dev-tracks-default.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
+
+[[user]]
+live = "~/.config/systemd/user/github-dev-tracks-default.timer"
+source = "config/systemd/user/github-dev-tracks-default.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
+
+[[user]]
+live = "~/.config/systemd/user/github-dev-tracks-default.service.d/90-service-watch.conf"
+source = "config/systemd/user/github-dev-tracks-default.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
+
+[[user]]
+live = "~/.config/systemd/user/github-dev-tracks-default.timer.d/90-service-watch.conf"
+source = "config/systemd/user/github-dev-tracks-default.timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
