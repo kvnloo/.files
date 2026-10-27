@@ -30,6 +30,7 @@ MODULES=(
   fonts
   agent-skills
   agent-tools
+  claude-guards
   tailnet-ssh
   nix-home
   audio-evolution
@@ -40,6 +41,7 @@ MODULE_HELP=(
   "fonts:Install Nerd Fonts and the base families desktop configs name"
   "agent-skills:Install workspace-copilot skill into Claude/Codex/OpenCode/Gemini skill dirs"
   "agent-tools:Install Agent Reach, yt-dlp, and shared mcporter MCP config"
+  "claude-guards:Claude Code guards: pin Opus 5.5, model-downgrade alert, pane-kill guard, keepworking Stop hook"
   "tailnet-ssh:Enable Tailscale + SSH for private remote access (Linux)"
   "nix-home:Bootstrap Nix + Home Manager on CachyOS/Arch hosts"
   "audio-evolution:Install PipeWire Aural Evolution headphone DSP chain"
@@ -276,6 +278,12 @@ run_agent_skills() {
   printf 'agent-skills complete.\n'
 }
 
+run_claude_guards() {
+  printf '\n==> claude-guards\n'
+  "$REPO_ROOT/scripts/claude-guards-install"
+  onboard_mark_module "claude-guards" "done"
+}
+
 run_agent_tools() {
   printf '\n==> agent-tools\n'
   "$REPO_ROOT/scripts/setup-agent-tools.sh"
@@ -344,6 +352,7 @@ run_module() {
     fonts) run_fonts ;;
     agent-skills) run_agent_skills ;;
     agent-tools) run_agent_tools ;;
+    claude-guards) run_claude_guards ;;
     tailnet-ssh) run_tailnet_ssh ;;
     nix-home) run_nix_home ;;
     audio-evolution) run_audio_evolution ;;
