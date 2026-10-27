@@ -1,0 +1,176 @@
+# groot memory policy: the EFFECTIVE values scripts/memory-drift requires (L10).
+# One row per declared key. `owner` = the drop-in file name that must win for that key;
+# a later-sorting file or a set-property residue that wins instead is drift.
+# Groups follow the apply order of INFRA-1/2/4 (2026-10-27): base (already live before
+# that night), ui, batch, app. Root-owned items (journald, kubelet, UI oom_score_adj)
+# are follow-ups and are not declared here until they are applied.
+
+# ---- base: protection chain that exists today ------------------------------------
+[[cgroup]]
+group = "base"
+path = "user.slice"
+file = "memory.min"
+equals = "7G"
+why = "ancestor chain must carry the UI min (70-desktop-reserve.conf, root)"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice"
+file = "memory.min"
+equals = "7G"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service"
+file = "memory.min"
+equals = "7G"
+
+[[unit]]
+group = "base"
+unit = "session.slice"
+property = "MemoryMin"
+equals = "7G"
+owner = "50-desktop-protection.conf"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice"
+file = "memory.min"
+equals = "7G"
+
+[[placement]]
+group = "base"
+comm = "Hyprland"
+under = "session.slice"
+why = "UI protection is useless if the compositor is not in the protected subtree"
+
+[[placement]]
+group = "base"
+comm = "Xwayland"
+under = "session.slice"
+optional = true
+
+[[unit]]
+group = "base"
+unit = "agent.slice"
+property = "MemoryMax"
+equals = "10G"
+owner = "60-oomd-desktop-guard.conf"
+why = "one owner for the agent ceiling; a 50-MemoryMax.conf residue (14G) shadowed by 60- was attempt #33"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
+file = "memory.max"
+equals = "10G"
+
+[[unit]]
+group = "base"
+unit = "agent.slice"
+property = "MemoryHigh"
+equals = "infinity"
+why = "slice-wide MemoryHigh is the recorded livelock"
+
+[[unit]]
+group = "base"
+unit = "ctx-import.service"
+property = "MemoryMax"
+equals = "4G"
+why = "ctx stays manual; the hourly import is the only automatic ctx job and it is bounded"
+
+[[sysctl]]
+group = "base"
+key = "vm.swappiness"
+equals = "180"
+why = "declared, not inherited: the CachyOS udev rule resets it at zram init"
+
+# ---- ui: no swap for the compositor unit and fixed-size UI leaves -----------------
+[[unit]]
+group = "ui"
+unit = "wayland-wm@hyprland.desktop.service"
+property = "MemorySwapMax"
+equals = "0"
+owner = "60-ui-tier.conf"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/wayland-wm@hyprland.desktop.service"
+file = "memory.swap.max"
+equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
+file = "memory.swap.max"
+equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
+file = "memory.max"
+equals = "256M"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/wireplumber.service"
+file = "memory.swap.max"
+equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire-pulse.service"
+file = "memory.swap.max"
+equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/xdg-desktop-portal.service"
+file = "memory.swap.max"
+equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/xdg-desktop-portal-hyprland.service"
+file = "memory.swap.max"
+equals = "0"
+
+# ---- batch: agents absorb pressure in swap; indexers bounded ---------------------
+[[unit]]
+group = "batch"
+unit = "agent.slice"
+property = "MemorySwapMax"
+equals = "4G"
+owner = "60-oomd-desktop-guard.conf"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
+file = "memory.swap.max"
+equals = "4G"
+
+[[unit]]
+group = "batch"
+unit = "agentsview.service"
+property = "MemorySwapMax"
+equals = "3G"
+owner = "62-swap-bound.conf"
+
+# ---- app: ceiling on the previously uncapped app.slice ---------------------------
+[[unit]]
+group = "app"
+unit = "app.slice"
+property = "MemoryMax"
+equals = "8G"
+owner = "50-admission.conf"
+
+[[cgroup]]
+group = "app"
+path = "user.slice/user-1000.slice/user@1000.service/app.slice"
+file = "memory.max"
+equals = "8G"
+
+[[cgroup]]
+group = "app"
+path = "user.slice/user-1000.slice/user@1000.service/app.slice"
+file = "memory.swap.max"
+equals = "8G"
