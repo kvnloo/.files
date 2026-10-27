@@ -1,5 +1,5 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
-user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json"]
+user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-qualified-8212.service", sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
@@ -8,6 +8,7 @@ user_retired_files = [
   { live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf", sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d", reason = "Superseded by canonical dash-metro.service." },
 ]
 user_control_cleanup = [
+  { live = "/run/user/1000/systemd/user.control/agent.slice.d/50-MemoryMax.conf", sha256 = "9db1736dffd3ed050d30d8fa374befe52fe05961c1746b8eb086c9de5f4dab59" },
   { live = "~/.config/systemd/user.control/session.slice.d/50-CPUWeight.conf", sha256 = "1874a8f0d15364fee9d6453aa719e6ce79f3ee7da231ae5a730cee8b0cbf731d" },
   { live = "~/.config/systemd/user.control/session.slice.d/50-IOWeight.conf", sha256 = "f5330f3d1517adbc8a3e32f8f664924393069574848ca7ec025803a47a3f1344" },
   { live = "~/.config/systemd/user.control/session.slice.d/50-MemoryLow.conf", sha256 = "eef81cedb81f8c281231bea49ec9d49bc00e1cff0e239cf7fa75b324789ba351" },
@@ -4685,3 +4686,99 @@ paths = ["/etc/NetworkManager/system-connections", "/etc/audit/plugins.d", "/etc
 owner = "scripts/apply-host-system"
 command = "cd /mnt/zer0models/worktrees/files-live && sudo scripts/apply-host-system --audit"
 reason = "ROOT-APPLY.md stage 1 closes permission-limited inventory gaps without printing credential values; unreadable paths remain unknown until audited."
+
+[[user]]
+live = "~/.local/bin/memory-drift"
+source = "scripts/memory-drift"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: memory drift law (L10) compares effective cgroup/systemd values with config/host/groot-memory-intent.toml; the timer is the cold-boot gate."
+
+[[user]]
+live = "~/.config/systemd/user/memory-drift.service"
+source = "config/systemd/user/memory-drift.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: memory drift law (L10) compares effective cgroup/systemd values with config/host/groot-memory-intent.toml; the timer is the cold-boot gate."
+
+[[user]]
+live = "~/.config/systemd/user/memory-drift.timer"
+source = "config/systemd/user/memory-drift.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: memory drift law (L10) compares effective cgroup/systemd values with config/host/groot-memory-intent.toml; the timer is the cold-boot gate."
+
+[[user]]
+live = "~/.config/systemd/user/memory-drift.service.d/90-service-watch.conf"
+source = "config/systemd/user/memory-drift.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: memory drift law (L10) compares effective cgroup/systemd values with config/host/groot-memory-intent.toml; the timer is the cold-boot gate."
+
+[[user]]
+live = "~/.config/systemd/user/wayland-wm@hyprland.desktop.service.d/60-ui-tier.conf"
+source = "config/systemd/user/wayland-wm@hyprland.desktop.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/pipewire.service.d/60-ui-tier.conf"
+source = "config/systemd/user/pipewire.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/wireplumber.service.d/60-ui-tier.conf"
+source = "config/systemd/user/wireplumber.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/pipewire-pulse.service.d/60-ui-tier.conf"
+source = "config/systemd/user/pipewire-pulse.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal.service.d/60-ui-tier.conf"
+source = "config/systemd/user/xdg-desktop-portal.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-hyprland.service.d/60-ui-tier.conf"
+source = "config/systemd/user/xdg-desktop-portal-hyprland.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/agentsview.service.d/62-swap-bound.conf"
+source = "config/systemd/user/agentsview.service.d/62-swap-bound.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.config/systemd/user/app.slice.d/50-admission.conf"
+source = "config/systemd/user/app.slice.d/50-admission.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-4 2026-10-27: ceiling on the previously uncapped app.slice; checked by memory-drift group app."
