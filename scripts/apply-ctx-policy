@@ -15,17 +15,17 @@ OVERRIDES = ('50-MemoryHigh.conf', '50-MemoryMax.conf', '50-MemorySwapMax.conf',
              '50-CPUWeight.conf', '50-IOWeight.conf')
 
 
-def stamp_release(source: Path, home: Path) -> Path:
-    data = (source / RELATIVE).read_bytes()
-    mode = (source / RELATIVE).stat().st_mode & 0o777
-    digest = hashlib.sha256(f'{RELATIVE}\0{mode}\0{len(data)}\0'.encode() + data).hexdigest()
+def stamp_release(source: Path, home: Path, relative: str = RELATIVE) -> Path:
+    data = (source / relative).read_bytes()
+    mode = (source / relative).stat().st_mode & 0o777
+    digest = hashlib.sha256(f'{relative}\0{mode}\0{len(data)}\0'.encode() + data).hexdigest()
     root = home / '.local/lib/files-live'
     root.mkdir(parents=True, exist_ok=True)
     release = root / digest
     if not release.exists():
         staging = Path(tempfile.mkdtemp(prefix='.ctx-policy-', dir=root))
         try:
-            target = staging / RELATIVE
+            target = staging / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
             target.chmod(mode)
@@ -33,7 +33,7 @@ def stamp_release(source: Path, home: Path) -> Path:
         finally:
             if staging.exists():
                 shutil.rmtree(staging)
-    target = release / RELATIVE
+    target = release / relative
     if target.read_bytes() != data or target.stat().st_mode & 0o777 != mode:
         raise ValueError(f'content-stamped release mismatch: {target}')
     return release

@@ -62,6 +62,18 @@ by this policy: ctx 2.2.8 already defaults to one preparation worker. Its
 `ExecStart` override is not needed for the resource fix. Preserve the generated
 `env -i` launch contract rather than installing that redundant override.
 
+The explicitly temporary OpenCode projected-copy build is separate from that
+resource fix. `python3 scripts/apply-ctx-stopgap --binary BUILT_ARTIFACT --apply`
+backs up the managed binary without replacing it, installs release bytes and
+backups under `/mnt/zer0models/releases/ctx/`, and creates the stable
+`~/.local/lib/ctx/<commit>` symlink. It records the binary checksum and unmanaged
+status, and links the stamped `70-projected-copy-stopgap.conf`.
+That drop-in deliberately overrides only the daemon launch to select the
+unmanaged build while preserving `env -i` and the captured supervisor environment.
+The installer never restarts a service. This exception is labelled with upstream
+issue `ctxrs/ctx#1128` and draft PR `#1129`; remove the stopgap drop-in and restore
+the generated launch after installing an upstream release containing the fix.
+
 ## Foreground activation gate (do not call this complete early)
 
 Native background terminal tools were exercised inside `agent.slice` with CPU max

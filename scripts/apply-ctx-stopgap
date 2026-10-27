@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Stage or install the tracked, explicitly temporary unmanaged ctx build."""
+from __future__ import annotations
+import argparse
+import configparser
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import tempfile
+
+RELATIVE = 'config/systemd/user/ctx.service.d/70-projected-copy-stopgap.conf'
+DESTINATION = '.config/systemd/user/ctx.service.d/70-projected-copy-stopgap.conf'
+
+
+def digest(path: Path) -> str:
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def release_target(source: Path, home: Path) -> tuple[str, Path]:
+    policy = configparser.ConfigParser(interpolation=None, strict=False)
+    policy.read(source / RELATIVE)
+    arguments = shlex.split(policy['Service']['ExecStart'])
+    binaries = [arg for arg in arguments if re.fullmatch(r'%h/\.local/lib/ctx/[0-9a-f]{40}/ctx', arg)]
+    if len(binaries) != 1:
+        raise ValueError('tracked stopgap must select exactly one commit-stamped unmanaged binary')
+    relative = Path(binaries[0].removeprefix('%h/'))
+    return relative.parent.name, home / relative
+
+
+def install(source: Path, home: Path, binary: Path, apply: bool,
+            release_store: Path = Path('/mnt/zer0models/releases/ctx')) -> int:
+    source = source.resolve(strict=True)
+    binary = binary.resolve(strict=True)
+    if not binary.is_file() or not os.access(binary, os.X_OK):
+        raise ValueError('built ctx artifact must be an executable regular file')
+    sha, target = release_target(source, home)
+    release = release_store / sha
+    stored_binary = release / 'ctx'
+    checksum = digest(binary)
+    if stored_binary.exists() and (not stored_binary.is_file() or digest(stored_binary) != checksum):
+        raise ValueError(f'immutable ctx release mismatch: {stored_binary}')
+    if target.parent.exists() or target.parent.is_symlink():
+        if not target.parent.is_symlink() or target.parent.resolve() != release.resolve():
+            raise ValueError(f'ctx stable release link collision: {target.parent}')
+    if not apply:
+        print(f'DRY RUN: unmanaged stopgap source={sha} binary_sha256={checksum}; no live changes')
+        return 0
+    loader = importlib.machinery.SourceFileLoader('apply_ctx_policy', str(source / 'scripts/apply-ctx-policy'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    policy_installer = importlib.util.module_from_spec(spec)
+    loader.exec_module(policy_installer)
+    policy_release = policy_installer.stamp_release(source, home, RELATIVE)
+    backups = release_store / 'backups'
+    backups.mkdir(parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix='stopgap-', dir=backups))
+    managed = home / '.local/bin/ctx'
+    if managed.exists():
+        # Copy bytes, not a symlink to a mutable managed installation.
+        shutil.copy2(managed, backup / 'ctx.managed')
+    link = home / DESTINATION
+    if link.exists() or link.is_symlink():
+        shutil.copy2(link, backup / 'stopgap.conf', follow_symlinks=False)
+    if not stored_binary.exists():
+        release_store.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix='.ctx-stopgap-', dir=release_store))
+        try:
+            shutil.copy2(binary, staging / 'ctx')
+            if digest(staging / 'ctx') != checksum:
+                raise ValueError('built ctx artifact changed during installation')
+            (staging / 'release.json').write_text(json.dumps({
+                'status': 'temporary-unmanaged', 'source_commit': sha,
+                'binary_sha256': checksum, 'upstream_pr': 'https://github.com/ctxrs/ctx/pull/1129',
+            }, indent=2) + '\n')
+            os.rename(staging, release)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+    if not target.parent.is_symlink():
+        target.parent.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.symlink_to(release, target_is_directory=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    temporary = link.with_name(link.name + '.new')
+    temporary.symlink_to(policy_release / RELATIVE)
+    os.replace(temporary, link)
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    print(f'APPLIED: temporary unmanaged ctx={target}; policy={policy_release}; backup={backup}; no restart')
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--binary', required=True, type=Path)
+    parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
+    args = parser.parse_args()
+    return install(args.source, Path.home(), args.binary, args.apply)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
