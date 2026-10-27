@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""cos-rule-sync: put the Chief-of-Staff rule into every agent harness's real load path on this host.
+
+The canonical rule is ~/.config/cos/COS-RULE.md (rendered from the chief-of-staff repo). Claude Code loads it
+through ~/.claude/CLAUDE.md (`@~/.config/cos/COS-RULE.md`). The other harnesses cannot import a file, so this
+script writes one managed block into each of their load paths:
+
+  Codex   ~/.codex/AGENTS.md                      (global AGENTS.md; `codex exec` and the TUI load it)
+  OMP     ~/.omp/agent/AGENTS.md                  (OMP native user-level context file)
+          ~/.omp/profiles/*/agent/AGENTS.md       (same, for each --profile)
+  Hermes  $HERMES_HOME/SOUL.md                    (default home, ~/.hermes)
+          $HERMES_HOME/profiles/*/SOUL.md         (EVERY profile, identity slot #1)
+
+The block is delimited by `<!-- COS-RULE:BEGIN sha=<sha12> -->` and `<!-- COS-RULE:END -->`. Text outside the
+block is never changed. A target is written only when its block differs, and the previous file is kept as
+`<file>.bak-cos-<UTC stamp>` first. Runs are idempotent. OMP's APPEND_SYSTEM.md is deliberately not a target:
+the Hermes memory mirror owns that file.
+
+  cos-rule-sync              write every stale target on this host
+  cos-rule-sync --dry-run    show what would change
+  cos-rule-sync --check      exit 1 when a target is missing the current block
+  cos-rule-sync --list       print the target paths
+  cos-rule-sync --sha        print the current rule sha
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import re
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+BEGIN_RE = re.compile(r'<!-- COS-RULE:BEGIN sha=([0-9a-f]+) -->.*?<!-- COS-RULE:END -->\n?', re.S)
+LEAD_COMMENT_RE = re.compile(r'\A\s*<!--.*?-->\s*', re.S)
+
+WORKER_SCOPE = (
+    'Scope: this rule applies when Kevin talks to you directly (chat, Dash, Telegram, terminal). '
+    'When you run as a worker on a task that a dispatcher already assigned to you (kanban, cos-dispatch, '
+    'a subagent brief), do that task yourself; do not re-route it.'
+)
+
+
+def rule_sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+def render_block(rule_text: str) -> str:
+    sha = rule_sha(rule_text)
+    body = LEAD_COMMENT_RE.sub('', rule_text, count=1).strip()
+    return (f'<!-- COS-RULE:BEGIN sha={sha} -->\n'
+            f'CoS rule sha: {sha} (managed by cos-rule-sync from ~/.config/cos/COS-RULE.md; do not edit here). '
+            f'If anyone asks "What is your CoS rule sha?", answer with exactly this sha.\n'
+            f'{WORKER_SCOPE}\n\n'
+            f'{body}\n'
+            f'<!-- COS-RULE:END -->\n')
+
+
+def apply_block(current: str, block: str) -> str:
+    """Replace the managed block in place, or append it after the existing text."""
+    first = BEGIN_RE.search(current)
+    if first:
+        # Keep the block where it was; drop any duplicate managed blocks left behind by hand edits.
+        head, tail = current[:first.start()], current[first.end():]
+        return head + block + BEGIN_RE.sub('', tail)
+    if not current.strip():
+        return block
+    return current.rstrip('\n') + '\n\n' + block
+
+
+def hermes_roots(home: Path, env: dict) -> list[Path]:
+    """~/.hermes plus $HERMES_HOME's root. HERMES_HOME often points at one profile (<root>/profiles/<name>);
+    the root above it is used so that every profile is covered, not only the active one."""
+    roots = [home / '.hermes']
+    if env.get('HERMES_HOME'):
+        hh = Path(env['HERMES_HOME']).expanduser()
+        roots.append(hh.parent.parent if hh.parent.name == 'profiles' else hh)
+    return roots
+
+
+def targets(home: Path, env: dict) -> list[tuple[str, Path, bool]]:
+    """(harness, path, create_if_missing). Only harnesses installed on this host are listed."""
+    out: list[tuple[str, Path, bool]] = []
+    codex = home / '.codex'
+    if codex.is_dir():
+        out.append(('codex', codex / 'AGENTS.md', True))
+    omp = home / '.omp'
+    if (omp / 'agent').is_dir():
+        out.append(('omp', omp / 'agent' / 'AGENTS.md', True))
+    for agent_dir in sorted((omp / 'profiles').glob('*/agent')):
+        if agent_dir.is_dir():
+            out.append((f'omp:{agent_dir.parent.name}', agent_dir / 'AGENTS.md', True))
+    for hh in hermes_roots(home, env):
+        if not hh.is_dir():
+            continue
+        out.append(('hermes:<home>', hh / 'SOUL.md', (hh / 'config.yaml').exists()))
+        for prof in sorted((hh / 'profiles').glob('*')):
+            if prof.is_dir() and ((prof / 'SOUL.md').exists() or (prof / 'config.yaml').exists()):
+                out.append((f'hermes:{prof.name}', prof / 'SOUL.md', True))
+    seen: set[Path] = set()
+    uniq = []
+    for harness, path, create in out:
+        real = path.resolve()
+        if real in seen:
+            continue
+        seen.add(real)
+        uniq.append((harness, path, create))
+    return uniq
+
+
+def write_atomic(path: Path, text: str, mode: int) -> None:
+    real = path.resolve()
+    fd, tmp = tempfile.mkstemp(dir=real.parent, prefix=f'.{real.name}.cos-')
+    try:
+        with os.fdopen(fd, 'w') as fh:
+            fh.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, real)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def sync(rule_path: Path, home: Path, env: dict, *, dry_run: bool, check: bool, stamp: str) -> int:
+    rule_text = rule_path.read_text()
+    block = render_block(rule_text)
+    sha = rule_sha(rule_text)
+    stale = 0
+    for harness, path, create in targets(home, env):
+        exists = path.exists()
+        if not exists and not create:
+            print(f'skip     {harness:28} {path} (absent)')
+            continue
+        current = path.read_text() if exists else ''
+        updated = apply_block(current, block)
+        if updated == current:
+            print(f'ok       {harness:28} {path} sha={sha}')
+            continue
+        stale += 1
+        found = BEGIN_RE.search(current)
+        was = f'sha={found.group(1)}' if found else 'no block'
+        if check or dry_run:
+            print(f'stale    {harness:28} {path} ({was})')
+            continue
+        mode = path.resolve().stat().st_mode & 0o777 if exists else 0o644
+        if exists:
+            bak = path.resolve().with_name(f'{path.resolve().name}.bak-cos-{stamp}')
+            bak.write_text(current)
+            os.chmod(bak, mode)
+        write_atomic(path, updated, mode)
+        print(f'written  {harness:28} {path} ({was} -> sha={sha})')
+    if check and stale:
+        return 1
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--rule', default='~/.config/cos/COS-RULE.md')
+    ap.add_argument('--home', default='~', help=argparse.SUPPRESS)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument('--dry-run', action='store_true')
+    mode.add_argument('--check', action='store_true')
+    mode.add_argument('--list', action='store_true')
+    mode.add_argument('--sha', action='store_true')
+    args = ap.parse_args(argv)
+    rule_path = Path(args.rule).expanduser()
+    home = Path(args.home).expanduser()
+    if not rule_path.is_file():
+        print(f'cos-rule-sync: rule file not found: {rule_path}', file=sys.stderr)
+        return 2
+    if args.sha:
+        print(rule_sha(rule_path.read_text()))
+        return 0
+    if args.list:
+        for harness, path, _create in targets(home, dict(os.environ)):
+            print(f'{harness:28} {path}')
+        return 0
+    stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
+    return sync(rule_path, home, dict(os.environ), dry_run=args.dry_run, check=args.check, stamp=stamp)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
