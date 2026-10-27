@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Install the Quackles showcase user services from a content-stamped copy."""
+import argparse
+import hashlib
+from pathlib import Path
+import subprocess
+
+FILES = {
+    'config/systemd/user/quackles-hitl.service': '.config/systemd/user/quackles-hitl.service',
+    'config/systemd/user/quackles-lineage.service': '.config/systemd/user/quackles-lineage.service',
+}
+ENVS = ('hitl.env', 'lineage.env')
+
+
+def link(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp = target.with_name(target.name + '.quackles-new')
+    if temp.is_symlink() or temp.exists():
+        temp.unlink()
+    temp.symlink_to(source)
+    temp.replace(target)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--activate', action='store_true', help='enable and restart the services')
+    args = parser.parse_args()
+    home = Path.home()
+    repo = Path(__file__).resolve().parent.parent
+    for name in ENVS:
+        env = home / '.config/quackles-services' / name
+        if not env.is_file():
+            raise SystemExit(f'missing host-private {env}; see config/quackles-services/README.md')
+    digest = hashlib.sha256()
+    for source in sorted(FILES):
+        digest.update(source.encode())
+        digest.update((repo / source).read_bytes())
+    stamp = home / '.local/lib/quackles-services' / digest.hexdigest()
+    stamp.mkdir(parents=True, exist_ok=True)
+    for source in FILES:
+        target = stamp / Path(source).name
+        target.write_bytes((repo / source).read_bytes())
+        target.chmod(0o644)
+    link(stamp, stamp.parent / 'current')
+    units = []
+    for source, target in FILES.items():
+        dest = home / target
+        if dest.exists() and not dest.is_symlink():
+            dest.rename(dest.with_name(dest.name + '.pre-quackles-services'))
+        link(stamp / Path(source).name, dest)
+        units.append(Path(source).name)
+    print('quackles-services stamp:', stamp.name)
+    if args.activate:
+        subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+        subprocess.run(['systemctl', '--user', 'enable', *units], check=True)
+        subprocess.run(['systemctl', '--user', 'restart', *units], check=True)
+
+
+if __name__ == '__main__':
+    main()
