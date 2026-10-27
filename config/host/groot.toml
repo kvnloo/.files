@@ -6,6 +6,7 @@ user_retired_files = [
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf", sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea", reason = "Superseded by canonical dash-bridge.service." },
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf", sha256 = "bdac16c8e3cf2b102d9056adfb77855cfcdb76b776b4e2bbf5b4c02105098c76", reason = "Superseded by canonical dash-bridge.service; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf", sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d", reason = "Superseded by canonical dash-metro.service." },
+  { live = "~/.config/systemd/user/z0int-memory-mcp@.service.d/60-release.conf", sha256 = "b16ca438ae64d116a4da9b62575876e47b9e086e6799c7e3558c74e2927e2362", reason = "Hand-placed 2026-10-26 pin to MCP release 62c7aa7d; the tracked unit now pins 0b012574 (z0intelligence PR #249). memory-services-20261027 step 3." },
 ]
 user_control_cleanup = [
   { live = "~/.config/systemd/user.control/session.slice.d/50-CPUWeight.conf", sha256 = "1874a8f0d15364fee9d6453aa719e6ce79f3ee7da231ae5a730cee8b0cbf731d" },
@@ -4556,6 +4557,15 @@ reason = "OMP update and rollback retain the scoped entry through a stamped inst
 # Pending actions annotate evidence; they never waive drift or authorize execution.
 
 [[user]]
+live = "~/.local/bin/memory-unit-receipt"
+source = "scripts/memory-unit-receipt"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Durable per-run JSON receipts for the memory units (ExecStopPost); the user journal rotates within hours. memory-services-20261027 step 0b."
+
+
+[[user]]
 live = "~/.config/systemd/user/memory-recall-check.service"
 source = "config/systemd/user/memory-recall-check.service"
 scope = "user"
@@ -4648,13 +4658,9 @@ owner = "scripts/apply-agent-oom"
 reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
 migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
 
-[[user]]
-live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
-source = "config/systemd/user/ctx-import.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
+# ctx-import.timer is NOT enabled (no timers.target.wants link): ctx stays MANUAL per the 2026-10-25 decision
+# (perf-fixes-20261025 "Correction 21:25": the hourly refresh caused 162 global OOM kills). The unit and
+# timer stay installed for a manual `systemctl --user start ctx-import.service`. memory-services-20261027.
 
 [[pending_action]]
 paths = ["/etc/default/earlyoom", "/etc/sysctl.d/99-groot.conf", "/etc/systemd/journald.conf.d/50-groot-retention.conf", "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf", "/etc/systemd/zram-generator.conf", "vm.dirty_bytes", "vm.dirty_background_bytes", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter", "net.netfilter.nf_conntrack_max", "user-1000.slice", "user.slice", "user@1000.service"]
