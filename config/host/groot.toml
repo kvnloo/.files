@@ -4796,3 +4796,51 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: memory drift law (L10) compares effective cgroup/systemd values with config/host/groot-memory-intent.toml; the timer is the cold-boot gate."
+
+[[user]]
+live = "~/.config/systemd/user/wayland-wm@hyprland.desktop.service.d/60-ui-tier.conf"
+source = "config/systemd/user/wayland-wm@hyprland.desktop.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/pipewire.service.d/60-ui-tier.conf"
+source = "config/systemd/user/pipewire.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/wireplumber.service.d/60-ui-tier.conf"
+source = "config/systemd/user/wireplumber.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/pipewire-pulse.service.d/60-ui-tier.conf"
+source = "config/systemd/user/pipewire-pulse.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal.service.d/60-ui-tier.conf"
+source = "config/systemd/user/xdg-desktop-portal.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/xdg-desktop-portal-hyprland.service.d/60-ui-tier.conf"
+source = "config/systemd/user/xdg-desktop-portal-hyprland.service.d/60-ui-tier.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
