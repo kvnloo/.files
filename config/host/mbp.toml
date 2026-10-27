@@ -168,3 +168,37 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Enable the Tern host-list timer on mbp (same enablement link as groot)."
+
+# State Packet + owner corrections from the hub (memory-services-20261027 steps 6/7): read-only artifacts the
+# Claude Code / OMP orientation hooks read from ~/.local/state/z0int/. Not a store.
+[[user]]
+live = "~/.local/bin/z0int-state-pull"
+source = "scripts/z0int-state-pull"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp pulls the hub State Packet and owner corrections over the existing ssh path."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-state-pull.service"
+source = "config/systemd/user/z0int-state-pull.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp pulls the hub State Packet and owner corrections over the existing ssh path."
+
+[[user]]
+live = "~/.config/systemd/user/z0int-state-pull.timer"
+source = "config/systemd/user/z0int-state-pull.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp pulls the hub State Packet and owner corrections over the existing ssh path."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0int-state-pull.timer"
+source = "config/systemd/user/z0int-state-pull.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Enable the State Packet pull timer on mbp."
