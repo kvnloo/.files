@@ -155,22 +155,9 @@ property = "MemorySwapMax"
 equals = "3G"
 owner = "62-swap-bound.conf"
 
-# ---- app: ceiling on the previously uncapped app.slice ---------------------------
-[[unit]]
-group = "app"
-unit = "app.slice"
-property = "MemoryMax"
-equals = "8G"
-owner = "50-admission.conf"
-
-[[cgroup]]
-group = "app"
-path = "user.slice/user-1000.slice/user@1000.service/app.slice"
-file = "memory.max"
-equals = "8G"
-
-[[cgroup]]
-group = "app"
-path = "user.slice/user-1000.slice/user@1000.service/app.slice"
-file = "memory.swap.max"
-equals = "8G"
+# ---- app: DEFERRED 2026-10-27 -------------------------------------------------
+# A hard app.slice ceiling was withdrawn before apply: in the 2 h before, app.slice used
+# up to 5.9G RAM and 9.3G swap (lifetime peak 15.0G RAM), and it holds the live Dash
+# bridge/metro, Hermes services and z0bridge-identity. An 8G MemoryMax/MemorySwapMax would
+# OOM-kill or squeeze live sessions; slice-wide MemoryHigh is the recorded livelock.
+# Next: move the live session services to their own protected slice first, then cap the rest.
