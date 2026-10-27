@@ -4774,3 +4774,11 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.config/systemd/user/app.slice.d/50-admission.conf"
+source = "config/systemd/user/app.slice.d/50-admission.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-4 2026-10-27: ceiling on the previously uncapped app.slice; checked by memory-drift group app."
