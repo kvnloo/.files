@@ -1,0 +1,12 @@
+#!/bin/sh
+# Scan the exact index or pushed tree, not a possibly different working tree.
+set -eu
+root=$(git rev-parse --show-toplevel)
+command -v z0-guard >/dev/null 2>&1 || { echo 'O10: z0-guard is required' >&2; exit 1; }
+ref=${1:-$(git write-tree)}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/phone-caps.XXXXXXXX")
+trap 'rm -rf -- "$tmp"' EXIT HUP INT TERM
+git -C "$root" archive --format=tar --output="$tmp/source.tar" "$ref"
+mkdir "$tmp/source"
+tar -xf "$tmp/source.tar" -C "$tmp/source"
+z0-guard phone-caps --root "$tmp/source"
