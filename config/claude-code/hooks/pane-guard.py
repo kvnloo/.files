@@ -281,12 +281,42 @@ def check_kill(args: list[str], ancestors: set[int], remote: bool) -> list[str]:
     return hits
 
 
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def strip_heredocs(cmd: str) -> str:
+    """Drop here-document bodies: they are data (file contents, prompts), not commands."""
+    lines, out, i = cmd.split("\n"), [], 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        for m in HEREDOC.finditer(line):
+            while i < len(lines) and lines[i].strip() != m.group(2):
+                i += 1
+            if i < len(lines):
+                i += 1
+    return "\n".join(out)
+
+
+WRITERS = {"touch", "cp", "mv", "ln", "install", "tee", "chmod", "rm", "python", "python3",
+           "perl", "sed", "dd", "rsync", "printf", "echo"}
+
+
+def writes_allow_file(seg: list[str]) -> bool:
+    """A segment that names the allow file and writes something (writer command or redirect)."""
+    if not any(ALLOW_FILE.name in t and ("z0-guard" in t or ALLOW_FILE.parent.name in t)
+               for t in seg):
+        return False
+    core = strip_wrappers(seg)
+    return bool(core) and (os.path.basename(core[0]) in WRITERS or ">" in seg or ">>" in seg)
+
+
 def check_command(cmd: str, ancestors: set[int], remote: bool = False, depth: int = 0) -> list[str]:
     if depth > 4:
         return []
     hits: list[str] = []
-    if ALLOW_FILE.name in cmd and ("z0-guard" in cmd or ALLOW_FILE.parent.name in cmd):
-        hits.append("only the owner may create or change the z0-guard allow-kill file")
+    cmd = strip_heredocs(cmd)
     # $(...) and backticks: check the inner command text as well
     for inner in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", cmd):
         text = inner[0] or inner[1]
@@ -297,9 +327,13 @@ def check_command(cmd: str, ancestors: set[int], remote: bool = False, depth: in
         if re.search(r"\b(tern\s+(kill|close)|tmux\s+kill-|pkill|killall|hyprctl\s+(kill|dispatch\s+exit))",
                      cmd):
             hits.append("unparseable command that looks like it kills panes or processes")
+        if ALLOW_FILE.name in cmd and "z0-guard" in cmd:
+            hits.append("only the owner may create or change the z0-guard allow-kill file")
         return hits
     pipeline_kills = []
     for seg in segments(tokens):
+        if writes_allow_file(seg):
+            hits.append("only the owner may create or change the z0-guard allow-kill file")
         hits += check_segment(seg, ancestors, remote, depth)
         core = strip_wrappers(seg)
         if core:

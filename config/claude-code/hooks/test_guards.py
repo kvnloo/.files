@@ -69,6 +69,12 @@ class PaneGuard(unittest.TestCase):
         self.assertEqual(self.bash("tmux kill-server"), "deny")
         self.assertEqual(self.bash(f"touch {allow}"), "deny")
         self.assertEqual(self.bash("touch ~/.config/z0-guard/allow-kill"), "deny")
+        self.assertEqual(self.bash("echo 1 > ~/.config/z0-guard/allow-kill"), "deny")
+        # prose that only mentions the file, in a heredoc or an argument, is fine
+        doc = ("cat > notes.md <<'EOF'\nthe owner's override: touch ~/.config/z0-guard/allow-kill"
+               " (or tmux kill-server, pkill omp: `don't`)\nEOF\necho done >> idx.md")
+        self.assertEqual(self.bash(doc), "allow")
+        self.assertEqual(self.bash("grep -n allow-kill ~/.config/z0-guard/README"), "allow")
 
     def test_receipt_and_non_bash(self):
         self.bash("tern kill 1")
