@@ -4766,3 +4766,11 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-2 2026-10-27: UI tier, no swap for the compositor unit and fixed-size UI leaves; checked by memory-drift group ui."
+
+[[user]]
+live = "~/.config/systemd/user/agentsview.service.d/62-swap-bound.conf"
+source = "config/systemd/user/agentsview.service.d/62-swap-bound.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
