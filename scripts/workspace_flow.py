@@ -1983,7 +1983,7 @@ def show_next_action(db: Any) -> dict[str, Any]:
         "prepare": prepare,
         "surface_arm": arm,
         "surface_reason": reason,
-        "commit_binding": "Super+Space",
+        "commit_binding": "Super+Enter",
         "dismiss_binding": "Esc",
         "contract": _contract(),
         "gates": {

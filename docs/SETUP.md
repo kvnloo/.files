@@ -304,7 +304,7 @@ This uses Hyprland's native gestures, not a separate input daemon or raw-input
 logging. Window picking is not a macOS Mission Control thumbnail overview.
 
 Workspace Copilot remains advisory: prepare without focus changes, surface
-rarely, commit only by explicit invocation (`Super+Space`). Predictive navigation
+rarely, commit only by explicit invocation (`Super+Enter`). Predictive navigation
 is not bound to a swipe. The existing Workspace Atlas capture switches
 workspaces and is deliberately not used as the window-picker gesture.
 
@@ -315,6 +315,13 @@ of gesture setup. Lua uses underscore device fields, callback gesture actions,
 and `workspace_name` with Hyprland 0.56.2.
 Physical swipe direction, cancellation, app zoom, and click feel still require
 a trackpad check; parsing and reload receipts do not prove those interactions.
+
+Caps Lock is a plain Super modifier (`caps:super`), and the physical Escape key
+stays Escape. `Super+Enter` commits the prepared next action; terminal launch is
+`Super+Shift+Enter`. This is an OS mapping, not a Wooting firmware profile edit.
+A Caps key assigned only to a Wooting Fn layer must first be remapped in the
+real Wootility profile. Preserve the dedicated Fn key and export the real
+profiles before importing them into dotfiles; never substitute demo profiles.
 
 ## Legacy entry points
 

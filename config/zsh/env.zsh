@@ -7,7 +7,7 @@
 # Core Environment
 export EDITOR='vim'
 export KEYTIMEOUT=1
-export BROWSER='google-chrome-stable'
+export BROWSER='zen-browser'
 export TERMINAL='kitty'
 export MAIL='thunderbird'
 
