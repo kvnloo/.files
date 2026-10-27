@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install shared research tools for every agent harness (Agent Reach, yt-dlp, mcporter).
+# Install shared local research tools for agent harnesses.
 # Prefer: ./scripts/onboard run agent-tools   or   ./install
 # Docs: docs/SETUP.md
 set -euo pipefail
@@ -8,6 +8,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 mcporter_config="${repo_root}/config/mcporter/mcporter.json"
 agent_tools_dir="${HOME}/.agent-reach/tools"
 user_bin_dir="${HOME}/.local/bin"
+
 
 if ! command -v pipx >/dev/null 2>&1; then
   printf '%s\n' "pipx is required to install the shared agent tools." >&2

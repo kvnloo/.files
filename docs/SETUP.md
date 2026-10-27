@@ -27,6 +27,74 @@ The Hyprlang and Lua configurations contain the same explorer bindings.
 The release pin and runtime dependencies are recorded in `fleet.toml`.
 The system file chooser and FileManager1 D-Bus provider remain unchanged.
 
+## Local Fettl code checks
+
+Fettl is removed from the workstation harnesses as of 2026-10-25.
+Agent-tool onboarding no longer installs its binary or hooks.
+Shadow mode suppresses findings, but still waits for synchronous full scans.
+Do not reinstall the hooks without Kevin's approval. The pinned installer
+remains available for an explicitly approved evaluation:
+
+```sh
+python3 scripts/setup-fettl.py
+python3 scripts/setup-fettl-hooks.py
+```
+
+The installer downloads the immutable HTTPS release manifest and archive,
+requires their version, size and SHA-256 to match the fleet pin, verifies the
+extracted executable hash, then atomically installs `~/.local/bin/fettl`.
+No remote installer script is executed. The published manifest supplies
+checksums, not a detached signature; HTTPS and the reviewed fleet pin are the
+trust boundary. Installation does not log in or enable hosted diagnostics.
+
+The hook setup preserves other harness settings and installs local read-only
+checks, never repairs. Claude Code uses PreToolUse, PostToolUse and Stop;
+Hermes uses its supported shell-hook configuration, without core edits or a
+gateway restart. The adapter reconciles the release's older Hermes installer
+schema with the installed shell-hook schema; it does not modify Hermes core.
+Hermes can hot-sync those hooks; OMP discovers the new extension in a new
+session. Existing OMP sessions are not claimed activated.
+
+Hook execution uses a private network/PID namespace with Bubblewrap, a
+read-only filesystem view and an external writable cache. Resource/time
+limits and low CPU/I/O priority bound local analysis; the private process
+namespace prevents an on-demand supervisor escaping the hook lifetime.
+No network egress is available from the hook sandbox. If sandbox setup is
+unavailable, hooks report degraded coverage rather than scanning unsandboxed.
+See `config/fettl/` and the setup script for protocol and activation details.
+Re-run setup after a binary upgrade: native Fettl hooks bind the executable
+identity, so replacing bytes makes their previous pin stale.
+
+Runtime packages are declared with the fleet tool: `bubblewrap`, `util-linux`,
+`git`, `python` (3.11 or newer), and `python-yaml`. The setup script needs
+PyYAML; hook execution itself uses only the Python standard library.
+
+Fettl 0.19.78's native `hook status` is not an activation oracle for these
+adapters: its Claude checker expects a fourth `UserPromptSubmit` event
+that this setup intentionally does not install, and its Hermes checker
+expects the older list schema. It may report `STALE`/incomplete even with
+the requested three Claude events and supported Hermes mapping installed.
+Use actual event receipts and harness configuration readback, not that
+status label, to distinguish wired hooks from exercised activation.
+
+Scans do not require an account and do not upload source. Keep reports local.
+Initialize an external cache to avoid leaving scanner state in the checkout:
+
+```sh
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/fettl/manual/my-repo"
+fettl local-store init --root "$cache"
+systemd-run --user --scope -p MemoryMax=1G nice -n19 ionice -c3 \
+  fettl check --full --cache-dir "$cache" --privacy-mode local_only .
+fettl fix --full --dry-run --cache-dir "$cache" .
+```
+
+`check` returns 1 for findings, 2 for watchdog expiry, and 3 for fatal errors.
+The first scan must be reviewed, not automatically fixed or baselined.
+Version 0.19.78's JSON findings label every observed result `medium`, including
+messages tagged `[HIGH]` or `[CRITICAL]`; do not rely on that severity field
+alone for a CI gate. Some rules are stylistic heuristics and need source review.
+No check, hook, or generated finding authorizes architecture changes or repairs.
+
 ## Method 1 — LLM harness (interactive through chat)
 
 Works with Cursor, Claude Code, Codex, OpenCode, Gemini CLI, Oh My Pi, and similar
@@ -84,7 +152,7 @@ Non-interactive examples:
 | `core-links` | Symlinks shell, tmux, git, Hyprland, nvim, noctalia, PipeWire fragments, Sunshine config (no credentials), and common CLI helpers into `~` / `~/.local/bin` |
 | `fonts` | Installs Nerd Fonts from [`packages/packages.toml`](../packages/packages.toml) (`scripts/install-fonts.sh`) |
 | `agent-skills` | Links `workspace-copilot` into Claude, Codex, OpenCode, Gemini, Cursor, OMP, and Agents skill directories |
-| `agent-tools` | Runs [`scripts/setup-agent-tools.sh`](../scripts/setup-agent-tools.sh) (Agent Reach, yt-dlp, mcporter) |
+| `agent-tools` | Runs [`scripts/setup-agent-tools.sh`](../scripts/setup-agent-tools.sh) (Agent Reach, yt-dlp, mcporter; no Fettl installation) |
 | `tailnet-ssh` | Runs [`scripts/setup-tailnet-ssh.sh`](../scripts/setup-tailnet-ssh.sh) (Linux Tailscale + SSH) |
 | `nix-home` | Runs [`config/nix/bootstrap-cachyos.sh`](../config/nix/bootstrap-cachyos.sh) on CachyOS/Arch |
 | `audio-evolution` | Runs [`scripts/install-audio-evolution.sh`](../scripts/install-audio-evolution.sh) |
