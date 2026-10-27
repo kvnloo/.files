@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# travel-check: read-only check of the phone access path on this host (groot).
+# The S25 reaches groot over Tailscale through sshd, Tern (tern-remote) and the
+# Dash bridge (dash-bridge + z0bridge-identity, Hermes chats via hermes-gateway).
+# For each service: running now, and boot-safe (enabled, Restart= set, linger
+# for user units). Then probes the phone path itself.
+# Changes nothing. Prints no addresses, ports, host names or secrets.
+# Exit status: 0 when no FAIL line, 1 otherwise. WARN lines do not fail.
+set -u
+export LC_ALL=C
+fails=0
+line() { printf '%-4s %-22s %s\n' "$1" "$2" "$3"; [ "$1" = FAIL ] && fails=$((fails + 1)); return 0; }
+
+uid=$(id -u)
+user=$(id -un)
+linger=$(loginctl show-user "$user" -p Linger --value 2>/dev/null)
+[ "$linger" = yes ] && line PASS linger "user manager starts at boot without a login" \
+  || line FAIL linger "Linger=$linger: user units wait for a login (owner: loginctl enable-linger $user)"
+
+# unit_check SCOPE UNIT LABEL
+unit_check() {
+  local scope=$1 unit=$2 label=$3 sc=(systemctl) active enabled restart
+  [ "$scope" = user ] && sc=(systemctl --user)
+  active=$("${sc[@]}" is-active "$unit" 2>/dev/null)
+  enabled=$("${sc[@]}" is-enabled "$unit" 2>/dev/null)
+  restart=$("${sc[@]}" show "$unit" -p Restart --value 2>/dev/null)
+  local boot=yes why=""
+  case $enabled in enabled|enabled-runtime|static|indirect|alias) ;; *) boot=no; why="not enabled ($enabled)";; esac
+  [ "$restart" = no ] && { boot=no; why="${why:+$why, }Restart=no"; }
+  [ "$scope" = user ] && [ "$linger" != yes ] && { boot=no; why="${why:+$why, }no linger"; }
+  if [ "$active" != active ]; then line FAIL "$label" "$scope unit $unit is $active (boot-safe=$boot${why:+: $why})"
+  elif [ "$boot" != yes ]; then line FAIL "$label" "active, NOT boot-safe: $why"
+  else line PASS "$label" "active, enabled${restart:+, Restart=$restart}"; fi
+}
+
+unit_check system tailscaled.service tailscaled
+unit_check system sshd.service sshd
+unit_check system tern-remote.service tern-remote
+unit_check user z0bridge-identity.service z0bridge-identity
+unit_check user dash-bridge.service dash-bridge
+unit_check user hermes-gateway.service hermes-gateway
+unit_check user bws-secrets-sync.timer bws-secrets-sync.timer
+bws_result=$(systemctl --user show bws-secrets-sync.service -p Result --value 2>/dev/null)
+[ "$bws_result" = success ] && line PASS bws-secrets-sync "last vault refresh succeeded (Hermes secrets present)" \
+  || line WARN bws-secrets-sync "last result: $bws_result (Hermes consumers cannot restart until a refresh succeeds)"
+
+# --- phone path -------------------------------------------------------------
+ts_json=$(tailscale status --json 2>/dev/null)
+ts_state=$(printf '%s' "$ts_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)
+tip=$(tailscale ip -4 2>/dev/null | head -1)
+if [ "$ts_state" = Running ] && [ -n "$tip" ]; then line PASS tailnet "backend Running, this host has a tailnet address"
+else line FAIL tailnet "backend=${ts_state:-unknown}, tailnet address ${tip:+present}${tip:-missing}"; fi
+
+# A TCP or UDP listener counts when it is bound to the tailnet address or a wildcard.
+listening() { # PROTO(-t|-u) PORT
+  ss -H -ln "$1" 2>/dev/null | awk '{print $4}' | grep -Eq "^(\*|0\.0\.0\.0|\[::\]|${tip//./\\.}):$2\$"
+}
+tcp_open() { timeout 5 bash -c ": </dev/tcp/$1/$2" 2>/dev/null; }
+
+ssh_port=$(awk 'tolower($1)=="port"{print $2; exit}' /etc/ssh/sshd_config 2>/dev/null); ssh_port=${ssh_port:-22}
+if [ -n "$tip" ] && tcp_open "$tip" "$ssh_port"; then
+  banner=$(timeout 5 bash -c "exec 3<>/dev/tcp/$tip/$ssh_port; head -c 8 <&3" 2>/dev/null)
+  [ "$banner" = SSH-2.0- ] && line PASS ssh-on-tailnet "sshd answers with an SSH banner on the tailnet address" \
+    || line FAIL ssh-on-tailnet "port open but no SSH banner"
+else line FAIL ssh-on-tailnet "no sshd connection on the tailnet address"; fi
+
+# Tern: the doctor reports the service and the UDP port it uses (no root needed).
+doctor=$(timeout 40 tern remote doctor --host --mode system 2>/dev/null || timeout 40 "$HOME/.local/bin/tern" remote doctor --host --mode system 2>/dev/null)
+tern_port=$(printf '%s\n' "$doctor" | sed -nE 's/.*UDP ([0-9]+) is in use.*/\1/p' | head -1)
+if [ -n "$tern_port" ] && listening -u "$tern_port"; then line PASS tern-on-tailnet "tern-remote UDP listener reachable on the tailnet interface"
+else line FAIL tern-on-tailnet "no tern-remote UDP listener on the tailnet interface"; fi
+printf '%s\n' "$doctor" | grep -Eq '^ok +relay' && line PASS tern-relay "iroh relay reachable (fallback when direct UDP is blocked)" \
+  || line WARN tern-relay "iroh relay not confirmed"
+[ -S "/run/user/$uid/tern/daemon.sock" ] && line PASS tern-session "session daemon socket present (live panes)" \
+  || line WARN tern-session "no session daemon socket; a Tern login starts a fresh one (old panes need the desktop session)"
+
+# z0bridge identity: tailnet listener from the unit's own arguments.
+zargs=$(systemctl --user show z0bridge-identity.service -p ExecStart --value 2>/dev/null)
+zport=$(printf '%s' "$zargs" | sed -nE 's/.*--identity-port ([0-9]+).*/\1/p')
+if [ -n "$zport" ] && [ -n "$tip" ] && tcp_open "$tip" "$zport"; then line PASS z0bridge-on-tailnet "identity listener answers on the tailnet address"
+else line FAIL z0bridge-on-tailnet "identity listener not reachable on the tailnet address"; fi
+
+# Dash bridge: unauthenticated GET / answers 401 (alive, auth enforced) on its tailnet bind.
+envf="$HOME/.config/dash-services/bridge.env"
+dhost=$(sed -nE 's/^DASH_HOST=//p' "$envf" 2>/dev/null | head -1)
+dport=$(sed -nE 's/^DASH_PORT=//p' "$envf" 2>/dev/null | head -1)
+if [ -n "$dhost" ] && [ -n "$dport" ]; then
+  code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://$dhost:$dport/" 2>/dev/null)
+  case $code in
+    401|200) line PASS dash-bridge-http "HTTP $code on the tailnet bind (alive, auth enforced)";;
+    *) line FAIL dash-bridge-http "HTTP ${code:-none} on the tailnet bind";;
+  esac
+  [ "$dhost" = "$tip" ] || line WARN dash-bridge-bind "bridge bind address differs from this host's tailnet address"
+else line FAIL dash-bridge-http "cannot read DASH_HOST/DASH_PORT from bridge.env"; fi
+
+# Peers: is mbp online (failover / second host)?
+peer=$(printf '%s' "$ts_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for p in (d.get("Peer") or {}).values():
+    if p.get("HostName", "").lower() == "mbp":
+        print("online" if p.get("Online") else "offline"); break
+else: print("absent")' 2>/dev/null)
+[ "$peer" = online ] && line PASS peer-mbp "mbp online on the tailnet" || line WARN peer-mbp "mbp is ${peer:-unknown}"
+
+# Reboot items that need root (owner, WP-11). Reported, never changed here.
+[ -n "$(find /etc/systemd/system.conf.d -name '*watchdog*' 2>/dev/null)" ] && line PASS hw-watchdog "systemd watchdog configured" \
+  || line WARN hw-watchdog "no systemd watchdog drop-in (a hard hang needs a power cycle)"
+grep -Rqs '^User=' /etc/sddm.conf.d/ && line PASS autologin "sddm autologin set (desktop + Tern panes return after reboot)" \
+  || line WARN autologin "no sddm autologin: after reboot there is no desktop session (ssh/Tern/Dash still work)"
+
+echo "---"
+[ "$fails" -eq 0 ] && echo "travel-check: PASS (0 FAIL)" || echo "travel-check: FAIL ($fails FAIL)"
+[ "$fails" -eq 0 ]

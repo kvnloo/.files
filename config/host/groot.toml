@@ -4852,3 +4852,27 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.config/systemd/user/dash-bridge.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/dash-bridge.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.config/systemd/user/z0bridge-identity.service.d/40-travel-hardening.conf"
+source = "config/systemd/user/z0bridge-identity.service.d/40-travel-hardening.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel hardening (NousCon TRAVEL-READY-SPEC section 4): self-recovery after a crash or reboot with the owner away."
+
+[[user]]
+live = "~/.local/bin/travel-check"
+source = "scripts/travel-check"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Travel readiness: read-only PASS/FAIL check of the S25 phone path (tailscale, sshd, tern, z0bridge, dash-bridge, hermes-gateway)."
