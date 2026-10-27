@@ -1,6 +1,3 @@
-# <tailscale-ip> <sidebar-name> [user] — optional overrides for tern-hosts-sync.
-# Shared by every machine; each machine leaves itself out automatically.
-100.113.138.100  groot  kvn
-100.78.215.21    mbp    kvn
-100.104.42.85    s25    root
-100.97.11.22     s22    root
+# <tailscale-ip> <sidebar-name> [user] — optional LOCAL overrides for tern-hosts-sync.
+# Do not commit addresses here: this repo is public. Sidebar names and users come from the
+# private z0-hosts instance (hosts/*/devices.toml: peer_hostname, aliases, kind) at runtime.

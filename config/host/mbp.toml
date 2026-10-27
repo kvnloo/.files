@@ -134,3 +134,37 @@ paths = ["/etc/locale.gen.pacnew", "/etc/pacman.conf.pacnew", "/etc/pacman.d/mir
 owner = "operator package configuration review"
 command = "sudo rm /etc/locale.gen.pacnew /etc/pacman.conf.pacnew /etc/pacman.d/mirrorlist.pacnew /etc/pacman.d/cachyos-mirrorlist.pacnew /etc/pacman.d/cachyos-v3-mirrorlist.pacnew /etc/pacman.d/cachyos-v4-mirrorlist.pacnew /etc/resolv.conf.pacnew && sudo mv /etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json.pacnew /etc/tpm2-tss/fapi-profiles/P_ECCP384SHA384.json && sudo mv /etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json.pacnew /etc/tpm2-tss/fapi-profiles/P_RSA3072SHA384.json"
 reason = "Root-only; the per-file review above found nothing to merge."
+
+# Tern sidebar: generate ~/.config/tern/hosts from live Tailscale peers (never this machine), as groot does.
+# Replaces the static shared list copied on 2026-10-21. Names come from the private z0-hosts instance.
+[[user]]
+live = "~/.local/bin/tern-hosts-sync"
+source = "scripts/tern-hosts-sync"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp Tern host list is generated, not the static shared list (ORCH-21)."
+
+[[user]]
+live = "~/.config/systemd/user/tern-hosts-sync.service"
+source = "config/systemd/user/tern-hosts-sync.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp Tern host list is generated, not the static shared list (ORCH-21)."
+
+[[user]]
+live = "~/.config/systemd/user/tern-hosts-sync.timer"
+source = "config/systemd/user/tern-hosts-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "mbp Tern host list is generated, not the static shared list (ORCH-21)."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/tern-hosts-sync.timer"
+source = "config/systemd/user/tern-hosts-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Enable the Tern host-list timer on mbp (same enablement link as groot)."
