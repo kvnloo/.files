@@ -1,8 +1,9 @@
-"""Phone lane regression tests. All Android telemetry is an isolated fixture."""
+"""Exercise the phone wrapper with isolated Android and resource fixtures."""
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -19,115 +20,125 @@ class PhoneLaneTests(unittest.TestCase):
         binary = self.home / "bin"
         binary.mkdir()
         fixtures = {
-            "uname": "#!/bin/sh\necho fixture-android\n",
-            "adb": "#!/bin/sh\ncase \"$*\" in\n"
-                   "  devices) printf 'List of devices attached\\nfixture\\tdevice\\n' ;;\n"
-                   "  *battery) printf '  level: %s\\n  status: 3\\n  temperature: %s\\n  USB powered: %s\\n' \"${TEST_BATTERY:-80}\" \"${TEST_TEMP:-300}\" \"$TEST_CHARGING\" ;;\n"
-                   "  *thermalservice) printf 'Thermal Status: %s\\n' \"${TEST_THERMAL:-0}\" ;;\nesac\n",
-            "taskset": "#!/bin/sh\nprintf '%s\\n' \"$2\" > \"$HOME/affinity\"\nshift 2\nexec \"$@\"\n",
+            "uname": "printf 'fixture-android\\n'\n",
+            "free": "printf 'Mem: 1024 1023 1 0 0 1\\n'\n",
+            "adb": "exit 1\n",
+            "sensors": "exit 1\n",
+            "taskset": 'echo taskset >> "$HOME/resource-calls"; exit 99\n',
+            "nice": 'echo nice >> "$HOME/resource-calls"; exit 99\n',
         }
-        for name, content in fixtures.items():
+        for name, body in fixtures.items():
             path = binary / name
-            path.write_text(content)
+            path.write_text("#!/bin/sh\n" + body)
             path.chmod(0o700)
-        self.env = {**os.environ, "HOME": str(self.home),
-                    "PATH": f"{binary}:/usr/bin:/bin", "TEST_CHARGING": "true"}
+        self.env = {**os.environ, "HOME": str(self.home), "PATH": f"{binary}:/usr/bin:/bin"}
 
-    def command(self, *payload):
-        return [str(RUNNER), "--mem-mb", "64", "--floor-mb", "0", "--cpus", "0-7", "--", *payload]
+    def command(self, *payload, timeout=20):
+        return [str(RUNNER), "--timeout", str(timeout), "--", *payload]
 
-    def profile(self, **values):
-        path = self.home / ".config/fleet/phone-mode.json"
+    def run_payload(self, *payload, timeout=20):
+        return subprocess.run(self.command(*payload, timeout=timeout), env=self.env,
+                              capture_output=True, text=True, timeout=30)
+
+    def flag(self, name):
+        path = self.home / ".config/fleet" / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"mode": "worker", "cpus": "0-5", "slots": 6,
-                                    "memory_pct": 75, "min_battery_pct": 2, **values}))
+        path.touch()
 
-    def test_worker_override_keeps_thermal_in_receipt_without_holding(self):
-        self.profile()
-        result = subprocess.run([str(RUNNER), "--floor-mb", "0", "--gate-only"],
-                                env={**self.env, "TEST_BATTERY": "2", "TEST_CHARGING": "false",
-                                     "TEST_TEMP": "500", "TEST_THERMAL": "3"},
-                                capture_output=True, text=True, timeout=20)
+    def test_unreadable_telemetry_and_low_memory_do_not_hold_payload(self):
+        result = self.run_payload(sys.executable, "-c", "print('PAYLOAD_OK')")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("thermal 3", result.stderr)
-        self.assertIn("mode=worker", result.stderr)
+        self.assertIn("PAYLOAD_OK", result.stdout)
 
-    def test_worker_s25_floor_is_two_percent(self):
-        self.profile()
-        result = subprocess.run([str(RUNNER), "--floor-mb", "0", "--gate-only"],
-                                env={**self.env, "TEST_BATTERY": "1"},
-                                capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("battery 1% < 2%", result.stderr)
+    def test_inherits_all_existing_cpu_affinity_and_priority(self):
+        code = "import json,os; print(json.dumps([sorted(os.sched_getaffinity(0)), os.getpriority(os.PRIO_PROCESS,0)]))"
+        result = self.run_payload(sys.executable, "-c", code)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout),
+                         [sorted(os.sched_getaffinity(0)), os.getpriority(os.PRIO_PROCESS, 0)])
+        self.assertFalse((self.home / "resource-calls").exists())
 
-    def test_light_retains_thermal_and_off_charger_battery_gates(self):
-        for extra in ({"TEST_THERMAL": "3"}, {"TEST_BATTERY": "49", "TEST_CHARGING": "false"}):
-            result = subprocess.run([str(RUNNER), "--floor-mb", "0", "--gate-only"],
-                                    env={**self.env, **extra}, capture_output=True, text=True, timeout=20)
-            self.assertEqual(result.returncode, 1, result.stderr)
-
-    def test_worker_profile_allows_multiple_slots_but_never_exceeds_cap(self):
-        self.profile(slots=2)
-        procs = []
+    def test_multiple_jobs_start_without_slot_or_memory_reservations(self):
+        first = self.start_waiter()
         try:
-            for number in (1, 2):
-                proc = subprocess.Popen(self.command("sh", "-c", f'touch "$HOME/started{number}"; while [ ! -e "$HOME/release" ]; do sleep 0.1; done'),
-                                        env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                procs.append(proc)
-                deadline = time.monotonic() + 10
-                while not (self.home / f"started{number}").exists() and time.monotonic() < deadline:
-                    time.sleep(0.02)
-                self.assertTrue((self.home / f"started{number}").exists())
-            result = subprocess.run(self.command("true"), env=self.env, capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 75, result.stderr)
-            self.assertIn("all 2 phone slots are occupied", result.stderr)
-            self.assertEqual((self.home / "affinity").read_text(), "0-5\n")
-            (self.home / "release").touch()
-            for proc in procs:
-                self.assertEqual(proc.wait(timeout=20), 0)
+            result = self.run_payload(sys.executable, "-c", "print('SECOND_OK')")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("SECOND_OK", result.stdout)
         finally:
-            (self.home / "release").touch()
-            for proc in procs:
-                if proc.poll() is None:
-                    proc.terminate()
-                    proc.wait(timeout=20)
+            first.terminate()
+            first.communicate(timeout=15)
 
-    def test_aggregate_memory_budget_refuses_oversized_reservation(self):
-        self.profile()
-        result = subprocess.run([str(RUNNER), "--mem-mb", "999999999", "--floor-mb", "0", "--", "true"],
-                                env=self.env, capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 75, result.stderr)
-        self.assertIn("memory reservation held", result.stderr)
+    def test_owner_pause_and_call_block_gate_and_payload(self):
+        for name in ("pause", "owner-call"):
+            with self.subTest(flag=name):
+                self.flag(name)
+                gate = subprocess.run([str(RUNNER), "--gate-only"], env=self.env,
+                                      capture_output=True, text=True, timeout=10)
+                self.assertEqual(gate.returncode, 1, gate.stderr)
+                result = self.run_payload(sys.executable, "-c", "print('SHOULD_NOT_RUN')")
+                self.assertEqual(result.returncode, 75, result.stderr)
+                self.assertNotIn("SHOULD_NOT_RUN", result.stdout)
+                (self.home / ".config/fleet" / name).unlink()
 
-    def test_charging_cannot_exceed_two_small_cores(self):
-        result = subprocess.run(self.command("true"), env=self.env, capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.home / "affinity").read_text(), "0-1\n")
+    def start_waiter(self, timeout=20, descendants=False):
+        code = ("import os,time,subprocess,sys; "
+                + ("p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                   "open(os.environ['HOME']+'/descendant','w').write(str(p.pid)); " if descendants else "")
+                + "open(os.environ['HOME']+'/started','w').write(str(os.getpid())); time.sleep(60)")
+        proc = subprocess.Popen(self.command(sys.executable, "-c", code, timeout=timeout),
+                                env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self.stop, proc)
+        deadline = time.monotonic() + 10
+        while not (self.home / "started").exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertTrue((self.home / "started").exists(), "payload did not start")
+        return proc
 
-    def test_battery_uses_one_small_core(self):
-        result = subprocess.run(self.command("true"), env={**self.env, "TEST_CHARGING": "false"},
-                                capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.home / "affinity").read_text(), "0\n")
+    @staticmethod
+    def stop(proc):
+        if proc.poll() is None:
+            proc.terminate()
+        proc.communicate(timeout=15)
 
-    def test_direct_and_worker_jobs_share_one_slot(self):
-        proc = subprocess.Popen(self.command("sh", "-c", 'touch "$HOME/started"; while [ ! -e "$HOME/release" ]; do sleep 0.1; done'),
-                                env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            deadline = time.monotonic() + 10
-            while not (self.home / "started").exists() and time.monotonic() < deadline:
-                time.sleep(0.02)
-            self.assertTrue((self.home / "started").exists())
-            result = subprocess.run(self.command("true"), env=self.env, capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 75, result.stderr)
-            self.assertIn("all 1 phone slots are occupied", result.stderr)
-            (self.home / "release").touch()
-            self.assertEqual(proc.wait(timeout=20), 0)
-        finally:
-            (self.home / "release").touch()
-            if proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=20)
+    def assert_not_running(self, pid):
+        stat = Path(f"/proc/{pid}/stat")
+        self.assertTrue(not stat.exists() or stat.read_text().split(") ", 1)[1].startswith("Z"),
+                        f"owned process {pid} still running")
+
+    def test_timeout_cleans_payload_and_descendants(self):
+        proc = self.start_waiter(timeout=1, descendants=True)
+        _, stderr = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 124, stderr)
+        self.assertIn("timeout", stderr)
+        for name in ("started", "descendant"):
+            self.assert_not_running(int((self.home / name).read_text()))
+
+    def test_owner_pause_and_call_interrupt_running_payload(self):
+        for name in ("pause", "owner-call"):
+            with self.subTest(flag=name):
+                proc = self.start_waiter()
+                pid = int((self.home / "started").read_text())
+                self.flag(name)
+                _, stderr = proc.communicate(timeout=15)
+                self.assertEqual(proc.returncode, 75, stderr)
+                self.assert_not_running(pid)
+                (self.home / ".config/fleet" / name).unlink()
+                (self.home / "started").unlink()
+
+    def test_signal_cleans_owned_group(self):
+        proc = self.start_waiter(descendants=True)
+        proc.terminate()
+        proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 75)
+        for name in ("started", "descendant"):
+            self.assert_not_running(int((self.home / name).read_text()))
+
+    def test_normal_exit_preserves_status_and_reaps_orphan_descendants(self):
+        code = ("import os,subprocess,sys; p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                "open(os.environ['HOME']+'/descendant','w').write(str(p.pid)); sys.exit(7)")
+        result = self.run_payload(sys.executable, "-c", code)
+        self.assertEqual(result.returncode, 7, result.stderr)
+        self.assert_not_running(int((self.home / "descendant").read_text()))
 
 
 if __name__ == "__main__":

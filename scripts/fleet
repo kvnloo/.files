@@ -9,6 +9,8 @@
       (--class matches a node's classes or its capabilities, e.g. android-build;
        scripts/fleet-build wraps this with the default routing for builds)
   fleet kill NODE JOB_ID                        stop a running host-lane job
+  fleet phone NODE submit|status|logs|cancel|heartbeat|lease|recover [JOB_ID]
+                                               explicit leased PRoot host-lane contract
   fleet health [--node N] [--strikes K] [--set key=value]   probe, judge, cordon/uncordon
   fleet labels                                  apply class labels/taints from config/fleet/nodes.yaml
   fleet enroll NODE                             harden a registered Linux node over root ssh
@@ -16,10 +18,10 @@
   fleet update NODE [--apply]                   show pending updates; --apply cordons, upgrades, uncordons
   fleet install-timer                           user systemd timer: `fleet health` every 2 minutes
 
-Host-lane jobs (`fleet run`) are for our own builds and tests that need a host
-toolchain. They run as the unprivileged `agentjob` user inside a capped
-systemd scope (Linux) or under polite-run (phones). Untrusted code goes through
-the k3s `factory` queue instead (oss-factory `factory submit`).
+Trusted jobs (`fleet run`) reuse the owner's host toolchain. MBP jobs are
+Kueue-admitted Jobs; `--node mbp-host` reserves the same quota for a native
+systemd scope. Other Linux workers use capped agentjob scopes, and phones use
+polite-run. Untrusted code belongs in the restricted k3s `factory` queue.
 """
 import argparse
 import concurrent.futures as cf
@@ -36,6 +38,8 @@ import time
 from pathlib import Path
 
 import yaml
+from fleet_phone import host_health, kubernetes_view
+import fleet_phone_controller as phone_controller
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
@@ -61,7 +65,9 @@ def registry():
     reg = yaml.safe_load(REGISTRY.read_text())
     nodes = {}
     for name, n in reg["nodes"].items():
-        n = merge({"health": reg["defaults"]["health"], "lane": reg["defaults"]["lane"]}, n)
+        defaults = {} if n.get("kind") == "phone" else {
+            "health": reg["defaults"]["health"], "lane": reg["defaults"]["lane"]}
+        n = merge(defaults, n)
         n["name"] = name
         n.setdefault("kind", "linux")
         n.setdefault("ssh_user", "agentjob")
@@ -107,12 +113,22 @@ def probe_path(n):
 
 def probe(n):
     """Run the node's probe; groot probes itself locally."""
+    if n["kind"] == "boat":
+        result = subprocess.run([sys.executable, str(REPO / "scripts/boat"), "limits"],
+                                capture_output=True, text=True, timeout=90)
+        try:
+            return {"boat_limits": json.loads(result.stdout)}
+        except ValueError:
+            return {"error": "Boat limits unavailable"}
     try:
         if n["role"] == "server":
             out = subprocess.run([sys.executable, str(REPO / "scripts/fleet-node-probe")],
                                  capture_output=True, text=True, timeout=60).stdout
         else:
-            out = subprocess.run(ssh_cmd(n) + [f"python3 {probe_path(n)}"], capture_output=True,
+            ssh = ssh_cmd(n)
+            if n["kind"] == "phone":
+                ssh = phone_controller.strict_ssh(ssh)
+            out = subprocess.run(ssh + [f"python3 {probe_path(n)}"], capture_output=True,
                                  text=True, timeout=90).stdout
         return json.loads(out.strip().splitlines()[-1])
     except (subprocess.TimeoutExpired, IndexError, ValueError) as e:
@@ -231,6 +247,9 @@ def maybe_revive(n, st, s, pr):
 def judge(n, p, k8s, online, overrides):
     """Return a list of failure reasons (empty = healthy) and a list of warnings."""
     h = merge(n["health"], overrides)
+    if n["kind"] == "boat":
+        limits = p.get("boat_limits", {})
+        return ([] if limits.get("canStart") else [p.get("error", "Boat cannot start")]), []
     bad, warn = [], []
     # The probe crossing the tailnet is the stronger signal; a peer's Online flag can lag.
     if "error" in p and not online.get(n["tailnet_ip"], False):
@@ -243,10 +262,14 @@ def judge(n, p, k8s, online, overrides):
     if "error" in p:
         bad.append(p["error"])
         return bad, warn
+    if n["kind"] == "phone":
+        phase, why = host_health(p)
+        if phase != "ready":
+            bad.extend(f"host-lane {phase}: {reason}" for reason in why)
     if n["kind"] == "phone" and p.get("supervisor_session") not in (None, "audio"):
         warn.append(f"supervisor runs in the {p['supervisor_session']} session, not Omalauncher's audio one")
-    if p["mem_available_mb"] < int(h["min_mem_available_mb"]):
-        bad.append(f"memory {p['mem_available_mb']}MiB < {h['min_mem_available_mb']}MiB")
+    if n["kind"] != "phone" and (not isinstance(p.get("mem_available_mb"), (int, float)) or p["mem_available_mb"] < int(h["min_mem_available_mb"])):
+        bad.append(f"memory {p.get('mem_available_mb')}MiB < {h['min_mem_available_mb']}MiB")
     for key in ("disk_root", "disk_k3s", "disk_lane"):
         d = p.get(key)
         if d and d["free_gb"] < float(h["min_disk_free_gb"]):
@@ -257,26 +280,16 @@ def judge(n, p, k8s, online, overrides):
                 continue
             if state != "active":
                 bad.append(f"{unit} {state}")
-    pw = p.get("power") or {}
-    profile = p.get("phone_profile") or {"mode": "light"}
-    worker = n["kind"] == "phone" and profile.get("mode") == "worker"
-    if not worker and p.get("max_temp_c") and p["max_temp_c"] > float(h["max_temp_c"]):
-        bad.append(f"temperature {p['max_temp_c']}C")
-    floor = int(profile.get("min_battery_pct", 0)) if worker else 50
-    if pw.get("source") == "unreadable" and n["kind"] == "phone" and (not worker or floor):
-        bad.append("battery unreadable (fail closed)")
-    for b in pw.get("batteries", []):
-        charging = pw.get("on_ac") or b.get("status") in ("Charging", "Full")
-        minimum = floor if n["kind"] == "phone" else int(h["min_battery_pct_on_battery"])
-        if (worker or not charging) and b.get("pct") is not None and b["pct"] < minimum:
-            bad.append(f"battery {b['pct']}% < {minimum}%")
-        elif not charging:
-            warn.append(f"on battery ({b.get('pct')}%)")
-    if n["kind"] == "phone" and not worker:
-        if (pw.get("battery_temp_c") or 0) > 40:
-            bad.append(f"battery {pw['battery_temp_c']}C")
-        if (pw.get("android_thermal_status") or 0) > int(h.get("max_android_thermal_status", 1)):
-            bad.append(f"android thermal status {pw['android_thermal_status']}")
+    if n["kind"] != "phone":
+        if p.get("max_temp_c") and p["max_temp_c"] > float(h["max_temp_c"]):
+            bad.append(f"temperature {p['max_temp_c']}C")
+        pw = p.get("power") or {}
+        for b in pw.get("batteries", []):
+            charging = pw.get("on_ac") or b.get("status") in ("Charging", "Full")
+            if not charging and b.get("pct") is not None and b["pct"] < int(h["min_battery_pct_on_battery"]):
+                bad.append(f"on battery at {b['pct']}%")
+            elif not charging:
+                warn.append(f"on battery ({b.get('pct')}%)")
     if p.get("maintenance"):
         bad.append("maintenance")
     if n["k8s"]:
@@ -332,15 +345,17 @@ def cmd_health(args):
         strikes = int(args.strikes or n["health"]["strikes"])
         action = "none"
         mode = n["health"]["on_unhealthy"]
-        kn = k8s.get(name)
+        kn = kubernetes_view(n, k8s)
         # Placement gate closes on the FIRST bad sample, independently of strike
         # hysteresis used for cordon/uncordon. Kueue CPU flavors require this label.
         if n["role"] == "worker" and n["k8s"] and kn:
             thermal = probes[name].get("max_temp_c")
             safe = not bad and isinstance(thermal, (int, float)) and not isinstance(thermal, bool) and math.isfinite(thermal) and thermal > 0
             kc("label", "--overwrite", "node", name, f"z0.dev/cpu-admit={str(safe).lower()}")
-        if bad and s["bad"] >= strikes and n["kind"] == "phone":
-            action = maybe_revive(n, probes[name].get("android"), s, probes[name]) or action
+        phone_state = None
+        if n["kind"] == "phone":
+            # Health never opens Android UI or claims Kubernetes membership.
+            phone_state = phone_controller.reconcile(STATE, name, probes[name], ssh_cmd(n))
         if bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)
@@ -360,6 +375,8 @@ def cmd_health(args):
             s["paused"] = False
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
                "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
+        if phone_state:
+            rec["host_lane"] = phone_state
         (hdir / f"{name}.json").write_text(json.dumps(rec, indent=1) + "\n")
         with open(hdir / "history.jsonl", "a") as f:
             f.write(json.dumps({k: rec[k] for k in ("node", "ts", "healthy", "reasons", "action")}) + "\n")
@@ -392,7 +409,7 @@ def eligible(n, args, state):
         return f"arch {n.get('arch')}"
     if args.node in (None, "auto") and any(t not in (args.tolerate or []) for t in n["taints"]):
         return f"taint {n['taints']} not tolerated"
-    if state.get(n["name"], {}).get("paused"):
+    if n["kind"] != "phone" and state.get(n["name"], {}).get("paused"):
         return "paused by fleet health"
     return None
 
@@ -401,6 +418,40 @@ def cmd_run(args):
     reg, nodes = registry()
     if not args.cmd:
         die("usage: fleet run [opts] -- CMD...")
+    def queued_mbp():
+        worker = nodes["mbp"]
+        if (args.arch and args.arch != worker["arch"]) or (args.cls and args.cls not in worker["classes"] + worker["capabilities"]):
+            die("mbp: incompatible architecture or job capability", 75)
+        argv = [sys.executable, str(REPO / "scripts/fleet-kueue"),
+                "--src", args.src or os.getcwd(), "--mem", args.mem or worker["lane"]["default_mem"],
+                "--cpus", args.cpus or "2", "--timeout", str(args.timeout), "--wait", "0"]
+        if args.node == "mbp-host":
+            argv += ["--host"]
+        for option in ("no_src", "keep"):
+            if getattr(args, option):
+                argv += ["--" + option.replace("_", "-")]
+        for option in ("fetch", "input"):
+            for value in getattr(args, option) or []:
+                argv += ["--" + option, value]
+        return subprocess.run(argv + ["--", *args.cmd]).returncode
+    if args.node in ("mbp", "mbp-host", "k3s-mbp"):
+        return queued_mbp()
+    if args.node == "boat":
+        if (args.arch and args.arch != "amd64") or (args.cls and args.cls not in nodes["boat"]["classes"] + nodes["boat"]["capabilities"]):
+            die("boat: incompatible architecture or job capability", 75)
+        argv = [sys.executable, str(REPO / "scripts/fleet-boat"),
+                "--mem-mb", str(mb(args.mem or "512M")),
+                "--timeout", str(min(args.timeout, 450))]
+        for option, value in (("--src", args.src), ("--cpus", args.cpus)):
+            if value:
+                argv += [option, value]
+        for option in ("no_src", "keep"):
+            if getattr(args, option):
+                argv += ["--" + option.replace("_", "-")]
+        for option in ("fetch", "input"):
+            for value in getattr(args, option) or []:
+                argv += ["--" + option, value]
+        return subprocess.run(argv + ["--", *args.cmd]).returncode
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
@@ -423,7 +474,6 @@ def cmd_run(args):
     best, notes = None, []
     for n in cands:
         p = probes[n["name"]]
-        need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
         if "error" in p:
             notes.append(f"{n['name']}: {p['error']}"); continue
         # The health timer's strike window is NOT launch admission. A fresh unsafe
@@ -434,16 +484,24 @@ def cmd_run(args):
         bad, _ = judge(n, p, k8s, {n["tailnet_ip"]: True}, {})
         if bad:
             notes.append(f"{n['name']}: {'; '.join(bad)}"); continue
+        if n["kind"] == "phone":
+            phase, reasons = host_health(p)
+            if phase != "ready":
+                notes.append(f"{n['name']}: {phase}: {'; '.join(reasons)}"); continue
         if n["k8s"] and k8s.get(n["name"], {}).get("unschedulable"):
             notes.append(f"{n['name']}: cordoned"); continue
-        if p["mem_available_mb"] < need:
-            notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
+        if n["kind"] != "phone":
+            need = int(n["lane"]["mem_floor_mb"]) + mb(args.mem or n["lane"]["default_mem"])
+            if p["mem_available_mb"] < need:
+                notes.append(f"{n['name']}: {p['mem_available_mb']}MiB available < floor+job {need}MiB"); continue
         score = p["load1"] / max(p["ncpu"], 1) + (1 if n["kind"] == "phone" else 0)
         if best is None or score < best[0]:
             best = (score, n, p)
     if not best:
         die("no node has room now: " + "; ".join(notes), 75)
     _, n, p = best
+    if n["name"] == "mbp":
+        return queued_mbp()
     jid = time.strftime("%Y%m%d-%H%M%S-") + f"{random.randrange(16**4):04x}"
     base = "~/fleet-jobs" if n["kind"] == "phone" else "~/jobs"
     jdir = f"{base}/{jid}"
@@ -453,6 +511,8 @@ def cmd_run(args):
     print(f"fleet: job {jid} -> {n['name']} (load {p['load1']}/{p['ncpu']} cpu, "
           f"{p['mem_available_mb']}MiB available); log {log}", file=sys.stderr)
     ssh = ssh_cmd(n)
+    if n["kind"] == "phone":
+        ssh = phone_controller.strict_ssh(ssh)
     subprocess.run(ssh + [f"mkdir -p {jdir}/src"], check=True)
     if not args.no_src:
         src = Path(args.src or os.getcwd()).resolve()
@@ -486,13 +546,29 @@ def cmd_run(args):
             subprocess.run(ssh + [f"mkdir -p {jdir}/src/{shlex.quote(parent)} && cat > {jdir}/src/{shlex.quote(relative)}"],
                            stdin=stream, check=True)
     cmd = " ".join(shlex.quote(c) for c in args.cmd)
-    mem = mb(args.mem or n["lane"]["default_mem"])
-    floor = int(n["lane"]["mem_floor_mb"])
     if n["kind"] == "phone":
-        inner = (f"cd {jdir}/src && exec ~/.local/lib/fleet/polite-run --mem-mb {mem} --floor-mb {floor} "
-                 f"--cpus {n['lane'].get('cpus', '0-1')} --timeout {args.timeout} -- "
-                 f"env HOME=$HOME/{jdir[2:]} TMPDIR=$HOME/{jdir[2:]} bash -c {shlex.quote(cmd)}")
+        spec = {"argv": args.cmd, "cwd": f"{jdir}/src", "timeout": args.timeout,
+                "idempotent": args.idempotent, "max_attempts": 3 if args.idempotent else 1}
+        if args.mem is not None:
+            spec["mem_mb"] = mb(args.mem)
+        with open(log, "w") as lf:
+            def emit(text):
+                sys.stdout.write(text); sys.stdout.flush(); lf.write(text); lf.flush()
+            phone_rc = phone_controller.run(STATE, n["name"], jid, spec, ssh, emit)
+        if phone_rc != 255:
+            for path in args.fetch or []:
+                dest = logdir / jid
+                dest.mkdir(exist_ok=True)
+                t = subprocess.Popen(ssh + [f"tar -C {jdir} -czf - {shlex.quote(path)}"], stdout=subprocess.PIPE)
+                subprocess.run(["tar", "-xzf", "-", "-C", str(dest)], stdin=t.stdout, check=True)
+                if t.wait():
+                    die("phone artifact fetch failed; source retained")
+        # Retain source and spool for reconciliation, including ambiguous outcomes.
+        print(f"fleet: job {jid} on {n['name']} exited {phone_rc}; phone spool retained", file=sys.stderr)
+        return phone_rc
     else:
+        mem = mb(args.mem or n["lane"]["default_mem"])
+        floor = int(n["lane"]["mem_floor_mb"])
         cpu = f"{int(float(args.cpus) * 100)}%" if args.cpus else n["lane"]["cpu_quota"]
         # /etc/fleet/toolchain.env (scripts/fleet-toolchain.sh) puts JAVA_HOME, ANDROID_HOME and
         # GRADLE_USER_HOME in place. Stopping the scope afterwards reaps what the job left
@@ -515,6 +591,8 @@ def cmd_run(args):
                  f"if [ \"$smax\" != max ]; then left=$(( (smax - $(awk '/^anon /{{print $2}}' $sl/memory.stat)) / 1048576 )); "
                  f"if [ $left -lt {mem} ]; then echo \"fleet: lane has ${{left}}MiB left for a {mem}MiB job (other jobs running)\" >&2; exit 75; fi; fi; "
                  f"[ -r /etc/fleet/toolchain.env ] && . /etc/fleet/toolchain.env; "
+                 f'export UV_CACHE_DIR="$HOME/.cache/uv" npm_config_cache="$HOME/.cache/npm" npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
+                 f'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; '
                  f"mkdir -p {jdir}/tmp && cd {jdir}/src && TMPDIR=$HOME/{jdir[2:]}/tmp systemd-run --user --scope --quiet "
                  f"--unit=fleet-{jid} -p MemoryMax={mem}M -p MemorySwapMax=512M -p CPUQuota={cpu} "
                  f"-- timeout --kill-after=30 {args.timeout} nice -n 5 bash -c {shlex.quote(cmd)}; rc=$?; "
@@ -542,12 +620,49 @@ def cmd_run(args):
 
 def cmd_kill(args):
     _, nodes = registry()
+    if args.node in ("mbp", "mbp-host", "k3s-mbp"):
+        unit = shlex.quote(f"fleet-{args.job}.scope")
+        stop = f"if systemctl --user is-active --quiet {unit}; then systemctl --user stop {unit}; fi"
+        result = subprocess.run(ssh_cmd(nodes["mbp"]) + ["bash -c " + shlex.quote(stop)])
+        if result.returncode:
+            return result.returncode  # Never release host quota before host work stops.
+        return subprocess.run(["kubectl", "--kubeconfig", str(Path.home() / ".kube/k3s.yaml"),
+                               "-n", "fleet-mbp", "delete", "job", args.job,
+                               "--cascade=foreground", "--wait=true"]).returncode
     n = nodes[args.node]
     if n["kind"] == "phone":
-        r = subprocess.run(ssh_cmd(n) + [f"pkill -TERM -f -- 'fleet-jobs/{args.job}/' ; true"])
+        try:
+            print(json.dumps(phone_controller.cancel(STATE, n["name"], args.job, ssh_cmd(n))))
+            return 0
+        except Exception as exc:
+            die(f"phone cancellation unavailable: {type(exc).__name__}", 75)
     else:
         r = subprocess.run(ssh_cmd(n) + [f"systemctl --user stop fleet-{args.job}.scope"])
     return r.returncode
+
+
+def cmd_phone(args):
+    _, nodes = registry()
+    n = nodes[args.node]
+    if n["kind"] != "phone":
+        die("explicit phone API requires a registered phone host lane", 78)
+    try:
+        from fleet_phone import identifier
+        if args.job:
+            identifier(args.job)
+        if args.action == "cancel":
+            result = phone_controller.cancel(STATE, n["name"], args.job, ssh_cmd(n))
+        else:
+            payload = json.load(sys.stdin) if args.action in ("submit", "heartbeat") else None
+            result = phone_controller.transport(ssh_cmd(n), args.action, args.job, payload)
+            if args.action in ("submit", "lease"):
+                record = {"id": args.job, "node": n["name"], "lease": result["lease"],
+                          "state": result["state"], "terminal": False}
+                phone_controller.update_record(phone_controller.records(STATE, n["name"]) / f"{args.job}.json", record)
+        print(result if isinstance(result, str) else json.dumps(result), end="" if isinstance(result, str) else "\n")
+        return 0
+    except Exception as exc:
+        die(f"phone API blocked/unavailable: {type(exc).__name__}", 75)
 
 
 def cmd_nodes(args):
@@ -559,14 +674,14 @@ def cmd_nodes(args):
     print(f"{'NODE':14} {'KIND':6} {'ARCH':6} {'CLASSES':22} {'ONLINE':6} {'K8S':14} {'LOAD':9} {'MEM_AVAIL':9} {'POWER':14} CAPABILITIES")
     for name, n in nodes.items():
         p = probes[name]
-        kn = k8s.get(name)
+        kn = kubernetes_view(n, k8s)
         ks = "-" if not kn else ("cordoned" if kn["unschedulable"] else "Ready" if kn["conditions"].get("Ready") == "True" else "NotReady")
         pw = p.get("power") or {}
         b = (pw.get("batteries") or [{}])[0]
         pws = "mains" if not pw.get("batteries") else f"{b.get('pct')}% {b.get('status')}"
         load = f"{p.get('load1', '?')}/{p.get('ncpu', '?')}"
         print(f"{name:14} {n['kind']:6} {n.get('arch', '?'):6} {','.join(n['classes']) or '-':22} "
-              f"{'yes' if online.get(n['tailnet_ip']) else 'no':6} {ks:14} {load:9} "
+              f"{'yes' if (p.get('boat_limits', {}).get('canStart') if n['kind'] == 'boat' else online.get(n['tailnet_ip'])) else 'no':6} {ks:14} {load:9} "
               f"{str(p.get('mem_available_mb', p.get('error', '?'))):9} {pws:14} {','.join(n['capabilities']) or '-'}")
     for name, c in reg.get("candidates", {}).items():
         print(f"{name:14} (candidate) {c['note']}")
@@ -711,31 +826,14 @@ WantedBy=timers.target
     print("fleet-health.timer enabled; reports in", STATE / "health")
 
 
-def cmd_phone_mode(args):
-    """Persist one explicit phone profile. This never weakens Android permissions."""
-    _, nodes = registry()
-    n = nodes.get(args.node)
-    if not n or n["kind"] != "phone":
-        die("phone-mode requires a registered phone")
-    if args.mode:
-        profile = n.get("phone_modes", {}).get(args.mode)
-        if not profile:
-            die(f"{args.node}: no {args.mode} profile in the registry")
-        payload = json.dumps({**profile, "mode": args.mode, "runtime": n.get("phone_runtime", {})})
-        script = ("import json,os,sys; from pathlib import Path; "
-                  "p=Path.home()/'.config/fleet/phone-mode.json'; "
-                  "v=json.load(sys.stdin); p.parent.mkdir(parents=True,exist_ok=True); "
-                  "t=p.with_suffix('.tmp'); t.write_text(json.dumps(v)+'\\n'); "
-                  "t.chmod(0o600); os.replace(t,p); print(p.read_text(),end='')")
-        return subprocess.run(ssh_cmd(n) + ["python3 -c " + shlex.quote(script)],
-                              input=payload, text=True).returncode
-    return subprocess.run(ssh_cmd(n) + ["cat ~/.config/fleet/phone-mode.json"]).returncode
-
-
 def main():
     ap = argparse.ArgumentParser(prog="fleet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd_name", required=True)
     sub.add_parser("nodes")
+    ph = sub.add_parser("phone", help="explicit leased phone host-lane API (not Kubernetes)")
+    ph.add_argument("node")
+    ph.add_argument("action", choices=["submit", "status", "logs", "cancel", "heartbeat", "lease", "recover", "capabilities"])
+    ph.add_argument("job", nargs="?")
     r = sub.add_parser("run")
     r.add_argument("--node"); r.add_argument("--class", dest="cls"); r.add_argument("--arch")
     r.add_argument("--tolerate", action="append"); r.add_argument("--mem"); r.add_argument("--cpus")
@@ -743,6 +841,7 @@ def main():
     r.add_argument("--fetch", action="append"); r.add_argument("--keep", action="store_true")
     r.add_argument("--input", action="append", default=[], metavar="FILE:RELATIVE_PATH",
                    help="stage an exact artifact under job src after health admission (no directory scans)")
+    r.add_argument("--idempotent", action="store_true", help="permit bounded phone retry after confirmed drain/death")
     r.add_argument("cmd", nargs=argparse.REMAINDER)
     k = sub.add_parser("kill"); k.add_argument("node"); k.add_argument("job")
     h = sub.add_parser("health"); h.add_argument("--node"); h.add_argument("--strikes", type=int)
@@ -752,8 +851,6 @@ def main():
     u = sub.add_parser("update"); u.add_argument("node"); u.add_argument("--apply", action="store_true")
     t = sub.add_parser("toolchain"); t.add_argument("node"); t.add_argument("--check", action="store_true")
     t.add_argument("--port", type=int)
-    m = sub.add_parser("phone-mode"); m.add_argument("node")
-    m.add_argument("mode", nargs="?", choices=("light", "worker"))
     sub.add_parser("install-timer")
     argv = sys.argv[1:]
     nodes = registry()[1]
@@ -765,9 +862,9 @@ def main():
         args.node = resolve(nodes, args.node)
     if args.cmd_name == "run" and args.cmd and args.cmd[0] == "--":
         args.cmd = args.cmd[1:]
-    fn = {"nodes": cmd_nodes, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,
+    fn = {"nodes": cmd_nodes, "phone": cmd_phone, "run": cmd_run, "kill": cmd_kill, "health": cmd_health, "labels": cmd_labels,
           "enroll": cmd_enroll, "update": cmd_update, "toolchain": cmd_toolchain,
-          "phone-mode": cmd_phone_mode, "install-timer": cmd_install_timer}[args.cmd_name]
+          "install-timer": cmd_install_timer}[args.cmd_name]
     sys.exit(fn(args) or 0)
 
 
