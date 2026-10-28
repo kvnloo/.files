@@ -475,6 +475,16 @@ tolerate it land there.
 
 ## Health
 
+The timer runs `/usr/bin/python3 %h/.local/bin/fleet health`. Install the stamped
+`~/.local/bin/fleet` command with `scripts/install-host-storage.sh` before enabling
+the timer. The managed unit and `fleet install-timer` use the same command, not
+an interpreter or script inside a temporary worktree.
+
+The user-layer installer backs up and retires the known
+`fleet-health.service.d/50-admission-owner.conf` override by exact SHA-256.
+An edited override is not removed. Check `systemctl --user cat fleet-health.service`
+for remaining overrides before diagnosing a mismatch between source and live behavior.
+
 `scripts/fleet health` (a user timer on groot every 2 minutes, installed with
 `scripts/fleet install-timer`) probes every node with `fleet-node-probe` and
 judges it on groot:
