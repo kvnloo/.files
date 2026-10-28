@@ -55,3 +55,7 @@ def test_core_links_install_service_executable_aliases(tmp_path: Path) -> None:
         installed = home / ".local" / "bin" / name
         assert installed.is_symlink(), f"missing service executable alias: {installed}"
         assert installed.resolve().is_file()
+
+    # Core setup must not restore prompt injection removed by a harness reset.
+    continuity = home / ".omp" / "agent" / "extensions" / "z0-continuity"
+    assert not os.path.lexists(continuity)

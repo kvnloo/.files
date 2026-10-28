@@ -89,6 +89,10 @@ Non-interactive examples:
 | `nix-home` | Runs [`config/nix/bootstrap-cachyos.sh`](../config/nix/bootstrap-cachyos.sh) on CachyOS/Arch |
 | `audio-evolution` | Runs [`scripts/install-audio-evolution.sh`](../scripts/install-audio-evolution.sh) |
 
+`core-links` does not install the OMP `z0-continuity` prompt-injection extension.
+Rerunning core setup preserves a harness reset instead of silently restoring that
+hook. Existing explicitly installed extensions are left unchanged.
+
 State is stored outside git at:
 
 ```text
