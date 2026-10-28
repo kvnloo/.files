@@ -99,6 +99,24 @@ State is stored outside git at:
 ~/.local/state/dotfiles/onboard.json
 ```
 
+### Retired Hermes GFS observer
+
+`config/environment.d/hermes-home.conf` sets `HERMES_GFS_DISABLE=1` for
+processes inheriting the managed user environment. The chiefstaff
+`generation-free-skill-scorer` observer used a SHA-256-vector heuristic, ran
+before the model request, and discarded its decision without a measurement
+receipt. It did not supply the requested parallel task-quality/time comparison.
+The existing kill switch skips that hook; it does not delete its source,
+historical benchmarks, or standalone research APIs.
+
+An isolated-home check ran systemd's actual environment generator and Hermes's
+actual `PluginContext`/`PluginManager.invoke_hook`: the enabled observer performed
+zero resolver calls with the generated switch, while standalone scoring remained
+callable. This source change does not update the running user manager or restart
+any service. Apply through the normal reviewed host rollout; already-running or
+environment-isolated processes can retain their previous environment.
+
+
 ## Fresh machine checklist
 
 1. Clone the repo (HTTPS is fine for public use):
