@@ -100,6 +100,12 @@ Child OOM ranking is independent of placement. The classifier raises disposable
 descendants of every recognized harness to at least `oom_score_adj=800`, even
 when the harness remains in `session.slice` or a child has a caller-owned limit.
 It preserves harness scores, service MainPIDs, desktop branches and higher scores.
+An OMP root's direct daemon broker is a protected control process, not a
+language-server worker: it owns managed daemons and completion subscriptions.
+Recognition requires the `omp` executable and entry point, the exact
+`__omp_worker_daemon_broker` selector in argv position one, and a direct OMP root
+parent. Broker tools, subagent brokers and lookalike processes stay disposable.
+This source rule needs separate deployment and does not guarantee OOM survival.
 
 Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
 snapshot the complete tracked source closure and enable `host-drift.timer`.

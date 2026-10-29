@@ -68,9 +68,36 @@ class DecideTests(unittest.TestCase):
     def test_roots_their_renderers_and_everything_above_them_are_protected(self):
         protected, disposable, _ = policy.decide(session_tree(), MAINS)
         # Victims of 2026-10-25 20:30-20:44 at adj 800: Hermes TUI renderers, tern, omp.
-        self.assertEqual(protected, {10, 11, 12, 20, 21, 22, 23, 30, 40, 41, 50, 51, 52})
-        # Tools, MCP servers, the omp language-server broker and one-shot subagents.
-        self.assertEqual(disposable, {24, 25, 26, 27, 31, 32, 33, 42, 53})
+        self.assertEqual(protected, {10, 11, 12, 20, 21, 22, 23, 30, 40, 41, 42, 50, 51, 52})
+        # Tools, MCP servers and one-shot subagents remain disposable.
+        self.assertEqual(disposable, {24, 25, 26, 27, 31, 32, 33, 53})
+
+    def test_root_daemon_broker_is_protected_without_protecting_its_tools(self):
+        procs = session_tree()
+        procs[43] = P(43, 42, 'python3', ['python3', 'tool.py'], 'python3', procs[42].cgroup)
+        protected, disposable, _ = policy.decide(procs, MAINS)
+        self.assertIn(42, protected)
+        self.assertIn(43, disposable)
+        self.assertNotIn(43, protected)
+        self.assertIn(33, disposable)
+
+    def test_broker_protection_requires_real_binary_selector_and_root_parent(self):
+        variants = [
+            P(42, 40, 'omp daemon brok', ['/x/omp', '__omp_worker_daemon_broker'], 'bash'),
+            P(42, 40, 'omp daemon brok', ['/x/other', '__omp_worker_daemon_broker'], 'omp'),
+            P(42, 40, 'omp daemon brok', ['/x/omp', 'other', '__omp_worker_daemon_broker'], 'omp'),
+            P(42, 24, 'omp daemon brok', ['/x/omp', '__omp_worker_daemon_broker'], 'omp'),
+            P(42, 26, 'omp daemon brok', ['/x/omp', '__omp_worker_daemon_broker'], 'omp'),
+            P(42, 44, 'omp daemon brok', ['/x/omp', '__omp_worker_daemon_broker'], 'omp'),
+        ]
+        for broker in variants:
+            with self.subTest(parent=broker.ppid, executable=broker.exe, arguments=broker.args):
+                procs = session_tree()
+                procs[44] = P(44, 40, 'omp', ['/x/omp', '--print', 'bounded review'], 'omp')
+                procs[42] = broker
+                protected, disposable, _ = policy.decide(procs, MAINS)
+                self.assertNotIn(42, protected)
+                self.assertIn(42, disposable)
 
     def test_unrelated_work_and_desktop_programs_keep_their_score(self):
         protected, disposable, _ = policy.decide(session_tree(), MAINS)
@@ -151,6 +178,19 @@ class ApplyTests(unittest.TestCase):
         checked = set() if checked is None else checked
         with patch.object(policy, '_write_adj', fake.write):
             return policy.apply(procs, protected, disposable, lowered, checked, fake.root), lowered, checked
+
+    def test_root_broker_recovers_floor_while_its_tool_remains_killable(self):
+        tree = session_tree()
+        procs = {
+            40: tree[40]._replace(ppid=1),
+            42: tree[42],
+            43: P(43, 42, 'python3', ['python3', 'tool.py'], 'python3', tree[42].cgroup),
+        }
+        protected, disposable, _ = policy.decide(procs)
+        fake = FakeProc({40: 100, 42: 800, 43: 100})
+        self.addCleanup(fake.tmp.cleanup)
+        self.run_apply(fake, procs, protected, disposable)
+        self.assertEqual([fake.score(pid) for pid in (40, 42, 43)], [100, 100, 800])
 
     def test_protected_go_to_the_floor_disposable_up_never_the_other_way(self):
         procs = {pid: P(pid, 1, f'p{pid}') for pid in (2, 3, 4, 5, 6)}

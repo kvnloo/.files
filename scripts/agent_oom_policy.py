@@ -7,13 +7,13 @@ ROOT        A harness process (hermes, omp, claude, codex, pi, opencode) that is
             own (an interactive session another agent opened); the main process of a
             *hermes* user service (gateway, dashboard, embedded agent hosts); Tern's
             daemon, GUI and remote server, which host every pane.
-PROTECTED   Roots; a Hermes root's TUI renderer (node .../entry.js) and that renderer's
-            direct children (the tui_gateway agent backend); every process above any of
-            them up to the user manager (pane shell, terminal, Tern daemon, compositor --
-            a pane shell's exit SIGHUPs the session running in it); and the main process
-            of every unit holding one of them (its exit makes systemd stop the unit).
-DISPOSABLE  Everything else under a harness -- tools, MCP servers, language-server
-            brokers, subagent harnesses and their trees -- and anything else left in
+PROTECTED   Roots; an OMP root's direct daemon broker; a Hermes root's TUI renderer
+            (node .../entry.js) and that renderer's direct children (the tui_gateway
+            agent backend); every process above them up to the user manager (a pane
+            shell's exit SIGHUPs the session); and the main process of every unit
+            holding one of them (its exit makes systemd stop the unit).
+DISPOSABLE  Everything else under a harness -- tools, MCP servers, language servers,
+            subagent harnesses and their trees -- and anything else left in
             agent.slice. Desktop programs (browsers, terminals) keep their score.
 BATCH       Processes of background maintenance units (BATCH_UNIT). They are killed
             before interactive tools: tonight's hogs (ctx import, agentsview sync) sat
@@ -224,7 +224,13 @@ def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set, set]:
     backends = {c for f in front for c in children.get(f, ())}
     desktop = {pid for pid, p in procs.items()
                if p.comm in DESKTOP_CORE and p.comm in (p.exe, _entry(p))}
-    protected = roots | front | backends | desktop
+    # This broker owns daemon lifetime and completion RPCs, not just language servers.
+    # Protect only its root-owned process; managed tools still remain disposable.
+    brokers = {pid for pid, p in procs.items()
+               if p.ppid in roots and procs[p.ppid].comm == 'omp'
+               and p.exe == 'omp' and _entry(p) == 'omp'
+               and p.args[1:2] == ('__omp_worker_daemon_broker',)}
+    protected = roots | front | backends | desktop | brokers
     for pid in list(protected):
         protected.update(above(pid))
     for pid in list(protected):
