@@ -134,7 +134,16 @@ kc() { KUBECONFIG="${KUBECONFIG:-$HOME/.kube/k3s.yaml}" kubectl "$@"; }
 cmd_apply() {
   [ "$(id -u)" -ne 0 ] || die "run apply as your user, not root"
   kc apply -f "$CFG/manifests/"
+  phone_queue_node_setup
   kc -n kube-system rollout status ds/nvidia-device-plugin --timeout=180s || true
+}
+
+# phone-queue (docs/fleet/phone-queue.md): the phones extended resource on groot and the
+# auth Secret are cluster state, not manifests. Both steps are idempotent.
+phone_queue_node_setup() {
+  kc get node groot >/dev/null 2>&1 || return 0   # the phones live on groot only
+  "$REPO/services/phone-queue/advertise-phones"
+  "$REPO/services/phone-queue/issue-tokens" --ensure
 }
 
 cmd_kueue() {
@@ -191,6 +200,9 @@ cmd_check() {
     python3 -c 'import sys,yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "$f" || die "bad yaml: $f"
   done
   say "manifests parse"
+  python3 "$REPO/services/phone-queue/render-configmap" --check
+  python3 -m unittest discover -s "$REPO/services/phone-queue/tests" 2>&1 | tail -1 | grep -qx OK \
+    && say "phone-queue offline tests ok" || die "phone-queue offline tests failed"
   if kc version >/dev/null 2>&1; then kc apply --dry-run=server -f "$CFG/manifests/" >/dev/null && say "server dry-run ok"; fi
 }
 

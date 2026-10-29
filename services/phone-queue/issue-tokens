@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Create or extend Secret phones/phone-queue-auth (never committed to git).
+
+  services/phone-queue/issue-tokens --ensure        create it if missing (setup-k3s.sh apply runs this)
+  services/phone-queue/issue-tokens add NAME [--admin]   issue one more bearer token for principal NAME
+  services/phone-queue/issue-tokens revoke NAME     drop every token of principal NAME
+
+The Secret holds only sha256 digests of the bearer tokens (tokens.json) plus shim-key, the HMAC
+key for per-job model-shim tokens. Plain tokens are written once, 0600, to
+~/.config/phoneq/<name>.token on this host; `--ensure` also writes the default client token
+~/.config/phoneq/token (principal "agents") and ~/.config/phoneq/admin-token (principal "owner",
+admin: may cancel anyone's job). Copy ~/.config/phoneq/token to other hosts that submit jobs.
+The API rereads tokens.json when the Secret changes (kubelet sync, about a minute).
+"""
+import base64
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import sys
+from pathlib import Path
+
+NS, NAME = "phones", "phone-queue-auth"
+CONF = Path.home() / ".config/phoneq"
+ENV = {**os.environ, "KUBECONFIG": os.environ.get("KUBECONFIG", str(Path.home() / ".kube/k3s.yaml"))}
+
+
+def kc(*args, data=None):
+    return subprocess.run(["kubectl", *args], input=data, capture_output=True, text=True, env=ENV)
+
+
+def load():
+    p = kc("-n", NS, "get", "secret", NAME, "-o", "json")
+    if p.returncode != 0:
+        if "NotFound" in p.stderr:
+            return None
+        sys.exit(f"issue-tokens: {p.stderr.strip()}")
+    data = json.loads(p.stdout).get("data", {})
+    return {"tokens": json.loads(base64.b64decode(data.get("tokens.json", "e30=")) or b"{}"),
+            "shim-key": base64.b64decode(data["shim-key"]).decode() if "shim-key" in data else None}
+
+
+def save(state):
+    body = {"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+            "metadata": {"name": NAME, "namespace": NS, "labels": {"app": "phone-queue"}},
+            "stringData": {"tokens.json": json.dumps(state["tokens"], indent=1, sort_keys=True),
+                           "shim-key": state["shim-key"]}}
+    p = kc("apply", "-f", "-", data=json.dumps(body))
+    if p.returncode != 0:
+        sys.exit(f"issue-tokens: {p.stderr.strip()}")
+
+
+def write_private(path, text):
+    CONF.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text + "\n")
+    os.chmod(path, 0o600)
+
+
+def issue(state, principal, admin, path):
+    token = "pq_" + secrets.token_urlsafe(32)
+    state["tokens"][hashlib.sha256(token.encode()).hexdigest()] = {"principal": principal, "admin": admin}
+    write_private(path, token)
+    print(f"issued token for principal {principal!r}{' (admin)' if admin else ''} -> {path}")
+
+
+def main(argv):
+    state = load()
+    if argv[:1] == ["--ensure"]:
+        if state and state["tokens"] and state["shim-key"]:
+            print(f"secret {NS}/{NAME} present ({len(state['tokens'])} tokens); nothing to do")
+            return 0
+        state = state or {"tokens": {}, "shim-key": None}
+        state["shim-key"] = state["shim-key"] or secrets.token_hex(32)
+        issue(state, "agents", False, CONF / "token")
+        issue(state, "owner", True, CONF / "admin-token")
+        save(state)
+        return 0
+    if len(argv) >= 2 and argv[0] in ("add", "revoke"):
+        if state is None:
+            sys.exit("issue-tokens: run --ensure first")
+        name = argv[1]
+        if argv[0] == "add":
+            issue(state, name, "--admin" in argv, CONF / f"{name}.token")
+        else:
+            before = len(state["tokens"])
+            state["tokens"] = {k: v for k, v in state["tokens"].items() if v.get("principal") != name}
+            print(f"revoked {before - len(state['tokens'])} token(s) of {name!r}")
+        save(state)
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
