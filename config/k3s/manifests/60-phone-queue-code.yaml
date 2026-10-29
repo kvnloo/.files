@@ -214,7 +214,9 @@ data:
     <token>`; tokens are issued by services/phone-queue/issue-tokens into Secret phone-queue-auth
     (sha256 of each token -> principal). Cancel needs the job's principal AND submitter, or an
     admin token. Unauthenticated reads (Dash's read-only queue view) get devices and job metadata
-    but never job results (screen text, replies, transcripts paths).
+    but never job results (screen text, replies, transcripts paths) and never free-form errors:
+    an unauthenticated `error` is only an infrastructure/gate message from PUBLIC_ERROR or the
+    error_code.
     """
     import hashlib
     import http.server
@@ -266,6 +268,10 @@ data:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
         if "principal" not in cols:
             conn.execute("ALTER TABLE jobs ADD COLUMN principal TEXT")
+        if "gate_blocks" not in cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN gate_blocks INTEGER DEFAULT 0")
+        if "body_hash" not in cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN body_hash TEXT")
         return conn
 
 
@@ -332,10 +338,37 @@ data:
         if not full:
             out["result_redacted"] = True
         if r["error"]:
-            out["error"] = r["error"]
+            out["error"] = r["error"] if full else public_error(r)
         if r["info"]:
-            out["info"] = r["info"]
+            out["info"] = r["info"] if full else public_info(r["info"])
         return out
+
+
+    # Errors the service itself writes (gates, locks, pacing, infra, models): safe to show anyone.
+    # Anything else (fx agent output, pod log tails, exception text near screen data) needs a token.
+    PUBLIC_ERROR = re.compile(
+        r"^(gate closed — |gate s2[25]( \(under lock\))?: |infra: |model_unavailable: |"
+        r"ChatGPT shared quota pause|ChatGPT send budget|DeepSeek quota pause|"
+        r"/(home/kvn/)?tmp/s2[25]-ui\.lock busy|owner busy: |cancelled by |terminated by signal )")
+
+
+    def public_error(r):
+        err = r["error"] or ""
+        first = err.splitlines()[0][:300] if err else ""
+        if PUBLIC_ERROR.match(first):
+            return first
+        code = None
+        if r["result"]:
+            try:
+                code = json.loads(r["result"]).get("error_code")
+            except ValueError:
+                code = None
+        return f"{code or r['state']} (details need a token)"
+
+
+    def public_info(info):
+        return info if re.match(r"^(k8s Job created|adopted existing k8s Job|kueue: |admitted|running)", info) \
+            else "(details need a token)"
 
 
     # ------------------------------------------------------------------ validation
@@ -374,6 +407,9 @@ data:
             goal = body.get("goal")
             if not isinstance(goal, str) or not goal.strip() or len(goal) > 8000:
                 raise Bad("goal needs goal (1..8000 chars)")
+            attach = body.get("prompt")  # optional text the agent types by reference (from_job_prompt)
+            if attach is not None and (not isinstance(attach, str) or not attach or len(attach) > 20000):
+                raise Bad("goal prompt (attachment) must be a string (1..20000 chars)")
         if app is not None and app not in common.APPS and not re.fullmatch(r"[A-Za-z][\w]*(\.[\w]+)+", app):
             raise Bad("app must be chatgpt, deepseek or an Android package name")
         model = body.get("model") or common.DEFAULT_MODEL
@@ -386,7 +422,10 @@ data:
         if oracle is not None:
             if not isinstance(oracle, dict) or oracle.get("type", "tree_text") != "tree_text":
                 raise Bad("oracle.type must be tree_text")
-            for k in ("must_contain", "must_not_contain"):
+            unknown = set(oracle) - {"type", "must_contain", "must_not_contain", "final_must_contain", "package"}
+            if unknown:
+                raise Bad(f"unknown oracle keys: {sorted(unknown)}")
+            for k in ("must_contain", "must_not_contain", "final_must_contain"):
                 v = oracle.get(k, [])
                 if not isinstance(v, list) or not all(isinstance(s, str) and s for s in v):
                     raise Bad(f"oracle.{k} must be a list of non-empty strings")
@@ -404,23 +443,32 @@ data:
                 "idem": idem, "priority": priority, "reset": reset}
 
 
+    def body_hash(j):
+        """What makes two submits 'the same job' for idempotency (everything but the key itself)."""
+        return hashlib.sha256(json.dumps({k: v for k, v in j.items() if k != "idem"}, sort_keys=True).encode()).hexdigest()
+
+
     def submit(body, principal):
         j = validate(body)
         with DB_LOCK:
+            bh = body_hash(j)
             if j["idem"]:
                 hit = q("SELECT * FROM jobs WHERE submitter=? AND idem=?", (j["submitter"], j["idem"]))
                 if hit:
+                    if hit[0]["body_hash"] and hit[0]["body_hash"] != bh:
+                        return 409, {"error": "idempotency_key already used with a different job body",
+                                     "id": hit[0]["id"], "state": hit[0]["state"]}
                     return 200, {"id": hit[0]["id"], "state": hit[0]["state"], "idempotent_replay": True}
             jid = uuid.uuid4().hex[:12]
             spec = {k: v for k, v in j.items() if k != "idem"}
             # job.json first: the runner reads it, and the reconciler may pick the row up at once.
             common.write_json(common.job_dir(jid) / "job.json", {"id": jid, **spec, "idempotency_key": j["idem"]})
             q("""INSERT INTO jobs (id, submitter, idem, kind, device, app, prompt, goal, model, harness, max_steps,
-                 oracle, priority, reset, state, created_at, principal)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?, ?)""",
+                 oracle, priority, reset, state, created_at, principal, body_hash)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?, ?, ?)""",
               (jid, j["submitter"], j["idem"], j["kind"], j["device"], j["app"], j["prompt"], j["goal"], j["model"],
                j["harness"], j["max_steps"], json.dumps(j["oracle"]) if j["oracle"] else None, j["priority"],
-               j["reset"], common.now_iso(), principal))
+               j["reset"], common.now_iso(), principal, bh))
         WAKE.set()
         return 202, {"id": jid, "state": "queued"}
 
@@ -665,10 +713,14 @@ data:
             return
         state = res.get("state", "failed")
         if state == "blocked":
-            retry = r["attempts"] < MAX_ATTEMPTS
-            qlive("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL, "
+            # A closed gate (S25 off / owner busy / call) never fails a job: it waits until the gate
+            # opens or the submitter cancels. Every other block (UI lock, pacing, infra) counts.
+            gated = (res.get("error") or "").startswith("gate ")
+            counted = r["attempts"] - (r["gate_blocks"] or 0) - (1 if gated else 0)
+            retry = gated or counted < MAX_ATTEMPTS
+            qlive("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL, gate_blocks=gate_blocks+?, "
                   "finished_at=CASE WHEN ?='failed' THEN ? ELSE finished_at END WHERE id=?",
-                  ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S,
+                  ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S, 1 if gated else 0,
                    "blocked" if retry else "failed", common.now_iso(), r["id"]))
             return
         if state not in ("succeeded", "failed", "cancelled"):
@@ -1045,24 +1097,62 @@ data:
         return common.load_source("launch_queue", common.DRIVER / "tern-01/launch_queue.py")
 
 
-    def pace_slot(app, dev):
-        """ChatGPT: one account across both phones -> shared pause + pace.py budget (reserves a slot)."""
+    # pace.py decides and reserves in one step (it appends to pace.reserved on a grant). PEEK runs
+    # the very same pace.py with that one append turned into "would grant" (exit 0, nothing
+    # written), so the runner can wait for budget OUTSIDE the UI locks and reserve only once it
+    # holds them and the gate/owner checks passed: a blocked attempt never burns a send slot.
+    PACE_PEEK = r"""
+    import builtins, runpy, sys
+    _open = builtins.open
+    def _peek_open(f, mode="r", *a, **k):
+        if str(f).endswith("pace.reserved") and "a" in mode:
+            raise SystemExit(0)
+        return _open(f, mode, *a, **k)
+    builtins.open = _peek_open
+    sys.argv = [sys.argv[1]]
+    runpy.run_path(sys.argv[0], run_name="__main__")
+    """
+
+
+    def pace_check(app, peek=True):
+        """(granted, message) from pace.py; peek=True never reserves."""
+        pace = str(common.DRIVER / "bin/pace.py")
+        cmd = [sys.executable, "-c", PACE_PEEK, pace] if peek else [sys.executable, pace]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        return p.returncode == 0, (p.stdout.strip() or p.stderr.strip()[-200:] or "gap")
+
+
+    def pace_wait(app, dev):
+        """Before the locks: honour the pauses and wait (<= PACE_WAIT_S) until pace.py WOULD grant a
+        ChatGPT send slot, without reserving one. Returns ms waited."""
+        lq = launch_queue()
         if app != "chatgpt":
-            lq = launch_queue()
             if app == "deepseek" and lq.deepseek_quota_paused():
                 raise Blocked("DeepSeek quota pause present (/tmp/deepseek-quota-pause)")
             return 0
-        lq = launch_queue()
         t0 = time.time()
         while True:
             if lq.quota_paused():
                 raise Blocked("ChatGPT shared quota pause active (/tmp/chatgpt-quota-pause)")
-            p = subprocess.run([sys.executable, str(common.DRIVER / "bin/pace.py")], capture_output=True, text=True)
-            if p.returncode == 0:
+            ok, msg = pace_check(app, peek=True)
+            if ok:
                 return int((time.time() - t0) * 1000)
             if time.time() - t0 > PACE_WAIT_S:
-                raise Blocked("ChatGPT send budget held by pace.py: " + (p.stdout.strip() or "gap"))
+                raise Blocked("ChatGPT send budget held by pace.py: " + msg)
             time.sleep(5)
+
+
+    def pace_reserve(app):
+        """Under the locks, after the gate/owner re-check: reserve the slot for real (one try; a
+        loser of a race with another loop is blocked and retried, nothing reserved)."""
+        if app != "chatgpt":
+            return None
+        if launch_queue().quota_paused():
+            raise Blocked("ChatGPT shared quota pause active (/tmp/chatgpt-quota-pause)")
+        ok, msg = pace_check(app, peek=False)
+        if not ok:
+            raise Blocked("ChatGPT send budget taken while waiting for the phone: " + msg)
+        return common.now_iso()
 
 
     def ui_lock_paths(dev):
@@ -1169,8 +1259,9 @@ data:
                 # Completion and reply both come from the redacted hierarchy (u2 selectors can match
                 # off-screen nodes: a stale "Stop" kept a finished reply "running" for 240 s).
                 t0 = time.time()
-                pkg = root = reply = None
+                pkg = root = reply = prev = None
                 running, scrolled = True, False
+                stable = 0
                 while time.time() - t0 < REPLY_WAIT_S:
                     time.sleep(2)
                     pkg, root = phone_tools.safe_tree(d)
@@ -1183,6 +1274,13 @@ data:
                             break
                         d(description="Scroll to the bottom").click_exists(timeout=1)
                         scrolled = True
+                    # A reply taller than the screen pushes its Copy button below the fold: no Stop
+                    # button and the same reply text on 3 consecutive polls (~6 s) is finished too.
+                    stable = stable + 1 if (not running and reply and reply == prev) else 0
+                    prev = reply
+                    if stable >= 2:
+                        chat["finished_by"] = "stable_text"
+                        break
                 if root is not None:
                     (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
                 durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
@@ -1250,9 +1348,16 @@ data:
 
 
     def goal_prompt(job, dev):
-        goal = job["goal"] if job["kind"] == "goal" else (
-            f"Open the {job.get('app') or 'chatgpt'} app, start a NEW chat and send exactly this message: "
-            f"{job['prompt']!r}. Then wait for the reply and report it.")
+        if job["kind"] == "goal":
+            goal = job["goal"]
+        else:
+            goal = (f"Open the {job.get('app') or 'chatgpt'} app, start a NEW chat, put this job's message in "
+                    "the composer with set_text(from_job_prompt=true) (it types the message exactly; do not "
+                    "retype it), send it, wait for the reply to finish and report the reply text verbatim. "
+                    f"The message begins: {job['prompt'][:200]!r}")
+        if job["kind"] == "goal" and job.get("prompt"):
+            goal += ("\nThis job carries a text attachment; type it with set_text(from_job_prompt=true) "
+                     "wherever the goal says to enter it (never retype it).")
         phone = {"s22": "Samsung Galaxy S22+ (Android 16, One UI 8)", "s25": "Samsung Galaxy S25 Ultra (Android 17)"}[dev]
         return (f"Phone: {phone}. Goal: {goal}\n"
                 "Use only the mcp_phone_* tools. Observe first. When done, answer with the result.")
@@ -1355,18 +1460,32 @@ data:
 
 
     def oracle(job, d, result):
+        """Independent check on a fresh redacted hierarchy (never the agent's say-so).
+          must_contain      - substrings of the screen; for chat jobs, of the REPLY only (the screen
+                              also shows our own prompt bubble, which would pass trivially)
+          must_not_contain  - substrings that must appear nowhere on the screen or in the reply
+          final_must_contain- substrings the agent's/harvested final_output must contain (checks the
+                              reported VALUE, not just a label on screen)
+          package           - the foreground package at the end"""
         spec = job.get("oracle")
         if not spec:
             return None
         import phone_tools
         pkg, root = phone_tools.safe_tree(d)
         text = phone_tools.tree_text(root)
-        low = text.lower()
-        missing = [s for s in spec.get("must_contain") or [] if s.lower() not in low]
-        present = [s for s in spec.get("must_not_contain") or [] if s.lower() in low]
+        final = result.get("final_output") or ""
+        if job["kind"] == "chat":
+            reply = (result.get("chat") or {}).get("reply") or final
+            scope, scope_name = reply.lower(), "reply"
+        else:
+            scope, scope_name = text.lower(), "screen"
+        missing = [s for s in spec.get("must_contain") or [] if s.lower() not in scope]
+        present = [s for s in spec.get("must_not_contain") or [] if s.lower() in text.lower() or s.lower() in final.lower()]
+        final_missing = [s for s in spec.get("final_must_contain") or [] if s.lower() not in final.lower()]
         pkg_ok = not spec.get("package") or spec["package"] == pkg
-        ok = not missing and not present and pkg_ok
+        ok = not missing and not present and not final_missing and pkg_ok
         result["oracle"] = {"type": spec.get("type", "tree_text"), "package": pkg, "pass": ok, "missing": missing,
+                            "must_contain_scope": scope_name, "final_missing": final_missing,
                             "forbidden_present": present, "package_ok": pkg_ok, "tree_chars": len(text)}
         return ok
 
@@ -1422,14 +1541,17 @@ data:
             paced = paced_app(job)
             if paced:
                 # one ChatGPT account across both phones and every harness: script and fx chats
-                # alike take a pace.py send slot and honour the shared quota pauses
-                result["pace_wait_ms"] = pace_slot(paced, dev)
+                # alike need a pace.py send slot and honour the shared quota pauses. Wait for budget
+                # without reserving; reserve only under the locks once every check passed.
+                result["pace_wait_ms"] = pace_wait(paced, dev)
             lock, result["lock_wait_ms"] = take_lock(dev)
             reason = gate(dev)
             burst = driver()
             reason = reason or burst.owner_busy(serial, device=dev)
             if reason:
                 raise Blocked(f"gate {dev} (under lock): {reason}")
+            if paced:
+                result["pace_reserved_at"] = pace_reserve(paced)
             import phone_tools
             c0 = time.time()
             d = phone_tools.connect(serial)
@@ -1446,6 +1568,10 @@ data:
                 ok = run_fx(job, dev, serial, jdir, result)
                 if paced:
                     fx_chat_aftercare(paced, dev, d, job, result)
+                if ok and job["kind"] == "chat" and not (result.get("final_output") or "").strip():
+                    ok = False  # a chat succeeds only with a reply, whatever the harness
+                    result["error_code"] = "reply_not_harvested"
+                    result["error"] = "fx finished but reported no reply (do not resend)"
             verdict = oracle(job, d, result)
             if verdict is not None:
                 result["oracle_pass"] = verdict
@@ -1492,11 +1618,24 @@ data:
     settings, clipboard-read or shell verb, and none can be composed from these:
       - uiautomator2/adbutils install, uninstall, IME setup and send_keys are patched to raise
         (the overnight ds_burst rule); app_clear/app_uninstall too.
-      - taps on toggles/checkboxes and on install/uninstall/reset/erase/force-stop style labels
-        are refused; Settings is read-only (no checkable taps, no set_text there).
+      - every tap is judged by what RECEIVES it (the smallest clickable element under the point)
+        and that element's whole label (its subtree's text + content-desc), never by the index
+        row alone (Settings rows are text-less clickable layouts around a title TextView):
+          * anywhere: toggles/checkboxes/sliders, System UI (status bar, quick settings,
+            notifications) and labels matching DENY_LABEL (install, reset, power off, restart,
+            turn on/off, delete, pay, allow, ...) are refused;
+          * on settings screens (settings_context: Settings, Device care, System UI, DeX/desktop
+            mode panels) the guard is an allowlist: only navigation is allowed, i.e. "Navigate up"
+            / "Back" / "Search" chrome, or a list row that is not a button, has no button inside,
+            and whose title does not start with an action verb (SETTINGS_ACTION: "Start now",
+            "Connect wirelessly", "Download and install", "OK", "Done", ...). Any dialog on a
+            settings screen refuses every tap (use back). No set_text, no sideways swipes there.
+      - swipes whose path crosses a slider (SeekBar/Slider: brightness, volume, font size) are
+        refused everywhere.
       - launching installers/stores is refused.
       - every screen read goes through phone-screen-safe (redacted hierarchy; sensitive apps blank).
-    Typing is accessibility set_text only (no IME, no keyevents).
+    Typing is accessibility set_text only (no IME, no keyevents); set_text can type the job's own
+    prompt verbatim by reference (from_job_prompt) so a model never has to recopy long text.
 
     Run as `phone_tools.py mcp` for fx: a stdio MCP server (newline-delimited JSON-RPC).
     Requires PHONEQ_DEVICE / PHONEQ_SERIAL and that an ancestor process holds /tmp/<dev>-ui.lock.
@@ -1514,8 +1653,32 @@ data:
 
     DENY_LABEL = re.compile(
         r"\b(install|uninstall|update now|reset|erase|factory|wipe|force stop|clear (data|storage|cache)|"
-        r"delete account|remove account|sign out|log ?out|turn off|disable|deactivate|format|"
-        r"allow|grant|permit|enable)\b", re.I)
+        r"delete|remove|sign out|log ?out|turn (off|on)|disable|deactivate|format|"
+        r"allow|grant|permit|enable|power off|shut ?down|restart|reboot|start now|"
+        r"pay|buy|purchase|subscribe|upgrade|unlock|factory data)\b", re.I)
+    # Settings screens: a row/button whose title STARTS with one of these is an action, not navigation.
+    SETTINGS_ACTION = re.compile(
+        r"^\s*(start|stop|connect|disconnect|pair|unpair|forget|scan|restart|reboot|power|shut|turn|apply|"
+        r"reset|delete|remove|clear|erase|install|uninstall|update|download|upgrade|sync|back ?up|restore|"
+        r"transfer|optimi[sz]e|clean|fix|free up|save|done|ok|okay|yes|confirm|accept|agree|continue|allow|"
+        r"deny|block|unblock|enable|disable|activate|deactivate|add|set|change|use|switch|send|share|sign|"
+        r"log|pay|buy|subscribe|retry|try|check for|join|leave|register|end|close all|force|uninstall)\b", re.I)
+    # Rows that ACT when tapped although they look like plain rows: Build number (7 taps turn on
+    # Developer options), Google Play system update (starts a check/download), the rest start
+    # scans, resets or account flows on One UI.
+    SETTINGS_ROW_DENY = re.compile(
+        r"^\s*(build number|google play system update|software update|download and install|"
+        r"auto update|reset|general management|backup and restore|smart switch|find my mobile|"
+        r"developer options|samsung dex|dex|wireless dex|smart view|quick share|link to windows|"
+        r"nearby device scanning|safety and emergency|emergency sos|sim manager|mobile networks|"
+        r"wi-?fi calling|airplane mode|flight mode)\s*$", re.I)
+    NAV_OK = re.compile(r"^(navigate up|back|search|collapse|expand|more options|show more|see more)$", re.I)
+    SLIDER_CLASSES = ("SeekBar", "AbsSeekBar", "SeslSeekBar", "SeslAbsSeekBar", "Slider", "RangeSlider", "RatingBar")
+    BUTTON_CLASSES = ("Button", "ImageButton", "MaterialButton", "AppCompatButton", "FloatingActionButton",
+                      "ExtendedFloatingActionButton", "SeslButton")
+    DIALOG_IDS = ("android:id/button1", "android:id/button2", "android:id/button3", "android:id/alertTitle",
+                  "android:id/parentPanel", "android:id/buttonPanel")
+    DEX_MARKERS = re.compile(r"\b(samsung dex|dex for pc|desktop mode|connect wirelessly|wireless dex)\b", re.I)
     SETTINGS_PKGS = {"com.android.settings", "com.samsung.android.settings", "com.samsung.android.lool",
                      "com.sec.android.app.personalpage", "com.android.systemui"}
     NO_LAUNCH = {"com.android.vending", "com.sec.android.app.samsungapps", "com.google.android.packageinstaller",
@@ -1523,6 +1686,7 @@ data:
                  "com.termux", "com.samsung.android.knox.containercore"}
     PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
     MAX_LINES = 140
+    MAX_TEXT = 20000  # the API's prompt limit
     TOGGLE_CLASSES = ("Switch", "SwitchCompat", "SwitchMaterial", "CheckBox", "MaterialCheckBox", "ToggleButton",
                       "RadioButton", "CompoundButton", "CheckedTextView", "SeslSwitchBar")
 
@@ -1552,6 +1716,130 @@ data:
                     label = " ".join(v for v in ((m.get("text") or "").strip() for m in receiver.iter("node")) if v)
                     return (label or n.get("class") or "toggle")[:80]
         return None
+
+
+    def _cls(node):
+        return (node.get("class") or "").split(".")[-1]
+
+
+    def is_slider(node):
+        rid = (node.get("resource-id") or "").lower()
+        return _cls(node) in SLIDER_CLASSES or "seekbar" in rid or "slider" in rid
+
+
+    def receiver_at(root, x, y):
+        """The element a tap at (x, y) lands on: the smallest clickable node containing the point
+        (else the smallest node of any kind)."""
+        clickable, anyn = [], []
+        for n in root.iter("node"):
+            b = bounds(n)
+            if not b or not (b[0] <= x <= b[2] and b[1] <= y <= b[3]):
+                continue
+            area = (b[2] - b[0]) * (b[3] - b[1])
+            anyn.append((area, n))
+            if n.get("clickable") == "true" or n.get("long-clickable") == "true":
+                clickable.append((area, n))
+        pool = clickable or anyn
+        return min(pool, key=lambda t: t[0])[1] if pool else None
+
+
+    def label_of(node):
+        """Every text and content-desc in node's subtree, in order."""
+        out = []
+        for m in node.iter("node"):
+            for a in ("text", "content-desc"):
+                v = (m.get(a) or "").strip()
+                if v and v not in out:
+                    out.append(v)
+        return out
+
+
+    def title_of(node):
+        """A row's title: its resource-id .../title child, else its first text."""
+        for m in node.iter("node"):
+            if (m.get("resource-id") or "").endswith("/title") and (m.get("text") or "").strip():
+                return m.get("text").strip()
+        labels = label_of(node)
+        return labels[0] if labels else ""
+
+
+    def settings_context(pkg, root):
+        """True on screens where taps change the device: Settings and friends, and DeX/desktop
+        mode panels (served by the launcher / dexservice on One UI)."""
+        if pkg in SETTINGS_PKGS or "dexservice" in (pkg or "") or "desktopmode" in (pkg or ""):
+            return True
+        for n in root.iter("node"):
+            if (n.get("package") or "") in SETTINGS_PKGS - {"com.android.systemui"}:
+                return True
+            if DEX_MARKERS.search(n.get("text") or "") or DEX_MARKERS.search(n.get("content-desc") or ""):
+                return True
+        return False
+
+
+    def dialog_open(root):
+        return any((n.get("resource-id") or "") in DIALOG_IDS or "Dialog" in (n.get("class") or "")
+                   for n in root.iter("node"))
+
+
+    def check_tap(root, pkg, x, y):
+        """Raise Refused unless a tap at (x, y) on this (redacted) screen is safe; see module doc."""
+        hit = toggle_under(root, x, y)
+        if hit:
+            raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
+        rec = receiver_at(root, x, y)
+        if rec is None:
+            if settings_context(pkg, root):
+                raise Refused("refused: nothing identifiable under that point on a settings screen")
+            return
+        for n in rec.iter("node"):
+            if is_slider(n):
+                raise Refused("refused: that is a slider; the queue never changes settings")
+        if (rec.get("package") or "") == "com.android.systemui":
+            raise Refused("refused: System UI (status bar, quick settings, notifications) is off limits")
+        labels = label_of(rec)
+        label = " | ".join(labels)[:160]
+        # A control's own words: the whole label for a button/row (<= 4 strings); for a large
+        # clickable container (a chat-list row with a preview, a card) its title and own attributes,
+        # so message text that merely mentions "delete" does not block a tap on it.
+        own = labels if len(labels) <= 4 else [title_of(rec), rec.get("text") or "", rec.get("content-desc") or ""]
+        if DENY_LABEL.search(" ".join(own)) or DENY_LABEL.search(rec.get("resource-id") or ""):
+            raise Refused(f"refused: {label!r} looks like an install/reset/power/permission/purchase action")
+        if not settings_context(pkg, root):
+            return
+        # settings screens: navigation only
+        if dialog_open(root):
+            raise Refused("refused: a dialog is open on a settings screen; use back to dismiss it")
+        if any(NAV_OK.match(v) for v in labels) and len(labels) == 1:
+            return
+        if _cls(rec) in BUTTON_CLASSES or any(_cls(m) in BUTTON_CLASSES for m in rec.iter("node")):
+            raise Refused(f"refused: {label or _cls(rec)!r} is a button on a settings screen (navigation only)")
+        title = title_of(rec)
+        if not title:
+            raise Refused("refused: unlabelled control on a settings screen (navigation only)")
+        if SETTINGS_ACTION.match(title):
+            raise Refused(f"refused: {title!r} is an action on a settings screen (navigation only)")
+        if SETTINGS_ROW_DENY.match(title):
+            raise Refused(f"refused: {title!r} acts when tapped or leads to device-changing flows (not navigable)")
+
+
+    def check_swipe(root, pkg, direction, scale, size):
+        """Refuse a swipe whose finger path crosses a slider, and sideways swipes on settings screens."""
+        w, h = size
+        if direction in ("left", "right") and settings_context(pkg, root):
+            raise Refused("refused: sideways swipes are not allowed on settings screens (sliders)")
+        # uiautomator2 swipe_ext: the path runs through the screen centre, scale of the screen long.
+        if direction in ("up", "down"):
+            x0 = x1 = w / 2
+            y0, y1 = h * (0.5 - scale / 2), h * (0.5 + scale / 2)
+        else:
+            y0 = y1 = h / 2
+            x0, x1 = w * (0.5 - scale / 2), w * (0.5 + scale / 2)
+        for n in root.iter("node"):
+            if not is_slider(n):
+                continue
+            b = bounds(n)
+            if b and min(x0, x1) <= b[2] and max(x0, x1) >= b[0] and min(y0, y1) <= b[3] and max(y0, y1) >= b[1]:
+                raise Refused("refused: the swipe would drag a slider; the queue never changes settings")
 
 
     class Refused(RuntimeError):
@@ -1792,11 +2080,14 @@ data:
             label = " ".join(x for x in (row.get("text"), row.get("desc"), row.get("id")) if x)
             if "check" in row.get("flags", []) or row.get("cls") in TOGGLE_CLASSES:
                 raise Refused(f"refused: {label or 'that control'} is a toggle; the queue never changes settings")
-            hit = toggle_under(self.root, row["x"], row["y"]) if getattr(self, "root", None) is not None else None
-            if hit:
-                raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
+            if row.get("cls") in SLIDER_CLASSES:
+                raise Refused("refused: that is a slider; the queue never changes settings")
             if label and DENY_LABEL.search(label):
-                raise Refused(f"refused: {label!r} looks like an install/reset/permission/settings action")
+                raise Refused(f"refused: {label!r} looks like an install/reset/power/permission/purchase action")
+            root = getattr(self, "root", None)
+            if root is None:
+                raise Refused("observe first")
+            check_tap(root, self.pkg, row["x"], row["y"])
 
         def _settle(self, s=0.6):
             time.sleep(s)
@@ -1818,14 +2109,19 @@ data:
 
         def set_text(self, args):
             text = args.get("text")
-            if not isinstance(text, str) or len(text) > 4000:
-                raise Refused("set_text needs text (<= 4000 chars)")
+            if args.get("from_job_prompt"):
+                job = common.read_json(Path(os.environ["PHONEQ_JOB_DIR"]) / "job.json") if os.environ.get("PHONEQ_JOB_DIR") else None
+                text = (job or {}).get("prompt")
+                if not isinstance(text, str) or not text:
+                    raise Refused("this job has no prompt to type (from_job_prompt)")
+            if not isinstance(text, str) or len(text) > MAX_TEXT:
+                raise Refused(f"set_text needs text (<= {MAX_TEXT} chars) or from_job_prompt=true")
             target = {k: args[k] for k in ("index", "resource_id", "desc") if args.get(k) is not None}
             if args.get("field_text"):
                 target["text"] = args["field_text"]
-            self._refresh()
-            if self.pkg in SETTINGS_PKGS:
-                raise Refused("refused: typing inside Settings is not allowed")
+            root = self._refresh()
+            if settings_context(self.pkg, root):
+                raise Refused("refused: typing on settings screens is not allowed")
             if target:
                 row = self._find(target)
                 if "edit" not in row["flags"]:
@@ -1841,13 +2137,16 @@ data:
             self.actions += 1
             self._settle(0.4)
             got = el.get_text() if el.exists else None
-            return "text set" + ("" if got is None or got.strip()[:40] == text.strip()[:40] else " (field shows different text; observe)")
+            note = "" if got is None or got.strip()[:40] == text.strip()[:40] else " (field shows different text; observe)"
+            return f"text set ({len(text)} chars)" + note
 
         def swipe(self, args):
             direction = (args.get("direction") or "").lower()
             if direction not in ("up", "down", "left", "right"):
                 raise Refused("direction must be up, down, left or right (finger direction)")
             scale = min(max(float(args.get("scale", 0.6)), 0.2), 0.9)
+            root = self._refresh()
+            check_swipe(root, self.pkg, direction, scale, self.d.window_size())
             self.d.swipe_ext(direction, scale=scale)
             self.actions += 1
             self._settle(0.7)
@@ -1915,16 +2214,16 @@ data:
     TOOLS = [
         {"name": "observe", "description": "Read the current phone screen (redacted). Returns 'app: <package>' then one row per element: [index] 'label' class id=... flags @x,y. Call this first and after every action.",
          "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-        {"name": "tap", "description": "Tap one element. Prefer index from the latest observe; or give text, desc, resource_id, or x and y. Toggles and install/reset/permission buttons are refused.",
+        {"name": "tap", "description": "Tap one element. Prefer index from the latest observe; or give text, desc, resource_id, or x and y. Refused: toggles, sliders, System UI, install/reset/power/delete/permission/purchase buttons; on settings screens only navigation (rows, Navigate up) is allowed.",
          "inputSchema": {"type": "object", "properties": {
              "index": {"type": "integer"}, "text": {"type": "string"}, "desc": {"type": "string"},
              "resource_id": {"type": "string"}, "x": {"type": "integer"}, "y": {"type": "integer"}},
              "additionalProperties": False}},
-        {"name": "set_text", "description": "Replace the text of a text field (the focused one, or the one given by index/resource_id/desc/field_text). Not allowed in Settings.",
+        {"name": "set_text", "description": "Replace the text of a text field (the focused one, or the one given by index/resource_id/desc/field_text). Give text (<= 20000 chars), or from_job_prompt=true to type this job's prompt exactly as submitted (use it for long messages instead of copying them). Not allowed on settings screens.",
          "inputSchema": {"type": "object", "properties": {
-             "text": {"type": "string"}, "index": {"type": "integer"}, "resource_id": {"type": "string"},
-             "desc": {"type": "string"}, "field_text": {"type": "string"}},
-             "required": ["text"], "additionalProperties": False}},
+             "text": {"type": "string"}, "from_job_prompt": {"type": "boolean"}, "index": {"type": "integer"},
+             "resource_id": {"type": "string"}, "desc": {"type": "string"}, "field_text": {"type": "string"}},
+             "additionalProperties": False}},
         {"name": "swipe", "description": "Swipe the screen. direction is the finger direction: 'up' scrolls content down to reveal more below.",
          "inputSchema": {"type": "object", "properties": {
              "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},

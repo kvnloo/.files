@@ -19,7 +19,7 @@ Luna agent loop, and writes a receipt. Two agents never drive the same phone at 
 
 | Call | Result |
 |---|---|
-| `POST /v1/jobs` | `202 {id, state}`. A replay with the same `submitter`+`idempotency_key` returns `200` with the existing id. |
+| `POST /v1/jobs` | `202 {id, state}`. A replay with the same `submitter`+`idempotency_key` and the same body returns `200` with the existing id (`idempotent_replay: true`); the same key with a different body is `409`. |
 | `GET /v1/jobs/{id}` | `{id, kind, device, state, submitter, model, created_at, started_at, finished_at, result?, error?}` |
 | `GET /v1/jobs?submitter=&state=&device=&limit=` | `{jobs: [...]}`, newest first |
 | `POST /v1/jobs/{id}/cancel` | Body `{submitter}`. Only the job's own submitter (same token principal) or an admin token may cancel (`403` otherwise). Deletes the k8s Job; a running runner gets SIGTERM and still restores the foreground app and releases both locks. |
@@ -28,17 +28,20 @@ Luna agent loop, and writes a receipt. Two agents never drive the same phone at 
 
 Without a valid token, `GET` still works (Dash's read-only queue view uses it) but a job's
 `result` is cut to `{steps, oracle_pass, ms, cold_ms, error_code, device, attempt}` and the
-job carries `result_redacted: true`: no screen text, reply or transcript path.
+job carries `result_redacted: true`: no screen text, reply or transcript path. `error` is
+shown only when the service itself wrote it (gate, UI lock, pacing, infra, model,
+cancellation); anything else, such as fx agent output or a pod log tail, becomes
+`"<error_code> (details need a token)"`. `info` is likewise cut to Kueue/k8s status.
 
 **Job body:**
 
 ```
 {kind: "chat"|"goal", device: "s22"|"s25"|"any", submitter,
- app?, prompt? (chat), goal? (goal),
+ app?, prompt? (chat; optional typed-by-reference attachment for goal), goal? (goal),
  model? (default openai-codex/gpt-6-luna),
  harness? ("script" for chat, "fx" for goal),
  max_steps?, idempotency_key?, priority?, reset?: "home"|"none",
- oracle?: {type: "tree_text", must_contain?, must_not_contain?, package?}}
+ oracle?: {type: "tree_text", must_contain?, must_not_contain?, final_must_contain?, package?}}
 ```
 
 **States:** `queued` → `admitted` (Kueue reserved the phone) → `running` → `succeeded` |
@@ -46,15 +49,27 @@ job carries `result_redacted: true`: no screen text, reply or transcript path.
 
 **`blocked`** means one of these is closed: the phone's gate, the ChatGPT quota pause or
 pace budget, a UI lock, or infrastructure (`infra: ...`: the model shim or a model backend
-is down or groot lacks memory to load the model). The job is retried every 30 s and never
-fails because of a closed gate; after 50 attempts it fails with `error_code` `infra_unavailable`
-(infra) or the last gate reason.
+is down or groot lacks memory to load the model). The job is retried every 30 s.
+- A closed **gate** (S25 switch off, owner using the phone, a call) never fails a job: it
+  stays `blocked` until the gate opens or the submitter cancels it. This holds for gate
+  checks in the front door, in the pod and under the lock.
+- Every **other** block (UI lock busy 900 s, pace budget, infra) counts as an attempt; after
+  50 counted attempts the job is `failed` (`error_code` `infra_unavailable` for infra,
+  otherwise the last block reason in `error`).
+- Pacing never burns a ChatGPT send slot on a blocked attempt: the runner waits for budget
+  without reserving it (pace.py in peek mode), and reserves the slot only after it holds both
+  UI locks and the gate/owner re-check passed. Goals aimed at the ChatGPT/DeepSeek apps
+  reserve a slot too (they may send).
 
 **What `succeeded` means.**
-- goal / fx jobs: fx finished and the oracle (if any) passed.
+- goal / fx jobs: fx finished and the oracle (if any) passed. An fx **chat** also needs a
+  non-empty reply in `final_output` (else `reply_not_harvested`).
 - ChatGPT chat (script): the message was sent AND a finished reply was harvested; it is in
   `final_output` and `result.chat.reply`. Sent but no reply is `failed` with
-  `error_code` `reply_timeout` (still generating after 240 s) or `reply_not_harvested`;
+  `error_code` `reply_timeout` (still generating after 240 s) or `reply_not_harvested`.
+  A reply is finished when ChatGPT shows its Copy button, or (for a reply taller than the
+  screen, whose Copy button is below the fold) when no Stop button is shown and the reply
+  text is unchanged over three polls (~6 s; `chat.finished_by: stable_text`);
   `result.chat.send_status` stays `sent`, so do **not** resend.
 - DeepSeek chat (script): dispatch only (no harvester exists): sent and verified, with
   `chat.reply_harvested: false` and `final_output` saying so.
@@ -159,10 +174,15 @@ the queue but never evicts a running one.
     groot's `MemAvailable` covers its size plus 3 GiB (`PHONEQ_MEM_HEADROOM_MB`). A load on
     a memory-starved groot once triggered a global OOM. The llama router manages its own
     loads and is not guarded here.
-- **Oracle.** `tree_text` checks the case-insensitive substrings `must_contain` and
-  `must_not_contain`, and optionally the foreground `package`. It runs against a fresh
-  redacted hierarchy and matches both `text` and `content-desc`. It runs after the
-  harness, independent of the agent's own "done". If the oracle fails, the job is `failed`.
+- **Oracle.** `tree_text`, case-insensitive substrings, run after the harness on a fresh
+  redacted hierarchy (`text` and `content-desc`), independent of the agent's own "done":
+  - `must_contain`: on the screen for goals; for **chat** jobs, in the reply only (the screen
+    also shows our own prompt bubble, so a string from the prompt would pass trivially);
+  - `must_not_contain`: nowhere on the screen or in `final_output`;
+  - `final_must_contain`: in `final_output`, i.e. the value the agent reported (a label on
+    screen proves the page, not the answer; use both);
+  - `package`: the foreground package at the end.
+  If the oracle fails, the job is `failed`.
 
 ## Phone safety (enforced in code)
 
@@ -170,17 +190,31 @@ the queue but never evicts a running one.
   `_setup_ime`, `send_keys`, `app_install`/`app_uninstall`/`app_clear` and the IME setters
   are patched to raise in every process (the `ds_burst` rule). `launch` refuses stores,
   installers, shells and packages that are not installed.
-- **No setting is changed.**
-  - A tap is refused when the target is a checkable control (Switch, CheckBox, Toggle,
-    Radio and similar), when a toggle's bounds contain the tap point, or when the smallest
-    clickable element that receives the tap contains a toggle (a Settings row whose whole
-    surface flips its switch).
-  - Labels like install, reset, erase, allow, enable, disable and sign out are refused.
-  - `set_text` is refused inside Settings and SystemUI.
-  - There is no shell, settings or clipboard verb.
-  - Offline tests: `python3 -m unittest discover -s services/phone-queue/tests`.
+- **No setting is changed.** Every tap is judged by the element that receives it (the
+  smallest clickable node under the point) and that element's own label (its subtree's text
+  and content-desc; Settings rows are text-less clickable layouts around a title).
+  - Anywhere: toggles (Switch, CheckBox, Toggle, Radio and similar; a toggle under the point;
+    a toggle inside the receiving row), sliders (SeekBar/Slider), anything in System UI
+    (status bar, quick settings, notifications), and labels matching install, uninstall,
+    reset, erase, delete, remove, turn on/off, power off, restart, reboot, start now, allow,
+    grant, enable, disable, sign out, pay, buy, subscribe and similar are refused.
+  - **Settings screens are navigation only** (`phone_tools.settings_context`: Settings,
+    Device care, System UI, and DeX/desktop-mode panels, which One UI serves from the
+    launcher/dexservice). Allowed: the Navigate up / Back / Search chrome, and list rows that
+    are not buttons, contain no button and whose title does not start with an action verb
+    (start, connect, scan, download, update, apply, OK, done, add, set, ...). Refused: every
+    button (Apply, OK, Done, Start now, Connect, ...), action rows ("Connect wirelessly",
+    "Download and install"), unlabelled controls, and every tap while a dialog is open.
+  - Swipes whose finger path crosses a slider are refused everywhere; sideways swipes are
+    refused on settings screens.
+  - `set_text` is refused on settings screens.
+  - There is no shell, settings or clipboard verb. The system prompt is not a safety layer.
+  - Offline tests: `python3 -m unittest discover -s services/phone-queue/tests`
+    (`test_round3.SettingsTapGuard` replays the review's button list and real row shapes).
 - **Typing goes through accessibility only.** That means `set_text`, with no IME and no
-  keyevents.
+  keyevents, up to 20000 chars. `set_text(from_job_prompt=true)` types the job's own
+  `prompt` exactly as submitted (chat prompt, or a goal's optional `prompt` attachment), so
+  a model never recopies long frozen text.
 - **Every screen read is redacted.** The tool layer and the oracle use
   `phone-screen-safe`'s `redact_xml` / `sensitive_package`, so a sensitive app gives an
   empty tree. One narrow exception: in Settings, the value of a row titled Build number,

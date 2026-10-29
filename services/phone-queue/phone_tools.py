@@ -5,11 +5,24 @@ Verbs: observe, tap, set_text, swipe, back, home, launch, wait. There is no inst
 settings, clipboard-read or shell verb, and none can be composed from these:
   - uiautomator2/adbutils install, uninstall, IME setup and send_keys are patched to raise
     (the overnight ds_burst rule); app_clear/app_uninstall too.
-  - taps on toggles/checkboxes and on install/uninstall/reset/erase/force-stop style labels
-    are refused; Settings is read-only (no checkable taps, no set_text there).
+  - every tap is judged by what RECEIVES it (the smallest clickable element under the point)
+    and that element's whole label (its subtree's text + content-desc), never by the index
+    row alone (Settings rows are text-less clickable layouts around a title TextView):
+      * anywhere: toggles/checkboxes/sliders, System UI (status bar, quick settings,
+        notifications) and labels matching DENY_LABEL (install, reset, power off, restart,
+        turn on/off, delete, pay, allow, ...) are refused;
+      * on settings screens (settings_context: Settings, Device care, System UI, DeX/desktop
+        mode panels) the guard is an allowlist: only navigation is allowed, i.e. "Navigate up"
+        / "Back" / "Search" chrome, or a list row that is not a button, has no button inside,
+        and whose title does not start with an action verb (SETTINGS_ACTION: "Start now",
+        "Connect wirelessly", "Download and install", "OK", "Done", ...). Any dialog on a
+        settings screen refuses every tap (use back). No set_text, no sideways swipes there.
+  - swipes whose path crosses a slider (SeekBar/Slider: brightness, volume, font size) are
+    refused everywhere.
   - launching installers/stores is refused.
   - every screen read goes through phone-screen-safe (redacted hierarchy; sensitive apps blank).
-Typing is accessibility set_text only (no IME, no keyevents).
+Typing is accessibility set_text only (no IME, no keyevents); set_text can type the job's own
+prompt verbatim by reference (from_job_prompt) so a model never has to recopy long text.
 
 Run as `phone_tools.py mcp` for fx: a stdio MCP server (newline-delimited JSON-RPC).
 Requires PHONEQ_DEVICE / PHONEQ_SERIAL and that an ancestor process holds /tmp/<dev>-ui.lock.
@@ -27,8 +40,32 @@ import common  # noqa: E402
 
 DENY_LABEL = re.compile(
     r"\b(install|uninstall|update now|reset|erase|factory|wipe|force stop|clear (data|storage|cache)|"
-    r"delete account|remove account|sign out|log ?out|turn off|disable|deactivate|format|"
-    r"allow|grant|permit|enable)\b", re.I)
+    r"delete|remove|sign out|log ?out|turn (off|on)|disable|deactivate|format|"
+    r"allow|grant|permit|enable|power off|shut ?down|restart|reboot|start now|"
+    r"pay|buy|purchase|subscribe|upgrade|unlock|factory data)\b", re.I)
+# Settings screens: a row/button whose title STARTS with one of these is an action, not navigation.
+SETTINGS_ACTION = re.compile(
+    r"^\s*(start|stop|connect|disconnect|pair|unpair|forget|scan|restart|reboot|power|shut|turn|apply|"
+    r"reset|delete|remove|clear|erase|install|uninstall|update|download|upgrade|sync|back ?up|restore|"
+    r"transfer|optimi[sz]e|clean|fix|free up|save|done|ok|okay|yes|confirm|accept|agree|continue|allow|"
+    r"deny|block|unblock|enable|disable|activate|deactivate|add|set|change|use|switch|send|share|sign|"
+    r"log|pay|buy|subscribe|retry|try|check for|join|leave|register|end|close all|force|uninstall)\b", re.I)
+# Rows that ACT when tapped although they look like plain rows: Build number (7 taps turn on
+# Developer options), Google Play system update (starts a check/download), the rest start
+# scans, resets or account flows on One UI.
+SETTINGS_ROW_DENY = re.compile(
+    r"^\s*(build number|google play system update|software update|download and install|"
+    r"auto update|reset|general management|backup and restore|smart switch|find my mobile|"
+    r"developer options|samsung dex|dex|wireless dex|smart view|quick share|link to windows|"
+    r"nearby device scanning|safety and emergency|emergency sos|sim manager|mobile networks|"
+    r"wi-?fi calling|airplane mode|flight mode)\s*$", re.I)
+NAV_OK = re.compile(r"^(navigate up|back|search|collapse|expand|more options|show more|see more)$", re.I)
+SLIDER_CLASSES = ("SeekBar", "AbsSeekBar", "SeslSeekBar", "SeslAbsSeekBar", "Slider", "RangeSlider", "RatingBar")
+BUTTON_CLASSES = ("Button", "ImageButton", "MaterialButton", "AppCompatButton", "FloatingActionButton",
+                  "ExtendedFloatingActionButton", "SeslButton")
+DIALOG_IDS = ("android:id/button1", "android:id/button2", "android:id/button3", "android:id/alertTitle",
+              "android:id/parentPanel", "android:id/buttonPanel")
+DEX_MARKERS = re.compile(r"\b(samsung dex|dex for pc|desktop mode|connect wirelessly|wireless dex)\b", re.I)
 SETTINGS_PKGS = {"com.android.settings", "com.samsung.android.settings", "com.samsung.android.lool",
                  "com.sec.android.app.personalpage", "com.android.systemui"}
 NO_LAUNCH = {"com.android.vending", "com.sec.android.app.samsungapps", "com.google.android.packageinstaller",
@@ -36,6 +73,7 @@ NO_LAUNCH = {"com.android.vending", "com.sec.android.app.samsungapps", "com.goog
              "com.termux", "com.samsung.android.knox.containercore"}
 PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
 MAX_LINES = 140
+MAX_TEXT = 20000  # the API's prompt limit
 TOGGLE_CLASSES = ("Switch", "SwitchCompat", "SwitchMaterial", "CheckBox", "MaterialCheckBox", "ToggleButton",
                   "RadioButton", "CompoundButton", "CheckedTextView", "SeslSwitchBar")
 
@@ -65,6 +103,130 @@ def toggle_under(root, x, y):
                 label = " ".join(v for v in ((m.get("text") or "").strip() for m in receiver.iter("node")) if v)
                 return (label or n.get("class") or "toggle")[:80]
     return None
+
+
+def _cls(node):
+    return (node.get("class") or "").split(".")[-1]
+
+
+def is_slider(node):
+    rid = (node.get("resource-id") or "").lower()
+    return _cls(node) in SLIDER_CLASSES or "seekbar" in rid or "slider" in rid
+
+
+def receiver_at(root, x, y):
+    """The element a tap at (x, y) lands on: the smallest clickable node containing the point
+    (else the smallest node of any kind)."""
+    clickable, anyn = [], []
+    for n in root.iter("node"):
+        b = bounds(n)
+        if not b or not (b[0] <= x <= b[2] and b[1] <= y <= b[3]):
+            continue
+        area = (b[2] - b[0]) * (b[3] - b[1])
+        anyn.append((area, n))
+        if n.get("clickable") == "true" or n.get("long-clickable") == "true":
+            clickable.append((area, n))
+    pool = clickable or anyn
+    return min(pool, key=lambda t: t[0])[1] if pool else None
+
+
+def label_of(node):
+    """Every text and content-desc in node's subtree, in order."""
+    out = []
+    for m in node.iter("node"):
+        for a in ("text", "content-desc"):
+            v = (m.get(a) or "").strip()
+            if v and v not in out:
+                out.append(v)
+    return out
+
+
+def title_of(node):
+    """A row's title: its resource-id .../title child, else its first text."""
+    for m in node.iter("node"):
+        if (m.get("resource-id") or "").endswith("/title") and (m.get("text") or "").strip():
+            return m.get("text").strip()
+    labels = label_of(node)
+    return labels[0] if labels else ""
+
+
+def settings_context(pkg, root):
+    """True on screens where taps change the device: Settings and friends, and DeX/desktop
+    mode panels (served by the launcher / dexservice on One UI)."""
+    if pkg in SETTINGS_PKGS or "dexservice" in (pkg or "") or "desktopmode" in (pkg or ""):
+        return True
+    for n in root.iter("node"):
+        if (n.get("package") or "") in SETTINGS_PKGS - {"com.android.systemui"}:
+            return True
+        if DEX_MARKERS.search(n.get("text") or "") or DEX_MARKERS.search(n.get("content-desc") or ""):
+            return True
+    return False
+
+
+def dialog_open(root):
+    return any((n.get("resource-id") or "") in DIALOG_IDS or "Dialog" in (n.get("class") or "")
+               for n in root.iter("node"))
+
+
+def check_tap(root, pkg, x, y):
+    """Raise Refused unless a tap at (x, y) on this (redacted) screen is safe; see module doc."""
+    hit = toggle_under(root, x, y)
+    if hit:
+        raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
+    rec = receiver_at(root, x, y)
+    if rec is None:
+        if settings_context(pkg, root):
+            raise Refused("refused: nothing identifiable under that point on a settings screen")
+        return
+    for n in rec.iter("node"):
+        if is_slider(n):
+            raise Refused("refused: that is a slider; the queue never changes settings")
+    if (rec.get("package") or "") == "com.android.systemui":
+        raise Refused("refused: System UI (status bar, quick settings, notifications) is off limits")
+    labels = label_of(rec)
+    label = " | ".join(labels)[:160]
+    # A control's own words: the whole label for a button/row (<= 4 strings); for a large
+    # clickable container (a chat-list row with a preview, a card) its title and own attributes,
+    # so message text that merely mentions "delete" does not block a tap on it.
+    own = labels if len(labels) <= 4 else [title_of(rec), rec.get("text") or "", rec.get("content-desc") or ""]
+    if DENY_LABEL.search(" ".join(own)) or DENY_LABEL.search(rec.get("resource-id") or ""):
+        raise Refused(f"refused: {label!r} looks like an install/reset/power/permission/purchase action")
+    if not settings_context(pkg, root):
+        return
+    # settings screens: navigation only
+    if dialog_open(root):
+        raise Refused("refused: a dialog is open on a settings screen; use back to dismiss it")
+    if any(NAV_OK.match(v) for v in labels) and len(labels) == 1:
+        return
+    if _cls(rec) in BUTTON_CLASSES or any(_cls(m) in BUTTON_CLASSES for m in rec.iter("node")):
+        raise Refused(f"refused: {label or _cls(rec)!r} is a button on a settings screen (navigation only)")
+    title = title_of(rec)
+    if not title:
+        raise Refused("refused: unlabelled control on a settings screen (navigation only)")
+    if SETTINGS_ACTION.match(title):
+        raise Refused(f"refused: {title!r} is an action on a settings screen (navigation only)")
+    if SETTINGS_ROW_DENY.match(title):
+        raise Refused(f"refused: {title!r} acts when tapped or leads to device-changing flows (not navigable)")
+
+
+def check_swipe(root, pkg, direction, scale, size):
+    """Refuse a swipe whose finger path crosses a slider, and sideways swipes on settings screens."""
+    w, h = size
+    if direction in ("left", "right") and settings_context(pkg, root):
+        raise Refused("refused: sideways swipes are not allowed on settings screens (sliders)")
+    # uiautomator2 swipe_ext: the path runs through the screen centre, scale of the screen long.
+    if direction in ("up", "down"):
+        x0 = x1 = w / 2
+        y0, y1 = h * (0.5 - scale / 2), h * (0.5 + scale / 2)
+    else:
+        y0 = y1 = h / 2
+        x0, x1 = w * (0.5 - scale / 2), w * (0.5 + scale / 2)
+    for n in root.iter("node"):
+        if not is_slider(n):
+            continue
+        b = bounds(n)
+        if b and min(x0, x1) <= b[2] and max(x0, x1) >= b[0] and min(y0, y1) <= b[3] and max(y0, y1) >= b[1]:
+            raise Refused("refused: the swipe would drag a slider; the queue never changes settings")
 
 
 class Refused(RuntimeError):
@@ -305,11 +467,14 @@ class Phone:
         label = " ".join(x for x in (row.get("text"), row.get("desc"), row.get("id")) if x)
         if "check" in row.get("flags", []) or row.get("cls") in TOGGLE_CLASSES:
             raise Refused(f"refused: {label or 'that control'} is a toggle; the queue never changes settings")
-        hit = toggle_under(self.root, row["x"], row["y"]) if getattr(self, "root", None) is not None else None
-        if hit:
-            raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
+        if row.get("cls") in SLIDER_CLASSES:
+            raise Refused("refused: that is a slider; the queue never changes settings")
         if label and DENY_LABEL.search(label):
-            raise Refused(f"refused: {label!r} looks like an install/reset/permission/settings action")
+            raise Refused(f"refused: {label!r} looks like an install/reset/power/permission/purchase action")
+        root = getattr(self, "root", None)
+        if root is None:
+            raise Refused("observe first")
+        check_tap(root, self.pkg, row["x"], row["y"])
 
     def _settle(self, s=0.6):
         time.sleep(s)
@@ -331,14 +496,19 @@ class Phone:
 
     def set_text(self, args):
         text = args.get("text")
-        if not isinstance(text, str) or len(text) > 4000:
-            raise Refused("set_text needs text (<= 4000 chars)")
+        if args.get("from_job_prompt"):
+            job = common.read_json(Path(os.environ["PHONEQ_JOB_DIR"]) / "job.json") if os.environ.get("PHONEQ_JOB_DIR") else None
+            text = (job or {}).get("prompt")
+            if not isinstance(text, str) or not text:
+                raise Refused("this job has no prompt to type (from_job_prompt)")
+        if not isinstance(text, str) or len(text) > MAX_TEXT:
+            raise Refused(f"set_text needs text (<= {MAX_TEXT} chars) or from_job_prompt=true")
         target = {k: args[k] for k in ("index", "resource_id", "desc") if args.get(k) is not None}
         if args.get("field_text"):
             target["text"] = args["field_text"]
-        self._refresh()
-        if self.pkg in SETTINGS_PKGS:
-            raise Refused("refused: typing inside Settings is not allowed")
+        root = self._refresh()
+        if settings_context(self.pkg, root):
+            raise Refused("refused: typing on settings screens is not allowed")
         if target:
             row = self._find(target)
             if "edit" not in row["flags"]:
@@ -354,13 +524,16 @@ class Phone:
         self.actions += 1
         self._settle(0.4)
         got = el.get_text() if el.exists else None
-        return "text set" + ("" if got is None or got.strip()[:40] == text.strip()[:40] else " (field shows different text; observe)")
+        note = "" if got is None or got.strip()[:40] == text.strip()[:40] else " (field shows different text; observe)"
+        return f"text set ({len(text)} chars)" + note
 
     def swipe(self, args):
         direction = (args.get("direction") or "").lower()
         if direction not in ("up", "down", "left", "right"):
             raise Refused("direction must be up, down, left or right (finger direction)")
         scale = min(max(float(args.get("scale", 0.6)), 0.2), 0.9)
+        root = self._refresh()
+        check_swipe(root, self.pkg, direction, scale, self.d.window_size())
         self.d.swipe_ext(direction, scale=scale)
         self.actions += 1
         self._settle(0.7)
@@ -428,16 +601,16 @@ def record_agent_open(device, serial, pkg):
 TOOLS = [
     {"name": "observe", "description": "Read the current phone screen (redacted). Returns 'app: <package>' then one row per element: [index] 'label' class id=... flags @x,y. Call this first and after every action.",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-    {"name": "tap", "description": "Tap one element. Prefer index from the latest observe; or give text, desc, resource_id, or x and y. Toggles and install/reset/permission buttons are refused.",
+    {"name": "tap", "description": "Tap one element. Prefer index from the latest observe; or give text, desc, resource_id, or x and y. Refused: toggles, sliders, System UI, install/reset/power/delete/permission/purchase buttons; on settings screens only navigation (rows, Navigate up) is allowed.",
      "inputSchema": {"type": "object", "properties": {
          "index": {"type": "integer"}, "text": {"type": "string"}, "desc": {"type": "string"},
          "resource_id": {"type": "string"}, "x": {"type": "integer"}, "y": {"type": "integer"}},
          "additionalProperties": False}},
-    {"name": "set_text", "description": "Replace the text of a text field (the focused one, or the one given by index/resource_id/desc/field_text). Not allowed in Settings.",
+    {"name": "set_text", "description": "Replace the text of a text field (the focused one, or the one given by index/resource_id/desc/field_text). Give text (<= 20000 chars), or from_job_prompt=true to type this job's prompt exactly as submitted (use it for long messages instead of copying them). Not allowed on settings screens.",
      "inputSchema": {"type": "object", "properties": {
-         "text": {"type": "string"}, "index": {"type": "integer"}, "resource_id": {"type": "string"},
-         "desc": {"type": "string"}, "field_text": {"type": "string"}},
-         "required": ["text"], "additionalProperties": False}},
+         "text": {"type": "string"}, "from_job_prompt": {"type": "boolean"}, "index": {"type": "integer"},
+         "resource_id": {"type": "string"}, "desc": {"type": "string"}, "field_text": {"type": "string"}},
+         "additionalProperties": False}},
     {"name": "swipe", "description": "Swipe the screen. direction is the finger direction: 'up' scrolls content down to reveal more below.",
      "inputSchema": {"type": "object", "properties": {
          "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},

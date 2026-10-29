@@ -14,7 +14,9 @@ Auth (docs/fleet/phone-queue.md#auth): writes (submit, cancel) need `Authorizati
 <token>`; tokens are issued by services/phone-queue/issue-tokens into Secret phone-queue-auth
 (sha256 of each token -> principal). Cancel needs the job's principal AND submitter, or an
 admin token. Unauthenticated reads (Dash's read-only queue view) get devices and job metadata
-but never job results (screen text, replies, transcripts paths).
+but never job results (screen text, replies, transcripts paths) and never free-form errors:
+an unauthenticated `error` is only an infrastructure/gate message from PUBLIC_ERROR or the
+error_code.
 """
 import hashlib
 import http.server
@@ -66,6 +68,10 @@ def db():
     cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
     if "principal" not in cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN principal TEXT")
+    if "gate_blocks" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN gate_blocks INTEGER DEFAULT 0")
+    if "body_hash" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN body_hash TEXT")
     return conn
 
 
@@ -132,10 +138,37 @@ def row_to_job(r, full=True):
     if not full:
         out["result_redacted"] = True
     if r["error"]:
-        out["error"] = r["error"]
+        out["error"] = r["error"] if full else public_error(r)
     if r["info"]:
-        out["info"] = r["info"]
+        out["info"] = r["info"] if full else public_info(r["info"])
     return out
+
+
+# Errors the service itself writes (gates, locks, pacing, infra, models): safe to show anyone.
+# Anything else (fx agent output, pod log tails, exception text near screen data) needs a token.
+PUBLIC_ERROR = re.compile(
+    r"^(gate closed — |gate s2[25]( \(under lock\))?: |infra: |model_unavailable: |"
+    r"ChatGPT shared quota pause|ChatGPT send budget|DeepSeek quota pause|"
+    r"/(home/kvn/)?tmp/s2[25]-ui\.lock busy|owner busy: |cancelled by |terminated by signal )")
+
+
+def public_error(r):
+    err = r["error"] or ""
+    first = err.splitlines()[0][:300] if err else ""
+    if PUBLIC_ERROR.match(first):
+        return first
+    code = None
+    if r["result"]:
+        try:
+            code = json.loads(r["result"]).get("error_code")
+        except ValueError:
+            code = None
+    return f"{code or r['state']} (details need a token)"
+
+
+def public_info(info):
+    return info if re.match(r"^(k8s Job created|adopted existing k8s Job|kueue: |admitted|running)", info) \
+        else "(details need a token)"
 
 
 # ------------------------------------------------------------------ validation
@@ -174,6 +207,9 @@ def validate(body):
         goal = body.get("goal")
         if not isinstance(goal, str) or not goal.strip() or len(goal) > 8000:
             raise Bad("goal needs goal (1..8000 chars)")
+        attach = body.get("prompt")  # optional text the agent types by reference (from_job_prompt)
+        if attach is not None and (not isinstance(attach, str) or not attach or len(attach) > 20000):
+            raise Bad("goal prompt (attachment) must be a string (1..20000 chars)")
     if app is not None and app not in common.APPS and not re.fullmatch(r"[A-Za-z][\w]*(\.[\w]+)+", app):
         raise Bad("app must be chatgpt, deepseek or an Android package name")
     model = body.get("model") or common.DEFAULT_MODEL
@@ -186,7 +222,10 @@ def validate(body):
     if oracle is not None:
         if not isinstance(oracle, dict) or oracle.get("type", "tree_text") != "tree_text":
             raise Bad("oracle.type must be tree_text")
-        for k in ("must_contain", "must_not_contain"):
+        unknown = set(oracle) - {"type", "must_contain", "must_not_contain", "final_must_contain", "package"}
+        if unknown:
+            raise Bad(f"unknown oracle keys: {sorted(unknown)}")
+        for k in ("must_contain", "must_not_contain", "final_must_contain"):
             v = oracle.get(k, [])
             if not isinstance(v, list) or not all(isinstance(s, str) and s for s in v):
                 raise Bad(f"oracle.{k} must be a list of non-empty strings")
@@ -204,23 +243,32 @@ def validate(body):
             "idem": idem, "priority": priority, "reset": reset}
 
 
+def body_hash(j):
+    """What makes two submits 'the same job' for idempotency (everything but the key itself)."""
+    return hashlib.sha256(json.dumps({k: v for k, v in j.items() if k != "idem"}, sort_keys=True).encode()).hexdigest()
+
+
 def submit(body, principal):
     j = validate(body)
     with DB_LOCK:
+        bh = body_hash(j)
         if j["idem"]:
             hit = q("SELECT * FROM jobs WHERE submitter=? AND idem=?", (j["submitter"], j["idem"]))
             if hit:
+                if hit[0]["body_hash"] and hit[0]["body_hash"] != bh:
+                    return 409, {"error": "idempotency_key already used with a different job body",
+                                 "id": hit[0]["id"], "state": hit[0]["state"]}
                 return 200, {"id": hit[0]["id"], "state": hit[0]["state"], "idempotent_replay": True}
         jid = uuid.uuid4().hex[:12]
         spec = {k: v for k, v in j.items() if k != "idem"}
         # job.json first: the runner reads it, and the reconciler may pick the row up at once.
         common.write_json(common.job_dir(jid) / "job.json", {"id": jid, **spec, "idempotency_key": j["idem"]})
         q("""INSERT INTO jobs (id, submitter, idem, kind, device, app, prompt, goal, model, harness, max_steps,
-             oracle, priority, reset, state, created_at, principal)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?, ?)""",
+             oracle, priority, reset, state, created_at, principal, body_hash)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?, ?, ?)""",
           (jid, j["submitter"], j["idem"], j["kind"], j["device"], j["app"], j["prompt"], j["goal"], j["model"],
            j["harness"], j["max_steps"], json.dumps(j["oracle"]) if j["oracle"] else None, j["priority"],
-           j["reset"], common.now_iso(), principal))
+           j["reset"], common.now_iso(), principal, bh))
     WAKE.set()
     return 202, {"id": jid, "state": "queued"}
 
@@ -465,10 +513,14 @@ def finish_from_result(r, job_obj, pod):
         return
     state = res.get("state", "failed")
     if state == "blocked":
-        retry = r["attempts"] < MAX_ATTEMPTS
-        qlive("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL, "
+        # A closed gate (S25 off / owner busy / call) never fails a job: it waits until the gate
+        # opens or the submitter cancels. Every other block (UI lock, pacing, infra) counts.
+        gated = (res.get("error") or "").startswith("gate ")
+        counted = r["attempts"] - (r["gate_blocks"] or 0) - (1 if gated else 0)
+        retry = gated or counted < MAX_ATTEMPTS
+        qlive("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL, gate_blocks=gate_blocks+?, "
               "finished_at=CASE WHEN ?='failed' THEN ? ELSE finished_at END WHERE id=?",
-              ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S,
+              ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S, 1 if gated else 0,
                "blocked" if retry else "failed", common.now_iso(), r["id"]))
         return
     if state not in ("succeeded", "failed", "cancelled"):

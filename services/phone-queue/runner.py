@@ -149,24 +149,62 @@ def launch_queue():
     return common.load_source("launch_queue", common.DRIVER / "tern-01/launch_queue.py")
 
 
-def pace_slot(app, dev):
-    """ChatGPT: one account across both phones -> shared pause + pace.py budget (reserves a slot)."""
+# pace.py decides and reserves in one step (it appends to pace.reserved on a grant). PEEK runs
+# the very same pace.py with that one append turned into "would grant" (exit 0, nothing
+# written), so the runner can wait for budget OUTSIDE the UI locks and reserve only once it
+# holds them and the gate/owner checks passed: a blocked attempt never burns a send slot.
+PACE_PEEK = r"""
+import builtins, runpy, sys
+_open = builtins.open
+def _peek_open(f, mode="r", *a, **k):
+    if str(f).endswith("pace.reserved") and "a" in mode:
+        raise SystemExit(0)
+    return _open(f, mode, *a, **k)
+builtins.open = _peek_open
+sys.argv = [sys.argv[1]]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+
+
+def pace_check(app, peek=True):
+    """(granted, message) from pace.py; peek=True never reserves."""
+    pace = str(common.DRIVER / "bin/pace.py")
+    cmd = [sys.executable, "-c", PACE_PEEK, pace] if peek else [sys.executable, pace]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    return p.returncode == 0, (p.stdout.strip() or p.stderr.strip()[-200:] or "gap")
+
+
+def pace_wait(app, dev):
+    """Before the locks: honour the pauses and wait (<= PACE_WAIT_S) until pace.py WOULD grant a
+    ChatGPT send slot, without reserving one. Returns ms waited."""
+    lq = launch_queue()
     if app != "chatgpt":
-        lq = launch_queue()
         if app == "deepseek" and lq.deepseek_quota_paused():
             raise Blocked("DeepSeek quota pause present (/tmp/deepseek-quota-pause)")
         return 0
-    lq = launch_queue()
     t0 = time.time()
     while True:
         if lq.quota_paused():
             raise Blocked("ChatGPT shared quota pause active (/tmp/chatgpt-quota-pause)")
-        p = subprocess.run([sys.executable, str(common.DRIVER / "bin/pace.py")], capture_output=True, text=True)
-        if p.returncode == 0:
+        ok, msg = pace_check(app, peek=True)
+        if ok:
             return int((time.time() - t0) * 1000)
         if time.time() - t0 > PACE_WAIT_S:
-            raise Blocked("ChatGPT send budget held by pace.py: " + (p.stdout.strip() or "gap"))
+            raise Blocked("ChatGPT send budget held by pace.py: " + msg)
         time.sleep(5)
+
+
+def pace_reserve(app):
+    """Under the locks, after the gate/owner re-check: reserve the slot for real (one try; a
+    loser of a race with another loop is blocked and retried, nothing reserved)."""
+    if app != "chatgpt":
+        return None
+    if launch_queue().quota_paused():
+        raise Blocked("ChatGPT shared quota pause active (/tmp/chatgpt-quota-pause)")
+    ok, msg = pace_check(app, peek=False)
+    if not ok:
+        raise Blocked("ChatGPT send budget taken while waiting for the phone: " + msg)
+    return common.now_iso()
 
 
 def ui_lock_paths(dev):
@@ -273,8 +311,9 @@ def chat_script(job, dev, serial, d, result, jdir):
             # Completion and reply both come from the redacted hierarchy (u2 selectors can match
             # off-screen nodes: a stale "Stop" kept a finished reply "running" for 240 s).
             t0 = time.time()
-            pkg = root = reply = None
+            pkg = root = reply = prev = None
             running, scrolled = True, False
+            stable = 0
             while time.time() - t0 < REPLY_WAIT_S:
                 time.sleep(2)
                 pkg, root = phone_tools.safe_tree(d)
@@ -287,6 +326,13 @@ def chat_script(job, dev, serial, d, result, jdir):
                         break
                     d(description="Scroll to the bottom").click_exists(timeout=1)
                     scrolled = True
+                # A reply taller than the screen pushes its Copy button below the fold: no Stop
+                # button and the same reply text on 3 consecutive polls (~6 s) is finished too.
+                stable = stable + 1 if (not running and reply and reply == prev) else 0
+                prev = reply
+                if stable >= 2:
+                    chat["finished_by"] = "stable_text"
+                    break
             if root is not None:
                 (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
             durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
@@ -354,9 +400,16 @@ def chat_outcome(app, tag, chat, result):
 
 
 def goal_prompt(job, dev):
-    goal = job["goal"] if job["kind"] == "goal" else (
-        f"Open the {job.get('app') or 'chatgpt'} app, start a NEW chat and send exactly this message: "
-        f"{job['prompt']!r}. Then wait for the reply and report it.")
+    if job["kind"] == "goal":
+        goal = job["goal"]
+    else:
+        goal = (f"Open the {job.get('app') or 'chatgpt'} app, start a NEW chat, put this job's message in "
+                "the composer with set_text(from_job_prompt=true) (it types the message exactly; do not "
+                "retype it), send it, wait for the reply to finish and report the reply text verbatim. "
+                f"The message begins: {job['prompt'][:200]!r}")
+    if job["kind"] == "goal" and job.get("prompt"):
+        goal += ("\nThis job carries a text attachment; type it with set_text(from_job_prompt=true) "
+                 "wherever the goal says to enter it (never retype it).")
     phone = {"s22": "Samsung Galaxy S22+ (Android 16, One UI 8)", "s25": "Samsung Galaxy S25 Ultra (Android 17)"}[dev]
     return (f"Phone: {phone}. Goal: {goal}\n"
             "Use only the mcp_phone_* tools. Observe first. When done, answer with the result.")
@@ -459,18 +512,32 @@ def write_transcript(jdir, result):
 
 
 def oracle(job, d, result):
+    """Independent check on a fresh redacted hierarchy (never the agent's say-so).
+      must_contain      - substrings of the screen; for chat jobs, of the REPLY only (the screen
+                          also shows our own prompt bubble, which would pass trivially)
+      must_not_contain  - substrings that must appear nowhere on the screen or in the reply
+      final_must_contain- substrings the agent's/harvested final_output must contain (checks the
+                          reported VALUE, not just a label on screen)
+      package           - the foreground package at the end"""
     spec = job.get("oracle")
     if not spec:
         return None
     import phone_tools
     pkg, root = phone_tools.safe_tree(d)
     text = phone_tools.tree_text(root)
-    low = text.lower()
-    missing = [s for s in spec.get("must_contain") or [] if s.lower() not in low]
-    present = [s for s in spec.get("must_not_contain") or [] if s.lower() in low]
+    final = result.get("final_output") or ""
+    if job["kind"] == "chat":
+        reply = (result.get("chat") or {}).get("reply") or final
+        scope, scope_name = reply.lower(), "reply"
+    else:
+        scope, scope_name = text.lower(), "screen"
+    missing = [s for s in spec.get("must_contain") or [] if s.lower() not in scope]
+    present = [s for s in spec.get("must_not_contain") or [] if s.lower() in text.lower() or s.lower() in final.lower()]
+    final_missing = [s for s in spec.get("final_must_contain") or [] if s.lower() not in final.lower()]
     pkg_ok = not spec.get("package") or spec["package"] == pkg
-    ok = not missing and not present and pkg_ok
+    ok = not missing and not present and not final_missing and pkg_ok
     result["oracle"] = {"type": spec.get("type", "tree_text"), "package": pkg, "pass": ok, "missing": missing,
+                        "must_contain_scope": scope_name, "final_missing": final_missing,
                         "forbidden_present": present, "package_ok": pkg_ok, "tree_chars": len(text)}
     return ok
 
@@ -526,14 +593,17 @@ def main(job_id):
         paced = paced_app(job)
         if paced:
             # one ChatGPT account across both phones and every harness: script and fx chats
-            # alike take a pace.py send slot and honour the shared quota pauses
-            result["pace_wait_ms"] = pace_slot(paced, dev)
+            # alike need a pace.py send slot and honour the shared quota pauses. Wait for budget
+            # without reserving; reserve only under the locks once every check passed.
+            result["pace_wait_ms"] = pace_wait(paced, dev)
         lock, result["lock_wait_ms"] = take_lock(dev)
         reason = gate(dev)
         burst = driver()
         reason = reason or burst.owner_busy(serial, device=dev)
         if reason:
             raise Blocked(f"gate {dev} (under lock): {reason}")
+        if paced:
+            result["pace_reserved_at"] = pace_reserve(paced)
         import phone_tools
         c0 = time.time()
         d = phone_tools.connect(serial)
@@ -550,6 +620,10 @@ def main(job_id):
             ok = run_fx(job, dev, serial, jdir, result)
             if paced:
                 fx_chat_aftercare(paced, dev, d, job, result)
+            if ok and job["kind"] == "chat" and not (result.get("final_output") or "").strip():
+                ok = False  # a chat succeeds only with a reply, whatever the harness
+                result["error_code"] = "reply_not_harvested"
+                result["error"] = "fx finished but reported no reply (do not resend)"
         verdict = oracle(job, d, result)
         if verdict is not None:
             result["oracle_pass"] = verdict

@@ -3,7 +3,8 @@
 
   phoneq submit chat --prompt TEXT [--app chatgpt|deepseek|PKG] [--device s22|s25|any] [--harness script|fx]
   phoneq submit goal --goal TEXT [--device ...] [--model openai-codex/gpt-6-luna] [--max-steps N]
-                     [--must-contain S]... [--must-not-contain S]... [--oracle-package PKG]
+                     [--must-contain S]... [--must-not-contain S]... [--final-must-contain S]...
+                     [--oracle-package PKG] [--prompt-file F (goal attachment / chat prompt)]
          common: [--submitter NAME] [--idempotency-key K] [--priority N] [--reset home|none] [--wait] [--json]
   phoneq status ID [--json]          phoneq wait ID [--timeout S] [--json]
   phoneq list [--submitter S] [--state S] [--limit N] [--json]
@@ -115,7 +116,9 @@ def main():
     s.add_argument("--max-steps", type=int)
     s.add_argument("--must-contain", action="append", default=[])
     s.add_argument("--must-not-contain", action="append", default=[])
+    s.add_argument("--final-must-contain", action="append", default=[])
     s.add_argument("--oracle-package")
+    s.add_argument("--prompt-file", help="read the prompt (chat) or text attachment (goal) from a file, verbatim")
     s.add_argument("--submitter", default=DEFAULT_SUBMITTER)
     s.add_argument("--idempotency-key")
     s.add_argument("--priority", type=int)
@@ -142,12 +145,15 @@ def main():
 
     if a.cmd == "submit":
         body = {"kind": a.kind, "device": a.device, "submitter": a.submitter}
+        if a.prompt_file:
+            a.prompt = open(a.prompt_file, encoding="utf-8").read()
         for k in ("app", "prompt", "goal", "model", "harness", "max_steps", "idempotency_key", "priority", "reset"):
             v = getattr(a, k)
             if v is not None:
                 body[k] = v
-        if a.must_contain or a.must_not_contain or a.oracle_package:
-            body["oracle"] = {"type": "tree_text", "must_contain": a.must_contain, "must_not_contain": a.must_not_contain}
+        if a.must_contain or a.must_not_contain or a.final_must_contain or a.oracle_package:
+            body["oracle"] = {"type": "tree_text", "must_contain": a.must_contain, "must_not_contain": a.must_not_contain,
+                              "final_must_contain": a.final_must_contain}
             if a.oracle_package:
                 body["oracle"]["package"] = a.oracle_package
         status, out = call("POST", "/v1/jobs", body)
