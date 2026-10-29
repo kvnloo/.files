@@ -76,8 +76,9 @@ spec:
           readinessProbe:
             tcpSocket: {port: 8080}
             periodSeconds: 10
+          # Guaranteed QoS lowers this service's host-OOM priority below agent workloads.
           resources:
-            requests: {cpu: 10m, memory: 24Mi}
+            requests: {cpu: 200m, memory: 64Mi}
             limits: {cpu: 200m, memory: 64Mi}
           securityContext:
             allowPrivilegeEscalation: false

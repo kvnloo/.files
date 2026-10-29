@@ -871,13 +871,13 @@ def cmd_install_timer(args):
     d = Path.home() / ".config/systemd/user"
     d.mkdir(parents=True, exist_ok=True)
     (d / "fleet-health.service").write_text(f"""[Unit]
-Description=fleet: probe workers, cordon unhealthy ones ({REPO}/scripts/fleet)
+Description=fleet: probe workers and cordon unhealthy nodes
 
 [Service]
 Type=oneshot
 Nice=10
 Environment=KUBECONFIG={KUBECONFIG}
-ExecStart={sys.executable} {REPO}/scripts/fleet health
+ExecStart=/usr/bin/python3 %h/.local/bin/fleet health
 TimeoutStartSec=240
 MemoryMax=256M
 """)

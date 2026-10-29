@@ -19,3 +19,5 @@ ExecStart=/usr/bin/flock -s -w 60 -E 0 /mnt/zer0models/cua-lane-tmp/locks/quiet-
 Nice=19
 IOSchedulingClass=idle
 TimeoutStartSec=50min
+# Durable run receipt (journal rotates within hours): ~/.local/state/memory-services/receipts.jsonl
+ExecStopPost=-%h/.local/bin/memory-unit-receipt agentsview-sync.service
