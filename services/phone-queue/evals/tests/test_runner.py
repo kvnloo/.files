@@ -86,7 +86,19 @@ class RunnerContract(unittest.TestCase):
     def test_classify(self):
         self.assertEqual(run_suite.classify(None, True), "timeout")
         self.assertEqual(run_suite.classify({"state": "blocked"}, False), "blocked")
-        self.assertEqual(run_suite.classify({"state": "failed", "error": "401 Unauthorized"}, False), "unavailable")
+        self.assertEqual(run_suite.classify({"state": "failed", "error": "model_unavailable: x", "result": {"error_code": "model_unavailable", "steps": 0}}, False), "unavailable")
+        self.assertEqual(run_suite.classify({"state": "failed", "error": "infra: shim 503", "result": {"error_code": "infra_unavailable", "steps": 0}}, False), "infra")
+        self.assertEqual(run_suite.classify({"state": "blocked", "error": "ui lock busy"}, True), "blocked")
+        # a step-limited / oracle-failed run is scored, even when the screen text says "auth"
+        self.assertEqual(run_suite.classify({"state": "failed", "error": "oracle failed: Authenticator", "result": {"steps": 7, "oracle_pass": False}}, False), "ok")
+        self.assertEqual(run_suite.classify({"state": "failed", "error": "fx exit 1: 429 rate limit", "result": {"steps": 3}}, False), "infra")
+
+    def test_false_done_on_oracle_fail(self):
+        job = {"id": "x", "state": "failed", "error": "oracle failed: {}", "result": {"steps": 5, "oracle_pass": False, "final_output": "done"}}
+        t = {"id": "t", "device": "s22", "multi_step": True, "min_steps_from_home": 3}
+        m = {"key": "k", "job_model": "m", "class": "llm"}
+        row = run_suite.make_row({}, m, t, 0, "R", job, "ok", None, None, 0)
+        self.assertTrue(row["false_done"]); self.assertTrue(row["wrong_act"])
 
     def test_drift_ignores_volatile(self):
         self.assertEqual(run_suite.drift({"system/a": "1"}, {"system/a": "2"}), ["system/a"])

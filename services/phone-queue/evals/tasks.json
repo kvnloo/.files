@@ -486,5 +486,9 @@
    "toggle_risk": "none",
    "evidence": "files_dcim"
   }
- ]
+ ],
+ "skip_by_default": {
+  "language": "phone-queue round 3 (8458a89) made Settings navigation-only and refuses 'General management' (it leads to Reset); Language lives under it on One UI 8, and typing into Settings search is refused too, so no read-only path exists. Run with --tasks language to measure guard behaviour.",
+  "date-time": "same as language: Date and time is under General management, which the round-3 guard refuses by design."
+ }
 }

@@ -22,6 +22,16 @@ def wilson(k, n, z=1.96):
     p = k / n; d = 1 + z * z / n; c = (p + z * z / (2 * n)) / d; h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
     return [round(c - h, 3), round(c + h, 3)]
 
+def drive(r):
+    """Job time minus queueing behind other agents' UI-lock use and pacing waits."""
+    t = r.get("total_ms")
+    if not isinstance(t, (int, float)): return None
+    return t - (r.get("lock_wait_ms") or 0) - (r.get("pace_wait_ms") or 0)
+
+def mean(xs):
+    xs = [x for x in xs if isinstance(x, (int, float))]
+    return round(sum(xs) / len(xs), 2) if xs else None
+
 def rate(rows, key):
     v = [r[key] for r in rows if r.get(key) is not None]
     return round(sum(bool(x) for x in v) / len(v), 3) if v else None
@@ -55,6 +65,9 @@ def summarize(rows):
             "abstain_rate": rate(scored, "abstain"),
             "choose_ms_p50": pct([x for r in scored for x in r.get("choose_ms") or []], .5),
             "choose_ms_p95": pct([x for r in scored for x in r.get("choose_ms") or []], .95),
+            "drive_ms_warm_p50": pct([drive(r) for r in warm], .5),
+            "drive_ms_warm_p95": pct([drive(r) for r in warm], .95),
+            "refused_actions_mean": mean([r.get("refused_actions") for r in scored]),
             "total_ms_warm_p50": pct([r.get("total_ms") for r in warm], .5),
             "total_ms_warm_p95": pct([r.get("total_ms") for r in warm], .95),
             "cold_ms_p50": pct([r.get("cold_ms") for r in cold], .5), "cold_rows": len(cold),
@@ -68,6 +81,9 @@ def summarize(rows):
         if r["status"] == "ok":
             cell = tasks[r["task"]].setdefault(r["model_key"], [0, 0]); cell[1] += 1; cell[0] += r["oracle_pass"] is True
     return {"schema": "z0evals.android-u2-driver-models.summary.v1", "suite": "android-u2-driver-models-v0",
+            "status_legend": {"ok": "scored", "unavailable": "model not servable (never a 0)",
+                              "infra": "groot/shim/provider trouble (not scored)", "blocked": "gate or UI lock never freed in time",
+                              "timeout": "runner gave up", "cancelled": "cancelled", "error": "other"},
             "rows": len(rows), "run_ids": sorted({r["run_id"] for r in rows}), "models": models,
             "task_matrix": {t: {k: f"{a}/{b}" for k, (a, b) in v.items()} for t, v in sorted(tasks.items())}}
 

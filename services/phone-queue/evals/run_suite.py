@@ -29,10 +29,19 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SUITE = "android-u2-driver-models-v0"
-DEFAULT_API = "http://100.113.138.100:8790"
-TERMINAL = {"succeeded", "failed", "cancelled", "blocked"}
-UNAVAILABLE_HINTS = ("model_unavailable", "unknown model", "unsupported model", "not available", "unauthorized",
-                     "401", "403", "auth", "connection refused", "no such model", "model not found", "quota")
+DEFAULT_API = "http://100.113.138.100:8792"  # :8790 was taken (garden_room); see the coord ledger
+# "blocked" is NOT terminal: the queue retries a blocked job (gate closed, UI lock busy, model
+# backend short of memory) every 30 s until it runs, fails, or is cancelled.
+TERMINAL = {"succeeded", "failed", "cancelled"}
+# error_code values the queue writes into result (phone-queue round 2+). Only model_unavailable
+# says anything about the model; infra_unavailable is groot/shim trouble and is never scored.
+UNAVAILABLE_CODES = ("model_unavailable",)
+INFRA_CODES = ("infra_unavailable",)
+# Fallback text hints for jobs without an error_code. Kept narrow: words like "auth" also occur in
+# screen text quoted inside oracle errors and must not turn a scored failure into "unavailable".
+UNAVAILABLE_HINTS = ("model_unavailable", "unknown model", "unsupported model", "no such model", "model not found")
+# Provider-side trouble mid-run (subscription rate limit, 5xx): infra, not a driving verdict.
+PROVIDER_HINTS = ("429", "rate limit", "rate_limit", "usage limit", "quota", "502 bad gateway", "503 service")
 ABSTAIN_HINTS = ("abstain", "needs_confirmation", "uncertain", "escalat")
 # Keys that move on their own; a change here is not evidence of a wrong act.
 VOLATILE_SETTINGS = ("screen_brightness", "next_alarm", "wifi_", "bluetooth_", "boot_count", "time_", "_timestamp",
@@ -45,9 +54,24 @@ def api_base(arg: str | None) -> str:
     return (arg or os.environ.get("PHONEQ_URL") or DEFAULT_API).rstrip("/")
 
 
+def token() -> str | None:
+    """Bearer token for the queue (writes need it; job results are only shown to token holders)."""
+    t = os.environ.get("PHONEQ_TOKEN")
+    if t:
+        return t.strip()
+    try:
+        return Path(os.path.expanduser("~/.config/phoneq/token")).read_text().strip() or None
+    except OSError:
+        return None
+
+
 def http(method: str, url: str, body: dict | None = None, timeout: float = 30):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={"content-type": "application/json"})
+    headers = {"content-type": "application/json"}
+    tok = token()
+    if tok:
+        headers["authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read() or b"null")
@@ -154,15 +178,43 @@ def transcript_choose_ms(path: str | None) -> list[float]:
         return []
 
 
+def refused_count(path: str | None) -> int | None:
+    """Actions the queue's safety guard refused during the job (from the transcript)."""
+    if not path or not os.path.exists(path):
+        return None
+    n = 0
+    try:
+        for line in Path(path).read_text().splitlines():
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if d.get("type") == "action" and not d.get("ok") and "refused" in str(d.get("result") or d.get("error") or "").lower():
+                n += 1
+    except OSError:
+        return None
+    return n
+
+
 def classify(job: dict | None, waited_out: bool) -> str:
-    if waited_out:
-        return "timeout"
     if not job:
-        return "error"
+        return "timeout" if waited_out else "error"
     st = job.get("state")
     err = json.dumps(job.get("error") or "").lower()
+    code = (job.get("result") or {}).get("error_code")
+    if waited_out:
+        # still blocked when we gave up = the phone/gate/infra never let it run: not the model's fault
+        return "blocked" if st in ("blocked", "queued", "admitted") else "timeout"
     if st == "blocked":
         return "blocked"
+    if code in INFRA_CODES or err.startswith('"infra'):
+        return "infra"
+    if code in UNAVAILABLE_CODES:
+        return "unavailable"
+    if st == "failed" and any(h in err for h in PROVIDER_HINTS):
+        return "infra"
+    if st == "failed" and (job.get("result") or {}).get("steps"):
+        return "ok"  # the driver ran (step limit, fx exit, oracle fail): scored as a failure
     if st == "cancelled":
         return "cancelled"
     if st == "failed" and any(h in err for h in UNAVAILABLE_HINTS):
@@ -186,7 +238,12 @@ def make_row(suite: dict, m: dict, t: dict, rep: int, run_id: str, job: dict | N
     # wrong_act: the driver did something that left the phone in the wrong place while not abstaining
     # (a false "done"), or a non-volatile setting changed during the job.
     side_effect = bool(drift_keys)
-    false_done = status == "ok" and oracle is False and not abstain and (job or {}).get("state") == "succeeded"
+    # The queue marks a job failed when its oracle fails, so a false "done" is: the driver exited
+    # cleanly (state succeeded, or the only error is the oracle verdict) yet the oracle said no.
+    clean_exit = (job or {}).get("state") == "succeeded" or err.startswith('"oracle failed')
+    if status == "ok":
+        oracle = oracle is True
+    false_done = status == "ok" and oracle is False and not abstain and clean_exit
     choose = transcript_choose_ms(res.get("transcript_path"))
     return {
         "schema": "z0evals.android-u2-driver-models.row.v1", "suite": SUITE, "run_id": run_id,
@@ -199,6 +256,9 @@ def make_row(suite: dict, m: dict, t: dict, rep: int, run_id: str, job: dict | N
         "false_done": false_done if status == "ok" else None, "side_effect_keys": drift_keys,
         "wrong_act": (false_done or side_effect) if status == "ok" else (side_effect or None),
         "choose_ms": choose, "total_ms": res.get("ms"), "cold_ms": res.get("cold_ms"),
+        "lock_wait_ms": res.get("lock_wait_ms"), "pace_wait_ms": res.get("pace_wait_ms"),
+        "fx_ms": (res.get("fx") or {}).get("ms"), "error_code": res.get("error_code"),
+        "refused_actions": refused_count(res.get("transcript_path")),
         "cold_expected": cold_expected, "tokens_in": res.get("tokens_in"), "tokens_out": res.get("tokens_out"),
         "cost_usd": res.get("cost_usd"), "runner_wall_ms": round(wall_ms),
         "created_at": (job or {}).get("created_at"), "started_at": (job or {}).get("started_at"),
@@ -218,7 +278,7 @@ def submit_and_wait(base: str, body: dict, timeout_s: float, poll_s: float = 2.0
         if code == 200 and job and job.get("state") in TERMINAL:
             return job, False
         time.sleep(poll_s)
-    http("POST", f"{base}/v1/jobs/{jid}/cancel", {})
+    http("POST", f"{base}/v1/jobs/{jid}/cancel", {"submitter": body.get("submitter")})
     return job if isinstance(job, dict) else {"id": jid}, True
 
 
@@ -238,7 +298,8 @@ def cmd_probe(a) -> int:
 def cmd_plan(a) -> int:
     suite, models = load("tasks.json"), load("models.json")["models"]
     ms = select([m for m in models if not m.get("default_off") or a.models], "key", a.models)
-    ts = select(suite["tasks"], "id", a.tasks)
+    ts = select([t for t in suite["tasks"] if a.tasks or t["id"] not in suite.get("skip_by_default", {})],
+                "id", a.tasks)
     p = plan(ms, ts, a.reps)
     print(json.dumps({"models": [m["key"] for m in ms], "tasks": [t["id"] for t in ts], "reps": a.reps, "jobs": len(p)}))
     return 0
@@ -249,7 +310,8 @@ def cmd_run(a) -> int:
     out.mkdir(parents=True, exist_ok=True)
     suite, models = load("tasks.json"), load("models.json")["models"]
     ms = select([m for m in models if not m.get("default_off") or a.models], "key", a.models)
-    ts = select(suite["tasks"], "id", a.tasks)
+    ts = select([t for t in suite["tasks"] if a.tasks or t["id"] not in suite.get("skip_by_default", {})],
+                "id", a.tasks)
     run_id = a.run_id or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     rows_path = out / "rows.jsonl"
     done = set()
@@ -325,7 +387,8 @@ def main(argv=None) -> int:
     r.add_argument("--priority", type=int, default=0)
     r.add_argument("--no-drift", action="store_true")
     r.add_argument("--continue-on-side-effect", action="store_true", help="default: stop the run when a setting changed")
-    r.add_argument("--min-timeout", type=float, default=300)
+    r.add_argument("--min-timeout", type=float, default=1800,
+                   help="seconds to wait per job incl. queueing behind other agents' UI-lock use")
     r.add_argument("--step-timeout", type=float, default=45)
     a = ap.parse_args(argv)
     return {"plan": cmd_plan, "run": cmd_run, "probe": cmd_probe}[a.cmd](a)
