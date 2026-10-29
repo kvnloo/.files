@@ -184,6 +184,7 @@ data:
     import threading
     import time
     import traceback
+    import urllib.error
     import urllib.parse
     import urllib.request
     import uuid
@@ -287,8 +288,8 @@ data:
         if app is not None and app not in common.APPS and not re.fullmatch(r"[A-Za-z][\w]*(\.[\w]+)+", app):
             raise Bad("app must be chatgpt, deepseek or an Android package name")
         model = body.get("model") or common.DEFAULT_MODEL
-        if not re.fullmatch(r"(openai-codex|local|ollama|gateway)/[\w.:/-]{1,120}", model):
-            raise Bad("model must be openai-codex/<slug>, local/<name>, ollama/<name> or gateway/<id>")
+        if not re.fullmatch(r"(openai-codex|groot-router|local|ollama|gateway)/[\w.:/-]{1,120}", model):
+            raise Bad("model must be openai-codex/<slug>, groot-router/<id>, local/<name>, ollama/<name> or gateway/<id>")
         max_steps = body.get("max_steps", 30)
         if not isinstance(max_steps, int) or not 1 <= max_steps <= 200:
             raise Bad("max_steps must be an integer 1..200")
@@ -459,7 +460,30 @@ data:
                         "volumes": vols}}}}
 
 
+    def model_unavailable(model):
+        """Shim preflight: a model nobody can serve fails at once, without a phone slot."""
+        try:
+            with urllib.request.urlopen(common.SHIM_URL + "/phoneq/available?" +
+                                        urllib.parse.urlencode({"model": model}), timeout=10):
+                return None
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                try:
+                    return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+                except ValueError:
+                    return f"model_unavailable: {model}"
+            return None  # shim trouble: let the runner decide (it re-checks)
+        except OSError:
+            return None
+
+
     def create_k8s_job(r):
+        if r["harness"] == "fx" and r["attempts"] == 0:
+            why = model_unavailable(r["model"])
+            if why:
+                q("UPDATE jobs SET state='failed', finished_at=?, error=?, result=? WHERE id=?",
+                  (common.now_iso(), why, json.dumps({"error_code": "model_unavailable", "steps": 0}), r["id"]))
+                return
         want = [r["device"]] if r["device"] != "any" else list(common.DEVICES)
         open_devs, reasons = [], {}
         for dev in want:
@@ -524,6 +548,7 @@ data:
         public = {k: res.get(k) for k in ("final_output", "steps", "oracle_pass", "transcript_path", "tokens_in",
                                           "tokens_out", "ms", "cold_ms") if res.get(k) is not None}
         public.update({k: res[k] for k in ("device", "serial", "oracle", "chat", "fx", "lock_wait_ms", "pace_wait_ms",
+                                           "error_code", "transcript_dir",
                                            "foreground_before", "foreground_after_job", "restored",
                                            "foreground_restored_to", "attempt") if k in res})
         q("UPDATE jobs SET state=?, started_at=?, finished_at=?, result=?, error=?, assigned=? WHERE id=?",
@@ -742,13 +767,19 @@ data:
       8. restore the previous foreground app, release the lock, write result.json
     Runs under the chatgpt-driver venv python (uiautomator2 3.7.0).
     """
+    import calendar
     import fcntl
     import json
     import os
+    import re
     import signal
     import subprocess
     import sys
     import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    import xml.etree.ElementTree as ET
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -763,6 +794,52 @@ data:
 
     class Blocked(Exception):
         pass
+
+
+    class Unavailable(Exception):
+        """The requested model cannot be served (error code model_unavailable; no phone time used)."""
+
+
+    def model_preflight(model):
+        url = common.SHIM_URL + "/phoneq/available?" + urllib.parse.urlencode({"model": model})
+        try:
+            with urllib.request.urlopen(url, timeout=10) as r:
+                return None if json.load(r).get("available") else "model_unavailable"
+        except urllib.error.HTTPError as e:
+            try:
+                return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+            except ValueError:
+                return f"model_unavailable: {model}: shim HTTP {e.code}"
+        except OSError as e:
+            return f"model shim unreachable at {common.SHIM_URL}: {e}"
+
+
+    # ChatGPT chrome that is never part of a reply.
+    CHROME = re.compile(r"^(ChatGPT|Ask ChatGPT|Message|New chat|Thinking|Searching.*|Stop|Copy|Share|Read aloud|"
+                        r"Good response|Bad response|More actions|Edit message|Regenerate|Scroll to the bottom|"
+                        r"(Worked|Thought) for .*)$", re.I)
+
+
+    def reply_from_tree(root, tag, sent=""):
+        """The assistant reply as rendered text after our tagged user bubble (no clipboard: reading
+        it would expose whatever another app or the owner last copied)."""
+        nodes = [n for n in root.iter("node") if (n.get("text") or "").strip()]
+        hit = max((i for i, n in enumerate(nodes) if tag in n.get("text", "")), default=None)
+        if hit is None:
+            return None
+        out = []
+        app = nodes[hit].get("package")
+        for n in nodes[hit + 1:]:
+            if (n.get("class") or "").endswith("EditText"):
+                break
+            if app and n.get("package") not in (None, app):  # status bar clock etc.
+                continue
+            t = n.get("text").strip()
+            if t in sent:  # the rest of our own (multi-paragraph) user bubble
+                continue
+            if not CHROME.match(t):
+                out.append(t)
+        return "\n".join(out).strip() or None
 
 
     def on_term(signum, _frame):
@@ -835,7 +912,7 @@ data:
 
 
     # ------------------------------------------------------------------ harnesses
-    def chat_script(job, dev, serial, d, result):
+    def chat_script(job, dev, serial, d, result, jdir):
         """Reuse the deterministic drivers; the brief text keeps burst's '(tag X)' preamble shape."""
         burst = driver()
         app = job.get("app") or "chatgpt"
@@ -844,7 +921,6 @@ data:
         rec = {"tag": tag, "at": burst.now(), "device": dev, "transport": serial, "send_attempted": False}
         chat = {"app": app, "tag": tag}
         if app == "chatgpt":
-            import harvest
             box = burst.new_chat(d, dev)
             status = burst.send(d, box, text, rec, device=dev)
             chat["send_status"] = status
@@ -856,13 +932,29 @@ data:
                 launch_queue().quota_paused(time.time() + 3 * 3600)  # same 3 h shared pause as launch_queue
                 chat["rate_words"] = hits
             if status == "sent":
+                import phone_tools
+                # Completion and reply both come from the redacted hierarchy (u2 selectors can match
+                # off-screen nodes: a stale "Stop" kept a finished reply "running" for 240 s).
                 t0 = time.time()
+                pkg = root = reply = None
+                running, scrolled = True, False
                 while time.time() - t0 < REPLY_WAIT_S:
                     time.sleep(2)
-                    if not d(packageName=burst.PKG, descriptionContains="Stop").exists and d(description="Copy").exists:
-                        break
-                duration, running, reply = harvest.collect(d)
-                chat.update(duration=duration, still_running=running, reply=reply or None,
+                    pkg, root = phone_tools.safe_tree(d)
+                    descs = [(n.get("content-desc") or "").strip() for n in root.iter("node")
+                             if n.get("package") == burst.PKG]
+                    running = any(x.lower().startswith("stop") for x in descs)
+                    reply = reply_from_tree(root, tag, text)
+                    if not running and "Copy" in descs:
+                        if reply or scrolled:
+                            break
+                        d(description="Scroll to the bottom").click_exists(timeout=1)
+                        scrolled = True
+                (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
+                durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
+                reply = None if running else reply
+                chat.update(duration=durs[-1] if durs else None, still_running=running, reply=reply,
+                            reply_source="redacted hierarchy" if reply else None, reply_package=pkg,
                             reply_wait_ms=int((time.time() - t0) * 1000))
         elif app == "deepseek":
             if dev != "s22":
@@ -947,10 +1039,54 @@ data:
                       fx={"exit_code": out.get("exit_code", p.returncode), "ms": int((time.time() - t0) * 1000),
                           "tool_calls": [t.get("name") for t in out.get("tool_calls") or []],
                           "error": out.get("error") or out.get("auth_failure")})
+        rows = [r for r in (json.loads(x) for x in _lines(jdir / "model.jsonl")) if isinstance(r, dict)]
+        steps = [r for r in rows if r.get("kind") == "step"]
+        if result.get("tokens_in") is None and steps:
+            result["tokens_in"] = sum(r.get("tokens_in") or 0 for r in steps)
+            result["tokens_out"] = sum(r.get("tokens_out") or 0 for r in steps)
         if out.get("exit_code", p.returncode) != 0:
-            result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
+            unavail = [r["error"] for r in rows if r.get("kind") == "error" and "model_unavailable" in str(r.get("error"))]
+            if unavail and not steps:
+                result["error_code"] = "model_unavailable"
+                result["error"] = unavail[0]
+            else:
+                result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
             return False
         return True
+
+
+    def _lines(path):
+        try:
+            return [x for x in Path(path).read_text().splitlines() if x.strip().startswith("{")]
+        except OSError:
+            return []
+
+
+    def write_transcript(jdir, result):
+        """transcript.jsonl: one row per model decision (choose_ms) and per phone action (tool_ms),
+        in time order. Sources: the shim's model.jsonl and the tool layer's tools.jsonl."""
+        rows = []
+        for x in _lines(jdir / "model.jsonl"):
+            r = json.loads(x)
+            if r.get("kind") == "step":
+                rows.append({"t": r["at"], "type": "decision", "model": r.get("model"), "choose_ms": r.get("choose_ms", r.get("ms")),
+                             "tokens_in": r.get("tokens_in"), "tokens_out": r.get("tokens_out"),
+                             "calls": r.get("calls"), "text": r.get("text"), "dropped": r.get("dropped")})
+            elif r.get("kind") == "error":
+                rows.append({"t": r["at"], "type": "model_error", "error": r.get("error"), "status": r.get("status")})
+        for x in _lines(jdir / "tools.jsonl"):
+            r = json.loads(x)
+            rows.append({"t": r.get("t") or calendar.timegm(time.strptime(r["at"], "%Y-%m-%dT%H:%M:%SZ")),
+                         "type": "action", "tool": r.get("tool"), "args": r.get("args"), "ok": r.get("ok"),
+                         "tool_ms": r.get("ms"), "result": (r.get("result") or "")[:500]})
+        if result.get("oracle"):
+            rows.append({"t": time.time(), "type": "oracle", "oracle": result["oracle"]})
+        rows.sort(key=lambda r: r["t"])
+        path = jdir / "transcript.jsonl"
+        with path.open("w") as f:
+            for i, r in enumerate(rows):
+                f.write(json.dumps({"i": i, **r}) + "\n")
+        return str(path)
 
 
     def oracle(job, d, result):
@@ -1003,12 +1139,17 @@ data:
         attempt = int(os.environ.get("PHONEQ_ATTEMPT", "1"))
         t0 = time.time()
         result = {"id": job_id, "attempt": attempt, "started_at": common.now_iso(t0), "kind": job["kind"],
-                  "harness": job["harness"], "model": job["model"], "transcript_path": str(jdir)}
+                  "harness": job["harness"], "model": job["model"], "transcript_dir": str(jdir),
+                  "transcript_path": str(jdir / "transcript.jsonl")}
         state = "failed"
         lock = d = before = None
         try:
             dev = resolve_device(job)
             result["device"] = dev
+            if job["harness"] == "fx":
+                why = model_preflight(job["model"])
+                if why:
+                    raise Unavailable(why)
             reason = gate(dev)
             if reason:
                 raise Blocked(f"gate {dev}: {reason}")
@@ -1034,7 +1175,7 @@ data:
                 d.press("home")
                 time.sleep(0.8)
             if job["kind"] == "chat" and job["harness"] == "script":
-                ok = chat_script(job, dev, serial, d, result)
+                ok = chat_script(job, dev, serial, d, result, jdir)
             else:
                 ok = run_fx(job, dev, serial, jdir, result)
             verdict = oracle(job, d, result)
@@ -1046,6 +1187,9 @@ data:
         except Blocked as e:
             state = "blocked"
             result["error"] = str(e)
+        except Unavailable as e:
+            result["error_code"] = "model_unavailable"
+            result["error"] = str(e) if "model_unavailable" in str(e) else f"model_unavailable: {e}"
         except SystemExit as e:
             state = "cancelled"
             result["error"] = str(e)
@@ -1057,6 +1201,10 @@ data:
             if lock is not None:
                 lock.close()
             result["state"] = state
+            try:
+                result["transcript_path"] = write_transcript(jdir, result)
+            except Exception as e:  # noqa: BLE001 - evidence only
+                result["transcript_error"] = f"{type(e).__name__}: {e}"
             result["finished_at"] = common.now_iso()
             result["ms"] = int((time.time() - t0) * 1000)
             common.write_json(jdir / f"result-{attempt}.json", result)
@@ -1106,6 +1254,35 @@ data:
                  "com.termux", "com.samsung.android.knox.containercore"}
     PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
     MAX_LINES = 140
+    TOGGLE_CLASSES = ("Switch", "SwitchCompat", "SwitchMaterial", "CheckBox", "MaterialCheckBox", "ToggleButton",
+                      "RadioButton", "CompoundButton", "CheckedTextView", "SeslSwitchBar")
+
+
+    def is_toggle(node):
+        cls = (node.get("class") or "").split(".")[-1]
+        return node.get("checkable") == "true" or cls in TOGGLE_CLASSES
+
+
+    def toggle_under(root, x, y):
+        """A checkable control the tap at (x, y) could flip: any toggle whose bounds contain the
+        point, or a toggle inside the smallest clickable element that receives the tap (a Settings
+        row whose whole surface flips its Switch). Returns a label, or None."""
+        receivers = []
+        for n in root.iter("node"):
+            b = bounds(n)
+            if not b or not (b[0] <= x <= b[2] and b[1] <= y <= b[3]):
+                continue
+            if is_toggle(n):
+                return (n.get("text") or n.get("content-desc") or n.get("class") or "toggle").strip()
+            if n.get("clickable") == "true":
+                receivers.append(((b[2] - b[0]) * (b[3] - b[1]), n))
+        if receivers:
+            receiver = min(receivers, key=lambda t: t[0])[1]
+            for n in receiver.iter("node"):
+                if is_toggle(n):
+                    label = " ".join(v for v in ((m.get("text") or "").strip() for m in receiver.iter("node")) if v)
+                    return (label or n.get("class") or "toggle")[:80]
+        return None
 
 
     class Refused(RuntimeError):
@@ -1243,12 +1420,13 @@ data:
         def _record(self, tool, args, ok, result, ms):
             if self.log:
                 with self.log.open("a") as f:
-                    f.write(json.dumps({"at": common.now_iso(), "tool": tool, "args": args, "ok": ok,
+                    f.write(json.dumps({"at": common.now_iso(), "t": time.time(), "tool": tool, "args": args, "ok": ok,
                                         "ms": ms, "result": result[:4000]}) + "\n")
 
         def _refresh(self):
             self.pkg, root = safe_tree(self.d)
             self.rows = compact(root)
+            self.root = root
             return root
 
         def _find(self, args):
@@ -1296,8 +1474,11 @@ data:
 
         def _check_tap(self, row):
             label = " ".join(x for x in (row.get("text"), row.get("desc"), row.get("id")) if x)
-            if "check" in row.get("flags", []) or row.get("cls") in ("Switch", "CheckBox", "ToggleButton", "RadioButton"):
+            if "check" in row.get("flags", []) or row.get("cls") in TOGGLE_CLASSES:
                 raise Refused(f"refused: {label or 'that control'} is a toggle; the queue never changes settings")
+            hit = toggle_under(self.root, row["x"], row["y"]) if getattr(self, "root", None) is not None else None
+            if hit:
+                raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
             if label and DENY_LABEL.search(label):
                 raise Refused(f"refused: {label!r} looks like an install/reset/permission/settings action")
 
@@ -1506,7 +1687,8 @@ data:
       openai-codex/<slug>   ChatGPT subscription via Hermes' own OAuth client, exactly like
                             dash-log-watch-model.py: resolve_provider_client("openai-codex",
                             model=slug, raw_codex=True) -> Responses API at chatgpt.com/backend-api/codex
-      local/<name>          groot llama router (OpenAI-compatible) at PHONEQ_LLAMA_URL
+      local/<name>          groot llama router (OpenAI-compatible) at PHONEQ_LLAMA_URL, else ollama
+      groot-router/<name>   groot llama router only (the eval suite's name for it)
       ollama/<name>         groot ollama (OpenAI-compatible) at PHONEQ_OLLAMA_URL
       gateway/<id>          real Vercel AI Gateway, only if AI_GATEWAY_API_KEY is set here
 
@@ -1517,7 +1699,9 @@ data:
         phone MCP schemas (fx defers MCP tools until searched);
       - fx --auto permission reviews of mcp_phone_* actions are answered "clear" here; every other
         action gets "caution". The phone tool layer itself refuses installs/settings/shell.
-    Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>").
+    Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>");
+    every decision row carries choose_ms (wall time of that one model call).
+    A model the routes cannot serve answers HTTP 404 with "model_unavailable: ..." (never a guess).
     """
     import contextlib
     import http.server
@@ -1541,7 +1725,8 @@ data:
     GATEWAY = os.environ.get("PHONEQ_GATEWAY_URL", "https://ai-gateway.vercel.sh/v4/ai/language-model")
     HERMES_SOURCE = os.environ.get("PHONEQ_HERMES_SOURCE", "/workspace/hermes-home/hermes-agent")
     EFFORT = os.environ.get("PHONEQ_EFFORT", "low")
-    CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
+    CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-6.1-luna", "gpt-6.1-terra", "gpt-6.1-sol",
+                    "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
     TOOL_PREFIX = "mcp_phone_"
     JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})$")
 
@@ -1725,11 +1910,30 @@ data:
             self.status = status
 
 
+    def unavailable(model_id, why):
+        return Backend(404, f"model_unavailable: {model_id}: {why}")
+
+
     def call_codex(slug, req, tools):
         if slug not in CODEX_MODELS:
-            raise Backend(400, f"unknown openai-codex model {slug}")
+            raise unavailable("openai-codex/" + slug, "not a known ChatGPT-subscription model")
         client = hermes_client(slug)
         try:
+            return _call_codex(client, slug, req, tools)
+        except Backend:
+            raise
+        except Exception as e:  # noqa: BLE001 - map the backend's "no such model" to model_unavailable
+            code = getattr(e, "status_code", None)
+            msg = str(e)[:300]
+            if code in (400, 404) and re.search(r"model|not supported|unsupported", msg, re.I):
+                raise unavailable("openai-codex/" + slug, msg) from None
+            raise Backend(502, f"codex {type(e).__name__} {code or ''}: {msg}") from None
+        finally:
+            client.close()
+
+
+    def _call_codex(client, slug, req, tools):
+        if True:
             kwargs = dict(model=slug, instructions=PHONE_SYSTEM, input=to_responses_input(req["prompt"]),
                           store=False, stream=True, reasoning={"effort": EFFORT})
             if tools:
@@ -1754,8 +1958,6 @@ data:
                     elif ev.type in ("error", "response.failed", "response.incomplete"):
                         raise Backend(502, f"codex stream {ev.type}")
             return "\n".join(texts).strip(), calls, usage, "openai-codex/" + (model or slug)
-        finally:
-            client.close()
 
 
     _local_models = {"at": 0, "llama": set(), "ollama": set()}
@@ -1852,6 +2054,46 @@ data:
                          (0, 0), "phoneq/review")
 
 
+    def resolve(model_id):
+        """(base url, backend model name) for a local model, or raise model_unavailable."""
+        provider, _, name = model_id.partition("/")
+        cat = local_catalog()
+        if provider == "groot-router" or (provider == "local" and name in cat["llama"]):
+            if name not in cat["llama"]:
+                raise unavailable(model_id, f"not served by the groot llama router {LLAMA}")
+            return LLAMA, name
+        if provider in ("ollama", "local"):
+            if name not in cat["ollama"]:
+                raise unavailable(model_id, f"not on the groot llama router or ollama {OLLAMA}")
+            return OLLAMA, name
+        raise unavailable(model_id, "no route (use openai-codex/, groot-router/, local/, ollama/ or gateway/)")
+
+
+    def route(model_id, req, tools):
+        provider, _, name = model_id.partition("/")
+        if provider == "openai-codex":
+            return call_codex(name, req, tools)
+        base, name = resolve(model_id)
+        return call_openai_compatible(base, name, req, tools)
+
+
+    def available(model_id):
+        """Cheap preflight used by the runner before it takes a phone: None if routable, else why."""
+        provider, _, name = model_id.partition("/")
+        try:
+            if provider == "openai-codex":
+                if name not in CODEX_MODELS:
+                    raise unavailable(model_id, "not a known ChatGPT-subscription model")
+            elif provider == "gateway":
+                if not os.environ.get("AI_GATEWAY_API_KEY"):
+                    raise unavailable(model_id, "no AI_GATEWAY_API_KEY on the shim")
+            else:
+                resolve(model_id)
+        except Backend as e:
+            return str(e)
+        return None
+
+
     def complete(req, model_id, job):
         """Return v3 parts for one fx model step (or raise Backend)."""
         t0 = time.time()
@@ -1865,22 +2107,14 @@ data:
             transcript(job, {"at": time.time(), "kind": "bootstrap", "missing": missing_tools(req)})
             return bootstrap_parts(req)
         allowed = {t["name"] for t in tools}
-        provider, _, name = model_id.partition("/")
-        if provider == "openai-codex":
-            text, calls, usage, model = call_codex(name, req, tools)
-        elif provider == "local":
-            cat = local_catalog()
-            base = LLAMA if name in cat["llama"] or name not in cat["ollama"] else OLLAMA
-            text, calls, usage, model = call_openai_compatible(base, name, req, tools)
-        elif provider == "ollama":
-            text, calls, usage, model = call_openai_compatible(OLLAMA, name, req, tools)
-        else:
-            raise Backend(400, f"unroutable model {model_id}")
+        t0 = time.time()  # choose_ms covers only the model call, not the bootstrap/review steps
+        text, calls, usage, model = route(model_id, req, tools)
         dropped = [c[1] for c in calls if c[1] not in allowed]
         calls = [c for c in calls if c[1] in allowed][:1]  # one action per step
         if dropped and not calls and not text:
             text = f"(blocked non-phone tools: {', '.join(dropped)})"
-        transcript(job, {"at": time.time(), "kind": "step", "model": model, "ms": int((time.time() - t0) * 1000),
+        ms = int((time.time() - t0) * 1000)
+        transcript(job, {"at": time.time(), "kind": "step", "model": model, "ms": ms, "choose_ms": ms,
                          "tools": sorted(allowed),
                          "tokens_in": usage[0], "tokens_out": usage[1], "text": text[:4000],
                          "calls": [{"name": c[1], "args": c[2][:2000]} for c in calls], "dropped": dropped})
@@ -1891,11 +2125,13 @@ data:
         data = [{"id": f"openai-codex/{m}", "name": m} for m in CODEX_MODELS]
         cat = local_catalog()
         data += [{"id": f"local/{m}", "name": m} for m in sorted(cat["llama"])]
+        data += [{"id": f"groot-router/{m}", "name": m} for m in sorted(cat["llama"])]
         data += [{"id": f"ollama/{m}", "name": m} for m in sorted(cat["ollama"])]
         for d in data:
             d.update(object="model", created=0, owned_by="phone-queue", type="language",
-                     context_window=8192 if d["id"].startswith(("local/", "ollama/")) else 200000,
-                     max_tokens=2048 if d["id"].startswith(("local/", "ollama/")) else 32000, tags=["tool-use"])
+                     context_window=8192 if d["id"].startswith(("local/", "ollama/", "groot-router/")) else 200000,
+                     max_tokens=2048 if d["id"].startswith(("local/", "ollama/", "groot-router/")) else 32000,
+                     tags=["tool-use"])
         return {"object": "list", "data": data}
 
 
@@ -1915,8 +2151,13 @@ data:
 
         def do_GET(self):
             if self.path.split("?")[0] in ("/healthz", "/"):
-                return self._json(200, {"ok": True, "routes": ["openai-codex", "local", "ollama"] +
+                return self._json(200, {"ok": True, "routes": ["openai-codex", "groot-router", "local", "ollama"] +
                                         (["gateway"] if os.environ.get("AI_GATEWAY_API_KEY") else [])})
+            if self.path.startswith("/phoneq/available?"):
+                from urllib.parse import parse_qs, urlparse
+                mid = (parse_qs(urlparse(self.path).query).get("model") or [""])[0]
+                why = available(mid)
+                return self._json(200 if why is None else 404, {"model": mid, "available": why is None, "error": why})
             if self.path.split("?")[0].endswith("/models"):
                 return self._json(200, catalog())
             return self._json(404, {"error": "not found"})

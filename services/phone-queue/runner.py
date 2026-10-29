@@ -14,13 +14,19 @@ Order, always:
   8. restore the previous foreground app, release the lock, write result.json
 Runs under the chatgpt-driver venv python (uiautomator2 3.7.0).
 """
+import calendar
 import fcntl
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -35,6 +41,52 @@ LAUNCHERS = {"com.teslacoilsw.launcher", "dev.omalauncher", "com.sec.android.app
 
 class Blocked(Exception):
     pass
+
+
+class Unavailable(Exception):
+    """The requested model cannot be served (error code model_unavailable; no phone time used)."""
+
+
+def model_preflight(model):
+    url = common.SHIM_URL + "/phoneq/available?" + urllib.parse.urlencode({"model": model})
+    try:
+        with urllib.request.urlopen(url, timeout=10) as r:
+            return None if json.load(r).get("available") else "model_unavailable"
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+        except ValueError:
+            return f"model_unavailable: {model}: shim HTTP {e.code}"
+    except OSError as e:
+        return f"model shim unreachable at {common.SHIM_URL}: {e}"
+
+
+# ChatGPT chrome that is never part of a reply.
+CHROME = re.compile(r"^(ChatGPT|Ask ChatGPT|Message|New chat|Thinking|Searching.*|Stop|Copy|Share|Read aloud|"
+                    r"Good response|Bad response|More actions|Edit message|Regenerate|Scroll to the bottom|"
+                    r"(Worked|Thought) for .*)$", re.I)
+
+
+def reply_from_tree(root, tag, sent=""):
+    """The assistant reply as rendered text after our tagged user bubble (no clipboard: reading
+    it would expose whatever another app or the owner last copied)."""
+    nodes = [n for n in root.iter("node") if (n.get("text") or "").strip()]
+    hit = max((i for i, n in enumerate(nodes) if tag in n.get("text", "")), default=None)
+    if hit is None:
+        return None
+    out = []
+    app = nodes[hit].get("package")
+    for n in nodes[hit + 1:]:
+        if (n.get("class") or "").endswith("EditText"):
+            break
+        if app and n.get("package") not in (None, app):  # status bar clock etc.
+            continue
+        t = n.get("text").strip()
+        if t in sent:  # the rest of our own (multi-paragraph) user bubble
+            continue
+        if not CHROME.match(t):
+            out.append(t)
+    return "\n".join(out).strip() or None
 
 
 def on_term(signum, _frame):
@@ -107,7 +159,7 @@ def tag_for(job):
 
 
 # ------------------------------------------------------------------ harnesses
-def chat_script(job, dev, serial, d, result):
+def chat_script(job, dev, serial, d, result, jdir):
     """Reuse the deterministic drivers; the brief text keeps burst's '(tag X)' preamble shape."""
     burst = driver()
     app = job.get("app") or "chatgpt"
@@ -116,7 +168,6 @@ def chat_script(job, dev, serial, d, result):
     rec = {"tag": tag, "at": burst.now(), "device": dev, "transport": serial, "send_attempted": False}
     chat = {"app": app, "tag": tag}
     if app == "chatgpt":
-        import harvest
         box = burst.new_chat(d, dev)
         status = burst.send(d, box, text, rec, device=dev)
         chat["send_status"] = status
@@ -128,13 +179,29 @@ def chat_script(job, dev, serial, d, result):
             launch_queue().quota_paused(time.time() + 3 * 3600)  # same 3 h shared pause as launch_queue
             chat["rate_words"] = hits
         if status == "sent":
+            import phone_tools
+            # Completion and reply both come from the redacted hierarchy (u2 selectors can match
+            # off-screen nodes: a stale "Stop" kept a finished reply "running" for 240 s).
             t0 = time.time()
+            pkg = root = reply = None
+            running, scrolled = True, False
             while time.time() - t0 < REPLY_WAIT_S:
                 time.sleep(2)
-                if not d(packageName=burst.PKG, descriptionContains="Stop").exists and d(description="Copy").exists:
-                    break
-            duration, running, reply = harvest.collect(d)
-            chat.update(duration=duration, still_running=running, reply=reply or None,
+                pkg, root = phone_tools.safe_tree(d)
+                descs = [(n.get("content-desc") or "").strip() for n in root.iter("node")
+                         if n.get("package") == burst.PKG]
+                running = any(x.lower().startswith("stop") for x in descs)
+                reply = reply_from_tree(root, tag, text)
+                if not running and "Copy" in descs:
+                    if reply or scrolled:
+                        break
+                    d(description="Scroll to the bottom").click_exists(timeout=1)
+                    scrolled = True
+            (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
+            durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
+            reply = None if running else reply
+            chat.update(duration=durs[-1] if durs else None, still_running=running, reply=reply,
+                        reply_source="redacted hierarchy" if reply else None, reply_package=pkg,
                         reply_wait_ms=int((time.time() - t0) * 1000))
     elif app == "deepseek":
         if dev != "s22":
@@ -219,10 +286,54 @@ def run_fx(job, dev, serial, jdir, result):
                   fx={"exit_code": out.get("exit_code", p.returncode), "ms": int((time.time() - t0) * 1000),
                       "tool_calls": [t.get("name") for t in out.get("tool_calls") or []],
                       "error": out.get("error") or out.get("auth_failure")})
+    rows = [r for r in (json.loads(x) for x in _lines(jdir / "model.jsonl")) if isinstance(r, dict)]
+    steps = [r for r in rows if r.get("kind") == "step"]
+    if result.get("tokens_in") is None and steps:
+        result["tokens_in"] = sum(r.get("tokens_in") or 0 for r in steps)
+        result["tokens_out"] = sum(r.get("tokens_out") or 0 for r in steps)
     if out.get("exit_code", p.returncode) != 0:
-        result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
+        unavail = [r["error"] for r in rows if r.get("kind") == "error" and "model_unavailable" in str(r.get("error"))]
+        if unavail and not steps:
+            result["error_code"] = "model_unavailable"
+            result["error"] = unavail[0]
+        else:
+            result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
         return False
     return True
+
+
+def _lines(path):
+    try:
+        return [x for x in Path(path).read_text().splitlines() if x.strip().startswith("{")]
+    except OSError:
+        return []
+
+
+def write_transcript(jdir, result):
+    """transcript.jsonl: one row per model decision (choose_ms) and per phone action (tool_ms),
+    in time order. Sources: the shim's model.jsonl and the tool layer's tools.jsonl."""
+    rows = []
+    for x in _lines(jdir / "model.jsonl"):
+        r = json.loads(x)
+        if r.get("kind") == "step":
+            rows.append({"t": r["at"], "type": "decision", "model": r.get("model"), "choose_ms": r.get("choose_ms", r.get("ms")),
+                         "tokens_in": r.get("tokens_in"), "tokens_out": r.get("tokens_out"),
+                         "calls": r.get("calls"), "text": r.get("text"), "dropped": r.get("dropped")})
+        elif r.get("kind") == "error":
+            rows.append({"t": r["at"], "type": "model_error", "error": r.get("error"), "status": r.get("status")})
+    for x in _lines(jdir / "tools.jsonl"):
+        r = json.loads(x)
+        rows.append({"t": r.get("t") or calendar.timegm(time.strptime(r["at"], "%Y-%m-%dT%H:%M:%SZ")),
+                     "type": "action", "tool": r.get("tool"), "args": r.get("args"), "ok": r.get("ok"),
+                     "tool_ms": r.get("ms"), "result": (r.get("result") or "")[:500]})
+    if result.get("oracle"):
+        rows.append({"t": time.time(), "type": "oracle", "oracle": result["oracle"]})
+    rows.sort(key=lambda r: r["t"])
+    path = jdir / "transcript.jsonl"
+    with path.open("w") as f:
+        for i, r in enumerate(rows):
+            f.write(json.dumps({"i": i, **r}) + "\n")
+    return str(path)
 
 
 def oracle(job, d, result):
@@ -275,12 +386,17 @@ def main(job_id):
     attempt = int(os.environ.get("PHONEQ_ATTEMPT", "1"))
     t0 = time.time()
     result = {"id": job_id, "attempt": attempt, "started_at": common.now_iso(t0), "kind": job["kind"],
-              "harness": job["harness"], "model": job["model"], "transcript_path": str(jdir)}
+              "harness": job["harness"], "model": job["model"], "transcript_dir": str(jdir),
+              "transcript_path": str(jdir / "transcript.jsonl")}
     state = "failed"
     lock = d = before = None
     try:
         dev = resolve_device(job)
         result["device"] = dev
+        if job["harness"] == "fx":
+            why = model_preflight(job["model"])
+            if why:
+                raise Unavailable(why)
         reason = gate(dev)
         if reason:
             raise Blocked(f"gate {dev}: {reason}")
@@ -306,7 +422,7 @@ def main(job_id):
             d.press("home")
             time.sleep(0.8)
         if job["kind"] == "chat" and job["harness"] == "script":
-            ok = chat_script(job, dev, serial, d, result)
+            ok = chat_script(job, dev, serial, d, result, jdir)
         else:
             ok = run_fx(job, dev, serial, jdir, result)
         verdict = oracle(job, d, result)
@@ -318,6 +434,9 @@ def main(job_id):
     except Blocked as e:
         state = "blocked"
         result["error"] = str(e)
+    except Unavailable as e:
+        result["error_code"] = "model_unavailable"
+        result["error"] = str(e) if "model_unavailable" in str(e) else f"model_unavailable: {e}"
     except SystemExit as e:
         state = "cancelled"
         result["error"] = str(e)
@@ -329,6 +448,10 @@ def main(job_id):
         if lock is not None:
             lock.close()
         result["state"] = state
+        try:
+            result["transcript_path"] = write_transcript(jdir, result)
+        except Exception as e:  # noqa: BLE001 - evidence only
+            result["transcript_error"] = f"{type(e).__name__}: {e}"
         result["finished_at"] = common.now_iso()
         result["ms"] = int((time.time() - t0) * 1000)
         common.write_json(jdir / f"result-{attempt}.json", result)

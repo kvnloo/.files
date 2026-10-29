@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -123,8 +124,8 @@ def validate(body):
     if app is not None and app not in common.APPS and not re.fullmatch(r"[A-Za-z][\w]*(\.[\w]+)+", app):
         raise Bad("app must be chatgpt, deepseek or an Android package name")
     model = body.get("model") or common.DEFAULT_MODEL
-    if not re.fullmatch(r"(openai-codex|local|ollama|gateway)/[\w.:/-]{1,120}", model):
-        raise Bad("model must be openai-codex/<slug>, local/<name>, ollama/<name> or gateway/<id>")
+    if not re.fullmatch(r"(openai-codex|groot-router|local|ollama|gateway)/[\w.:/-]{1,120}", model):
+        raise Bad("model must be openai-codex/<slug>, groot-router/<id>, local/<name>, ollama/<name> or gateway/<id>")
     max_steps = body.get("max_steps", 30)
     if not isinstance(max_steps, int) or not 1 <= max_steps <= 200:
         raise Bad("max_steps must be an integer 1..200")
@@ -295,7 +296,30 @@ def k8s_job_manifest(r, tolerate):
                     "volumes": vols}}}}
 
 
+def model_unavailable(model):
+    """Shim preflight: a model nobody can serve fails at once, without a phone slot."""
+    try:
+        with urllib.request.urlopen(common.SHIM_URL + "/phoneq/available?" +
+                                    urllib.parse.urlencode({"model": model}), timeout=10):
+            return None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            try:
+                return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+            except ValueError:
+                return f"model_unavailable: {model}"
+        return None  # shim trouble: let the runner decide (it re-checks)
+    except OSError:
+        return None
+
+
 def create_k8s_job(r):
+    if r["harness"] == "fx" and r["attempts"] == 0:
+        why = model_unavailable(r["model"])
+        if why:
+            q("UPDATE jobs SET state='failed', finished_at=?, error=?, result=? WHERE id=?",
+              (common.now_iso(), why, json.dumps({"error_code": "model_unavailable", "steps": 0}), r["id"]))
+            return
     want = [r["device"]] if r["device"] != "any" else list(common.DEVICES)
     open_devs, reasons = [], {}
     for dev in want:
@@ -360,6 +384,7 @@ def finish_from_result(r, job_obj, pod):
     public = {k: res.get(k) for k in ("final_output", "steps", "oracle_pass", "transcript_path", "tokens_in",
                                       "tokens_out", "ms", "cold_ms") if res.get(k) is not None}
     public.update({k: res[k] for k in ("device", "serial", "oracle", "chat", "fx", "lock_wait_ms", "pace_wait_ms",
+                                       "error_code", "transcript_dir",
                                        "foreground_before", "foreground_after_job", "restored",
                                        "foreground_restored_to", "attempt") if k in res})
     q("UPDATE jobs SET state=?, started_at=?, finished_at=?, result=?, error=?, assigned=? WHERE id=?",

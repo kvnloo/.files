@@ -8,7 +8,8 @@ This shim answers both and routes by model id:
   openai-codex/<slug>   ChatGPT subscription via Hermes' own OAuth client, exactly like
                         dash-log-watch-model.py: resolve_provider_client("openai-codex",
                         model=slug, raw_codex=True) -> Responses API at chatgpt.com/backend-api/codex
-  local/<name>          groot llama router (OpenAI-compatible) at PHONEQ_LLAMA_URL
+  local/<name>          groot llama router (OpenAI-compatible) at PHONEQ_LLAMA_URL, else ollama
+  groot-router/<name>   groot llama router only (the eval suite's name for it)
   ollama/<name>         groot ollama (OpenAI-compatible) at PHONEQ_OLLAMA_URL
   gateway/<id>          real Vercel AI Gateway, only if AI_GATEWAY_API_KEY is set here
 
@@ -19,7 +20,9 @@ Policy (this gateway serves phone jobs only):
     phone MCP schemas (fx defers MCP tools until searched);
   - fx --auto permission reviews of mcp_phone_* actions are answered "clear" here; every other
     action gets "caution". The phone tool layer itself refuses installs/settings/shell.
-Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>").
+Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>");
+every decision row carries choose_ms (wall time of that one model call).
+A model the routes cannot serve answers HTTP 404 with "model_unavailable: ..." (never a guess).
 """
 import contextlib
 import http.server
@@ -43,7 +46,8 @@ OLLAMA = os.environ.get("PHONEQ_OLLAMA_URL", "http://127.0.0.1:11434")
 GATEWAY = os.environ.get("PHONEQ_GATEWAY_URL", "https://ai-gateway.vercel.sh/v4/ai/language-model")
 HERMES_SOURCE = os.environ.get("PHONEQ_HERMES_SOURCE", "/workspace/hermes-home/hermes-agent")
 EFFORT = os.environ.get("PHONEQ_EFFORT", "low")
-CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
+CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-6.1-luna", "gpt-6.1-terra", "gpt-6.1-sol",
+                "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
 TOOL_PREFIX = "mcp_phone_"
 JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})$")
 
@@ -227,11 +231,30 @@ class Backend(Exception):
         self.status = status
 
 
+def unavailable(model_id, why):
+    return Backend(404, f"model_unavailable: {model_id}: {why}")
+
+
 def call_codex(slug, req, tools):
     if slug not in CODEX_MODELS:
-        raise Backend(400, f"unknown openai-codex model {slug}")
+        raise unavailable("openai-codex/" + slug, "not a known ChatGPT-subscription model")
     client = hermes_client(slug)
     try:
+        return _call_codex(client, slug, req, tools)
+    except Backend:
+        raise
+    except Exception as e:  # noqa: BLE001 - map the backend's "no such model" to model_unavailable
+        code = getattr(e, "status_code", None)
+        msg = str(e)[:300]
+        if code in (400, 404) and re.search(r"model|not supported|unsupported", msg, re.I):
+            raise unavailable("openai-codex/" + slug, msg) from None
+        raise Backend(502, f"codex {type(e).__name__} {code or ''}: {msg}") from None
+    finally:
+        client.close()
+
+
+def _call_codex(client, slug, req, tools):
+    if True:
         kwargs = dict(model=slug, instructions=PHONE_SYSTEM, input=to_responses_input(req["prompt"]),
                       store=False, stream=True, reasoning={"effort": EFFORT})
         if tools:
@@ -256,8 +279,6 @@ def call_codex(slug, req, tools):
                 elif ev.type in ("error", "response.failed", "response.incomplete"):
                     raise Backend(502, f"codex stream {ev.type}")
         return "\n".join(texts).strip(), calls, usage, "openai-codex/" + (model or slug)
-    finally:
-        client.close()
 
 
 _local_models = {"at": 0, "llama": set(), "ollama": set()}
@@ -354,6 +375,46 @@ def review_parts(req):
                      (0, 0), "phoneq/review")
 
 
+def resolve(model_id):
+    """(base url, backend model name) for a local model, or raise model_unavailable."""
+    provider, _, name = model_id.partition("/")
+    cat = local_catalog()
+    if provider == "groot-router" or (provider == "local" and name in cat["llama"]):
+        if name not in cat["llama"]:
+            raise unavailable(model_id, f"not served by the groot llama router {LLAMA}")
+        return LLAMA, name
+    if provider in ("ollama", "local"):
+        if name not in cat["ollama"]:
+            raise unavailable(model_id, f"not on the groot llama router or ollama {OLLAMA}")
+        return OLLAMA, name
+    raise unavailable(model_id, "no route (use openai-codex/, groot-router/, local/, ollama/ or gateway/)")
+
+
+def route(model_id, req, tools):
+    provider, _, name = model_id.partition("/")
+    if provider == "openai-codex":
+        return call_codex(name, req, tools)
+    base, name = resolve(model_id)
+    return call_openai_compatible(base, name, req, tools)
+
+
+def available(model_id):
+    """Cheap preflight used by the runner before it takes a phone: None if routable, else why."""
+    provider, _, name = model_id.partition("/")
+    try:
+        if provider == "openai-codex":
+            if name not in CODEX_MODELS:
+                raise unavailable(model_id, "not a known ChatGPT-subscription model")
+        elif provider == "gateway":
+            if not os.environ.get("AI_GATEWAY_API_KEY"):
+                raise unavailable(model_id, "no AI_GATEWAY_API_KEY on the shim")
+        else:
+            resolve(model_id)
+    except Backend as e:
+        return str(e)
+    return None
+
+
 def complete(req, model_id, job):
     """Return v3 parts for one fx model step (or raise Backend)."""
     t0 = time.time()
@@ -367,22 +428,14 @@ def complete(req, model_id, job):
         transcript(job, {"at": time.time(), "kind": "bootstrap", "missing": missing_tools(req)})
         return bootstrap_parts(req)
     allowed = {t["name"] for t in tools}
-    provider, _, name = model_id.partition("/")
-    if provider == "openai-codex":
-        text, calls, usage, model = call_codex(name, req, tools)
-    elif provider == "local":
-        cat = local_catalog()
-        base = LLAMA if name in cat["llama"] or name not in cat["ollama"] else OLLAMA
-        text, calls, usage, model = call_openai_compatible(base, name, req, tools)
-    elif provider == "ollama":
-        text, calls, usage, model = call_openai_compatible(OLLAMA, name, req, tools)
-    else:
-        raise Backend(400, f"unroutable model {model_id}")
+    t0 = time.time()  # choose_ms covers only the model call, not the bootstrap/review steps
+    text, calls, usage, model = route(model_id, req, tools)
     dropped = [c[1] for c in calls if c[1] not in allowed]
     calls = [c for c in calls if c[1] in allowed][:1]  # one action per step
     if dropped and not calls and not text:
         text = f"(blocked non-phone tools: {', '.join(dropped)})"
-    transcript(job, {"at": time.time(), "kind": "step", "model": model, "ms": int((time.time() - t0) * 1000),
+    ms = int((time.time() - t0) * 1000)
+    transcript(job, {"at": time.time(), "kind": "step", "model": model, "ms": ms, "choose_ms": ms,
                      "tools": sorted(allowed),
                      "tokens_in": usage[0], "tokens_out": usage[1], "text": text[:4000],
                      "calls": [{"name": c[1], "args": c[2][:2000]} for c in calls], "dropped": dropped})
@@ -393,11 +446,13 @@ def catalog():
     data = [{"id": f"openai-codex/{m}", "name": m} for m in CODEX_MODELS]
     cat = local_catalog()
     data += [{"id": f"local/{m}", "name": m} for m in sorted(cat["llama"])]
+    data += [{"id": f"groot-router/{m}", "name": m} for m in sorted(cat["llama"])]
     data += [{"id": f"ollama/{m}", "name": m} for m in sorted(cat["ollama"])]
     for d in data:
         d.update(object="model", created=0, owned_by="phone-queue", type="language",
-                 context_window=8192 if d["id"].startswith(("local/", "ollama/")) else 200000,
-                 max_tokens=2048 if d["id"].startswith(("local/", "ollama/")) else 32000, tags=["tool-use"])
+                 context_window=8192 if d["id"].startswith(("local/", "ollama/", "groot-router/")) else 200000,
+                 max_tokens=2048 if d["id"].startswith(("local/", "ollama/", "groot-router/")) else 32000,
+                 tags=["tool-use"])
     return {"object": "list", "data": data}
 
 
@@ -417,8 +472,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] in ("/healthz", "/"):
-            return self._json(200, {"ok": True, "routes": ["openai-codex", "local", "ollama"] +
+            return self._json(200, {"ok": True, "routes": ["openai-codex", "groot-router", "local", "ollama"] +
                                     (["gateway"] if os.environ.get("AI_GATEWAY_API_KEY") else [])})
+        if self.path.startswith("/phoneq/available?"):
+            from urllib.parse import parse_qs, urlparse
+            mid = (parse_qs(urlparse(self.path).query).get("model") or [""])[0]
+            why = available(mid)
+            return self._json(200 if why is None else 404, {"model": mid, "available": why is None, "error": why})
         if self.path.split("?")[0].endswith("/models"):
             return self._json(200, catalog())
         return self._json(404, {"error": "not found"})

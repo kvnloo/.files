@@ -36,6 +36,35 @@ NO_LAUNCH = {"com.android.vending", "com.sec.android.app.samsungapps", "com.goog
              "com.termux", "com.samsung.android.knox.containercore"}
 PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
 MAX_LINES = 140
+TOGGLE_CLASSES = ("Switch", "SwitchCompat", "SwitchMaterial", "CheckBox", "MaterialCheckBox", "ToggleButton",
+                  "RadioButton", "CompoundButton", "CheckedTextView", "SeslSwitchBar")
+
+
+def is_toggle(node):
+    cls = (node.get("class") or "").split(".")[-1]
+    return node.get("checkable") == "true" or cls in TOGGLE_CLASSES
+
+
+def toggle_under(root, x, y):
+    """A checkable control the tap at (x, y) could flip: any toggle whose bounds contain the
+    point, or a toggle inside the smallest clickable element that receives the tap (a Settings
+    row whose whole surface flips its Switch). Returns a label, or None."""
+    receivers = []
+    for n in root.iter("node"):
+        b = bounds(n)
+        if not b or not (b[0] <= x <= b[2] and b[1] <= y <= b[3]):
+            continue
+        if is_toggle(n):
+            return (n.get("text") or n.get("content-desc") or n.get("class") or "toggle").strip()
+        if n.get("clickable") == "true":
+            receivers.append(((b[2] - b[0]) * (b[3] - b[1]), n))
+    if receivers:
+        receiver = min(receivers, key=lambda t: t[0])[1]
+        for n in receiver.iter("node"):
+            if is_toggle(n):
+                label = " ".join(v for v in ((m.get("text") or "").strip() for m in receiver.iter("node")) if v)
+                return (label or n.get("class") or "toggle")[:80]
+    return None
 
 
 class Refused(RuntimeError):
@@ -173,12 +202,13 @@ class Phone:
     def _record(self, tool, args, ok, result, ms):
         if self.log:
             with self.log.open("a") as f:
-                f.write(json.dumps({"at": common.now_iso(), "tool": tool, "args": args, "ok": ok,
+                f.write(json.dumps({"at": common.now_iso(), "t": time.time(), "tool": tool, "args": args, "ok": ok,
                                     "ms": ms, "result": result[:4000]}) + "\n")
 
     def _refresh(self):
         self.pkg, root = safe_tree(self.d)
         self.rows = compact(root)
+        self.root = root
         return root
 
     def _find(self, args):
@@ -226,8 +256,11 @@ class Phone:
 
     def _check_tap(self, row):
         label = " ".join(x for x in (row.get("text"), row.get("desc"), row.get("id")) if x)
-        if "check" in row.get("flags", []) or row.get("cls") in ("Switch", "CheckBox", "ToggleButton", "RadioButton"):
+        if "check" in row.get("flags", []) or row.get("cls") in TOGGLE_CLASSES:
             raise Refused(f"refused: {label or 'that control'} is a toggle; the queue never changes settings")
+        hit = toggle_under(self.root, row["x"], row["y"]) if getattr(self, "root", None) is not None else None
+        if hit:
+            raise Refused(f"refused: tapping there could flip the toggle in {hit!r}; the queue never changes settings")
         if label and DENY_LABEL.search(label):
             raise Refused(f"refused: {label!r} looks like an install/reset/permission/settings action")
 
