@@ -1,0 +1,238 @@
+{
+ "screens": [
+  "about2",
+  "about3",
+  "about_battery_info",
+  "about_legal",
+  "about_phone",
+  "about_software_info",
+  "acc2",
+  "acc_advanced",
+  "accessibility",
+  "apps",
+  "apps2",
+  "apps_samsung_app_settings",
+  "battery",
+  "clock",
+  "clock2",
+  "clock_alarm",
+  "clock_stopwatch",
+  "clock_timer",
+  "clock_world_clock",
+  "clock_world_clock2",
+  "date_time",
+  "display",
+  "files2",
+  "files_dcim",
+  "files_internal2",
+  "home",
+  "language",
+  "myfiles",
+  "myfiles_internal",
+  "settings_main",
+  "settings_p0",
+  "settings_p1",
+  "settings_p2",
+  "settings_p3",
+  "settings_p4",
+  "sound",
+  "storage"
+ ],
+ "rows": [
+  {
+   "task": "settings-open",
+   "evidence": "settings_p0",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "settings_main",
+    "settings_p0",
+    "settings_p1",
+    "settings_p2",
+    "settings_p3",
+    "settings_p4"
+   ],
+   "ok": true
+  },
+  {
+   "task": "about-model-name",
+   "evidence": "about_phone",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "about2",
+    "about3",
+    "about_phone"
+   ],
+   "ok": true
+  },
+  {
+   "task": "about-oneui-version",
+   "evidence": "about_software_info",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "about_software_info"
+   ],
+   "ok": true
+  },
+  {
+   "task": "about-baseband",
+   "evidence": "about_software_info",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "about_software_info"
+   ],
+   "ok": true
+  },
+  {
+   "task": "about-battery-capacity",
+   "evidence": "about_battery_info",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "about_battery_info"
+   ],
+   "ok": true
+  },
+  {
+   "task": "about-legal",
+   "evidence": "about_legal",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "about_legal"
+   ],
+   "ok": true
+  },
+  {
+   "task": "apps-list",
+   "evidence": "apps",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "apps",
+    "apps2"
+   ],
+   "ok": true
+  },
+  {
+   "task": "apps-samsung-settings",
+   "evidence": "apps_samsung_app_settings",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "apps_samsung_app_settings"
+   ],
+   "ok": true
+  },
+  {
+   "task": "accessibility",
+   "evidence": "accessibility",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "acc2",
+    "accessibility"
+   ],
+   "ok": true
+  },
+  {
+   "task": "accessibility-advanced",
+   "evidence": "acc_advanced",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "acc_advanced"
+   ],
+   "ok": true
+  },
+  {
+   "task": "language",
+   "evidence": "language",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "language"
+   ],
+   "ok": true
+  },
+  {
+   "task": "date-time",
+   "evidence": "date_time",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "date_time"
+   ],
+   "ok": true
+  },
+  {
+   "task": "clock-open",
+   "evidence": "clock",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "clock",
+    "clock2",
+    "clock_alarm",
+    "clock_stopwatch",
+    "clock_timer"
+   ],
+   "ok": true
+  },
+  {
+   "task": "clock-stopwatch",
+   "evidence": "clock_stopwatch",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "clock_stopwatch"
+   ],
+   "ok": true
+  },
+  {
+   "task": "clock-timer",
+   "evidence": "clock_timer",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "clock_timer"
+   ],
+   "ok": true
+  },
+  {
+   "task": "files-storage-used",
+   "evidence": "myfiles",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "myfiles"
+   ],
+   "ok": true
+  },
+  {
+   "task": "files-internal-root",
+   "evidence": "myfiles_internal",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "files2",
+    "files_internal2",
+    "myfiles_internal"
+   ],
+   "ok": true
+  },
+  {
+   "task": "files-dcim",
+   "evidence": "files_dcim",
+   "pass_on_evidence": true,
+   "fail_on_home": true,
+   "accepted_screens": [
+    "files_dcim"
+   ],
+   "ok": true
+  }
+ ]
+}

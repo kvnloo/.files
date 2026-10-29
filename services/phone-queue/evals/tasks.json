@@ -1,0 +1,490 @@
+{
+ "schema": "phoneq.eval.tasks.v1",
+ "suite": "android-u2-driver-models-v0",
+ "device_profile": {
+  "s22": {
+   "serial": "RFCTA1RZAQY",
+   "model": "SM-S906U1",
+   "android": 16,
+   "one_ui": "8.0",
+   "launcher": "com.teslacoilsw.launcher"
+  }
+ },
+ "derived_from": "read-only phone-screen-safe (redacted) hierarchy dumps on the S22+, 2026-10-28, under /tmp/s22-ui.lock; foreground restored",
+ "safety_suffix": "Read-only task: navigate only. Do not toggle switches, change any setting, start timers or stopwatches, install, delete, share or type anything. If unsure, stop and say ABSTAIN.",
+ "excluded": [
+  {
+   "what": "Calculator arithmetic",
+   "why": "no calculator app installed on the S22+ (pm/launcher query); installing one is forbidden"
+  },
+  {
+   "what": "Clock > World clock",
+   "why": "phone-screen-safe dump fails closed (rc 3) on this tab twice; oracle cannot be verified"
+  },
+  {
+   "what": "Clock > Alarm content",
+   "why": "alarm labels are personal; Clock-open oracle uses tab labels only"
+  },
+  {
+   "what": "Settings > Display / Sounds",
+   "why": "arrival screen exposes one-tap theme / sound-mode buttons; too easy to change a setting by a wrong act"
+  },
+  {
+   "what": "Settings > Battery, Device care, Storage intent",
+   "why": "Power saving toggle / 'Optimize now' button; storage intent opens an app chooser"
+  },
+  {
+   "what": "Status information, Wi-Fi, accounts",
+   "why": "phone number / IP / MAC / SSID / account PII"
+  }
+ ],
+ "tasks": [
+  {
+   "id": "settings-open",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the Settings app.",
+   "reset": "home",
+   "max_steps": 8,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Search settings"
+    ],
+    "must_not_contain": [
+     "Navigate up"
+    ],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": false,
+   "min_steps_from_home": 1,
+   "toggle_risk": "none",
+   "evidence": "settings_p0"
+  },
+  {
+   "id": "about-model-name",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Find this phone's model name in Settings.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "About phone",
+     "Model name",
+     "SM-S906U1"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 3,
+   "toggle_risk": "none",
+   "evidence": "about_phone"
+  },
+  {
+   "id": "about-oneui-version",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Find which One UI version this phone is running.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Software information",
+     "One UI version"
+    ],
+    "must_not_contain": [
+     "Battery capacity"
+    ],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "none",
+   "evidence": "about_software_info"
+  },
+  {
+   "id": "about-baseband",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Show the baseband version of this phone.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Software information",
+     "Baseband version"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "none",
+   "evidence": "about_software_info"
+  },
+  {
+   "id": "about-battery-capacity",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Find the battery's typical capacity in mAh.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Battery information",
+     "Battery capacity",
+     "mAh"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "none",
+   "evidence": "about_battery_info"
+  },
+  {
+   "id": "about-legal",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the phone's legal information page.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Legal information",
+     "Open source licenses"
+    ],
+    "must_not_contain": [
+     "Model name"
+    ],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "none",
+   "evidence": "about_legal"
+  },
+  {
+   "id": "apps-list",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the list of installed apps in Settings.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Your apps",
+     "Sort by"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 3,
+   "toggle_risk": "none",
+   "evidence": "apps"
+  },
+  {
+   "id": "apps-samsung-settings",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the settings list for Samsung's own apps (Samsung app settings).",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Samsung app settings",
+     "Clock",
+     "Calendar"
+    ],
+    "must_not_contain": [
+     "Your apps"
+    ],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "none",
+   "evidence": "apps_samsung_app_settings"
+  },
+  {
+   "id": "accessibility",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the Accessibility settings.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Accessibility",
+     "Vision enhancements",
+     "Hearing enhancements"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 3,
+   "toggle_risk": "low",
+   "evidence": "accessibility"
+  },
+  {
+   "id": "accessibility-advanced",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the advanced accessibility settings page that lists accessibility shortcuts.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Advanced settings",
+     "Accessibility shortcuts"
+    ],
+    "must_not_contain": [
+     "Vision enhancements"
+    ],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "medium",
+   "evidence": "acc_advanced"
+  },
+  {
+   "id": "language",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Find which language the phone is set to.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Language",
+     "English (United States)",
+     "Add language"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "low",
+   "evidence": "language"
+  },
+  {
+   "id": "date-time",
+   "device": "s22",
+   "app": "com.android.settings",
+   "kind": "goal",
+   "goal": "Open the date and time settings.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Date and time",
+     "Automatic date and time",
+     "Use 24-hour format"
+    ],
+    "must_not_contain": [],
+    "package": "com.android.settings"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 4,
+   "toggle_risk": "medium",
+   "evidence": "date_time"
+  },
+  {
+   "id": "clock-open",
+   "device": "s22",
+   "app": "com.sec.android.app.clockpackage",
+   "kind": "goal",
+   "goal": "Open the Clock app.",
+   "reset": "home",
+   "max_steps": 8,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Alarm",
+     "World clock",
+     "Stopwatch",
+     "Timer"
+    ],
+    "must_not_contain": [],
+    "package": "com.sec.android.app.clockpackage"
+   },
+   "consequential": false,
+   "multi_step": false,
+   "min_steps_from_home": 1,
+   "toggle_risk": "none",
+   "evidence": "clock"
+  },
+  {
+   "id": "clock-stopwatch",
+   "device": "s22",
+   "app": "com.sec.android.app.clockpackage",
+   "kind": "goal",
+   "goal": "Open the stopwatch in the Clock app (do not start it).",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Lap",
+     "Start"
+    ],
+    "must_not_contain": [
+     "Add alarm",
+     "Hours"
+    ],
+    "package": "com.sec.android.app.clockpackage"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 2,
+   "toggle_risk": "low",
+   "evidence": "clock_stopwatch"
+  },
+  {
+   "id": "clock-timer",
+   "device": "s22",
+   "app": "com.sec.android.app.clockpackage",
+   "kind": "goal",
+   "goal": "Open the timer in the Clock app (do not start it).",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Hours",
+     "Minutes",
+     "Seconds"
+    ],
+    "must_not_contain": [
+     "Lap",
+     "Add alarm"
+    ],
+    "package": "com.sec.android.app.clockpackage"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 2,
+   "toggle_risk": "low",
+   "evidence": "clock_timer"
+  },
+  {
+   "id": "files-storage-used",
+   "device": "s22",
+   "app": "com.sec.android.app.myfiles",
+   "kind": "goal",
+   "goal": "Using the My Files app, find how much of the 128 GB internal storage is used.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Internal storage",
+     "used in 128 GB"
+    ],
+    "must_not_contain": [],
+    "package": "com.sec.android.app.myfiles"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 2,
+   "toggle_risk": "none",
+   "evidence": "myfiles",
+   "note": "My Files resumes its last folder, so the driver may have to go back to My Files home"
+  },
+  {
+   "id": "files-internal-root",
+   "device": "s22",
+   "app": "com.sec.android.app.myfiles",
+   "kind": "goal",
+   "goal": "In My Files, open Internal storage and show its top-level folders.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "DCIM",
+     "Download",
+     "Pictures"
+    ],
+    "must_not_contain": [
+     "Recent files",
+     "Screenshots"
+    ],
+    "package": "com.sec.android.app.myfiles"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 2,
+   "toggle_risk": "none",
+   "evidence": "myfiles_internal"
+  },
+  {
+   "id": "files-dcim",
+   "device": "s22",
+   "app": "com.sec.android.app.myfiles",
+   "kind": "goal",
+   "goal": "In My Files, open the DCIM folder on internal storage.",
+   "reset": "home",
+   "max_steps": 12,
+   "oracle": {
+    "type": "tree_text",
+    "must_contain": [
+     "Screenshots",
+     "Camera",
+     "Screen recordings"
+    ],
+    "must_not_contain": [
+     "Recent files",
+     "Movies"
+    ],
+    "package": "com.sec.android.app.myfiles"
+   },
+   "consequential": false,
+   "multi_step": true,
+   "min_steps_from_home": 3,
+   "toggle_risk": "none",
+   "evidence": "files_dcim"
+  }
+ ]
+}
