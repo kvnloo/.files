@@ -124,16 +124,63 @@ def bounds(node):
     return tuple(map(int, m.groups())) if m else None
 
 
+# Settings > About phone > Software information rows whose values are public firmware ids
+# (they trip phone-screen-safe's high-entropy rule). Only these titles, only in Settings, only
+# when the high-entropy rule is the sole hit and the value looks like a firmware id. IMEI,
+# serial, phone number, MAC/IP addresses and everything else stay redacted.
+FIRMWARE_TITLES = {"build number", "baseband version", "kernel version", "service provider software version",
+                   "software version", "hardware version", "one ui version", "android version",
+                   "google play system update", "knox version", "security software version"}
+FIRMWARE_VALUE = re.compile(r"[A-Za-z0-9 _.,:/#()+\-\n]{1,300}")
+
+
+def restore_firmware_ids(raw_root, red_root):
+    """Un-redact public firmware ids (see FIRMWARE_TITLES) in a redacted copy of raw_root."""
+    redacted = pss().REDACTED
+    parent = {c: p for p in red_root.iter() for c in p}
+    restored = 0
+    for raw_n, red_n in zip(raw_root.iter("node"), red_root.iter("node")):
+        val, now = raw_n.get("text") or "", red_n.get("text") or ""
+        if redacted not in now or val == now:
+            continue
+        if (red_n.get("resource-id") or "").endswith("/title"):
+            continue
+        # The row = the smallest ancestor holding exactly one other text node that is a title
+        # (Samsung nests the title in title_frame, the summary beside it; AOSP has siblings).
+        title, p = None, parent.get(red_n)
+        for _ in range(3):
+            if p is None:
+                break
+            texts = [c for c in p.iter("node") if c is not red_n and (c.get("text") or "").strip()]
+            if texts:
+                title = texts[0].get("text").strip().lower() if len(texts) == 1 else None
+                break
+            p = parent.get(p)
+        if title not in FIRMWARE_TITLES or not FIRMWARE_VALUE.fullmatch(val):
+            continue
+        if {rule for _s, _e, rule in pss().find_spans(val)} - {"high_entropy"}:
+            continue
+        red_n.set("text", val)
+        if red_n.get("content-desc") and redacted in red_n.get("content-desc"):
+            red_n.set("content-desc", raw_n.get("content-desc") or "")
+        restored += 1
+    return restored
+
+
 def safe_tree(d):
     """Redacted hierarchy, same rule as phone-screen-safe.safe_hierarchy (sensitive app ->
     nothing; else redact_xml), with the package read from the dump instead of app_current().
     Returns (package, redacted root element)."""
     raw = d.dump_hierarchy()
-    pkg = tree_package(ET.fromstring(raw.encode()))
+    raw_root = ET.fromstring(raw.encode())
+    pkg = tree_package(raw_root)
     if pss().sensitive_package(pkg):
         return pkg, ET.fromstring(f'<hierarchy redacted="sensitive app {pkg}"/>')
     xml = pss().redact_xml(raw)[0]
-    return pkg, ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
+    root = ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
+    if pkg in SETTINGS_PKGS:
+        restore_firmware_ids(raw_root, root)
+    return pkg, root
 
 
 def tree_text(root):

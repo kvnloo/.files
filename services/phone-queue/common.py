@@ -6,6 +6,8 @@ Everything here REUSES existing host code instead of copying it:
   - ChatGPT/DeepSeek drivers, pacing and quota pauses: the chatgpt-driver directory
   - redaction: ~/.local/bin/phone-screen-safe
 """
+import hashlib
+import hmac
 import importlib.machinery
 import importlib.util
 import json
@@ -39,6 +41,40 @@ DRIVER_PY = DRIVER / ".venv/bin/python"
 APP_DIR = Path(__file__).resolve().parent
 
 APPS = {"chatgpt": "com.openai.chatgpt", "deepseek": "com.deepseek.chat"}
+
+# Runner time budget (each phase's bound). The k8s Job deadline is derived from the sum, so a
+# job that legitimately waits out every phase is never killed by activeDeadlineSeconds.
+LOCK_WAIT_S = int(os.environ.get("PHONEQ_LOCK_WAIT_S", "900"))
+PACE_WAIT_S = int(os.environ.get("PHONEQ_PACE_WAIT_S", "600"))
+REPLY_WAIT_S = int(os.environ.get("PHONEQ_REPLY_WAIT_S", "240"))
+FX_TIMEOUT_S = int(os.environ.get("PHONEQ_FX_TIMEOUT_S", "900"))
+RUNNER_SLACK_S = 360  # Kueue flavor read (60) + connect/oracle/restore/transcript
+JOB_DEADLINE_S = LOCK_WAIT_S + PACE_WAIT_S + REPLY_WAIT_S + FX_TIMEOUT_S + RUNNER_SLACK_S
+
+# Auth material: k8s Secret phone-queue-auth (services/phone-queue/issue-tokens), never in git.
+#   tokens.json  {"<sha256 hex of a bearer token>": {"principal": "...", "admin": bool}}
+#   shim-key     HMAC key for per-job model-shim tokens
+AUTH_DIR = Path(os.environ.get("PHONEQ_AUTH_DIR", "/etc/phoneq"))
+JOB_TOKEN_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})-(\d{1,4})\.([a-f0-9]{32})$")
+
+
+def shim_key():
+    return (AUTH_DIR / "shim-key").read_text().strip().encode()
+
+
+def job_token(job_id, attempt, key=None):
+    """Bearer the runner hands fx for the model shim: bound to one job attempt."""
+    mac = hmac.new(key or shim_key(), f"{job_id}:{attempt}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"phoneq-job-{job_id}-{attempt}.{mac}"
+
+
+def check_job_token(token, key):
+    """(job_id, attempt) when `token` is a valid per-job shim token, else None."""
+    m = JOB_TOKEN_RE.match(token or "")
+    if not m or not key:
+        return None
+    want = job_token(m.group(1), int(m.group(2)), key)
+    return (m.group(1), int(m.group(2))) if hmac.compare_digest(want, token) else None
 TERMINAL = ("succeeded", "failed", "cancelled")
 ID_RE = re.compile(r"^[a-f0-9]{12}$")
 

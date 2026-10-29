@@ -9,6 +9,8 @@ Luna agent loop, and writes a receipt. Two agents never drive the same phone at 
   this service uses 8792. Both groot loopback and the tailnet IP listen.
 - **CLI:** `phoneq` (in `~/.local/bin` on groot and mbp). Override the endpoint with
   `$PHONEQ_URL`.
+- **Auth:** submit and cancel need `Authorization: Bearer <token>` (see [Auth](#auth)).
+  `phoneq` reads `$PHONEQ_TOKEN` or `~/.config/phoneq/token`.
 - **Code:** `services/phone-queue/`.
 - **Manifests:** `config/k3s/manifests/60-phone-queue*.yaml`, plus the Kueue objects in
   `config/k3s/kueue/phones.yaml`.
@@ -20,9 +22,13 @@ Luna agent loop, and writes a receipt. Two agents never drive the same phone at 
 | `POST /v1/jobs` | `202 {id, state}`. A replay with the same `submitter`+`idempotency_key` returns `200` with the existing id. |
 | `GET /v1/jobs/{id}` | `{id, kind, device, state, submitter, model, created_at, started_at, finished_at, result?, error?}` |
 | `GET /v1/jobs?submitter=&state=&device=&limit=` | `{jobs: [...]}`, newest first |
-| `POST /v1/jobs/{id}/cancel` | Deletes the k8s Job. A running runner gets SIGTERM and still restores the foreground app and releases the lock. |
+| `POST /v1/jobs/{id}/cancel` | Body `{submitter}`. Only the job's own submitter (same token principal) or an admin token may cancel (`403` otherwise). Deletes the k8s Job; a running runner gets SIGTERM and still restores the foreground app and releases both locks. |
 | `GET /v1/devices` | Per phone: `{id, serial, online, gate:{allowed, reason}, lock_holder?, foreground?, battery?, queue_depth}` |
 | `GET /healthz` | Status of the DB, k8s, `z0.dev/phone` capacity and the model shim |
+
+Without a valid token, `GET` still works (Dash's read-only queue view uses it) but a job's
+`result` is cut to `{steps, oracle_pass, ms, cold_ms, error_code, device, attempt}` and the
+job carries `result_redacted: true`: no screen text, reply or transcript path.
 
 **Job body:**
 
@@ -39,8 +45,21 @@ Luna agent loop, and writes a receipt. Two agents never drive the same phone at 
 `failed` | `cancelled`.
 
 **`blocked`** means one of these is closed: the phone's gate, the ChatGPT quota pause or
-pace budget, or the UI lock. The job stays queued and is retried every 30 s. It never fails
-because of a closed gate.
+pace budget, a UI lock, or infrastructure (`infra: ...`: the model shim or a model backend
+is down or groot lacks memory to load the model). The job is retried every 30 s and never
+fails because of a closed gate; after 50 attempts it fails with `error_code` `infra_unavailable`
+(infra) or the last gate reason.
+
+**What `succeeded` means.**
+- goal / fx jobs: fx finished and the oracle (if any) passed.
+- ChatGPT chat (script): the message was sent AND a finished reply was harvested; it is in
+  `final_output` and `result.chat.reply`. Sent but no reply is `failed` with
+  `error_code` `reply_timeout` (still generating after 240 s) or `reply_not_harvested`;
+  `result.chat.send_status` stays `sent`, so do **not** resend.
+- DeepSeek chat (script): dispatch only (no harvester exists): sent and verified, with
+  `chat.reply_harvested: false` and `final_output` saying so.
+- Other `error_code`s: `model_unavailable`, `infra_unavailable`, `send_failed`,
+  `rate_limited`, `step_limit` (fx hit `max_steps`).
 
 **`result`** carries:
 - `final_output`, `steps`, `oracle_pass`, `oracle` (the details);
@@ -74,13 +93,17 @@ Kueue: LocalQueue phones -> ClusterQueue phones
        flavors phone-s22 / phone-s25, z0.dev/phone nominalQuota 1 each
        -> one admitted Job per phone; the rest wait as pending Workloads
 Job pod (runner.py, same ConfigMap code, chatgpt-driver venv python):
-   gate -> pace -> flock /tmp/<dev>-ui.lock -> re-gate -> record foreground
+   preflight -> gate -> pace -> flock ~/tmp/<dev>-ui.lock + /tmp/<dev>-ui.lock -> re-gate
+   -> record foreground
    -> harness -> oracle on a fresh hierarchy -> restore foreground -> result.json
 ```
 
 **Kueue design.** groot advertises the extended resource `z0.dev/phone = 2` by running
-`services/phone-queue/advertise-phones`, which is the documented node-status patch. Every
-phone Job requests `z0.dev/phone: 1`.
+`services/phone-queue/advertise-phones`, which is the documented node-status patch
+(`scripts/setup-k3s.sh apply` runs it). Every phone Job requests `z0.dev/phone: 1`. Its
+`activeDeadlineSeconds` is the sum of the runner's phase bounds (lock 900 + pace 600 +
+reply 240 + fx 900 + 360 slack = 3000 s), so a job that legitimately waits out every phase
+is never killed by its deadline.
 
 The ClusterQueue has two ResourceFlavors, one per phone, each with quota 1. Each flavor
 carries a Kueue-only taint `z0.dev/phone=<dev>`. A job for `s22` tolerates only the s22
@@ -105,11 +128,17 @@ the queue but never evicts a running one.
   - DeepSeek: `deepseek_burst.dispatch` on the S22 only. It records a launch receipt and has
     no reply harvester.
   - Dispatches are appended to `chatgpt-driver/phoneq-01/dispatches.jsonl`.
+- **Pacing applies to every harness.** Any chat job (script or fx) and any goal with
+  `app: chatgpt|deepseek` takes a `pace.py` send slot and honours the shared quota pauses
+  before it takes the phone. After an fx chat the runner stamps
+  `/tmp/chatgpt-last-dispatch-<dev>`, checks the screen for the driver's rate-limit words
+  (same 3 h pause) and logs to `dispatches.jsonl`.
 - **goal (and chat with harness=fx).** Runs vercel-labs fx with
   `fx ask --json --no-save --auto --model <id>`. Each job gets its own HOME
   (`<job>/fxhome`, `~/.fx` 0700) and `FX_MAX_AGENT_STEPS=max_steps`.
   - `FX_GATEWAY_BASE_URL` and `FX_GATEWAY_CHAT_URL` point fx at the model shim. The bearer
-    token is `phoneq-job-<id>`, so the shim writes a per-job `model.jsonl`.
+    is `phoneq-job-<id>-<attempt>.<hmac>` (HMAC-SHA256 with `shim-key`), valid only while
+    that attempt runs; the shim writes the per-job `model.jsonl`.
   - The shim exposes only the phone MCP server: `phone_tools.py mcp` (stdio). Its verbs are
     observe, tap, set_text, swipe, back, home, launch and wait.
 - **Model routes (shim):**
@@ -122,7 +151,14 @@ the queue but never evicts a running one.
   - `local/<id>` uses the router first, then ollama.
   - `gateway/<id>` uses the real Vercel AI Gateway, only when the shim has
     `AI_GATEWAY_API_KEY`. None is configured, so it returns `model_unavailable`.
-  - Availability preflight: `GET 127.0.0.1:8795/phoneq/available?model=`.
+  - Availability preflight: `GET 127.0.0.1:8795/phoneq/available?model=`: `200` routable,
+    `404` `model_unavailable` (fails the job without a phone slot), `503` `infra_unavailable`
+    (backend down, or not enough memory: blocks and retries). The front door runs it before
+    creating each k8s Job, the runner again in the pod.
+  - Memory guard: an `ollama/*` model that is not already resident is loaded only when
+    groot's `MemAvailable` covers its size plus 3 GiB (`PHONEQ_MEM_HEADROOM_MB`). A load on
+    a memory-starved groot once triggered a global OOM. The llama router manages its own
+    loads and is not guarded here.
 - **Oracle.** `tree_text` checks the case-insensitive substrings `must_contain` and
   `must_not_contain`, and optionally the foreground `package`. It runs against a fresh
   redacted hierarchy and matches both `text` and `content-desc`. It runs after the
@@ -147,11 +183,17 @@ the queue but never evicts a running one.
   keyevents.
 - **Every screen read is redacted.** The tool layer and the oracle use
   `phone-screen-safe`'s `redact_xml` / `sensitive_package`, so a sensitive app gives an
-  empty tree.
-- **UI lock.** The runner holds the host flock `/tmp/<dev>-ui.lock` for the whole UI phase.
-  It is shared with `tern-queue-loop@s22`, `phone-worker ui` and the overnight drivers, so
-  they coexist. The MCP server refuses to start unless an ancestor holds the lock
-  (`burst.require_ui_lock`).
+  empty tree. One narrow exception: in Settings, the value of a row titled Build number,
+  Baseband/Kernel/Software/Service provider software version, One UI/Android version and
+  similar public firmware ids is restored when the high-entropy rule was its only hit
+  (`phone_tools.restore_firmware_ids`). IMEI, serial, phone number and every other value
+  stay redacted.
+- **UI locks.** The runner holds both host flocks for the whole UI phase, in
+  `tern-01/launch_queue.py`'s order: `~/tmp/<dev>-ui.lock` (held by Dash e2e/native test
+  workers while they drive the screen) then `/tmp/<dev>-ui.lock` (shared with
+  `tern-queue-loop@s22`, `phone-worker ui` and the overnight drivers). Both waits share one
+  900 s bound. `/v1/devices` `lock_holder` names whichever is held (`lock` = its path). The
+  MCP server refuses to start unless an ancestor holds the lock (`burst.require_ui_lock`).
 - **Gates.** These come from phone-worker's `gate()`: the S25 switch
   (`~/.local/state/s25-worker-off`, `S25_UNTIL`), call state and owner idle. They are
   checked three times: at k8s-Job creation, in the pod, and again under the lock, together
@@ -162,6 +204,28 @@ the queue but never evicts a running one.
 - ChatGPT jobs only use the ordinary Chat composer ("Ask ChatGPT"). They never use
   Work/Codex cloud.
 
+## Auth
+
+The API is on the tailnet IP, so writes are authenticated:
+
+- `services/phone-queue/issue-tokens --ensure` (run by `scripts/setup-k3s.sh apply`) creates
+  Secret `phones/phone-queue-auth`: `tokens.json` maps the sha256 of each bearer token to
+  `{principal, admin}`, and `shim-key` signs per-job model-shim tokens. Plain tokens are
+  written once, 0600: `~/.config/phoneq/token` (principal `agents`, for every local agent)
+  and `~/.config/phoneq/admin-token` (principal `owner`, admin). Nothing is in git.
+- Copy `~/.config/phoneq/token` (0600) to each host that submits jobs. Raw HTTP clients send
+  `Authorization: Bearer $(cat ~/.config/phoneq/token)`.
+- More principals: `issue-tokens add NAME [--admin]`; `issue-tokens revoke NAME`. The API
+  rereads `tokens.json` when kubelet syncs the Secret (about a minute).
+- Without the Secret the API refuses every write (`503`) and the shim every model call
+  (fail closed).
+- The model shim (`127.0.0.1:8795`) answers model calls only for a valid, still-running job
+  attempt, so it is not an open proxy to the ChatGPT subscription for other processes on
+  groot. Its `GET`s (catalog, preflight, health) spend nothing upstream and stay open.
+- Residual trust: anyone who can read `~/.config/phoneq/token` (kvn on groot or mbp) or run
+  `kubectl` against the cluster can queue jobs; the token principal `agents` is shared, so
+  cancel additionally checks `submitter`.
+
 ## Operate
 
 ```
@@ -170,7 +234,8 @@ services/phone-queue/render-configmap            # regenerate 60-phone-queue-cod
 scripts/setup-k3s.sh check                       # parse, configmap freshness, server dry-run
 kubectl apply -f config/k3s/manifests/00-namespaces.yaml -f config/k3s/kueue/phones.yaml \
               -f config/k3s/manifests/60-phone-queue-code.yaml -f config/k3s/manifests/60-phone-queue.yaml
-services/phone-queue/advertise-phones            # after a node re-registration (healthz says so)
+services/phone-queue/advertise-phones            # after a node re-registration (apply runs it too)
+services/phone-queue/issue-tokens --ensure       # auth Secret + ~/.config/phoneq tokens (apply runs it too)
 kubectl -n phones rollout restart deploy/phone-queue   # server/shim code; Job pods read the ConfigMap fresh
 install -m0755 services/phone-queue/phoneq ~/.local/bin/phoneq
 kubectl get all -n phones; kubectl get workloads -n phones; kubectl get clusterqueue phones
@@ -184,7 +249,13 @@ hostPath).
 - fx is driven through the shim's Vercel-gateway protocol emulation (AI SDK v3 stream parts).
   If a later fx changes that protocol, goal jobs fail with `fx exit ...`; chat/script jobs
   are unaffected.
-- The DeepSeek script harness has no reply harvester (launch receipt only).
+- The DeepSeek script harness has no reply harvester (dispatch only; stated in the result).
+- While a ChatGPT job waits for a `pace.py` slot it holds that phone's Kueue slot (not the
+  UI locks).
 - ChatGPT reply harvest reads the rendered text after the tagged bubble. When a long reply
-  pushes that bubble off screen after scroll-to-bottom, `chat.reply` is null: the send
-  receipt still stands, and the conversation is in the ChatGPT app.
+  pushes that bubble off screen after scroll-to-bottom, the job fails with
+  `reply_not_harvested`: the send receipt still stands, and the conversation is in the
+  ChatGPT app.
+- API and shim run in one Guaranteed-QoS pod (requests = limits), the OOM killer's last
+  choice, and exit on SIGTERM (a rollout is about 3 s of downtime). Runner pods stay
+  burstable.

@@ -7,7 +7,8 @@ Order, always:
   1. device: the Kueue flavor this Workload was admitted on (z0.dev/phone -> phone-s22|phone-s25)
   2. gate: phone-worker's gate (S25 switch, call state, owner idle) -> else result "blocked"
   3. app pacing (ChatGPT only): shared quota pause + pace.py send budget -> else "blocked"
-  4. take flock /tmp/<dev>-ui.lock (shared with tern-queue-loop, phone-worker ui, ds_burst)
+  4. take the two host UI flocks, in launch_queue.py's order: ~/tmp/<dev>-ui.lock (Dash e2e /
+     native test workers) then /tmp/<dev>-ui.lock (tern-queue-loop, phone-worker ui, ds_burst)
   5. re-gate under the lock (+ the ChatGPT driver's owner_busy), record the foreground app
   6. run the harness: chat/script (burst.py / deepseek_burst.py) or fx (goal loop)
   7. oracle on a fresh redacted hierarchy, independent of the agent's "done"
@@ -32,10 +33,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 
-LOCK_WAIT_S = int(os.environ.get("PHONEQ_LOCK_WAIT_S", "900"))
-PACE_WAIT_S = int(os.environ.get("PHONEQ_PACE_WAIT_S", "600"))
-REPLY_WAIT_S = int(os.environ.get("PHONEQ_REPLY_WAIT_S", "240"))
-FX_TIMEOUT_S = int(os.environ.get("PHONEQ_FX_TIMEOUT_S", "900"))
+LOCK_WAIT_S = common.LOCK_WAIT_S
+PACE_WAIT_S = common.PACE_WAIT_S
+REPLY_WAIT_S = common.REPLY_WAIT_S
+FX_TIMEOUT_S = common.FX_TIMEOUT_S
 LAUNCHERS = {"com.teslacoilsw.launcher", "dev.omalauncher", "com.sec.android.app.launcher"}
 
 
@@ -48,42 +49,70 @@ class Unavailable(Exception):
 
 
 def model_preflight(model):
+    """None if the shim can serve `model`; raise Unavailable only when the shim says so (404).
+    A shim that is down, restarting or whose backend is unreachable is infrastructure trouble,
+    not a property of the model: that blocks the job (retried later, no phone time used)."""
     url = common.SHIM_URL + "/phoneq/available?" + urllib.parse.urlencode({"model": model})
     try:
         with urllib.request.urlopen(url, timeout=10) as r:
-            return None if json.load(r).get("available") else "model_unavailable"
+            if json.load(r).get("available"):
+                return None
+            raise Blocked(f"infra: model shim gave no verdict for {model}")
     except urllib.error.HTTPError as e:
         try:
-            return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+            why = json.loads(e.read()).get("error")
         except ValueError:
-            return f"model_unavailable: {model}: shim HTTP {e.code}"
+            why = None
+        if e.code == 404:
+            raise Unavailable(why or f"model_unavailable: {model}") from None
+        raise Blocked(f"infra: model shim HTTP {e.code}: {why or ''}".strip()) from None
     except OSError as e:
-        return f"model shim unreachable at {common.SHIM_URL}: {e}"
+        raise Blocked(f"infra: model shim unreachable at {common.SHIM_URL}: {e}") from None
 
 
 # ChatGPT chrome that is never part of a reply.
-CHROME = re.compile(r"^(ChatGPT|Ask ChatGPT|Message|New chat|Thinking|Searching.*|Stop|Copy|Share|Read aloud|"
-                    r"Good response|Bad response|More actions|Edit message|Regenerate|Scroll to the bottom|"
-                    r"(Worked|Thought) for .*)$", re.I)
+# ChatGPT status lines that render as text between our bubble and the reply. Buttons (Copy,
+# Share, Stop, ...) are content-desc only, so a one-word reply such as "Copy" or "Stop" survives.
+CHROME = re.compile(r"^(Thinking|Searching.*|Show more|Show less|(Worked|Thought) for .*)$", re.I)
+
+
+def _left(node):
+    m = re.match(r"\[(-?\d+),", node.get("bounds") or "")
+    return int(m.group(1)) if m else None
 
 
 def reply_from_tree(root, tag, sent=""):
     """The assistant reply as rendered text after our tagged user bubble (no clipboard: reading
-    it would expose whatever another app or the owner last copied)."""
+    it would expose whatever another app or the owner last copied).
+
+    Our own bubble is consumed strictly in order: the tag node, then only nodes that continue
+    the sent text exactly where the previous bubble node ended AND sit in the bubble's column
+    (ChatGPT right-aligns user bubbles; replies start at the left margin). Everything after the
+    bubble is the reply, even when it repeats words of the prompt ('Repeat: hello' -> 'hello')."""
     nodes = [n for n in root.iter("node") if (n.get("text") or "").strip()]
     hit = max((i for i, n in enumerate(nodes) if tag in n.get("text", "")), default=None)
     if hit is None:
         return None
+    first = nodes[hit].get("text").strip()
+    at = sent.find(first)
+    rest = sent[at + len(first):] if at >= 0 else ""
+    col = _left(nodes[hit])
     out = []
     app = nodes[hit].get("package")
+    in_bubble = True
     for n in nodes[hit + 1:]:
         if (n.get("class") or "").endswith("EditText"):
             break
         if app and n.get("package") not in (None, app):  # status bar clock etc.
             continue
         t = n.get("text").strip()
-        if t in sent:  # the rest of our own (multi-paragraph) user bubble
-            continue
+        if in_bubble:
+            left = _left(n)
+            same_column = col is None or left is None or left >= col - 8
+            if same_column and rest.strip() and rest.lstrip().startswith(t):
+                rest = rest.lstrip()[len(t):]
+                continue
+            in_bubble = False
         if not CHROME.match(t):
             out.append(t)
     return "\n".join(out).strip() or None
@@ -140,18 +169,79 @@ def pace_slot(app, dev):
         time.sleep(5)
 
 
-def take_lock(dev):
-    f = open(f"/tmp/{dev}-ui.lock", "a")
+def ui_lock_paths(dev):
+    """Both host UI mutexes, outer first (tern-01/launch_queue.py order, so no lock-order
+    inversion with it): ~/tmp/<dev>-ui.lock is held by Dash e2e/native test workers while they
+    drive the screen; /tmp/<dev>-ui.lock by tern-queue-loop, phone-worker ui and ds_burst."""
+    return [common.HOME / "tmp" / f"{dev}-ui.lock", Path(f"/tmp/{dev}-ui.lock")]
+
+
+def paced_app(job):
+    """The pacing account a job spends: every chat job (any harness) and any goal aimed at the
+    ChatGPT/DeepSeek apps. None for other goals."""
+    app = job.get("app")
+    if job["kind"] == "chat":
+        return "deepseek" if app in ("deepseek", common.APPS["deepseek"]) else (
+            "chatgpt" if app in (None, "chatgpt", common.APPS["chatgpt"]) else None)
+    return {"chatgpt": "chatgpt", common.APPS["chatgpt"]: "chatgpt",
+            "deepseek": "deepseek", common.APPS["deepseek"]: "deepseek"}.get(app)
+
+
+def fx_chat_aftercare(app, dev, d, job, result):
+    """What the script driver does after a send, for fx-driven chats too: stamp the dispatch,
+    detect a rate-limit screen and set the same shared quota pause, log the dispatch."""
+    tag = tag_for(job)
+    try:
+        if app == "chatgpt":
+            Path(f"/tmp/chatgpt-last-dispatch-{dev}").write_text(str(time.time()) + "\n")
+        import phone_tools
+        _pkg, root = phone_tools.safe_tree(d)
+        low = phone_tools.tree_text(root).lower()
+        burst = driver()
+        hits = [w for w in burst.RATE_WORDS if w in low and w not in (job.get("prompt") or "").lower()]
+        if hits:
+            result["rate_words"] = hits
+            if app == "chatgpt":
+                launch_queue().quota_paused(time.time() + 3 * 3600)
+            else:
+                launch_queue().deepseek_quota_paused(limited=tag)
+        (common.DRIVER / "phoneq-01").mkdir(exist_ok=True)
+        with (common.DRIVER / "phoneq-01").joinpath("dispatches.jsonl").open("a") as f:
+            f.write(json.dumps({"at": burst.now(), "tag": tag, "status": "fx" if not hits else "rate_limited",
+                                "device": dev, "source": "phone-queue", "job": job["id"], "app": app,
+                                "harness": "fx"}) + "\n")
+    except Exception as e:  # noqa: BLE001 - evidence; never masks the job outcome
+        result["aftercare_error"] = f"{type(e).__name__}: {e}"
+
+
+def take_lock(dev, wait_s=None):
+    """Take every UI lock for `dev` within one shared deadline; returns ([files], wait_ms)."""
+    wait_s = LOCK_WAIT_S if wait_s is None else wait_s
+    held = []
     t0 = time.time()
-    while True:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return f, int((time.time() - t0) * 1000)
-        except BlockingIOError:
-            if time.time() - t0 > LOCK_WAIT_S:
-                f.close()
-                raise Blocked(f"/tmp/{dev}-ui.lock busy for {LOCK_WAIT_S}s")
-            time.sleep(0.5)
+    try:
+        for path in ui_lock_paths(dev):
+            path.parent.mkdir(exist_ok=True)
+            f = open(path, "a")
+            held.append(f)
+            while True:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.time() - t0 > wait_s:
+                        raise Blocked(f"{path} busy for {wait_s}s") from None
+                    time.sleep(0.5)
+    except BaseException:
+        for f in held:
+            f.close()
+        raise
+    return held, int((time.time() - t0) * 1000)
+
+
+def release_lock(held):
+    for f in reversed(held or []):
+        f.close()
 
 
 def tag_for(job):
@@ -197,7 +287,8 @@ def chat_script(job, dev, serial, d, result, jdir):
                         break
                     d(description="Scroll to the bottom").click_exists(timeout=1)
                     scrolled = True
-            (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
+            if root is not None:
+                (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
             durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
             reply = None if running else reply
             chat.update(duration=durs[-1] if durs else None, still_running=running, reply=reply,
@@ -231,13 +322,35 @@ def chat_script(job, dev, serial, d, result, jdir):
     with (common.DRIVER / "phoneq-01").joinpath("dispatches.jsonl").open("a") as f:
         f.write(json.dumps({"at": rec["at"], "tag": tag, "status": chat["send_status"], "device": dev,
                             "source": "phone-queue", "job": job["id"], "app": app}) + "\n")
+    return chat_outcome(app, tag, chat, result)
+
+
+def chat_outcome(app, tag, chat, result):
+    """Job verdict for a script chat. Success means the caller got what it queued for: a
+    ChatGPT chat succeeds only with a harvested, finished reply. Sent-but-no-reply is a
+    failure whose error says not to resend (send_status stays 'sent' in result.chat)."""
+    chat["reply_harvested"] = bool(chat.get("reply"))
     result["chat"] = chat
-    result["final_output"] = chat.get("reply") or f"{app} chat {tag}: {chat['send_status']}"
+    result["final_output"] = chat.get("reply") or ""
     result["steps"] = 1
-    ok = chat["send_status"] == "sent"
-    if not ok:
+    if chat["send_status"] != "sent":
+        result["error_code"] = "send_failed" if chat["send_status"] != "rate_limited" else "rate_limited"
         result["error"] = f"chat send status {chat['send_status']}"
-    return ok
+        return False
+    if app == "deepseek":
+        # Dispatch-only driver (no reply harvester exists): success means "sent and verified",
+        # stated explicitly so no caller mistakes it for an answer.
+        result["final_output"] = f"deepseek chat {tag}: sent (dispatch only; no reply harvester)"
+        return True
+    if chat.get("still_running"):
+        result["error_code"] = "reply_timeout"
+        result["error"] = f"sent, but the reply was still generating after {REPLY_WAIT_S}s (do not resend)"
+        return False
+    if not chat.get("reply"):
+        result["error_code"] = "reply_not_harvested"
+        result["error"] = "sent and finished, but no reply text was found after the tagged bubble (do not resend)"
+        return False
+    return True
 
 
 def goal_prompt(job, dev):
@@ -268,7 +381,8 @@ def run_fx(job, dev, serial, jdir, result):
            "FX_SKIP_ONBOARDING": "1", "FX_AUTO_UPGRADE": "0", "FX_NO_OPEN_BROWSER": "1",
            "FX_MAX_AGENT_STEPS": str(job.get("max_steps") or 30),
            "FX_GATEWAY_BASE_URL": common.SHIM_URL, "FX_GATEWAY_CHAT_URL": common.SHIM_URL + "/v4/ai/language-model",
-           "AI_GATEWAY_API_KEY": f"phoneq-job-{job['id']}", "FX_TRACE_LOG": str(jdir / "fx.trace.log"),
+           "AI_GATEWAY_API_KEY": common.job_token(job["id"], int(os.environ.get("PHONEQ_ATTEMPT", "1"))),
+           "FX_TRACE_LOG": str(jdir / "fx.trace.log"),
            **{k: v for k, v in env_mcp.items() if k != "HOME"}}  # fx keeps its isolated HOME
     assert env["HOME"] == str(home)
     cmd = [str(common.FX), "ask", "--json", "--no-save", "--auto", "--model", job["model"], "--", goal_prompt(job, dev)]
@@ -297,7 +411,15 @@ def run_fx(job, dev, serial, jdir, result):
             result["error_code"] = "model_unavailable"
             result["error"] = unavail[0]
         else:
-            result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
+            try:
+                tail = (jdir / "fx.stderr.log").read_text()[-2000:]
+            except OSError:
+                tail = ""
+            why = out.get("error") or (out.get("output") or "")[:300]
+            if "step limit reached" in tail.lower():
+                result["error_code"] = "step_limit"
+                why = why or f"agent step limit reached (max_steps={job.get('max_steps') or 30})"
+            result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {why or tail.strip().splitlines()[-1:] or ''}"
         return False
     return True
 
@@ -394,17 +516,18 @@ def main(job_id):
         dev = resolve_device(job)
         result["device"] = dev
         if job["harness"] == "fx":
-            why = model_preflight(job["model"])
-            if why:
-                raise Unavailable(why)
+            model_preflight(job["model"])
         reason = gate(dev)
         if reason:
             raise Blocked(f"gate {dev}: {reason}")
         pw = common.phone_worker()
         serial = pw.device(dev).serial
         result["serial"] = serial
-        if job["kind"] == "chat" and job["harness"] == "script":
-            result["pace_wait_ms"] = pace_slot(job.get("app") or "chatgpt", dev)
+        paced = paced_app(job)
+        if paced:
+            # one ChatGPT account across both phones and every harness: script and fx chats
+            # alike take a pace.py send slot and honour the shared quota pauses
+            result["pace_wait_ms"] = pace_slot(paced, dev)
         lock, result["lock_wait_ms"] = take_lock(dev)
         reason = gate(dev)
         burst = driver()
@@ -425,6 +548,8 @@ def main(job_id):
             ok = chat_script(job, dev, serial, d, result, jdir)
         else:
             ok = run_fx(job, dev, serial, jdir, result)
+            if paced:
+                fx_chat_aftercare(paced, dev, d, job, result)
         verdict = oracle(job, d, result)
         if verdict is not None:
             result["oracle_pass"] = verdict
@@ -434,6 +559,8 @@ def main(job_id):
     except Blocked as e:
         state = "blocked"
         result["error"] = str(e)
+        if str(e).startswith("infra:"):
+            result["error_code"] = "infra_unavailable"
     except Unavailable as e:
         result["error_code"] = "model_unavailable"
         result["error"] = str(e) if "model_unavailable" in str(e) else f"model_unavailable: {e}"
@@ -445,8 +572,7 @@ def main(job_id):
     finally:
         if d is not None:
             restore(d, result.get("device"), result.get("serial"), before, result)
-        if lock is not None:
-            lock.close()
+        release_lock(lock)
         result["state"] = state
         try:
             result["transcript_path"] = write_transcript(jdir, result)

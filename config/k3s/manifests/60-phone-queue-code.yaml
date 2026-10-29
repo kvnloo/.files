@@ -15,6 +15,8 @@ data:
       - ChatGPT/DeepSeek drivers, pacing and quota pauses: the chatgpt-driver directory
       - redaction: ~/.local/bin/phone-screen-safe
     """
+    import hashlib
+    import hmac
     import importlib.machinery
     import importlib.util
     import json
@@ -48,6 +50,40 @@ data:
     APP_DIR = Path(__file__).resolve().parent
 
     APPS = {"chatgpt": "com.openai.chatgpt", "deepseek": "com.deepseek.chat"}
+
+    # Runner time budget (each phase's bound). The k8s Job deadline is derived from the sum, so a
+    # job that legitimately waits out every phase is never killed by activeDeadlineSeconds.
+    LOCK_WAIT_S = int(os.environ.get("PHONEQ_LOCK_WAIT_S", "900"))
+    PACE_WAIT_S = int(os.environ.get("PHONEQ_PACE_WAIT_S", "600"))
+    REPLY_WAIT_S = int(os.environ.get("PHONEQ_REPLY_WAIT_S", "240"))
+    FX_TIMEOUT_S = int(os.environ.get("PHONEQ_FX_TIMEOUT_S", "900"))
+    RUNNER_SLACK_S = 360  # Kueue flavor read (60) + connect/oracle/restore/transcript
+    JOB_DEADLINE_S = LOCK_WAIT_S + PACE_WAIT_S + REPLY_WAIT_S + FX_TIMEOUT_S + RUNNER_SLACK_S
+
+    # Auth material: k8s Secret phone-queue-auth (services/phone-queue/issue-tokens), never in git.
+    #   tokens.json  {"<sha256 hex of a bearer token>": {"principal": "...", "admin": bool}}
+    #   shim-key     HMAC key for per-job model-shim tokens
+    AUTH_DIR = Path(os.environ.get("PHONEQ_AUTH_DIR", "/etc/phoneq"))
+    JOB_TOKEN_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})-(\d{1,4})\.([a-f0-9]{32})$")
+
+
+    def shim_key():
+        return (AUTH_DIR / "shim-key").read_text().strip().encode()
+
+
+    def job_token(job_id, attempt, key=None):
+        """Bearer the runner hands fx for the model shim: bound to one job attempt."""
+        mac = hmac.new(key or shim_key(), f"{job_id}:{attempt}".encode(), hashlib.sha256).hexdigest()[:32]
+        return f"phoneq-job-{job_id}-{attempt}.{mac}"
+
+
+    def check_job_token(token, key):
+        """(job_id, attempt) when `token` is a valid per-job shim token, else None."""
+        m = JOB_TOKEN_RE.match(token or "")
+        if not m or not key:
+            return None
+        want = job_token(m.group(1), int(m.group(2)), key)
+        return (m.group(1), int(m.group(2))) if hmac.compare_digest(want, token) else None
     TERMINAL = ("succeeded", "failed", "cancelled")
     ID_RE = re.compile(r"^[a-f0-9]{12}$")
 
@@ -173,11 +209,19 @@ data:
       POST /v1/jobs/{id}/cancel
       GET  /v1/devices              serial, online, gate, lock holder, foreground, battery, queue depth
       GET  /healthz
+
+    Auth (docs/fleet/phone-queue.md#auth): writes (submit, cancel) need `Authorization: Bearer
+    <token>`; tokens are issued by services/phone-queue/issue-tokens into Secret phone-queue-auth
+    (sha256 of each token -> principal). Cancel needs the job's principal AND submitter, or an
+    admin token. Unauthenticated reads (Dash's read-only queue view) get devices and job metadata
+    but never job results (screen text, replies, transcripts paths).
     """
+    import hashlib
     import http.server
     import json
     import os
     import re
+    import signal
     import socketserver
     import sqlite3
     import sys
@@ -219,6 +263,9 @@ data:
             k8s_job TEXT, attempts INTEGER DEFAULT 0, created_at TEXT NOT NULL, admitted_at TEXT,
             started_at TEXT, finished_at TEXT, result TEXT, error TEXT, info TEXT, next_try REAL DEFAULT 0,
             UNIQUE(submitter, idem))""")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
+        if "principal" not in cols:
+            conn.execute("ALTER TABLE jobs ADD COLUMN principal TEXT")
         return conn
 
 
@@ -230,7 +277,45 @@ data:
             return CONN.execute(sql, args).fetchall()
 
 
-    def row_to_job(r):
+    LIVE = " AND state NOT IN ('succeeded','failed','cancelled')"
+
+
+    def qlive(sql, args=()):
+        """UPDATE ... WHERE id=? that never overwrites a terminal row (a cancel that lands between
+        the reconciler's snapshot and its write wins). Returns the number of rows changed."""
+        with DB_LOCK:
+            return CONN.execute(sql + LIVE, args).rowcount
+
+
+    # ------------------------------------------------------------------ auth
+    _tokens = {"mtime": None, "map": {}}
+
+
+    def tokens():
+        path = common.AUTH_DIR / "tokens.json"
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return {}
+        if mtime != _tokens["mtime"]:
+            _tokens.update(mtime=mtime, map=common.read_json(path, {}) or {})
+        return _tokens["map"]
+
+
+    def who(headers):
+        """{'principal', 'admin'} for a valid bearer token, else None."""
+        auth = headers.get("authorization") or ""
+        if not auth.lower().startswith("bearer "):
+            return None
+        digest = hashlib.sha256(auth[7:].strip().encode()).hexdigest()
+        ent = tokens().get(digest)
+        return {"principal": ent.get("principal"), "admin": bool(ent.get("admin"))} if isinstance(ent, dict) else None
+
+
+    PUBLIC_RESULT = ("steps", "oracle_pass", "ms", "cold_ms", "error_code", "device", "attempt")
+
+
+    def row_to_job(r, full=True):
         out = {k: r[k] for k in ("id", "kind", "device", "state", "submitter", "model", "harness", "app",
                                  "created_at", "started_at", "finished_at")}
         out["assigned_device"] = r["assigned"]
@@ -241,7 +326,11 @@ data:
         if r["idem"]:
             out["idempotency_key"] = r["idem"]
         if r["result"]:
-            out["result"] = json.loads(r["result"])
+            res = json.loads(r["result"])
+            # Without a token: outcome only, never what was on the screen or in the reply.
+            out["result"] = res if full else {k: res[k] for k in PUBLIC_RESULT if k in res}
+        if not full:
+            out["result_redacted"] = True
         if r["error"]:
             out["error"] = r["error"]
         if r["info"]:
@@ -315,7 +404,7 @@ data:
                 "idem": idem, "priority": priority, "reset": reset}
 
 
-    def submit(body):
+    def submit(body, principal):
         j = validate(body)
         with DB_LOCK:
             if j["idem"]:
@@ -327,10 +416,11 @@ data:
             # job.json first: the runner reads it, and the reconciler may pick the row up at once.
             common.write_json(common.job_dir(jid) / "job.json", {"id": jid, **spec, "idempotency_key": j["idem"]})
             q("""INSERT INTO jobs (id, submitter, idem, kind, device, app, prompt, goal, model, harness, max_steps,
-                 oracle, priority, reset, state, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?)""",
+                 oracle, priority, reset, state, created_at, principal)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?, ?)""",
               (jid, j["submitter"], j["idem"], j["kind"], j["device"], j["app"], j["prompt"], j["goal"], j["model"],
                j["harness"], j["max_steps"], json.dumps(j["oracle"]) if j["oracle"] else None, j["priority"],
-               j["reset"], common.now_iso()))
+               j["reset"], common.now_iso(), principal))
         WAKE.set()
         return 202, {"id": jid, "state": "queued"}
 
@@ -353,8 +443,16 @@ data:
 
 
     def lock_holder(dev):
-        """Who holds /tmp/<dev>-ui.lock (host /proc mounted at /host/proc gives host pids)."""
-        path = Path(f"/tmp/{dev}-ui.lock")
+        """Who holds a UI lock for `dev`: ~/tmp/<dev>-ui.lock (Dash test workers) or
+        /tmp/<dev>-ui.lock (host /proc mounted at /host/proc gives host pids)."""
+        for path in (common.HOME / "tmp" / f"{dev}-ui.lock", Path(f"/tmp/{dev}-ui.lock")):
+            hit = _flock_holder(path)
+            if hit:
+                return {**hit, "lock": str(path)}
+        return None
+
+
+    def _flock_holder(path):
         proc = Path("/host/proc") if Path("/host/proc/locks").exists() else Path("/proc")
         try:
             st = path.stat()
@@ -425,14 +523,19 @@ data:
         mounts = [ro("home", "/home/kvn"), ro("zer0models", "/mnt/zer0models"),
                   rw("tmp", "/tmp"), rw("state", str(common.STATE)), rw("driver", str(common.DRIVER)),
                   rw("hometmp", "/home/kvn/tmp")]
-        vols = [v for v, _ in mounts] + [{"name": "code", "configMap": {"name": CODE_CM, "defaultMode": 0o555}}]
-        vms = [m for _, m in mounts] + [{"name": "code", "mountPath": "/app", "readOnly": True}]
+        vols = [v for v, _ in mounts] + [
+            {"name": "code", "configMap": {"name": CODE_CM, "defaultMode": 0o555}},
+            # only the shim HMAC key (per-job model tokens); never the API token hashes
+            {"name": "auth", "secret": {"secretName": "phone-queue-auth", "defaultMode": 0o440,
+                                        "items": [{"key": "shim-key", "path": "shim-key"}]}}]
+        vms = [m for _, m in mounts] + [{"name": "code", "mountPath": "/app", "readOnly": True},
+                                        {"name": "auth", "mountPath": str(common.AUTH_DIR), "readOnly": True}]
         return {
             "apiVersion": "batch/v1", "kind": "Job",
             "metadata": {"name": name, "namespace": common.NAMESPACE, "labels": labels,
                          "annotations": {"z0.dev/submitter": r["submitter"], "z0.dev/device-request": r["device"]}},
             "spec": {
-                "backoffLimit": 0, "ttlSecondsAfterFinished": 86400, "activeDeadlineSeconds": 2400,
+                "backoffLimit": 0, "ttlSecondsAfterFinished": 86400, "activeDeadlineSeconds": common.JOB_DEADLINE_S,
                 "template": {
                     "metadata": {"labels": {"app.kubernetes.io/name": "phone-job", "z0.dev/phoneq-id": r["id"]}},
                     "spec": {
@@ -444,7 +547,7 @@ data:
                                        [{"key": "z0.dev/phone", "operator": "Equal", "value": d, "effect": "NoSchedule"}
                                         for d in tolerate],
                         "securityContext": {"runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True,
-                                            "seccompProfile": {"type": "RuntimeDefault"}},
+                                            "fsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
                         "containers": [{
                             "name": "run", "image": IMAGE,
                             "command": [str(common.DRIVER_PY), "-u", "/app/runner.py", r["id"]],
@@ -460,29 +563,41 @@ data:
                         "volumes": vols}}}}
 
 
-    def model_unavailable(model):
-        """Shim preflight: a model nobody can serve fails at once, without a phone slot."""
+    def model_check(model):
+        """Shim preflight before any phone slot is used: (None, None) if routable;
+        ('failed', why) when nobody can serve the model (404 model_unavailable);
+        ('blocked', why) when the shim or a model backend is down or short of memory (503);
+        shim unreachable -> ('blocked', ...) too: infrastructure, never a verdict on the model."""
         try:
             with urllib.request.urlopen(common.SHIM_URL + "/phoneq/available?" +
                                         urllib.parse.urlencode({"model": model}), timeout=10):
-                return None
+                return None, None
         except urllib.error.HTTPError as e:
+            try:
+                why = json.loads(e.read()).get("error")
+            except ValueError:
+                why = None
             if e.code == 404:
-                try:
-                    return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
-                except ValueError:
-                    return f"model_unavailable: {model}"
-            return None  # shim trouble: let the runner decide (it re-checks)
-        except OSError:
-            return None
+                return "failed", why or f"model_unavailable: {model}"
+            return "blocked", f"infra: model shim HTTP {e.code}: {why or ''}".strip()
+        except OSError as e:
+            return "blocked", f"infra: model shim unreachable: {e}"
 
 
     def create_k8s_job(r):
-        if r["harness"] == "fx" and r["attempts"] == 0:
-            why = model_unavailable(r["model"])
-            if why:
-                q("UPDATE jobs SET state='failed', finished_at=?, error=?, result=? WHERE id=?",
-                  (common.now_iso(), why, json.dumps({"error_code": "model_unavailable", "steps": 0}), r["id"]))
+        if r["harness"] == "fx":
+            verdict, why = model_check(r["model"])
+            if verdict == "failed":
+                qlive("UPDATE jobs SET state='failed', finished_at=?, error=?, result=? WHERE id=?",
+                      (common.now_iso(), why, json.dumps({"error_code": "model_unavailable", "steps": 0}), r["id"]))
+                return
+            if verdict == "blocked":
+                if r["attempts"] >= MAX_ATTEMPTS:
+                    qlive("UPDATE jobs SET state='failed', finished_at=?, error=?, result=? WHERE id=?",
+                          (common.now_iso(), why, json.dumps({"error_code": "infra_unavailable", "steps": 0}), r["id"]))
+                else:
+                    qlive("UPDATE jobs SET state='blocked', error=?, next_try=?, attempts=attempts+1 WHERE id=?",
+                          (why, time.time() + BLOCKED_RETRY_S, r["id"]))
                 return
         want = [r["device"]] if r["device"] != "any" else list(common.DEVICES)
         open_devs, reasons = [], {}
@@ -494,13 +609,24 @@ data:
                 reasons[dev] = reason
         if not open_devs:
             msg = "; ".join(f"{d}: {why}" for d, why in reasons.items())
-            q("UPDATE jobs SET state='blocked', error=?, next_try=? WHERE id=?",
-              (f"gate closed — {msg}", time.time() + BLOCKED_RETRY_S, r["id"]))
+            qlive("UPDATE jobs SET state='blocked', error=?, next_try=? WHERE id=?",
+                  (f"gate closed — {msg}", time.time() + BLOCKED_RETRY_S, r["id"]))
             return
         manifest = k8s_job_manifest(r, open_devs)
-        KUBE.req("POST", KUBE.jobs_path(), manifest)
-        q("UPDATE jobs SET state='queued', k8s_job=?, attempts=attempts+1, error=NULL, info=? WHERE id=?",
-          (manifest["metadata"]["name"], f"k8s Job created; eligible devices {','.join(open_devs)}", r["id"]))
+        name = manifest["metadata"]["name"]
+        info = f"k8s Job created; eligible devices {','.join(open_devs)}"
+        try:
+            KUBE.req("POST", KUBE.jobs_path(), manifest)
+        except RuntimeError as e:
+            # A crash between an earlier POST and its UPDATE leaves this exact Job behind: adopt it
+            # instead of failing with 409 on every tick while an unwatched Job drives the phone.
+            existing = KUBE.req("GET", KUBE.jobs_path(name)) if "HTTP 409" in str(e) else None
+            if not existing or existing["metadata"].get("labels", {}).get("z0.dev/phoneq-id") != r["id"]:
+                raise
+            info = "adopted existing k8s Job (front door restarted after creating it)"
+        if not qlive("UPDATE jobs SET state='queued', k8s_job=?, attempts=attempts+1, error=NULL, info=? WHERE id=?",
+                     (name, info, r["id"])):
+            delete_k8s_job(name)  # cancelled while we were creating it: the cancel wins
 
 
     def delete_k8s_job(name):
@@ -534,14 +660,16 @@ data:
             status = (pod or {}).get("status", {})
             cs = (status.get("containerStatuses") or [{}])[0].get("state", {})
             why = json.dumps(cs.get("terminated") or cs.get("waiting") or {})[:400]
-            q("UPDATE jobs SET state='failed', finished_at=?, error=? WHERE id=?",
-              (common.now_iso(), f"runner wrote no result; pod state {why}{tail}", r["id"]))
+            qlive("UPDATE jobs SET state='failed', finished_at=?, error=? WHERE id=?",
+                  (common.now_iso(), f"runner wrote no result; pod state {why}{tail}", r["id"]))
             return
         state = res.get("state", "failed")
         if state == "blocked":
             retry = r["attempts"] < MAX_ATTEMPTS
-            q("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL WHERE id=?",
-              ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S, r["id"]))
+            qlive("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL, "
+                  "finished_at=CASE WHEN ?='failed' THEN ? ELSE finished_at END WHERE id=?",
+                  ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S,
+                   "blocked" if retry else "failed", common.now_iso(), r["id"]))
             return
         if state not in ("succeeded", "failed", "cancelled"):
             state = "failed"
@@ -551,9 +679,9 @@ data:
                                            "error_code", "transcript_dir",
                                            "foreground_before", "foreground_after_job", "restored",
                                            "foreground_restored_to", "attempt") if k in res})
-        q("UPDATE jobs SET state=?, started_at=?, finished_at=?, result=?, error=?, assigned=? WHERE id=?",
-          (state, res.get("started_at"), res.get("finished_at"), json.dumps(public), res.get("error"),
-           res.get("device") or r["assigned"], r["id"]))
+        qlive("UPDATE jobs SET state=?, started_at=?, finished_at=?, result=?, error=?, assigned=? WHERE id=?",
+              (state, res.get("started_at"), res.get("finished_at"), json.dumps(public), res.get("error"),
+               res.get("device") or r["assigned"], r["id"]))
 
 
     def reconcile_once():
@@ -574,8 +702,8 @@ data:
                     continue
                 job_obj = KUBE.req("GET", KUBE.jobs_path(r["k8s_job"]))
                 if job_obj is None:
-                    q("UPDATE jobs SET state='failed', error='k8s Job disappeared', finished_at=? WHERE id=?",
-                      (common.now_iso(), r["id"]))
+                    qlive("UPDATE jobs SET state='failed', error='k8s Job disappeared', finished_at=? WHERE id=?",
+                          (common.now_iso(), r["id"]))
                     continue
                 conds = {c["type"]: c for c in job_obj.get("status", {}).get("conditions", []) if c.get("status") == "True"}
                 pod = pods.get(r["k8s_job"])
@@ -589,16 +717,17 @@ data:
                     phase = (pod or {}).get("status", {}).get("phase")
                     # Succeeded/Failed pods stay "running" until the Job condition lands.
                     state = "running" if phase in ("Running", "Succeeded", "Failed") else "admitted"
-                    q("UPDATE jobs SET state=?, assigned=?, admitted_at=COALESCE(admitted_at, ?), "
-                      "started_at=CASE WHEN ?='running' THEN COALESCE(started_at, ?) ELSE started_at END, info=? WHERE id=?",
+                    qlive("UPDATE jobs SET state=?, assigned=?, admitted_at=COALESCE(admitted_at, ?), "
+                          "started_at=CASE WHEN ?='running' THEN COALESCE(started_at, ?) ELSE started_at END, info=? "
+                          "WHERE id=?",
                       (state, dev, adm.get("lastTransitionTime"), state, common.now_iso(),
                        f"admitted by Kueue on flavor phone-{dev}", r["id"]))
                 else:
                     qr = common.workload_condition(wl, "QuotaReserved")
                     msg = (qr or {}).get("message") or ("waiting for Kueue workload" if wl is None else "pending")
-                    q("UPDATE jobs SET state='queued', info=? WHERE id=?", (f"kueue: {msg}"[:500], r["id"]))
+                    qlive("UPDATE jobs SET state='queued', info=? WHERE id=?", (f"kueue: {msg}"[:500], r["id"]))
             except Exception as e:  # noqa: BLE001 - one bad job never stalls the loop
-                q("UPDATE jobs SET info=? WHERE id=?", (f"reconcile error: {type(e).__name__}: {e}"[:500], r["id"]))
+                qlive("UPDATE jobs SET info=? WHERE id=?", (f"reconcile error: {type(e).__name__}: {e}"[:500], r["id"]))
 
 
     WAKE = threading.Event()
@@ -614,12 +743,16 @@ data:
             WAKE.clear()
 
 
-    def cancel(jid):
+    def cancel(jid, caller, body):
+        submitter = (body or {}).get("submitter") if isinstance(body, dict) else None
         with DB_LOCK:
             rows = q("SELECT * FROM jobs WHERE id=?", (jid,))
             if not rows:
                 return 404, {"error": "no such job"}
             r = rows[0]
+            if not caller["admin"] and (r["principal"] != caller["principal"] or submitter != r["submitter"]):
+                return 403, {"error": "only the job's own submitter (same token principal, body {\"submitter\": ...}) "
+                                      "or an admin token can cancel it", "id": jid}
             if r["state"] in common.TERMINAL:
                 return 409, {"error": f"job already {r['state']}", "id": jid, "state": r["state"]}
             if r["k8s_job"]:
@@ -680,6 +813,7 @@ data:
                     return self._send(200 if h["ok"] else 503, h)
                 if url.path == "/v1/devices":
                     return self._send(200, {"devices": [device_info(d) for d in common.DEVICES]})
+                full = who(self.headers) is not None
                 if url.path == "/v1/jobs":
                     sql, args = "SELECT * FROM jobs WHERE 1=1", []
                     for key, col in (("submitter", "submitter"), ("state", "state"), ("device", "device")):
@@ -688,11 +822,11 @@ data:
                             args.append(qs[key][0])
                     limit = min(int((qs.get("limit") or ["50"])[0]), 500)
                     rows = q(sql + " ORDER BY created_at DESC LIMIT ?", (*args, limit))
-                    return self._send(200, {"jobs": [row_to_job(r) for r in rows]})
+                    return self._send(200, {"jobs": [row_to_job(r, full) for r in rows]})
                 m = re.fullmatch(r"/v1/jobs/([a-f0-9]{12})", url.path)
                 if m:
                     rows = q("SELECT * FROM jobs WHERE id=?", (m.group(1),))
-                    return self._send(200, row_to_job(rows[0])) if rows else self._send(404, {"error": "no such job"})
+                    return self._send(200, row_to_job(rows[0], full)) if rows else self._send(404, {"error": "no such job"})
                 return self._send(404, {"error": "not found"})
             except Exception as e:  # noqa: BLE001
                 traceback.print_exc()
@@ -701,19 +835,27 @@ data:
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
             try:
+                n = int(self.headers.get("content-length") or 0)
+                if n > 200_000:
+                    return self._send(413, {"error": "body too large"})
+                raw = self.rfile.read(n) if n else b""
+                caller = who(self.headers)
+                if caller is None:
+                    if not tokens():
+                        return self._send(503, {"error": "auth not configured (Secret phone-queue-auth missing); "
+                                                         "writes are refused"})
+                    return self._send(401, {"error": "Authorization: Bearer <token> required "
+                                                     "(phoneq reads ~/.config/phoneq/token or $PHONEQ_TOKEN)"})
+                try:
+                    body = json.loads(raw or b"null")
+                except ValueError:
+                    return self._send(400, {"error": "invalid JSON"})
                 if url.path == "/v1/jobs":
-                    n = int(self.headers.get("content-length") or 0)
-                    if n > 200_000:
-                        return self._send(413, {"error": "body too large"})
-                    try:
-                        body = json.loads(self.rfile.read(n) or b"null")
-                    except ValueError:
-                        return self._send(400, {"error": "invalid JSON"})
-                    status, out = submit(body)
+                    status, out = submit(body, caller["principal"])
                     return self._send(status, out)
                 m = re.fullmatch(r"/v1/jobs/([a-f0-9]{12})/cancel", url.path)
                 if m:
-                    return self._send(*cancel(m.group(1)))
+                    return self._send(*cancel(m.group(1), caller, body))
                 return self._send(404, {"error": "not found"})
             except Bad as e:
                 return self._send(400, {"error": str(e)})
@@ -729,6 +871,7 @@ data:
 
     def main():
         global CONN, KUBE
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # PID 1: exit at once on rollout
         CONN = db()
         KUBE = common.Kube()
         threading.Thread(target=reconciler, daemon=True).start()
@@ -760,7 +903,8 @@ data:
       1. device: the Kueue flavor this Workload was admitted on (z0.dev/phone -> phone-s22|phone-s25)
       2. gate: phone-worker's gate (S25 switch, call state, owner idle) -> else result "blocked"
       3. app pacing (ChatGPT only): shared quota pause + pace.py send budget -> else "blocked"
-      4. take flock /tmp/<dev>-ui.lock (shared with tern-queue-loop, phone-worker ui, ds_burst)
+      4. take the two host UI flocks, in launch_queue.py's order: ~/tmp/<dev>-ui.lock (Dash e2e /
+         native test workers) then /tmp/<dev>-ui.lock (tern-queue-loop, phone-worker ui, ds_burst)
       5. re-gate under the lock (+ the ChatGPT driver's owner_busy), record the foreground app
       6. run the harness: chat/script (burst.py / deepseek_burst.py) or fx (goal loop)
       7. oracle on a fresh redacted hierarchy, independent of the agent's "done"
@@ -785,10 +929,10 @@ data:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import common  # noqa: E402
 
-    LOCK_WAIT_S = int(os.environ.get("PHONEQ_LOCK_WAIT_S", "900"))
-    PACE_WAIT_S = int(os.environ.get("PHONEQ_PACE_WAIT_S", "600"))
-    REPLY_WAIT_S = int(os.environ.get("PHONEQ_REPLY_WAIT_S", "240"))
-    FX_TIMEOUT_S = int(os.environ.get("PHONEQ_FX_TIMEOUT_S", "900"))
+    LOCK_WAIT_S = common.LOCK_WAIT_S
+    PACE_WAIT_S = common.PACE_WAIT_S
+    REPLY_WAIT_S = common.REPLY_WAIT_S
+    FX_TIMEOUT_S = common.FX_TIMEOUT_S
     LAUNCHERS = {"com.teslacoilsw.launcher", "dev.omalauncher", "com.sec.android.app.launcher"}
 
 
@@ -801,42 +945,70 @@ data:
 
 
     def model_preflight(model):
+        """None if the shim can serve `model`; raise Unavailable only when the shim says so (404).
+        A shim that is down, restarting or whose backend is unreachable is infrastructure trouble,
+        not a property of the model: that blocks the job (retried later, no phone time used)."""
         url = common.SHIM_URL + "/phoneq/available?" + urllib.parse.urlencode({"model": model})
         try:
             with urllib.request.urlopen(url, timeout=10) as r:
-                return None if json.load(r).get("available") else "model_unavailable"
+                if json.load(r).get("available"):
+                    return None
+                raise Blocked(f"infra: model shim gave no verdict for {model}")
         except urllib.error.HTTPError as e:
             try:
-                return json.loads(e.read()).get("error") or f"model_unavailable: {model}"
+                why = json.loads(e.read()).get("error")
             except ValueError:
-                return f"model_unavailable: {model}: shim HTTP {e.code}"
+                why = None
+            if e.code == 404:
+                raise Unavailable(why or f"model_unavailable: {model}") from None
+            raise Blocked(f"infra: model shim HTTP {e.code}: {why or ''}".strip()) from None
         except OSError as e:
-            return f"model shim unreachable at {common.SHIM_URL}: {e}"
+            raise Blocked(f"infra: model shim unreachable at {common.SHIM_URL}: {e}") from None
 
 
     # ChatGPT chrome that is never part of a reply.
-    CHROME = re.compile(r"^(ChatGPT|Ask ChatGPT|Message|New chat|Thinking|Searching.*|Stop|Copy|Share|Read aloud|"
-                        r"Good response|Bad response|More actions|Edit message|Regenerate|Scroll to the bottom|"
-                        r"(Worked|Thought) for .*)$", re.I)
+    # ChatGPT status lines that render as text between our bubble and the reply. Buttons (Copy,
+    # Share, Stop, ...) are content-desc only, so a one-word reply such as "Copy" or "Stop" survives.
+    CHROME = re.compile(r"^(Thinking|Searching.*|Show more|Show less|(Worked|Thought) for .*)$", re.I)
+
+
+    def _left(node):
+        m = re.match(r"\[(-?\d+),", node.get("bounds") or "")
+        return int(m.group(1)) if m else None
 
 
     def reply_from_tree(root, tag, sent=""):
         """The assistant reply as rendered text after our tagged user bubble (no clipboard: reading
-        it would expose whatever another app or the owner last copied)."""
+        it would expose whatever another app or the owner last copied).
+
+        Our own bubble is consumed strictly in order: the tag node, then only nodes that continue
+        the sent text exactly where the previous bubble node ended AND sit in the bubble's column
+        (ChatGPT right-aligns user bubbles; replies start at the left margin). Everything after the
+        bubble is the reply, even when it repeats words of the prompt ('Repeat: hello' -> 'hello')."""
         nodes = [n for n in root.iter("node") if (n.get("text") or "").strip()]
         hit = max((i for i, n in enumerate(nodes) if tag in n.get("text", "")), default=None)
         if hit is None:
             return None
+        first = nodes[hit].get("text").strip()
+        at = sent.find(first)
+        rest = sent[at + len(first):] if at >= 0 else ""
+        col = _left(nodes[hit])
         out = []
         app = nodes[hit].get("package")
+        in_bubble = True
         for n in nodes[hit + 1:]:
             if (n.get("class") or "").endswith("EditText"):
                 break
             if app and n.get("package") not in (None, app):  # status bar clock etc.
                 continue
             t = n.get("text").strip()
-            if t in sent:  # the rest of our own (multi-paragraph) user bubble
-                continue
+            if in_bubble:
+                left = _left(n)
+                same_column = col is None or left is None or left >= col - 8
+                if same_column and rest.strip() and rest.lstrip().startswith(t):
+                    rest = rest.lstrip()[len(t):]
+                    continue
+                in_bubble = False
             if not CHROME.match(t):
                 out.append(t)
         return "\n".join(out).strip() or None
@@ -893,18 +1065,79 @@ data:
             time.sleep(5)
 
 
-    def take_lock(dev):
-        f = open(f"/tmp/{dev}-ui.lock", "a")
+    def ui_lock_paths(dev):
+        """Both host UI mutexes, outer first (tern-01/launch_queue.py order, so no lock-order
+        inversion with it): ~/tmp/<dev>-ui.lock is held by Dash e2e/native test workers while they
+        drive the screen; /tmp/<dev>-ui.lock by tern-queue-loop, phone-worker ui and ds_burst."""
+        return [common.HOME / "tmp" / f"{dev}-ui.lock", Path(f"/tmp/{dev}-ui.lock")]
+
+
+    def paced_app(job):
+        """The pacing account a job spends: every chat job (any harness) and any goal aimed at the
+        ChatGPT/DeepSeek apps. None for other goals."""
+        app = job.get("app")
+        if job["kind"] == "chat":
+            return "deepseek" if app in ("deepseek", common.APPS["deepseek"]) else (
+                "chatgpt" if app in (None, "chatgpt", common.APPS["chatgpt"]) else None)
+        return {"chatgpt": "chatgpt", common.APPS["chatgpt"]: "chatgpt",
+                "deepseek": "deepseek", common.APPS["deepseek"]: "deepseek"}.get(app)
+
+
+    def fx_chat_aftercare(app, dev, d, job, result):
+        """What the script driver does after a send, for fx-driven chats too: stamp the dispatch,
+        detect a rate-limit screen and set the same shared quota pause, log the dispatch."""
+        tag = tag_for(job)
+        try:
+            if app == "chatgpt":
+                Path(f"/tmp/chatgpt-last-dispatch-{dev}").write_text(str(time.time()) + "\n")
+            import phone_tools
+            _pkg, root = phone_tools.safe_tree(d)
+            low = phone_tools.tree_text(root).lower()
+            burst = driver()
+            hits = [w for w in burst.RATE_WORDS if w in low and w not in (job.get("prompt") or "").lower()]
+            if hits:
+                result["rate_words"] = hits
+                if app == "chatgpt":
+                    launch_queue().quota_paused(time.time() + 3 * 3600)
+                else:
+                    launch_queue().deepseek_quota_paused(limited=tag)
+            (common.DRIVER / "phoneq-01").mkdir(exist_ok=True)
+            with (common.DRIVER / "phoneq-01").joinpath("dispatches.jsonl").open("a") as f:
+                f.write(json.dumps({"at": burst.now(), "tag": tag, "status": "fx" if not hits else "rate_limited",
+                                    "device": dev, "source": "phone-queue", "job": job["id"], "app": app,
+                                    "harness": "fx"}) + "\n")
+        except Exception as e:  # noqa: BLE001 - evidence; never masks the job outcome
+            result["aftercare_error"] = f"{type(e).__name__}: {e}"
+
+
+    def take_lock(dev, wait_s=None):
+        """Take every UI lock for `dev` within one shared deadline; returns ([files], wait_ms)."""
+        wait_s = LOCK_WAIT_S if wait_s is None else wait_s
+        held = []
         t0 = time.time()
-        while True:
-            try:
-                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return f, int((time.time() - t0) * 1000)
-            except BlockingIOError:
-                if time.time() - t0 > LOCK_WAIT_S:
-                    f.close()
-                    raise Blocked(f"/tmp/{dev}-ui.lock busy for {LOCK_WAIT_S}s")
-                time.sleep(0.5)
+        try:
+            for path in ui_lock_paths(dev):
+                path.parent.mkdir(exist_ok=True)
+                f = open(path, "a")
+                held.append(f)
+                while True:
+                    try:
+                        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.time() - t0 > wait_s:
+                            raise Blocked(f"{path} busy for {wait_s}s") from None
+                        time.sleep(0.5)
+        except BaseException:
+            for f in held:
+                f.close()
+            raise
+        return held, int((time.time() - t0) * 1000)
+
+
+    def release_lock(held):
+        for f in reversed(held or []):
+            f.close()
 
 
     def tag_for(job):
@@ -950,7 +1183,8 @@ data:
                             break
                         d(description="Scroll to the bottom").click_exists(timeout=1)
                         scrolled = True
-                (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
+                if root is not None:
+                    (jdir / "reply-tree.xml").write_bytes(ET.tostring(root))
                 durs = [n.get("text") for n in root.iter("node") if re.match(r"(Worked|Thought) for", n.get("text") or "")]
                 reply = None if running else reply
                 chat.update(duration=durs[-1] if durs else None, still_running=running, reply=reply,
@@ -984,13 +1218,35 @@ data:
         with (common.DRIVER / "phoneq-01").joinpath("dispatches.jsonl").open("a") as f:
             f.write(json.dumps({"at": rec["at"], "tag": tag, "status": chat["send_status"], "device": dev,
                                 "source": "phone-queue", "job": job["id"], "app": app}) + "\n")
+        return chat_outcome(app, tag, chat, result)
+
+
+    def chat_outcome(app, tag, chat, result):
+        """Job verdict for a script chat. Success means the caller got what it queued for: a
+        ChatGPT chat succeeds only with a harvested, finished reply. Sent-but-no-reply is a
+        failure whose error says not to resend (send_status stays 'sent' in result.chat)."""
+        chat["reply_harvested"] = bool(chat.get("reply"))
         result["chat"] = chat
-        result["final_output"] = chat.get("reply") or f"{app} chat {tag}: {chat['send_status']}"
+        result["final_output"] = chat.get("reply") or ""
         result["steps"] = 1
-        ok = chat["send_status"] == "sent"
-        if not ok:
+        if chat["send_status"] != "sent":
+            result["error_code"] = "send_failed" if chat["send_status"] != "rate_limited" else "rate_limited"
             result["error"] = f"chat send status {chat['send_status']}"
-        return ok
+            return False
+        if app == "deepseek":
+            # Dispatch-only driver (no reply harvester exists): success means "sent and verified",
+            # stated explicitly so no caller mistakes it for an answer.
+            result["final_output"] = f"deepseek chat {tag}: sent (dispatch only; no reply harvester)"
+            return True
+        if chat.get("still_running"):
+            result["error_code"] = "reply_timeout"
+            result["error"] = f"sent, but the reply was still generating after {REPLY_WAIT_S}s (do not resend)"
+            return False
+        if not chat.get("reply"):
+            result["error_code"] = "reply_not_harvested"
+            result["error"] = "sent and finished, but no reply text was found after the tagged bubble (do not resend)"
+            return False
+        return True
 
 
     def goal_prompt(job, dev):
@@ -1021,7 +1277,8 @@ data:
                "FX_SKIP_ONBOARDING": "1", "FX_AUTO_UPGRADE": "0", "FX_NO_OPEN_BROWSER": "1",
                "FX_MAX_AGENT_STEPS": str(job.get("max_steps") or 30),
                "FX_GATEWAY_BASE_URL": common.SHIM_URL, "FX_GATEWAY_CHAT_URL": common.SHIM_URL + "/v4/ai/language-model",
-               "AI_GATEWAY_API_KEY": f"phoneq-job-{job['id']}", "FX_TRACE_LOG": str(jdir / "fx.trace.log"),
+               "AI_GATEWAY_API_KEY": common.job_token(job["id"], int(os.environ.get("PHONEQ_ATTEMPT", "1"))),
+               "FX_TRACE_LOG": str(jdir / "fx.trace.log"),
                **{k: v for k, v in env_mcp.items() if k != "HOME"}}  # fx keeps its isolated HOME
         assert env["HOME"] == str(home)
         cmd = [str(common.FX), "ask", "--json", "--no-save", "--auto", "--model", job["model"], "--", goal_prompt(job, dev)]
@@ -1050,7 +1307,15 @@ data:
                 result["error_code"] = "model_unavailable"
                 result["error"] = unavail[0]
             else:
-                result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {out.get('error') or out.get('output', '')[:300]}"
+                try:
+                    tail = (jdir / "fx.stderr.log").read_text()[-2000:]
+                except OSError:
+                    tail = ""
+                why = out.get("error") or (out.get("output") or "")[:300]
+                if "step limit reached" in tail.lower():
+                    result["error_code"] = "step_limit"
+                    why = why or f"agent step limit reached (max_steps={job.get('max_steps') or 30})"
+                result["error"] = f"fx exit {out.get('exit_code', p.returncode)}: {why or tail.strip().splitlines()[-1:] or ''}"
             return False
         return True
 
@@ -1147,17 +1412,18 @@ data:
             dev = resolve_device(job)
             result["device"] = dev
             if job["harness"] == "fx":
-                why = model_preflight(job["model"])
-                if why:
-                    raise Unavailable(why)
+                model_preflight(job["model"])
             reason = gate(dev)
             if reason:
                 raise Blocked(f"gate {dev}: {reason}")
             pw = common.phone_worker()
             serial = pw.device(dev).serial
             result["serial"] = serial
-            if job["kind"] == "chat" and job["harness"] == "script":
-                result["pace_wait_ms"] = pace_slot(job.get("app") or "chatgpt", dev)
+            paced = paced_app(job)
+            if paced:
+                # one ChatGPT account across both phones and every harness: script and fx chats
+                # alike take a pace.py send slot and honour the shared quota pauses
+                result["pace_wait_ms"] = pace_slot(paced, dev)
             lock, result["lock_wait_ms"] = take_lock(dev)
             reason = gate(dev)
             burst = driver()
@@ -1178,6 +1444,8 @@ data:
                 ok = chat_script(job, dev, serial, d, result, jdir)
             else:
                 ok = run_fx(job, dev, serial, jdir, result)
+                if paced:
+                    fx_chat_aftercare(paced, dev, d, job, result)
             verdict = oracle(job, d, result)
             if verdict is not None:
                 result["oracle_pass"] = verdict
@@ -1187,6 +1455,8 @@ data:
         except Blocked as e:
             state = "blocked"
             result["error"] = str(e)
+            if str(e).startswith("infra:"):
+                result["error_code"] = "infra_unavailable"
         except Unavailable as e:
             result["error_code"] = "model_unavailable"
             result["error"] = str(e) if "model_unavailable" in str(e) else f"model_unavailable: {e}"
@@ -1198,8 +1468,7 @@ data:
         finally:
             if d is not None:
                 restore(d, result.get("device"), result.get("serial"), before, result)
-            if lock is not None:
-                lock.close()
+            release_lock(lock)
             result["state"] = state
             try:
                 result["transcript_path"] = write_transcript(jdir, result)
@@ -1342,16 +1611,63 @@ data:
         return tuple(map(int, m.groups())) if m else None
 
 
+    # Settings > About phone > Software information rows whose values are public firmware ids
+    # (they trip phone-screen-safe's high-entropy rule). Only these titles, only in Settings, only
+    # when the high-entropy rule is the sole hit and the value looks like a firmware id. IMEI,
+    # serial, phone number, MAC/IP addresses and everything else stay redacted.
+    FIRMWARE_TITLES = {"build number", "baseband version", "kernel version", "service provider software version",
+                       "software version", "hardware version", "one ui version", "android version",
+                       "google play system update", "knox version", "security software version"}
+    FIRMWARE_VALUE = re.compile(r"[A-Za-z0-9 _.,:/#()+\-\n]{1,300}")
+
+
+    def restore_firmware_ids(raw_root, red_root):
+        """Un-redact public firmware ids (see FIRMWARE_TITLES) in a redacted copy of raw_root."""
+        redacted = pss().REDACTED
+        parent = {c: p for p in red_root.iter() for c in p}
+        restored = 0
+        for raw_n, red_n in zip(raw_root.iter("node"), red_root.iter("node")):
+            val, now = raw_n.get("text") or "", red_n.get("text") or ""
+            if redacted not in now or val == now:
+                continue
+            if (red_n.get("resource-id") or "").endswith("/title"):
+                continue
+            # The row = the smallest ancestor holding exactly one other text node that is a title
+            # (Samsung nests the title in title_frame, the summary beside it; AOSP has siblings).
+            title, p = None, parent.get(red_n)
+            for _ in range(3):
+                if p is None:
+                    break
+                texts = [c for c in p.iter("node") if c is not red_n and (c.get("text") or "").strip()]
+                if texts:
+                    title = texts[0].get("text").strip().lower() if len(texts) == 1 else None
+                    break
+                p = parent.get(p)
+            if title not in FIRMWARE_TITLES or not FIRMWARE_VALUE.fullmatch(val):
+                continue
+            if {rule for _s, _e, rule in pss().find_spans(val)} - {"high_entropy"}:
+                continue
+            red_n.set("text", val)
+            if red_n.get("content-desc") and redacted in red_n.get("content-desc"):
+                red_n.set("content-desc", raw_n.get("content-desc") or "")
+            restored += 1
+        return restored
+
+
     def safe_tree(d):
         """Redacted hierarchy, same rule as phone-screen-safe.safe_hierarchy (sensitive app ->
         nothing; else redact_xml), with the package read from the dump instead of app_current().
         Returns (package, redacted root element)."""
         raw = d.dump_hierarchy()
-        pkg = tree_package(ET.fromstring(raw.encode()))
+        raw_root = ET.fromstring(raw.encode())
+        pkg = tree_package(raw_root)
         if pss().sensitive_package(pkg):
             return pkg, ET.fromstring(f'<hierarchy redacted="sensitive app {pkg}"/>')
         xml = pss().redact_xml(raw)[0]
-        return pkg, ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
+        root = ET.fromstring(xml.encode() if isinstance(xml, str) else xml)
+        if pkg in SETTINGS_PKGS:
+            restore_firmware_ids(raw_root, root)
+        return pkg, root
 
 
     def tree_text(root):
@@ -1699,16 +2015,26 @@ data:
         phone MCP schemas (fx defers MCP tools until searched);
       - fx --auto permission reviews of mcp_phone_* actions are answered "clear" here; every other
         action gets "caution". The phone tool layer itself refuses installs/settings/shell.
-    Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>");
+    Auth: every model call needs the per-job bearer the runner computes,
+    "phoneq-job-<id>-<attempt>.<hmac>" (HMAC-SHA256 with shim-key from Secret phone-queue-auth),
+    and is refused once that attempt has written its result: the shim is not an open proxy to the
+    owner's ChatGPT subscription for other processes on groot. Catalog/health/preflight GETs
+    spend nothing upstream and stay open.
+    Memory: an ollama model that is not already resident is loaded only when groot's MemAvailable
+    covers its size plus PHONEQ_MEM_HEADROOM_MB; otherwise HTTP 503 infra_unavailable.
+    Per-job model transcripts go to <state>/jobs/<id>/model.jsonl;
     every decision row carries choose_ms (wall time of that one model call).
     A model the routes cannot serve answers HTTP 404 with "model_unavailable: ..." (never a guess).
     """
     import contextlib
+    import hashlib
+    import hmac
     import http.server
     import json
     import logging
     import os
     import re
+    import signal
     import sys
     import threading
     import time
@@ -1728,7 +2054,9 @@ data:
     CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-6.1-luna", "gpt-6.1-terra", "gpt-6.1-sol",
                     "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
     TOOL_PREFIX = "mcp_phone_"
-    JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})$")
+    JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})-(\d{1,4})\.([a-f0-9]{32})$")
+    AUTH_DIR = Path(os.environ.get("PHONEQ_AUTH_DIR", "/etc/phoneq"))
+    MEM_HEADROOM = int(os.environ.get("PHONEQ_MEM_HEADROOM_MB", "3072")) * 1024 * 1024
 
     PHONE_SYSTEM = """You operate a real Android phone through tools named mcp_phone_*.
     Work in short steps: observe, decide one action, act, observe again.
@@ -1743,9 +2071,28 @@ data:
 
 
     # ------------------------------------------------------------------ prompt utilities
+    def shim_key():
+        try:
+            return (AUTH_DIR / "shim-key").read_text().strip().encode()
+        except OSError:
+            return None
+
+
     def job_of(headers):
-        m = JOB_RE.match((headers.get("authorization") or "").removeprefix("Bearer ").strip())
-        return m.group(1) if m else None
+        """The job id of a valid, still-running job attempt token, else None (same scheme as
+        common.job_token; inlined because this interpreter runs isolated with -I)."""
+        token = (headers.get("authorization") or "").removeprefix("Bearer ").strip()
+        m = JOB_RE.match(token)
+        key = shim_key()
+        if not m or not key:
+            return None
+        want = hmac.new(key, f"{m.group(1)}:{m.group(2)}".encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(want, m.group(3)):
+            return None
+        jdir = STATE / "jobs" / m.group(1)
+        if not (jdir / "job.json").exists() or (jdir / f"result-{m.group(2)}.json").exists():
+            return None  # unknown job, or that attempt already finished
+        return m.group(1)
 
 
     def transcript(job, row):
@@ -1960,23 +2307,55 @@ data:
             return "\n".join(texts).strip(), calls, usage, "openai-codex/" + (model or slug)
 
 
-    _local_models = {"at": 0, "llama": set(), "ollama": set()}
+    _local_models = {"llama": set(), "ollama": set(), "sizes": {}, "llama_at": 0, "ollama_at": 0,
+                     "llama_ok": False, "ollama_ok": False}
 
 
     def local_catalog():
-        if time.time() - _local_models["at"] > 60:
+        """Model ids each local backend serves. A source that could not be read is marked not ok
+        and re-read on the next call (never cached as 'serves nothing')."""
+        now = time.time()
+        if now - _local_models["llama_at"] > 60 or not _local_models["llama_ok"]:
             try:
                 with urllib.request.urlopen(LLAMA + "/v1/models", timeout=3) as r:
                     _local_models["llama"] = {m["id"] for m in json.load(r).get("data", [])}
+                _local_models.update(llama_ok=True, llama_at=now)
             except (OSError, ValueError):
-                pass
+                _local_models["llama_ok"] = False
+        if now - _local_models["ollama_at"] > 60 or not _local_models["ollama_ok"]:
             try:
                 with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=3) as r:
-                    _local_models["ollama"] = {m["name"] for m in json.load(r).get("models", [])}
+                    models = json.load(r).get("models", [])
+                _local_models["ollama"] = {m["name"] for m in models}
+                _local_models["sizes"] = {m["name"]: int(m.get("size") or 0) for m in models}
+                _local_models.update(ollama_ok=True, ollama_at=now)
             except (OSError, ValueError):
-                pass
-            _local_models["at"] = time.time()
+                _local_models["ollama_ok"] = False
         return _local_models
+
+
+    def mem_available():
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+        return 0
+
+
+    def ollama_memory_guard(name):
+        """Refuse to make ollama load a model groot has no room for (a load on a memory-starved
+        groot once triggered a global OOM that killed this pod). Resident models are always fine."""
+        try:
+            with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=3) as r:
+                if name in {m.get("name") for m in json.load(r).get("models", [])}:
+                    return
+        except (OSError, ValueError):
+            raise Backend(503, f"infra_unavailable: ollama {OLLAMA} unreachable") from None
+        need = local_catalog()["sizes"].get(name, 0) + MEM_HEADROOM
+        have = mem_available()
+        if have < need:
+            raise Backend(503, f"infra_unavailable: groot MemAvailable {have >> 20} MiB < "
+                               f"{need >> 20} MiB needed to load ollama/{name}; try later")
 
 
     def call_openai_compatible(base, name, req, tools):
@@ -2060,11 +2439,16 @@ data:
         cat = local_catalog()
         if provider == "groot-router" or (provider == "local" and name in cat["llama"]):
             if name not in cat["llama"]:
+                if not cat["llama_ok"]:
+                    raise Backend(503, f"infra_unavailable: groot llama router {LLAMA} unreachable")
                 raise unavailable(model_id, f"not served by the groot llama router {LLAMA}")
             return LLAMA, name
         if provider in ("ollama", "local"):
             if name not in cat["ollama"]:
+                if not cat["ollama_ok"] or (provider == "local" and not cat["llama_ok"]):
+                    raise Backend(503, f"infra_unavailable: local model backends unreachable for {model_id}")
                 raise unavailable(model_id, f"not on the groot llama router or ollama {OLLAMA}")
+            ollama_memory_guard(name)
             return OLLAMA, name
         raise unavailable(model_id, "no route (use openai-codex/, groot-router/, local/, ollama/ or gateway/)")
 
@@ -2090,7 +2474,7 @@ data:
             else:
                 resolve(model_id)
         except Backend as e:
-            return str(e)
+            return e
         return None
 
 
@@ -2157,7 +2541,11 @@ data:
                 from urllib.parse import parse_qs, urlparse
                 mid = (parse_qs(urlparse(self.path).query).get("model") or [""])[0]
                 why = available(mid)
-                return self._json(200 if why is None else 404, {"model": mid, "available": why is None, "error": why})
+                if why is None:
+                    return self._json(200, {"model": mid, "available": True, "error": None})
+                # 404 = this model cannot be served (model_unavailable); 503 = backend/infra trouble
+                return self._json(404 if why.status == 404 else 503,
+                                  {"model": mid, "available": False, "error": str(why), "status": why.status})
             if self.path.split("?")[0].endswith("/models"):
                 return self._json(200, catalog())
             return self._json(404, {"error": "not found"})
@@ -2166,6 +2554,9 @@ data:
             n = int(self.headers.get("content-length") or 0)
             raw = self.rfile.read(n)
             job = job_of(self.headers)
+            if job is None:
+                return self._json(401, {"error": {"message": "phone-queue shim: a valid per-job token is required",
+                                                  "type": "phoneq_auth"}})
             model_id = self.headers.get("ai-language-model-id") or ""
             try:
                 req = json.loads(raw)
@@ -2227,6 +2618,7 @@ data:
 
 
     def main():
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # PID 1: exit at once on rollout
         srv = http.server.ThreadingHTTPServer((BIND, PORT), Handler)
         srv.daemon_threads = True
         log(f"phone-queue model shim on http://{BIND}:{PORT}")

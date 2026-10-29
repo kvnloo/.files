@@ -20,16 +20,26 @@ Policy (this gateway serves phone jobs only):
     phone MCP schemas (fx defers MCP tools until searched);
   - fx --auto permission reviews of mcp_phone_* actions are answered "clear" here; every other
     action gets "caution". The phone tool layer itself refuses installs/settings/shell.
-Per-job model transcripts go to <state>/jobs/<id>/model.jsonl (job id = bearer "phoneq-job-<id>");
+Auth: every model call needs the per-job bearer the runner computes,
+"phoneq-job-<id>-<attempt>.<hmac>" (HMAC-SHA256 with shim-key from Secret phone-queue-auth),
+and is refused once that attempt has written its result: the shim is not an open proxy to the
+owner's ChatGPT subscription for other processes on groot. Catalog/health/preflight GETs
+spend nothing upstream and stay open.
+Memory: an ollama model that is not already resident is loaded only when groot's MemAvailable
+covers its size plus PHONEQ_MEM_HEADROOM_MB; otherwise HTTP 503 infra_unavailable.
+Per-job model transcripts go to <state>/jobs/<id>/model.jsonl;
 every decision row carries choose_ms (wall time of that one model call).
 A model the routes cannot serve answers HTTP 404 with "model_unavailable: ..." (never a guess).
 """
 import contextlib
+import hashlib
+import hmac
 import http.server
 import json
 import logging
 import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -49,7 +59,9 @@ EFFORT = os.environ.get("PHONEQ_EFFORT", "low")
 CODEX_MODELS = ("gpt-6-luna", "gpt-6-terra", "gpt-6-sol", "gpt-6.1-luna", "gpt-6.1-terra", "gpt-6.1-sol",
                 "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol")
 TOOL_PREFIX = "mcp_phone_"
-JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})$")
+JOB_RE = re.compile(r"^phoneq-job-([a-f0-9]{12})-(\d{1,4})\.([a-f0-9]{32})$")
+AUTH_DIR = Path(os.environ.get("PHONEQ_AUTH_DIR", "/etc/phoneq"))
+MEM_HEADROOM = int(os.environ.get("PHONEQ_MEM_HEADROOM_MB", "3072")) * 1024 * 1024
 
 PHONE_SYSTEM = """You operate a real Android phone through tools named mcp_phone_*.
 Work in short steps: observe, decide one action, act, observe again.
@@ -64,9 +76,28 @@ def log(*a):
 
 
 # ------------------------------------------------------------------ prompt utilities
+def shim_key():
+    try:
+        return (AUTH_DIR / "shim-key").read_text().strip().encode()
+    except OSError:
+        return None
+
+
 def job_of(headers):
-    m = JOB_RE.match((headers.get("authorization") or "").removeprefix("Bearer ").strip())
-    return m.group(1) if m else None
+    """The job id of a valid, still-running job attempt token, else None (same scheme as
+    common.job_token; inlined because this interpreter runs isolated with -I)."""
+    token = (headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    m = JOB_RE.match(token)
+    key = shim_key()
+    if not m or not key:
+        return None
+    want = hmac.new(key, f"{m.group(1)}:{m.group(2)}".encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(want, m.group(3)):
+        return None
+    jdir = STATE / "jobs" / m.group(1)
+    if not (jdir / "job.json").exists() or (jdir / f"result-{m.group(2)}.json").exists():
+        return None  # unknown job, or that attempt already finished
+    return m.group(1)
 
 
 def transcript(job, row):
@@ -281,23 +312,55 @@ def _call_codex(client, slug, req, tools):
         return "\n".join(texts).strip(), calls, usage, "openai-codex/" + (model or slug)
 
 
-_local_models = {"at": 0, "llama": set(), "ollama": set()}
+_local_models = {"llama": set(), "ollama": set(), "sizes": {}, "llama_at": 0, "ollama_at": 0,
+                 "llama_ok": False, "ollama_ok": False}
 
 
 def local_catalog():
-    if time.time() - _local_models["at"] > 60:
+    """Model ids each local backend serves. A source that could not be read is marked not ok
+    and re-read on the next call (never cached as 'serves nothing')."""
+    now = time.time()
+    if now - _local_models["llama_at"] > 60 or not _local_models["llama_ok"]:
         try:
             with urllib.request.urlopen(LLAMA + "/v1/models", timeout=3) as r:
                 _local_models["llama"] = {m["id"] for m in json.load(r).get("data", [])}
+            _local_models.update(llama_ok=True, llama_at=now)
         except (OSError, ValueError):
-            pass
+            _local_models["llama_ok"] = False
+    if now - _local_models["ollama_at"] > 60 or not _local_models["ollama_ok"]:
         try:
             with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=3) as r:
-                _local_models["ollama"] = {m["name"] for m in json.load(r).get("models", [])}
+                models = json.load(r).get("models", [])
+            _local_models["ollama"] = {m["name"] for m in models}
+            _local_models["sizes"] = {m["name"]: int(m.get("size") or 0) for m in models}
+            _local_models.update(ollama_ok=True, ollama_at=now)
         except (OSError, ValueError):
-            pass
-        _local_models["at"] = time.time()
+            _local_models["ollama_ok"] = False
     return _local_models
+
+
+def mem_available():
+    with open("/proc/meminfo") as f:
+        for line in f:
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 1024
+    return 0
+
+
+def ollama_memory_guard(name):
+    """Refuse to make ollama load a model groot has no room for (a load on a memory-starved
+    groot once triggered a global OOM that killed this pod). Resident models are always fine."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=3) as r:
+            if name in {m.get("name") for m in json.load(r).get("models", [])}:
+                return
+    except (OSError, ValueError):
+        raise Backend(503, f"infra_unavailable: ollama {OLLAMA} unreachable") from None
+    need = local_catalog()["sizes"].get(name, 0) + MEM_HEADROOM
+    have = mem_available()
+    if have < need:
+        raise Backend(503, f"infra_unavailable: groot MemAvailable {have >> 20} MiB < "
+                           f"{need >> 20} MiB needed to load ollama/{name}; try later")
 
 
 def call_openai_compatible(base, name, req, tools):
@@ -381,11 +444,16 @@ def resolve(model_id):
     cat = local_catalog()
     if provider == "groot-router" or (provider == "local" and name in cat["llama"]):
         if name not in cat["llama"]:
+            if not cat["llama_ok"]:
+                raise Backend(503, f"infra_unavailable: groot llama router {LLAMA} unreachable")
             raise unavailable(model_id, f"not served by the groot llama router {LLAMA}")
         return LLAMA, name
     if provider in ("ollama", "local"):
         if name not in cat["ollama"]:
+            if not cat["ollama_ok"] or (provider == "local" and not cat["llama_ok"]):
+                raise Backend(503, f"infra_unavailable: local model backends unreachable for {model_id}")
             raise unavailable(model_id, f"not on the groot llama router or ollama {OLLAMA}")
+        ollama_memory_guard(name)
         return OLLAMA, name
     raise unavailable(model_id, "no route (use openai-codex/, groot-router/, local/, ollama/ or gateway/)")
 
@@ -411,7 +479,7 @@ def available(model_id):
         else:
             resolve(model_id)
     except Backend as e:
-        return str(e)
+        return e
     return None
 
 
@@ -478,7 +546,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             from urllib.parse import parse_qs, urlparse
             mid = (parse_qs(urlparse(self.path).query).get("model") or [""])[0]
             why = available(mid)
-            return self._json(200 if why is None else 404, {"model": mid, "available": why is None, "error": why})
+            if why is None:
+                return self._json(200, {"model": mid, "available": True, "error": None})
+            # 404 = this model cannot be served (model_unavailable); 503 = backend/infra trouble
+            return self._json(404 if why.status == 404 else 503,
+                              {"model": mid, "available": False, "error": str(why), "status": why.status})
         if self.path.split("?")[0].endswith("/models"):
             return self._json(200, catalog())
         return self._json(404, {"error": "not found"})
@@ -487,6 +559,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         n = int(self.headers.get("content-length") or 0)
         raw = self.rfile.read(n)
         job = job_of(self.headers)
+        if job is None:
+            return self._json(401, {"error": {"message": "phone-queue shim: a valid per-job token is required",
+                                              "type": "phoneq_auth"}})
         model_id = self.headers.get("ai-language-model-id") or ""
         try:
             req = json.loads(raw)
@@ -548,6 +623,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # PID 1: exit at once on rollout
     srv = http.server.ThreadingHTTPServer((BIND, PORT), Handler)
     srv.daemon_threads = True
     log(f"phone-queue model shim on http://{BIND}:{PORT}")

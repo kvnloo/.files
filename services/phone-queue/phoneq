@@ -7,9 +7,12 @@
          common: [--submitter NAME] [--idempotency-key K] [--priority N] [--reset home|none] [--wait] [--json]
   phoneq status ID [--json]          phoneq wait ID [--timeout S] [--json]
   phoneq list [--submitter S] [--state S] [--limit N] [--json]
-  phoneq cancel ID                   phoneq devices [--json]        phoneq health
+  phoneq cancel ID [--submitter NAME] phoneq devices [--json]        phoneq health
 
 Endpoint: $PHONEQ_URL (default http://100.113.138.100:8792).
+Auth: bearer token from $PHONEQ_TOKEN or ~/.config/phoneq/token (0600; issued on groot by
+services/phone-queue/issue-tokens). Submit and cancel need it; without it reads omit results.
+Cancel works only for your own jobs: same token principal and the same --submitter.
 """
 import argparse
 import getpass
@@ -24,12 +27,26 @@ import urllib.request
 
 URL = os.environ.get("PHONEQ_URL", "http://100.113.138.100:8792").rstrip("/")
 TERMINAL = ("succeeded", "failed", "cancelled")
+DEFAULT_SUBMITTER = os.environ.get("PHONEQ_SUBMITTER") or f"{getpass.getuser()}@{socket.gethostname()}"
+
+
+def token():
+    if os.environ.get("PHONEQ_TOKEN"):
+        return os.environ["PHONEQ_TOKEN"].strip()
+    try:
+        with open(os.path.expanduser("~/.config/phoneq/token")) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
 
 
 def call(method, path, body=None, timeout=30):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(URL + path, data=data, method=method,
-                                 headers={"Content-Type": "application/json"} if data else {})
+    headers = {"Content-Type": "application/json"} if data else {}
+    tok = token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read() or b"{}")
@@ -99,7 +116,7 @@ def main():
     s.add_argument("--must-contain", action="append", default=[])
     s.add_argument("--must-not-contain", action="append", default=[])
     s.add_argument("--oracle-package")
-    s.add_argument("--submitter", default=os.environ.get("PHONEQ_SUBMITTER") or f"{getpass.getuser()}@{socket.gethostname()}")
+    s.add_argument("--submitter", default=DEFAULT_SUBMITTER)
     s.add_argument("--idempotency-key")
     s.add_argument("--priority", type=int)
     s.add_argument("--reset", choices=["home", "none"])
@@ -111,6 +128,8 @@ def main():
         p.add_argument("id")
         p.add_argument("--json", action="store_true")
         p.add_argument("--timeout", type=float, default=1800)
+        if name == "cancel":
+            p.add_argument("--submitter", default=DEFAULT_SUBMITTER)
     p = sub.add_parser("list")
     p.add_argument("--submitter")
     p.add_argument("--state")
@@ -149,7 +168,7 @@ def main():
     if a.cmd == "wait":
         return wait(a.id, a.timeout, a.json)
     if a.cmd == "cancel":
-        status, j = call("POST", f"/v1/jobs/{a.id}/cancel")
+        status, j = call("POST", f"/v1/jobs/{a.id}/cancel", {"submitter": a.submitter})
         print(json.dumps(j) if a.json else f"{j.get('id', a.id)} {j.get('state') or j.get('error')}")
         return 0 if status == 200 else 1
     if a.cmd == "list":
