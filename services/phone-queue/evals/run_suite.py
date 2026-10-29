@@ -279,15 +279,29 @@ def mem_available_mib() -> int | None:
     return None
 
 
-def wait_for_memory(min_mib: int, max_wait_s: float) -> int:
-    """Hold the next submit while the host is memory-starved: a queue runner pod is burstable and
-    the kernel's global OOM killer takes it first (2026-10-29 04:27-04:40Z). Returns ms waited."""
+def recent_oom_kills(window_s: int) -> int | None:
+    """Kernel OOM kills on this host in the last window_s seconds (journalctl -k), None if unreadable."""
+    try:
+        out = subprocess.run(["journalctl", "-k", "-q", "--since", f"-{int(window_s)}s", "--no-pager", "-o", "cat"],
+                             capture_output=True, text=True, timeout=20).stdout
+    except Exception:  # noqa: BLE001
+        return None
+    return sum("Out of memory: Killed process" in line for line in out.splitlines())
+
+
+def wait_for_memory(min_mib: int, max_wait_s: float, quiet_s: int = 0) -> int:
+    """Hold the next submit while the host is memory-starved. Queue runner pods are burstable
+    (oom_score_adj 999) and groot's session.slice has a 7 GiB memory.min floor, so in a global OOM
+    the kernel kills the runner pod first, even with MemAvailable around 3 GiB (2026-10-29
+    04:27-04:47Z). Wait for MemAvailable >= min_mib and no kernel OOM kill in the last quiet_s.
+    Returns ms waited."""
     t0 = time.time()
-    while min_mib > 0 and time.time() - t0 < max_wait_s:
+    while time.time() - t0 < max_wait_s:
         have = mem_available_mib()
-        if have is None or have >= min_mib:
+        kills = recent_oom_kills(quiet_s) if quiet_s else 0
+        if (have is None or have >= min_mib) and not kills:
             break
-        time.sleep(15)
+        time.sleep(20)
     return int((time.time() - t0) * 1000)
 
 
@@ -385,7 +399,7 @@ def cmd_run(a) -> int:
                     "submitter": a.submitter, "reset": t["reset"], "priority": a.priority,
                     "idempotency_key": f"{SUITE}:{run_id}:{m['key']}:{t['id']}:{rep}"}
             serial = serials.get(t["device"], {}).get("serial")
-            mem_wait = wait_for_memory(a.min_mem_mib, a.max_mem_wait)
+            mem_wait = wait_for_memory(a.min_mem_mib, a.max_mem_wait, a.oom_quiet_s)
             before = None if a.no_drift or not serial else settings_snapshot(serial)
             t0 = time.time()
             job, waited_out = submit_and_wait(base, body, timeout_s=max(a.min_timeout, t["max_steps"] * a.step_timeout))
@@ -433,7 +447,8 @@ def main(argv=None) -> int:
                    help="seconds to wait per job incl. queueing behind other agents' UI-lock use")
     r.add_argument("--step-timeout", type=float, default=45)
     r.add_argument("--min-mem-mib", type=int, default=2500, help="wait before submitting while host MemAvailable is lower")
-    r.add_argument("--max-mem-wait", type=float, default=1800)
+    r.add_argument("--max-mem-wait", type=float, default=3600)
+    r.add_argument("--oom-quiet-s", type=int, default=300, help="also wait until no kernel OOM kill for this long (0 = off)")
     a = ap.parse_args(argv)
     return {"plan": cmd_plan, "run": cmd_run, "probe": cmd_probe}[a.cmd](a)
 
