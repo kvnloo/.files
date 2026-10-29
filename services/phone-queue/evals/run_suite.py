@@ -42,6 +42,8 @@ INFRA_CODES = ("infra_unavailable",)
 UNAVAILABLE_HINTS = ("model_unavailable", "unknown model", "unsupported model", "no such model", "model not found")
 # Provider-side trouble mid-run (subscription rate limit, 5xx): infra, not a driving verdict.
 PROVIDER_HINTS = ("429", "rate limit", "rate_limit", "usage limit", "quota", "502 bad gateway", "503 service")
+# The queue's own runner pod died (OOMKilled, evicted) before writing a result: infra.
+RUNNER_CRASH_HINTS = ("runner wrote no result", "oomkilled", "k8s job disappeared", "evicted")
 ABSTAIN_HINTS = ("abstain", "needs_confirmation", "uncertain", "escalat")
 # Keys that move on their own; a change here is not evidence of a wrong act.
 VOLATILE_SETTINGS = ("screen_brightness", "next_alarm", "wifi_", "bluetooth_", "boot_count", "time_", "_timestamp",
@@ -207,7 +209,7 @@ def classify(job: dict | None, waited_out: bool) -> str:
         return "blocked" if st in ("blocked", "queued", "admitted") else "timeout"
     if st == "blocked":
         return "blocked"
-    if code in INFRA_CODES or err.startswith('"infra'):
+    if code in INFRA_CODES or err.startswith('"infra') or any(h in err for h in RUNNER_CRASH_HINTS):
         return "infra"
     if code in UNAVAILABLE_CODES:
         return "unavailable"
@@ -265,6 +267,38 @@ def make_row(suite: dict, m: dict, t: dict, rep: int, run_id: str, job: dict | N
         "finished_at": (job or {}).get("finished_at"), "transcript_path": res.get("transcript_path"),
         "error": (job or {}).get("error"),
     }
+
+
+def mem_available_mib() -> int | None:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except OSError:
+        return None
+    return None
+
+
+def wait_for_memory(min_mib: int, max_wait_s: float) -> int:
+    """Hold the next submit while the host is memory-starved: a queue runner pod is burstable and
+    the kernel's global OOM killer takes it first (2026-10-29 04:27-04:40Z). Returns ms waited."""
+    t0 = time.time()
+    while min_mib > 0 and time.time() - t0 < max_wait_s:
+        have = mem_available_mib()
+        if have is None or have >= min_mib:
+            break
+        time.sleep(15)
+    return int((time.time() - t0) * 1000)
+
+
+def touched_ui(path: str | None) -> bool:
+    """True when the job's transcript shows any phone action (the runner got the UI lock)."""
+    if not path or not os.path.exists(path):
+        return False
+    try:
+        return any('"type": "action"' in line for line in Path(path).read_text().splitlines())
+    except OSError:
+        return False
 
 
 def submit_and_wait(base: str, body: dict, timeout_s: float, poll_s: float = 2.0) -> tuple[dict | None, bool]:
@@ -351,13 +385,16 @@ def cmd_run(a) -> int:
                     "submitter": a.submitter, "reset": t["reset"], "priority": a.priority,
                     "idempotency_key": f"{SUITE}:{run_id}:{m['key']}:{t['id']}:{rep}"}
             serial = serials.get(t["device"], {}).get("serial")
+            mem_wait = wait_for_memory(a.min_mem_mib, a.max_mem_wait)
             before = None if a.no_drift or not serial else settings_snapshot(serial)
             t0 = time.time()
             job, waited_out = submit_and_wait(base, body, timeout_s=max(a.min_timeout, t["max_steps"] * a.step_timeout))
             wall = (time.time() - t0) * 1000
             after = None if a.no_drift or not serial else settings_snapshot(serial)
             status = classify(job, waited_out)
+            jdir_transcript = f"/mnt/zer0models/phone-queue/state/jobs/{(job or {}).get('id')}/transcript.jsonl"
             row = make_row(suite, m, t, rep, run_id, job, status, drift(before, after), cold_expected, wall)
+            row["mem_wait_ms"] = mem_wait
             rows.write(json.dumps(row) + "\n"); rows.flush()
             print(json.dumps({k: row[k] for k in ("model_key", "task", "rep", "status", "oracle_pass", "steps", "total_ms")}), flush=True)
             if row["side_effect_keys"]:
@@ -365,6 +402,11 @@ def cmd_run(a) -> int:
                       file=sys.stderr, flush=True)
                 if not a.continue_on_side_effect:
                     return 3
+            crashed = any(h in json.dumps(row.get("error") or "").lower() for h in RUNNER_CRASH_HINTS)
+            if crashed and touched_ui(row.get("transcript_path") or jdir_transcript):
+                print(f"STOP: job {row['job_id']} died after touching the S22 UI ({row['error']!r:.200}); its "
+                      "foreground may not have been restored. Check the phone before resuming.", file=sys.stderr, flush=True)
+                return 4
             if status == "unavailable":
                 unavailable[m["key"]] = json.dumps(row["error"])[:200]
     return 0
@@ -390,6 +432,8 @@ def main(argv=None) -> int:
     r.add_argument("--min-timeout", type=float, default=1800,
                    help="seconds to wait per job incl. queueing behind other agents' UI-lock use")
     r.add_argument("--step-timeout", type=float, default=45)
+    r.add_argument("--min-mem-mib", type=int, default=2500, help="wait before submitting while host MemAvailable is lower")
+    r.add_argument("--max-mem-wait", type=float, default=1800)
     a = ap.parse_args(argv)
     return {"plan": cmd_plan, "run": cmd_run, "probe": cmd_probe}[a.cmd](a)
 

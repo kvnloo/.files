@@ -92,6 +92,7 @@ class RunnerContract(unittest.TestCase):
         # a step-limited / oracle-failed run is scored, even when the screen text says "auth"
         self.assertEqual(run_suite.classify({"state": "failed", "error": "oracle failed: Authenticator", "result": {"steps": 7, "oracle_pass": False}}, False), "ok")
         self.assertEqual(run_suite.classify({"state": "failed", "error": "fx exit 1: 429 rate limit", "result": {"steps": 3}}, False), "infra")
+        self.assertEqual(run_suite.classify({"state": "failed", "error": "runner wrote no result; pod state {\"reason\": \"OOMKilled\"}"}, False), "infra")
 
     def test_false_done_on_oracle_fail(self):
         job = {"id": "x", "state": "failed", "error": "oracle failed: {}", "result": {"steps": 5, "oracle_pass": False, "final_output": "done"}}

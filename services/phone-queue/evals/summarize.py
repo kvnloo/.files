@@ -36,7 +36,23 @@ def rate(rows, key):
     v = [r[key] for r in rows if r.get(key) is not None]
     return round(sum(bool(x) for x in v) / len(v), 3) if v else None
 
+def dedupe(rows):
+    """A rerun appends a new row for every (model, task, rep) that was not scored; keep one row
+    per cell (the scored/unavailable one, else the latest) and count the unscored attempts."""
+    cells, attempts = {}, defaultdict(int)
+    for r in rows:
+        k = (r["model_key"], r["task"], r["rep"])
+        attempts[k] += 1
+        if k not in cells or cells[k]["status"] not in ("ok", "unavailable"):
+            cells[k] = r
+    out = []
+    for k, r in cells.items():
+        r = dict(r); r["attempts"] = attempts[k]; out.append(r)
+    return out
+
 def summarize(rows):
+    raw = len(rows)
+    rows = dedupe(rows)
     by = defaultdict(list)
     for r in rows: by[r["model_key"]].append(r)
     models = {}
@@ -84,7 +100,7 @@ def summarize(rows):
             "status_legend": {"ok": "scored", "unavailable": "model not servable (never a 0)",
                               "infra": "groot/shim/provider trouble (not scored)", "blocked": "gate or UI lock never freed in time",
                               "timeout": "runner gave up", "cancelled": "cancelled", "error": "other"},
-            "rows": len(rows), "run_ids": sorted({r["run_id"] for r in rows}), "models": models,
+            "rows": len(rows), "raw_rows": raw, "superseded_attempts": raw - len(rows), "run_ids": sorted({r["run_id"] for r in rows}), "models": models,
             "task_matrix": {t: {k: f"{a}/{b}" for k, (a, b) in v.items()} for t, v in sorted(tasks.items())}}
 
 if __name__ == "__main__":
