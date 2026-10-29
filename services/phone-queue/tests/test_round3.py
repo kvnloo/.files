@@ -185,6 +185,38 @@ class PacePeek(unittest.TestCase):
         self.assertLess(body.index("owner_busy(serial"), body.index("pace_reserve(paced)"))
 
 
+class ConnectRetry(unittest.TestCase):
+    def test_transient_drop_retried_persistent_drop_blocks(self):
+        import http.client
+        calls = {"n": 0}
+
+        class PT:
+            @staticmethod
+            def connect(serial):
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise http.client.RemoteDisconnected("Remote end closed connection without response")
+                return "d"
+
+        class B:
+            @staticmethod
+            def healthy(d):
+                return None
+        sleeps = []
+        old = runner.time.sleep
+        runner.time.sleep = sleeps.append
+        try:
+            res = {}
+            self.assertEqual(runner.connect_healthy(PT, B, "S", res), "d")
+            self.assertEqual(len(res["connect_retries"]), 2)
+            calls["n"] = -10
+            with self.assertRaises(runner.Blocked) as cm:
+                runner.connect_healthy(PT, B, "S", {})
+            self.assertTrue(str(cm.exception).startswith("infra: "))
+        finally:
+            runner.time.sleep = old
+
+
 class ChatOracle(unittest.TestCase):
     def test_must_contain_is_checked_against_the_reply(self):
         tree = ('<hierarchy><node package="com.openai.chatgpt" class="android.widget.TextView" '

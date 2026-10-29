@@ -568,6 +568,29 @@ def restore(d, dev, serial, before, result):
         result["restore_error"] = f"{type(e).__name__}: {e}"
 
 
+def connect_healthy(phone_tools, burst, serial, result, tries=3):
+    """u2 connect + the driver's health check. The u2 HTTP link to the on-phone server drops
+    now and then (another driver just released the phone): retry, and if it stays down block
+    the job as infrastructure (retried in 30 s) instead of failing it."""
+    last = None
+    for i in range(tries):
+        try:
+            d = phone_tools.connect(serial)
+            burst.healthy(d)
+            return d
+        except (ConnectionError, OSError, TimeoutError) as e:  # RemoteDisconnected is a ConnectionError
+            last = e
+            result.setdefault("connect_retries", []).append(f"{type(e).__name__}: {e}"[:120])
+            time.sleep(3 * (i + 1))
+        except Exception as e:  # noqa: BLE001 - requests/u2 wrap the same drop
+            if "RemoteDisconnected" not in repr(e) and "Connection" not in type(e).__name__:
+                raise
+            last = e
+            result.setdefault("connect_retries", []).append(f"{type(e).__name__}: {e}"[:120])
+            time.sleep(3 * (i + 1))
+    raise Blocked(f"infra: uiautomator2 link to {serial} kept dropping: {type(last).__name__}: {last}"[:300])
+
+
 def main(job_id):
     signal.signal(signal.SIGTERM, on_term)
     jdir = common.job_dir(job_id)
@@ -606,8 +629,7 @@ def main(job_id):
             result["pace_reserved_at"] = pace_reserve(paced)
         import phone_tools
         c0 = time.time()
-        d = phone_tools.connect(serial)
-        burst.healthy(d)
+        d = connect_healthy(phone_tools, burst, serial, result)
         result["cold_ms"] = int((time.time() - c0) * 1000)
         before = burst.activity_snapshot(serial)["package"]
         result["foreground_before"] = before
