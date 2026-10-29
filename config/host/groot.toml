@@ -1,6 +1,7 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf", sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c", reason = "Use the stamped fleet command; retire the stale admission worktree override." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-qualified-8212.service", sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf", sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea", reason = "Superseded by canonical dash-bridge.service." },
@@ -1916,14 +1917,6 @@ owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "db5320a8d28c6148349f85bce3f5143a60a9a1110740fcd3490708ed86bf4fa1"
 
-[[user]]
-live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf"
-source = "config/systemd/user/fleet-health.service.d/50-admission-owner.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c"
 
 [[user]]
 live = "~/.config/systemd/user/fleet-health.service.d/90-service-watch.conf"

@@ -107,6 +107,17 @@ refuses requests without a live per-job token, serves only GET reads of public
 repos, and meters model-relay calls per job. `smoke/gateway-job.yaml` proves it
 (`GATEWAY_OK`, run it pinned to each node).
 
+The forwarder requests its limits (200m CPU, 64Mi) to qualify for Guaranteed QoS.
+This lowers its host-OOM priority; it does not prevent container-limit OOMs.
+`tests/test_k3s_critical_qos.py` checks this QoS invariant across all of the
+forwarder's containers. The change adds 190m CPU and 40Mi of memory requests,
+without increasing limits. The Deployment does not consume Kueue queue quota.
+Other critical pods take their resources from
+their own sources, so they are not changed here: Kueue's controller comes from the
+pinned upstream release, the z0intelligence executor from the z0intelligence repo
+(`deploy/k8s/intelligence-executor.yaml`), the quackles GPU slot plugin from
+quackles, and CoreDNS is bundled with k3s.
+
 ## Adding a node
 
 New agents join with the taint `z0.dev/onboarding=true:NoSchedule` and take no work.

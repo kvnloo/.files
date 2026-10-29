@@ -1,10 +1,10 @@
 [Unit]
-Description=fleet: probe workers, cordon unhealthy ones (/workspace/.files-k3s/scripts/fleet)
+Description=fleet: probe workers and cordon unhealthy nodes
 
 [Service]
 Type=oneshot
 Nice=10
 Environment=KUBECONFIG=/home/kvn/.kube/k3s.yaml
-ExecStart=/workspace/hermes-home/installs/59a5ffb977aa25fc/environments/3868b4ee64b449c6ac1e2902975f4aac/venv/bin/python3 /workspace/.files-k3s/scripts/fleet health
+ExecStart=/usr/bin/python3 %h/.local/bin/fleet health
 TimeoutStartSec=240
 MemoryMax=256M
