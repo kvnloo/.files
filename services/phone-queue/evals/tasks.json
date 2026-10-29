@@ -44,7 +44,7 @@
    "device": "s22",
    "app": "com.android.settings",
    "kind": "goal",
-   "goal": "Open the Settings app.",
+   "goal": "Open the Settings app and show its main (top-level) page.",
    "reset": "home",
    "max_steps": 8,
    "oracle": {
@@ -61,7 +61,8 @@
    "multi_step": false,
    "min_steps_from_home": 1,
    "toggle_risk": "none",
-   "evidence": "settings_p0"
+   "evidence": "settings_p0",
+   "note": "2026-10-29: goal text made explicit after smoke job 39552c069601: Settings resumes its last sub-page, so the old goal \"Open the Settings app.\" was met while the main-page oracle failed. Oracle unchanged."
   },
   {
    "id": "about-model-name",
