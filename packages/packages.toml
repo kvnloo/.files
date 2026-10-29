@@ -24,16 +24,6 @@ packages = [
     "cronie",
 ]
 
-# Local-only host metrics and bounded forensic archives (groot and MBP).
-[monitoring]
-packages = [
-    "netdata",
-    "smartmontools",
-    "libnotify",
-    "python",
-    "atop",
-]
-
 # ---------------------------------------------------------
 # NVIDIA drivers
 # ---------------------------------------------------------
