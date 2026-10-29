@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Keep kernel OOM kills off coding-agent roots; record every kill durably.
+"""Bias kernel OOM scoring and relieve Normal-zone pressure before desktop failure.
 
-Applies scripts/agent_oom_policy.py once a second: roots, their renderers and the
-shells, terminals and units above them are lowered; tools and subagents are raised,
-background batch jobs higher still.
+Protect roots and desktop infrastructure independently of live agent ancestry;
+terminate at most one positively classified substantial tool/batch process at a
+time using pidfds. Scores and proactive relief are not an OOM survival guarantee.
 It is the only writer of agent oom_score_adj values (agent-launch and
 agent-resource-classify no longer write them).
 
 Every kernel OOM kill is appended to ~/.local/state/agent-oom/kills.jsonl with the
 class the victim had at its last observation. A protected victim is logged at
-CRITICAL priority and sent to the desktop: that is a broken guarantee, not routine.
+CRITICAL priority and sent to the desktop: scoring was insufficient, not immunity.
 
   agent-oom-guard            run (systemd user service agent-oom-guard.service)
   agent-oom-guard --once     one pass, print the JSON result
@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import time
+import threading
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_oom_policy as policy  # noqa: E402
@@ -108,7 +109,7 @@ def record_kills(history: dict) -> None:
 
 
 def check(state: dict | None = None) -> list:
-    """Every way root protection could silently regress; [] means it holds right now."""
+    """Report score/cgroup hazards; success is not a global OOM survival guarantee."""
     state = state or {'cache': {}, 'mains': unit_mains()}
     problems = []
     procs = policy.scan(cache=state['cache'])
@@ -144,7 +145,8 @@ def check(state: dict | None = None) -> list:
                 break
     except (OSError, subprocess.SubprocessError):
         pass
-    if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', 'agent-oom-guard.service']).returncode:
+    if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', 'agent-oom-guard.service'],
+                      timeout=5).returncode:
         problems.append('agent-oom-guard.service is not active')
     try:
         for line in (STATE / 'kills.jsonl').read_text().splitlines():
@@ -153,6 +155,13 @@ def check(state: dict | None = None) -> list:
                 problems.append(f"protected process was OOM-killed: {row}")
     except (OSError, ValueError):
         pass
+    pressure = policy.read_pressure()
+    if not pressure['available']:
+        problems.append('Normal-zone pressure telemetry unavailable')
+    elif pressure['threatened']:
+        problems.append(f'Normal-zone reserve threatened: {pressure["zones"]}')
+    if not hasattr(os, 'pidfd_open') or not hasattr(policy.signal, 'pidfd_send_signal'):
+        problems.append('pidfd relief unavailable')
     return problems
 
 
@@ -161,9 +170,13 @@ def tick(state: dict, dry_run: bool = False) -> dict:
     if now - state['refreshed'] >= REFRESH:
         state['cache'].clear()
         state['checked'].clear()
-        state['mains'] = unit_mains()
+        # Unit discovery runs in housekeeping, never on the protection path.
         state['refreshed'] = now
-    full = now - state['full'] >= FULL
+    pressure = policy.read_pressure()
+    relief = state.setdefault('relief', policy.Relief())
+    full = now - state['full'] >= FULL or pressure['threatened'] or relief.pending is not None
+    if pressure['threatened'] or relief.pending is not None:
+        state['cache'].clear()
     if full:
         state['full'] = now
         state['foreign'].clear()
@@ -177,10 +190,28 @@ def tick(state: dict, dry_run: bool = False) -> dict:
         first.setdefault((p.pid, p.start), now)
     state['procs'] = procs
     protected, disposable, batch = policy.decide(procs, state['mains'])
+    if not state['mains']:
+        # Discovery may still be blocked. Preserve prior protection by PID/start
+        # identity instead of restoring generic service roots during startup.
+        protected |= {pid for pid, p in procs.items()
+                      if f'{pid}:{p.start}' in state['lowered']}
+        disposable -= protected
+        batch -= protected
     lowered = dict(state['lowered']) if dry_run else state['lowered']
     before = dict(lowered)
     result = policy.apply(procs, protected, disposable, lowered, state['checked'], dry_run=dry_run,
                           batch=batch)
+    result['pressure'] = pressure
+    if not state['mains']:
+        result['relief'] = {'action': 'unit-discovery-unavailable'}
+    else:
+        result['relief'] = relief.step(procs, protected, disposable, batch, pressure, now,
+                                       dry_run=dry_run, unit_mains=state['mains'])
+    cache_relief = state.setdefault('cache_relief', policy.CacheRelief())
+    fallback = result['relief']['action'] in {'no-candidate', 'unavailable',
+                                             'unit-discovery-unavailable', 'changed'}
+    if (pressure['threatened'] and fallback) or cache_relief.thread is not None:
+        result['cache_relief'] = cache_relief.step(now, dry_run=dry_run)
     if not dry_run and lowered != before:
         save(STATE / 'lowered.json', lowered)
     wall = time.time()
@@ -195,6 +226,30 @@ def tick(state: dict, dry_run: bool = False) -> dict:
     return result
 
 
+def housekeeping(state):
+    """Blocking service/journal/notification helpers never delay the urgent loop.
+
+    One daemon thread bounds subprocess concurrency and avoids unbounded work
+    queues. A stalled helper delays diagnostics only; timeouts still bound it.
+    """
+    last_kills = last_check = float('-inf')
+    while True:
+        try:
+            state['mains'] = unit_mains()
+            now = time.monotonic()
+            if now - last_kills >= KILL_POLL:
+                record_kills(dict(state['history']))
+                last_kills = now
+            if now - last_check >= SUMMARY:
+                snapshot = {'cache': {}, 'mains': dict(state['mains'])}
+                for problem in check(snapshot):
+                    log(f'PROTECTION HAZARD: {problem}', 2)
+                last_check = now
+        except Exception as error:
+            log(f'housekeeping failed: {type(error).__name__}: {error}', 4)
+        time.sleep(REFRESH)
+
+
 def main() -> int:
     once = '--once' in sys.argv
     dry_run = '--dry-run' in sys.argv
@@ -207,13 +262,16 @@ def main() -> int:
         print(json.dumps({'ok': not problems, 'problems': problems}, indent=1))
         return 1 if problems else 0
     if once:
+        state['mains'] = unit_mains()
         result = tick(state, dry_run)
         print(json.dumps(result))
         return 1 if result['failures'] else 0
+    threading.Thread(target=housekeeping, args=(state,), daemon=True,
+                     name='oom-housekeeping').start()
     log(f'started; protected={policy.FLOOR_ADJ} disposable={policy.DISPOSABLE_ADJ} '
         f'batch={policy.BATCH_ADJ} tick={TICK}s')
     totals = {'raised': 0, 'handed_back': 0, 'failures': 0}
-    last_kills = last_summary = last_check = float('-inf')
+    last_summary = float('-inf')
     protected = 0
     while True:
         try:
@@ -226,18 +284,14 @@ def main() -> int:
                 totals[key] += len(result[key])
             for failure in result['failures']:
                 log(f'write failed {failure}', 4)
+            if result['relief']['action'] not in {'none', 'waiting', 'cooldown'}:
+                log(f'pressure relief: {json.dumps(result["relief"])}', 4)
+            cache_action = result.get('cache_relief')
+            if cache_action and cache_action['action'] not in {
+                    'cache-reclaim-pending', 'cache-reclaim-cooldown'}:
+                log(f'file-cache relief: {json.dumps(cache_action)}', 4)
             now = time.monotonic()
-            if now - last_kills >= KILL_POLL:
-                record_kills(state['history'])
-                last_kills = now
-            if now - last_check >= SUMMARY:
-                last_check = now
-                problems = check(state)
-                for problem in problems:
-                    log(f'ROOT PROTECTION BROKEN: {problem}', 2)
-                if problems:
-                    subprocess.run(['notify-send', '-u', 'critical', 'Agent root protection broken',
-                                    '; '.join(problems)[:500]], capture_output=True, timeout=10, check=False)
+            # All blocking diagnostics run in the bounded housekeeping thread.
             if now - last_summary >= SUMMARY:
                 log(f'protected={protected} since-last: {totals}')
                 totals = dict.fromkeys(totals, 0)

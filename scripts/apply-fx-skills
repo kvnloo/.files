@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Repair known stale skill aliases and merge fx's supported profile authority list."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import tempfile
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+def backup(path):
+    """Keep the exact prior file/link; never overwrite an earlier backup."""
+    index = 0
+    while True:
+        dest = path.with_name(path.name + f".fx-skills-backup.{index}")
+        if not os.path.lexists(dest):
+            if path.is_symlink():
+                try:
+                    dest.symlink_to(os.readlink(path))
+                except FileExistsError:
+                    index += 1
+                    continue
+            else:
+                try:
+                    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "wb") as out, path.open("rb") as src:
+                        shutil.copyfileobj(src, out)
+                except FileExistsError:
+                    index += 1
+                    continue
+            return dest
+        index += 1
+
+
+def plan(home, policy):
+    settings_path = home / ".fx/settings.json"
+    if settings_path.is_symlink():
+        raise ValueError("Refusing symlinked fx settings file")
+    original = settings_path.read_bytes() if settings_path.exists() else None
+    settings = json.loads(original) if original is not None else {}
+    if not isinstance(settings, dict):
+        raise ValueError("fx settings must be an object")
+    authorities = settings.get("skill_symlink_authorities", [])
+    if not isinstance(authorities, list) or any(
+        not isinstance(p, str) or not Path(p).is_absolute() or ".." in Path(p).parts
+        for p in authorities
+    ):
+        raise ValueError("Invalid existing skill_symlink_authorities; refusing to replace it")
+    authorities = list(authorities)
+    for relative in policy["skill_roots"]:
+        root = home / relative
+        if not root.is_dir():
+            continue
+        canonical = root.resolve(strict=True)
+        if not canonical.is_relative_to(home.resolve()) and str(canonical) not in authorities:
+            authorities.append(str(canonical))
+    for relative, expected in policy.get("external_skills", {}).items():
+        link = home / relative
+        allowed = [expected]
+        if link.name == "workspace-copilot":
+            allowed.append(str(REPO / "config/agent-skills/workspace-copilot"))
+        if not link.is_symlink() or os.readlink(link) not in allowed:
+            continue
+        if not (link / "SKILL.md").is_file():
+            raise ValueError(f"Missing known external skill source: {link}")
+        canonical = link.resolve(strict=True)
+        if not canonical.is_relative_to(home.resolve()) and str(canonical) not in authorities:
+            authorities.append(str(canonical))
+    if len(authorities) > 32:
+        raise ValueError("fx permits at most 32 skill authorities")
+    changes = []
+    for relative, prefix in policy["stale_alias_roots"].items():
+        for name in policy["media_skills"]:
+            link = home / relative / name
+            # Changed, absent, live or non-symlink entries belong to the user.
+            if not link.is_symlink() or link.exists() or os.readlink(link) != prefix + name:
+                continue
+            source = home / policy["media_source"] / name
+            if not (source / "SKILL.md").is_file():
+                raise ValueError(f"Missing intended skill source: {source}")
+            changes.append((link, prefix + name, source.resolve(strict=True)))
+    if authorities != settings.get("skill_symlink_authorities", []):
+        settings["skill_symlink_authorities"] = authorities
+        updated = (json.dumps(settings, indent=2) + "\n").encode()
+        if len(updated) > 65536:
+            raise ValueError("fx settings would exceed its 64 KiB limit")
+    else:
+        updated = original
+    return settings_path, original, updated, changes
+
+
+def apply(home, policy, dry_run=False):
+    path, original, updated, changes = plan(home, policy)
+    for link, expected, source in changes:
+        print(f"skill alias: {link} -> {source}")
+    if updated != original:
+        print(f"profile authority merge: {path}")
+    if dry_run:
+        return
+    # Recheck identities immediately before replacing user-owned objects.
+    for link, expected, source in changes:
+        if not link.is_symlink() or os.readlink(link) != expected or link.exists():
+            raise ValueError(f"Skill alias changed during planning: {link}")
+        if not (source / "SKILL.md").is_file():
+            raise ValueError(f"Skill source disappeared: {source}")
+        saved_dir = home / ".local/state/dotfiles/fx-skills"
+        saved_dir.mkdir(parents=True, exist_ok=True)
+        fd, saved_name = tempfile.mkstemp(prefix="alias-", suffix=".json", dir=saved_dir)
+        saved = Path(saved_name)
+        with os.fdopen(fd, "w") as out:
+            json.dump({"path": str(link), "target": expected}, out)
+        # Use an exclusive temporary directory on the destination filesystem.
+        with tempfile.TemporaryDirectory(prefix=".fx-skills-", dir=link.parent) as tmp:
+            replacement = Path(tmp) / "link"
+            replacement.symlink_to(source)
+            if os.readlink(link) != expected or link.exists():
+                raise ValueError(f"Skill alias changed before replacement: {link}")
+            os.replace(replacement, link)
+        print(f"backup: {saved}")
+    if updated != original:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        current = path.read_bytes() if path.exists() else None
+        if path.is_symlink() or current != original:
+            raise ValueError("fx settings changed during planning; rerun repair")
+        if original is not None:
+            print(f"backup: {backup(path)}")
+        fd, temp = tempfile.mkstemp(prefix=".settings-fx-skills-", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as out:
+                out.write(updated)
+                out.flush()
+                os.fsync(out.fileno())
+            if path.is_symlink() or (path.read_bytes() if path.exists() else None) != original:
+                raise ValueError("fx settings changed before replacement; rerun repair")
+            os.replace(temp, path)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    try:
+        apply(args.home.absolute(), json.loads((REPO / "config/fx-skills.json").read_text()), args.dry_run)
+    except (OSError, ValueError) as exc:
+        parser.exit(1, f"fx skill repair: {exc}\n")
+
+
+if __name__ == "__main__":
+    main()

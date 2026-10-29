@@ -1,5 +1,5 @@
 [Unit]
-Description=Keep kernel OOM kills off coding-agent roots (tools and subagents go first)
+Description=Protect agent roots and desktop; relieve zone pressure with disposable tools
 Documentation=file:///home/kvn/.local/bin/agent-oom-guard
 
 [Service]

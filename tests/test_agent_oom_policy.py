@@ -1,3 +1,4 @@
+import importlib.machinery
 import importlib.util
 import os
 from pathlib import Path
@@ -227,6 +228,217 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(foreign, {5, 6})
             os.unlink(root / '6' / 'stat')  # a partial pass must not even read a foreign PID
             self.assertEqual(policy.scan(root, {}, reuse={}, foreign=foreign), {})
+
+
+class ReliefTests(unittest.TestCase):
+    def pressure(self, free=16640, blocks=0):
+        # MemAvailable can be 4 GiB and is intentionally absent from this decision.
+        return policy.zone_pressure(
+            f'Node 0, zone Normal\n  pages free {free}\n high 1024\n',
+            f'Node 0, zone Normal 1 2 3 {blocks} 0 0 0 0 0 0 0\n')
+
+    def test_fragmented_normal_zone_ignores_apparently_available_cache(self):
+        self.assertTrue(self.pressure()['threatened'])
+        self.assertFalse(self.pressure(free=100000)['threatened'])
+        self.assertFalse(self.pressure(blocks=1000)['threatened'])
+        self.assertFalse(policy.zone_pressure('', '')['available'])
+
+    def test_desktop_core_survives_without_a_harness_descendant(self):
+        procs = {1: P(1, 0, 'systemd'), 2: P(2, 1, 'Hyprland', ['Hyprland'], 'Hyprland'),
+                 3: P(3, 2, 'qs', ['qs'], 'qs')}
+        protected, disposable, batch = policy.decide(procs)
+        self.assertEqual(protected, {2, 3})
+        self.assertFalse(disposable | batch)
+
+    def test_only_known_substantial_tools_and_batch_are_candidates(self):
+        procs = session_tree()
+        procs[80] = P(80, 1, 'python3', ['python3', 'unknown.py'], 'python3', SCOPE)
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        with patch.object(policy, 'reclaim_kb', return_value=policy.MIN_RECLAIM_KB):
+            candidate = policy.relief_candidate(procs, protected, tools, jobs)
+            self.assertIn(candidate.pid, tools - {80})
+            self.assertIsNone(policy.relief_candidate(procs, protected, {80}, set()))
+            self.assertIsNone(policy.relief_candidate(procs, protected, protected, set()))
+        with patch.object(policy, 'reclaim_kb', return_value=policy.MIN_RECLAIM_KB - 1):
+            self.assertIsNone(policy.relief_candidate(procs, protected, tools, jobs))
+
+    def test_safe_pressure_and_dry_run_never_signal_or_mutate_cooldown(self):
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        relief = policy.Relief()
+        with patch.object(policy, 'reclaim_kb', return_value=policy.MIN_RECLAIM_KB), \
+                patch.object(policy.os, 'pidfd_open') as opened, \
+                patch.object(policy.signal, 'pidfd_send_signal') as sent:
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(free=100000), 0)['action'], 'none')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 0, dry_run=True)['action'], 'would-term')
+            opened.assert_not_called()
+            sent.assert_not_called()
+            self.assertIsNone(relief.pending)
+            self.assertEqual(relief.last, float('-inf'))
+
+    def test_pid_reuse_between_pin_and_signal_fails_closed(self):
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        relief = policy.Relief()
+        p = procs[25]
+        changed = dict(procs)
+        changed[25] = p._replace(start='999')
+        with patch.object(policy, 'relief_candidate', return_value=p), \
+                patch.object(policy.os, 'pidfd_open', return_value=123), \
+                patch.object(policy.os, 'close') as closed, \
+                patch.object(policy, 'scan', return_value=changed), \
+                patch.object(policy.signal, 'pidfd_send_signal') as sent:
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 0)['action'], 'changed')
+            sent.assert_not_called()
+            closed.assert_called_once_with(123)
+
+    def test_term_grace_kill_and_cooldown_are_bounded_to_one_process(self):
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        relief = policy.Relief()
+        p = procs[25]
+        with patch.object(policy, 'relief_candidate', return_value=p), \
+                patch.object(policy.os, 'pidfd_open', return_value=123), \
+                patch.object(policy.os, 'close'), \
+                patch.object(policy, '_same', return_value=True), \
+                patch.object(policy, 'scan', return_value=procs), \
+                patch.object(policy.signal, 'pidfd_send_signal') as sent:
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 0)['action'], 'term')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 1)['action'], 'waiting')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 2)['action'], 'kill')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                        self.pressure(), 3)['action'], 'cooldown')
+            self.assertEqual(sent.call_args_list[0].args, (123, policy.signal.SIGTERM))
+            self.assertEqual(sent.call_args_list[1].args, (123, policy.signal.SIGKILL))
+            self.assertEqual(sent.call_count, 2)
+
+    def test_dead_reused_or_newly_protected_pending_process_is_released(self):
+        procs = session_tree()
+        p = procs[25]
+        for same, protected in ((False, set()), (True, {25})):
+            relief = policy.Relief()
+            relief.pending = (p, 123, 2)
+            with patch.object(policy, '_same', return_value=same), \
+                    patch.object(policy.os, 'close') as closed, \
+                    patch.object(policy.signal, 'pidfd_send_signal') as sent:
+                self.assertEqual(relief.step(procs, protected, {25}, set(),
+                                            self.pressure(), 3)['action'], 'released')
+                sent.assert_not_called()
+                closed.assert_called_once_with(123)
+                self.assertIsNone(relief.pending)
+
+
+    def test_escalation_stops_if_pressure_clears_or_victim_shrinks(self):
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        p = procs[25]
+        for threatened, candidate in ((False, p), (True, None)):
+            relief = policy.Relief()
+            relief.pending = (p, 123, 2)
+            with patch.object(policy, '_same', return_value=True), \
+                    patch.object(policy, 'scan', return_value=procs), \
+                    patch.object(policy, 'relief_candidate', return_value=candidate), \
+                    patch.object(policy.os, 'close'), \
+                    patch.object(policy.signal, 'pidfd_send_signal') as sent:
+                result = relief.step(procs, protected, tools, jobs,
+                                     {'threatened': threatened}, 3)
+                self.assertEqual(result['action'], 'released')
+                sent.assert_not_called()
+
+
+class CacheReliefTests(unittest.TestCase):
+    def test_only_owned_user_session_leaf_is_selected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp)
+            (proc / 'self').mkdir()
+            (proc / 'self/cgroup').write_text(f'0::{USER}/agent.slice/guard.service\n')
+            self.assertEqual(policy.CacheRelief.target(proc, Path('/cgroups')),
+                             Path('/cgroups') / USER.lstrip('/') / 'session.slice/memory.reclaim')
+            (proc / 'self/cgroup').write_text('0::/system.slice/unknown.service\n')
+            with self.assertRaises(OSError):
+                policy.CacheRelief.target(proc)
+
+    def test_file_only_request_and_permission_failure_are_observable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'memory.reclaim'
+            target.touch()
+            relief = policy.CacheRelief()
+            relief._run(target)
+            self.assertEqual(target.read_text(), '268435456 swappiness=0\n')
+            self.assertEqual(relief.result['action'], 'cache-reclaim-requested')
+            relief._run(Path(tmp) / 'missing')
+            self.assertEqual(relief.result['action'], 'cache-reclaim-unavailable')
+
+    def test_dry_run_and_single_inflight_reclaim_are_bounded(self):
+        relief = policy.CacheRelief()
+        with patch.object(relief, 'target', return_value=Path('/owned/memory.reclaim')), \
+                patch.object(policy.threading, 'Thread') as thread:
+            self.assertEqual(relief.step(0, dry_run=True)['action'], 'would-reclaim-cache')
+            thread.assert_not_called()
+            self.assertEqual(relief.last, float('-inf'))
+            self.assertEqual(relief.step(0)['action'], 'cache-reclaim-started')
+            thread.return_value.is_alive.return_value = True
+            self.assertEqual(relief.step(1)['action'], 'cache-reclaim-pending')
+            self.assertEqual(thread.call_count, 1)
+            thread.return_value.is_alive.return_value = False
+            relief.result = {'action': 'cache-reclaim-unavailable'}
+            self.assertEqual(relief.step(2)['action'], 'cache-reclaim-unavailable')
+            self.assertEqual(relief.step(3)['action'], 'cache-reclaim-cooldown')
+
+
+class GuardLoopTests(unittest.TestCase):
+    def test_urgent_tick_never_waits_for_service_or_journal_helpers(self):
+        loader = importlib.machinery.SourceFileLoader('agent_oom_guard', str(ROOT / 'scripts/agent-oom-guard'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        guard = importlib.util.module_from_spec(spec)
+        loader.exec_module(guard)
+        state = {'cache': {}, 'checked': set(), 'mains': {'known.service': 1},
+                 'refreshed': float('-inf'), 'full': float('-inf'), 'procs': {},
+                 'first_seen': {}, 'foreign': set(), 'lowered': {}, 'history': {}}
+        safe = {'threatened': False, 'available': True, 'zones': []}
+        with patch.object(guard, 'unit_mains', side_effect=AssertionError('blocking discovery')), \
+                patch.object(guard, 'record_kills', side_effect=AssertionError('blocking journal')), \
+                patch.object(guard.policy, 'scan', return_value={}), \
+                patch.object(guard.policy, 'read_pressure', return_value=safe):
+            result = guard.tick(state, dry_run=True)
+        self.assertEqual(result['relief']['action'], 'none')
+        self.assertEqual(result['pressure'], safe)
+
+    def test_prior_protection_waits_for_service_discovery_before_restoration(self):
+        loader = importlib.machinery.SourceFileLoader('agent_oom_guard_startup', str(ROOT / 'scripts/agent-oom-guard'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        guard = importlib.util.module_from_spec(spec)
+        loader.exec_module(guard)
+        procs = {77: P(77, 1, 'python3', ['python3', 'service.py'], 'python3')}
+        fake = FakeProc({77: 100})
+        self.addCleanup(fake.tmp.cleanup)
+        state = {'cache': {}, 'checked': set(), 'mains': {},
+                 'refreshed': float('-inf'), 'full': float('-inf'), 'procs': {},
+                 'first_seen': {}, 'foreign': set(), 'lowered': {'77:100': 200}, 'history': {}}
+        safe = {'threatened': False, 'available': True, 'zones': []}
+        real_apply = guard.policy.apply
+
+        def apply_to_fixture(*args, **kwargs):
+            return real_apply(*args, proc=fake.root, **kwargs)
+
+        with patch.object(guard.policy, 'scan', return_value=procs), \
+                patch.object(guard.policy, 'read_pressure', return_value=safe), \
+                patch.object(guard.policy, 'apply', side_effect=apply_to_fixture), \
+                patch.object(guard.policy, '_write_adj', fake.write), \
+                patch.object(guard, 'save'):
+            result = guard.tick(state)
+            self.assertEqual(result['restored'], [])
+            self.assertEqual(fake.score(77), 100)
+            state['mains'] = {'unrelated.service': 1}
+            result = guard.tick(state)
+            self.assertEqual(result['restored'], [[77, 'python3', 200]])
+            self.assertEqual(fake.score(77), 200)
 
 
 if __name__ == '__main__':

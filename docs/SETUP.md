@@ -89,6 +89,26 @@ Non-interactive examples:
 | `nix-home` | Runs [`config/nix/bootstrap-cachyos.sh`](../config/nix/bootstrap-cachyos.sh) on CachyOS/Arch |
 | `audio-evolution` | Runs [`scripts/install-audio-evolution.sh`](../scripts/install-audio-evolution.sh) |
 
+For installed Vercel `fx`, `agent-skills` also runs the idempotent
+[`scripts/apply-fx-skills`](../scripts/apply-fx-skills) repair. To apply only this
+repair, run `python3 scripts/apply-fx-skills` (`--dry-run` previews changes).
+The policy in `config/fx-skills.json` grants the canonical off-home Codex skills
+root and exact canonical directories for known externally installed
+`abab-meta-research`, `workspace-copilot` and `jev-codex` links, using fx's supported
+`skill_symlink_authorities` profile setting. External skill authorities require
+matching literal link identities and an existing `SKILL.md`; workspace-copilot
+also accepts this checkout's onboard-managed source. It merges existing
+authorities and leaves model, provider, login and other
+settings unchanged. No wrapper or environment override is installed. This contract
+is documented in upstream fx build `7f2383af7098`, `src/core/config/config_runtime.zig`.
+Known broken media aliases are repaired only when their exact old link text still
+matches and the corresponding `.agents/skills/<name>/SKILL.md` exists. Existing
+live links, changed links and user directories are not replaced. Alias recovery
+records (original path and literal link target) go to
+`~/.local/state/dotfiles/fx-skills/`; settings backups are retained beside
+`~/.fx/settings.json` as `.fx-skills-backup.N`. Repeated runs make no further
+changes. This does not install missing skill content or repair unrelated links.
+
 State is stored outside git at:
 
 ```text
