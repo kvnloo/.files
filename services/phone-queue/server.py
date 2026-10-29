@@ -1,0 +1,563 @@
+#!/usr/bin/env python3
+"""phone-queue front door: HTTP API + SQLite state + reconciler that turns jobs into
+Kueue-admitted Kubernetes Jobs (one z0.dev/phone slot per phone; Kueue queues the rest).
+
+API (docs/fleet/phone-queue.md):
+  POST /v1/jobs                 submit (idempotent per submitter+idempotency_key) -> 202 {id, state}
+  GET  /v1/jobs/{id}            job + result
+  GET  /v1/jobs?submitter=&state=&limit=
+  POST /v1/jobs/{id}/cancel
+  GET  /v1/devices              serial, online, gate, lock holder, foreground, battery, queue depth
+  GET  /healthz
+"""
+import http.server
+import json
+import os
+import re
+import socketserver
+import sqlite3
+import sys
+import threading
+import time
+import traceback
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common  # noqa: E402
+
+BINDS = [b for b in os.environ.get("PHONEQ_BINDS", "127.0.0.1,100.113.138.100").split(",") if b]
+IMAGE = os.environ.get("PHONEQ_IMAGE", "python:3.13.13-slim-trixie")
+CODE_CM = os.environ.get("PHONEQ_CODE_CONFIGMAP", "phone-queue-code")
+TICK_S = 2.0
+GATE_TTL_S = 15
+BLOCKED_RETRY_S = 30
+MAX_ATTEMPTS = 50
+KINDS = ("chat", "goal")
+HARNESSES = ("fx", "script")
+STATES = ("queued", "admitted", "running", "succeeded", "failed", "cancelled", "blocked")
+
+DB_LOCK = threading.RLock()
+
+
+def db():
+    common.STATE.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(common.STATE / "phoneq.db", check_same_thread=False, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("""CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY, submitter TEXT NOT NULL, idem TEXT, kind TEXT NOT NULL, device TEXT NOT NULL,
+        app TEXT, prompt TEXT, goal TEXT, model TEXT NOT NULL, harness TEXT NOT NULL, max_steps INTEGER,
+        oracle TEXT, priority INTEGER DEFAULT 0, reset TEXT, state TEXT NOT NULL, assigned TEXT,
+        k8s_job TEXT, attempts INTEGER DEFAULT 0, created_at TEXT NOT NULL, admitted_at TEXT,
+        started_at TEXT, finished_at TEXT, result TEXT, error TEXT, info TEXT, next_try REAL DEFAULT 0,
+        UNIQUE(submitter, idem))""")
+    return conn
+
+
+CONN = None
+
+
+def q(sql, args=()):
+    with DB_LOCK:
+        return CONN.execute(sql, args).fetchall()
+
+
+def row_to_job(r):
+    out = {k: r[k] for k in ("id", "kind", "device", "state", "submitter", "model", "harness", "app",
+                             "created_at", "started_at", "finished_at")}
+    out["assigned_device"] = r["assigned"]
+    out["admitted_at"] = r["admitted_at"]
+    out["priority"] = r["priority"]
+    out["attempts"] = r["attempts"]
+    out["k8s_job"] = r["k8s_job"]
+    if r["idem"]:
+        out["idempotency_key"] = r["idem"]
+    if r["result"]:
+        out["result"] = json.loads(r["result"])
+    if r["error"]:
+        out["error"] = r["error"]
+    if r["info"]:
+        out["info"] = r["info"]
+    return out
+
+
+# ------------------------------------------------------------------ validation
+class Bad(Exception):
+    pass
+
+
+def validate(body):
+    if not isinstance(body, dict):
+        raise Bad("body must be a JSON object")
+    kind = body.get("kind")
+    if kind not in KINDS:
+        raise Bad("kind must be chat or goal")
+    device = body.get("device", "any")
+    if device not in ("s22", "s25", "any"):
+        raise Bad("device must be s22, s25 or any")
+    sub = body.get("submitter")
+    if not isinstance(sub, str) or not re.fullmatch(r"[\w.@:/+-]{1,80}", sub):
+        raise Bad("submitter is required ([\\w.@:/+-], <= 80 chars)")
+    harness = body.get("harness") or ("script" if kind == "chat" else "fx")
+    if harness not in HARNESSES:
+        raise Bad("harness must be fx or script")
+    if kind == "goal" and harness != "fx":
+        raise Bad("goal jobs run on harness fx")
+    app = body.get("app")
+    if kind == "chat":
+        app = app or "chatgpt"
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20000:
+            raise Bad("chat needs prompt (1..20000 chars)")
+        if harness == "script" and app not in ("chatgpt", "deepseek"):
+            raise Bad("harness script drives chatgpt or deepseek; use harness fx for other apps")
+        if app == "deepseek" and device == "s25":
+            raise Bad("the DeepSeek driver is S22-only")
+    else:
+        goal = body.get("goal")
+        if not isinstance(goal, str) or not goal.strip() or len(goal) > 8000:
+            raise Bad("goal needs goal (1..8000 chars)")
+    if app is not None and app not in common.APPS and not re.fullmatch(r"[A-Za-z][\w]*(\.[\w]+)+", app):
+        raise Bad("app must be chatgpt, deepseek or an Android package name")
+    model = body.get("model") or common.DEFAULT_MODEL
+    if not re.fullmatch(r"(openai-codex|local|ollama|gateway)/[\w.:/-]{1,120}", model):
+        raise Bad("model must be openai-codex/<slug>, local/<name>, ollama/<name> or gateway/<id>")
+    max_steps = body.get("max_steps", 30)
+    if not isinstance(max_steps, int) or not 1 <= max_steps <= 200:
+        raise Bad("max_steps must be an integer 1..200")
+    oracle = body.get("oracle")
+    if oracle is not None:
+        if not isinstance(oracle, dict) or oracle.get("type", "tree_text") != "tree_text":
+            raise Bad("oracle.type must be tree_text")
+        for k in ("must_contain", "must_not_contain"):
+            v = oracle.get(k, [])
+            if not isinstance(v, list) or not all(isinstance(s, str) and s for s in v):
+                raise Bad(f"oracle.{k} must be a list of non-empty strings")
+    idem = body.get("idempotency_key")
+    if idem is not None and (not isinstance(idem, str) or not 1 <= len(idem) <= 200):
+        raise Bad("idempotency_key must be a string (1..200)")
+    priority = body.get("priority", 0)
+    if not isinstance(priority, int):
+        raise Bad("priority must be an integer")
+    reset = body.get("reset", "home" if kind == "goal" else "none")
+    if reset not in ("home", "none"):
+        raise Bad("reset must be home or none")
+    return {"kind": kind, "device": device, "app": app, "prompt": body.get("prompt"), "goal": body.get("goal"),
+            "model": model, "harness": harness, "max_steps": max_steps, "oracle": oracle, "submitter": sub,
+            "idem": idem, "priority": priority, "reset": reset}
+
+
+def submit(body):
+    j = validate(body)
+    with DB_LOCK:
+        if j["idem"]:
+            hit = q("SELECT * FROM jobs WHERE submitter=? AND idem=?", (j["submitter"], j["idem"]))
+            if hit:
+                return 200, {"id": hit[0]["id"], "state": hit[0]["state"], "idempotent_replay": True}
+        jid = uuid.uuid4().hex[:12]
+        spec = {k: v for k, v in j.items() if k != "idem"}
+        # job.json first: the runner reads it, and the reconciler may pick the row up at once.
+        common.write_json(common.job_dir(jid) / "job.json", {"id": jid, **spec, "idempotency_key": j["idem"]})
+        q("""INSERT INTO jobs (id, submitter, idem, kind, device, app, prompt, goal, model, harness, max_steps,
+             oracle, priority, reset, state, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'queued', ?)""",
+          (jid, j["submitter"], j["idem"], j["kind"], j["device"], j["app"], j["prompt"], j["goal"], j["model"],
+           j["harness"], j["max_steps"], json.dumps(j["oracle"]) if j["oracle"] else None, j["priority"],
+           j["reset"], common.now_iso()))
+    WAKE.set()
+    return 202, {"id": jid, "state": "queued"}
+
+
+# ------------------------------------------------------------------ devices / gates
+_gate_cache = {}
+_dev_cache = {}
+
+
+def gate(dev):
+    hit = _gate_cache.get(dev)
+    if hit and time.time() - hit[0] < GATE_TTL_S:
+        return hit[1]
+    try:
+        reason = common.phone_worker().gate(dev)
+    except Exception as e:  # noqa: BLE001 - fail closed
+        reason = f"gate unavailable: {type(e).__name__}: {e}"
+    _gate_cache[dev] = (time.time(), reason)
+    return reason
+
+
+def lock_holder(dev):
+    """Who holds /tmp/<dev>-ui.lock (host /proc mounted at /host/proc gives host pids)."""
+    path = Path(f"/tmp/{dev}-ui.lock")
+    proc = Path("/host/proc") if Path("/host/proc/locks").exists() else Path("/proc")
+    try:
+        st = path.stat()
+        for line in (proc / "locks").read_text().splitlines():
+            f = line.split()
+            if len(f) < 8 or f[1] != "FLOCK" or f[3] != "WRITE":
+                continue
+            major, minor, inode = f[5].split(":")
+            if int(inode) == st.st_ino and int(major, 16) == os.major(st.st_dev) and int(minor, 16) == os.minor(st.st_dev):
+                pid = int(f[4])
+                try:
+                    cmd = (proc / str(pid) / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+                except OSError:
+                    cmd = None
+                return {"pid": pid, "cmd": (cmd or "")[:200]}
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def device_info(dev):
+    hit = _dev_cache.get(dev)
+    if hit and time.time() - hit[0] < 20:
+        info = dict(hit[1])
+    else:
+        info = {"id": dev, "hardware": common.HARDWARE[dev]}
+        try:
+            pw = common.phone_worker()
+            d = pw.device(dev)
+            info["serial"] = d.serial
+            info["online"] = True
+            p = pw.presence(dev)
+            info["foreground"] = p.get("foreground")
+            info["in_call"] = p.get("in_call")
+            info["owner_idle_s"] = None if p.get("idle_s") is None else round(p["idle_s"])
+            bat = d.shell("dumpsys battery | grep -E '^  level:'", check=False)
+            m = re.search(r"level: (\d+)", bat)
+            info["battery"] = int(m.group(1)) if m else None
+        except Exception as e:  # noqa: BLE001
+            info.update(serial=None, online=False, error=f"{type(e).__name__}: {e}")
+        _dev_cache[dev] = (time.time(), info)
+        info = dict(info)
+    reason = gate(dev)
+    info["gate"] = {"allowed": reason is None, "reason": reason}
+    info["lock_holder"] = lock_holder(dev)
+    rows = q("SELECT COUNT(*) n FROM jobs WHERE state NOT IN ('succeeded','failed','cancelled') AND "
+             "(device=? OR assigned=?)", (dev, dev))
+    info["queue_depth"] = rows[0]["n"]
+    info["queue_depth_any"] = q("SELECT COUNT(*) n FROM jobs WHERE device='any' AND assigned IS NULL AND "
+                                "state NOT IN ('succeeded','failed','cancelled')")[0]["n"]
+    return info
+
+
+# ------------------------------------------------------------------ k8s
+KUBE = None
+
+
+def k8s_job_manifest(r, tolerate):
+    name = f"pq-{r['id']}-{r['attempts'] + 1}"
+    labels = {"kueue.x-k8s.io/queue-name": "phones", "app.kubernetes.io/name": "phone-job",
+              "z0.dev/phoneq-id": r["id"]}
+    if (r["priority"] or 0) > 0:
+        labels["kueue.x-k8s.io/priority-class"] = "phone-urgent"
+    ro = lambda name, path: ({"name": name, "hostPath": {"path": path, "type": "Directory"}},  # noqa: E731
+                             {"name": name, "mountPath": path, "readOnly": True})
+    rw = lambda name, path: ({"name": name, "hostPath": {"path": path, "type": "Directory"}},  # noqa: E731
+                             {"name": name, "mountPath": path})
+    mounts = [ro("home", "/home/kvn"), ro("zer0models", "/mnt/zer0models"),
+              rw("tmp", "/tmp"), rw("state", str(common.STATE)), rw("driver", str(common.DRIVER)),
+              rw("hometmp", "/home/kvn/tmp")]
+    vols = [v for v, _ in mounts] + [{"name": "code", "configMap": {"name": CODE_CM, "defaultMode": 0o555}}]
+    vms = [m for _, m in mounts] + [{"name": "code", "mountPath": "/app", "readOnly": True}]
+    return {
+        "apiVersion": "batch/v1", "kind": "Job",
+        "metadata": {"name": name, "namespace": common.NAMESPACE, "labels": labels,
+                     "annotations": {"z0.dev/submitter": r["submitter"], "z0.dev/device-request": r["device"]}},
+        "spec": {
+            "backoffLimit": 0, "ttlSecondsAfterFinished": 86400, "activeDeadlineSeconds": 2400,
+            "template": {
+                "metadata": {"labels": {"app.kubernetes.io/name": "phone-job", "z0.dev/phoneq-id": r["id"]}},
+                "spec": {
+                    "restartPolicy": "Never", "hostNetwork": True, "dnsPolicy": "ClusterFirstWithHostNet",
+                    "serviceAccountName": "phone-runner", "terminationGracePeriodSeconds": 30,
+                    "nodeSelector": {"kubernetes.io/hostname": "groot"},
+                    "tolerations": [{"key": "z0.dev/host", "operator": "Equal", "value": "interactive",
+                                     "effect": "PreferNoSchedule"}] +
+                                   [{"key": "z0.dev/phone", "operator": "Equal", "value": d, "effect": "NoSchedule"}
+                                    for d in tolerate],
+                    "securityContext": {"runAsUser": 1000, "runAsGroup": 1000, "runAsNonRoot": True,
+                                        "seccompProfile": {"type": "RuntimeDefault"}},
+                    "containers": [{
+                        "name": "run", "image": IMAGE,
+                        "command": [str(common.DRIVER_PY), "-u", "/app/runner.py", r["id"]],
+                        "env": [{"name": "HOME", "value": "/home/kvn"},
+                                {"name": "PHONEQ_STATE", "value": str(common.STATE)},
+                                {"name": "PHONEQ_K8S_JOB", "value": name},
+                                {"name": "PHONEQ_ATTEMPT", "value": str(r["attempts"] + 1)},
+                                {"name": "PYTHONDONTWRITEBYTECODE", "value": "1"}],
+                        "resources": {"requests": {"cpu": "100m", "memory": "256Mi", common.RESOURCE: "1"},
+                                      "limits": {"cpu": "1", "memory": "1Gi", common.RESOURCE: "1"}},
+                        "securityContext": {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}},
+                        "volumeMounts": vms}],
+                    "volumes": vols}}}}
+
+
+def create_k8s_job(r):
+    want = [r["device"]] if r["device"] != "any" else list(common.DEVICES)
+    open_devs, reasons = [], {}
+    for dev in want:
+        reason = gate(dev)
+        if reason is None:
+            open_devs.append(dev)
+        else:
+            reasons[dev] = reason
+    if not open_devs:
+        msg = "; ".join(f"{d}: {why}" for d, why in reasons.items())
+        q("UPDATE jobs SET state='blocked', error=?, next_try=? WHERE id=?",
+          (f"gate closed — {msg}", time.time() + BLOCKED_RETRY_S, r["id"]))
+        return
+    manifest = k8s_job_manifest(r, open_devs)
+    KUBE.req("POST", KUBE.jobs_path(), manifest)
+    q("UPDATE jobs SET state='queued', k8s_job=?, attempts=attempts+1, error=NULL, info=? WHERE id=?",
+      (manifest["metadata"]["name"], f"k8s Job created; eligible devices {','.join(open_devs)}", r["id"]))
+
+
+def delete_k8s_job(name):
+    KUBE.req("DELETE", KUBE.jobs_path(name), {"kind": "DeleteOptions", "apiVersion": "v1",
+                                              "propagationPolicy": "Background"})
+
+
+def pods_by_job():
+    out = KUBE.req("GET", f"/api/v1/namespaces/{common.NAMESPACE}/pods",
+                   params={"labelSelector": "app.kubernetes.io/name=phone-job"}) or {}
+    res = {}
+    for p in out.get("items", []):
+        res[p["metadata"].get("labels", {}).get("job-name")] = p
+    return res
+
+
+def finish_from_result(r, job_obj, pod):
+    jdir = common.job_dir(r["id"])
+    res = common.read_json(jdir / f"result-{r['attempts']}.json")
+    if res is None:
+        tail = ""
+        if pod:
+            try:
+                req = urllib.request.Request(
+                    f"{KUBE.base}/api/v1/namespaces/{common.NAMESPACE}/pods/{pod['metadata']['name']}/log?tailLines=15",
+                    headers={"Authorization": "Bearer " + (KUBE.SA / "token").read_text().strip()})
+                with urllib.request.urlopen(req, context=KUBE.ctx, timeout=10) as resp:
+                    tail = "; log: " + resp.read().decode(errors="replace")[-1500:]
+            except Exception:  # noqa: BLE001
+                pass
+        status = (pod or {}).get("status", {})
+        cs = (status.get("containerStatuses") or [{}])[0].get("state", {})
+        why = json.dumps(cs.get("terminated") or cs.get("waiting") or {})[:400]
+        q("UPDATE jobs SET state='failed', finished_at=?, error=? WHERE id=?",
+          (common.now_iso(), f"runner wrote no result; pod state {why}{tail}", r["id"]))
+        return
+    state = res.get("state", "failed")
+    if state == "blocked":
+        retry = r["attempts"] < MAX_ATTEMPTS
+        q("UPDATE jobs SET state=?, k8s_job=NULL, error=?, next_try=?, assigned=NULL WHERE id=?",
+          ("blocked" if retry else "failed", res.get("error"), time.time() + BLOCKED_RETRY_S, r["id"]))
+        return
+    if state not in ("succeeded", "failed", "cancelled"):
+        state = "failed"
+    public = {k: res.get(k) for k in ("final_output", "steps", "oracle_pass", "transcript_path", "tokens_in",
+                                      "tokens_out", "ms", "cold_ms") if res.get(k) is not None}
+    public.update({k: res[k] for k in ("device", "serial", "oracle", "chat", "fx", "lock_wait_ms", "pace_wait_ms",
+                                       "foreground_before", "foreground_after_job", "restored",
+                                       "foreground_restored_to", "attempt") if k in res})
+    q("UPDATE jobs SET state=?, started_at=?, finished_at=?, result=?, error=?, assigned=? WHERE id=?",
+      (state, res.get("started_at"), res.get("finished_at"), json.dumps(public), res.get("error"),
+       res.get("device") or r["assigned"], r["id"]))
+
+
+def reconcile_once():
+    rows = q("SELECT * FROM jobs WHERE state NOT IN ('succeeded','failed','cancelled') "
+             "ORDER BY priority DESC, created_at")
+    if not rows:
+        return
+    workloads = KUBE.workloads()
+    pods = pods_by_job()
+    for r in rows:
+        try:
+            if not r["k8s_job"]:
+                if r["state"] == "blocked" and time.time() < (r["next_try"] or 0):
+                    continue
+                if r["state"] == "blocked":
+                    _gate_cache.clear()  # re-evaluate gates fresh on each blocked retry
+                create_k8s_job(r)
+                continue
+            job_obj = KUBE.req("GET", KUBE.jobs_path(r["k8s_job"]))
+            if job_obj is None:
+                q("UPDATE jobs SET state='failed', error='k8s Job disappeared', finished_at=? WHERE id=?",
+                  (common.now_iso(), r["id"]))
+                continue
+            conds = {c["type"]: c for c in job_obj.get("status", {}).get("conditions", []) if c.get("status") == "True"}
+            pod = pods.get(r["k8s_job"])
+            if "Complete" in conds or "Failed" in conds:
+                finish_from_result(r, job_obj, pod)
+                continue
+            wl = KUBE.workload_for_job(r["k8s_job"], workloads)
+            adm = common.workload_condition(wl, "Admitted")
+            dev = common.workload_flavor(wl)
+            if adm and adm.get("status") == "True":
+                phase = (pod or {}).get("status", {}).get("phase")
+                # Succeeded/Failed pods stay "running" until the Job condition lands.
+                state = "running" if phase in ("Running", "Succeeded", "Failed") else "admitted"
+                q("UPDATE jobs SET state=?, assigned=?, admitted_at=COALESCE(admitted_at, ?), "
+                  "started_at=CASE WHEN ?='running' THEN COALESCE(started_at, ?) ELSE started_at END, info=? WHERE id=?",
+                  (state, dev, adm.get("lastTransitionTime"), state, common.now_iso(),
+                   f"admitted by Kueue on flavor phone-{dev}", r["id"]))
+            else:
+                qr = common.workload_condition(wl, "QuotaReserved")
+                msg = (qr or {}).get("message") or ("waiting for Kueue workload" if wl is None else "pending")
+                q("UPDATE jobs SET state='queued', info=? WHERE id=?", (f"kueue: {msg}"[:500], r["id"]))
+        except Exception as e:  # noqa: BLE001 - one bad job never stalls the loop
+            q("UPDATE jobs SET info=? WHERE id=?", (f"reconcile error: {type(e).__name__}: {e}"[:500], r["id"]))
+
+
+WAKE = threading.Event()
+
+
+def reconciler():
+    while True:
+        try:
+            reconcile_once()
+        except Exception:  # noqa: BLE001
+            traceback.print_exc()
+        WAKE.wait(TICK_S)
+        WAKE.clear()
+
+
+def cancel(jid):
+    with DB_LOCK:
+        rows = q("SELECT * FROM jobs WHERE id=?", (jid,))
+        if not rows:
+            return 404, {"error": "no such job"}
+        r = rows[0]
+        if r["state"] in common.TERMINAL:
+            return 409, {"error": f"job already {r['state']}", "id": jid, "state": r["state"]}
+        if r["k8s_job"]:
+            try:
+                delete_k8s_job(r["k8s_job"])
+            except Exception as e:  # noqa: BLE001
+                return 502, {"error": f"could not delete k8s Job: {e}"}
+        q("UPDATE jobs SET state='cancelled', finished_at=?, error='cancelled by request' WHERE id=?",
+          (common.now_iso(), jid))
+    return 200, {"id": jid, "state": "cancelled"}
+
+
+def health():
+    out = {"ok": True, "port": common.API_PORT}
+    try:
+        q("SELECT 1")
+        out["db"] = "ok"
+    except Exception as e:  # noqa: BLE001
+        out.update(ok=False, db=str(e))
+    try:
+        KUBE.req("GET", KUBE.jobs_path(), params={"limit": "1"})
+        node = KUBE.req("GET", "/api/v1/nodes/groot") or {}
+        out["k8s"] = "ok"
+        out["node_phone_capacity"] = node.get("status", {}).get("capacity", {}).get(common.RESOURCE)
+        if not out["node_phone_capacity"]:
+            out["ok"] = False
+            out["k8s"] = "node groot does not advertise z0.dev/phone (run services/phone-queue/advertise-phones)"
+    except Exception as e:  # noqa: BLE001
+        out.update(ok=False, k8s=str(e)[:300])
+    try:
+        with urllib.request.urlopen(common.SHIM_URL + "/healthz", timeout=3) as resp:
+            out["model_shim"] = json.load(resp)
+    except Exception as e:  # noqa: BLE001
+        out["model_shim"] = f"unreachable: {e}"
+    return out
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "phone-queue/1"
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
+
+    def _send(self, status, obj):
+        body = (json.dumps(obj, indent=1) + "\n").encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        qs = urllib.parse.parse_qs(url.query)
+        try:
+            if url.path == "/healthz":
+                h = health()
+                return self._send(200 if h["ok"] else 503, h)
+            if url.path == "/v1/devices":
+                return self._send(200, {"devices": [device_info(d) for d in common.DEVICES]})
+            if url.path == "/v1/jobs":
+                sql, args = "SELECT * FROM jobs WHERE 1=1", []
+                for key, col in (("submitter", "submitter"), ("state", "state"), ("device", "device")):
+                    if qs.get(key):
+                        sql += f" AND {col}=?"
+                        args.append(qs[key][0])
+                limit = min(int((qs.get("limit") or ["50"])[0]), 500)
+                rows = q(sql + " ORDER BY created_at DESC LIMIT ?", (*args, limit))
+                return self._send(200, {"jobs": [row_to_job(r) for r in rows]})
+            m = re.fullmatch(r"/v1/jobs/([a-f0-9]{12})", url.path)
+            if m:
+                rows = q("SELECT * FROM jobs WHERE id=?", (m.group(1),))
+                return self._send(200, row_to_job(rows[0])) if rows else self._send(404, {"error": "no such job"})
+            return self._send(404, {"error": "not found"})
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            return self._send(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def do_POST(self):
+        url = urllib.parse.urlparse(self.path)
+        try:
+            if url.path == "/v1/jobs":
+                n = int(self.headers.get("content-length") or 0)
+                if n > 200_000:
+                    return self._send(413, {"error": "body too large"})
+                try:
+                    body = json.loads(self.rfile.read(n) or b"null")
+                except ValueError:
+                    return self._send(400, {"error": "invalid JSON"})
+                status, out = submit(body)
+                return self._send(status, out)
+            m = re.fullmatch(r"/v1/jobs/([a-f0-9]{12})/cancel", url.path)
+            if m:
+                return self._send(*cancel(m.group(1)))
+            return self._send(404, {"error": "not found"})
+        except Bad as e:
+            return self._send(400, {"error": str(e)})
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            return self._send(500, {"error": f"{type(e).__name__}: {e}"})
+
+
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def main():
+    global CONN, KUBE
+    CONN = db()
+    KUBE = common.Kube()
+    threading.Thread(target=reconciler, daemon=True).start()
+    servers = []
+    for host in BINDS:
+        try:
+            srv = Server((host, common.API_PORT), Handler)
+        except OSError as e:
+            print(f"phone-queue: cannot bind {host}:{common.API_PORT}: {e}", file=sys.stderr, flush=True)
+            continue
+        servers.append(srv)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        print(f"phone-queue API on http://{host}:{common.API_PORT}", flush=True)
+    if not servers:
+        sys.exit("phone-queue: no listener")
+    while True:
+        time.sleep(3600)
+
+
+if __name__ == "__main__":
+    main()

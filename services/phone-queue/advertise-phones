@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Advertise the phones attached to groot as the extended resource z0.dev/phone (one per
+# phone) — the documented node-status patch for extended resources:
+# https://kubernetes.io/docs/tasks/administer-cluster/extended-resource-node/
+# Kueue (config/k3s/kueue/phones.yaml) owns per-phone admission; this number only lets
+# kube-scheduler place the admitted pods. Idempotent; re-run after a node re-registration.
+#   services/phone-queue/advertise-phones [count]   (default 2: S22+ and S25 Ultra)
+set -euo pipefail
+n=${1:-2}
+kc() { KUBECONFIG="${KUBECONFIG:-$HOME/.kube/k3s.yaml}" kubectl "$@"; }
+kc patch node groot --subresource=status --type=json \
+  -p "[{\"op\":\"add\",\"path\":\"/status/capacity/z0.dev~1phone\",\"value\":\"$n\"}]" >/dev/null
+kc get node groot -o jsonpath='{.status.allocatable.z0\.dev/phone}{"\n"}' | sed 's/^/groot allocatable z0.dev\/phone=/'

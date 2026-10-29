@@ -191,6 +191,7 @@ cmd_check() {
     python3 -c 'import sys,yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "$f" || die "bad yaml: $f"
   done
   say "manifests parse"
+  python3 "$REPO/services/phone-queue/render-configmap" --check
   if kc version >/dev/null 2>&1; then kc apply --dry-run=server -f "$CFG/manifests/" >/dev/null && say "server dry-run ok"; fi
 }
 
