@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,48 @@ def vault(env):
                             env=child, capture_output=True, text=True, check=True, timeout=30)
     items = json.loads(result.stdout)
     return {item['key']: item['value'] for item in items}
+
+
+def cached_values(env, scope, mappings):
+    """Read the same private runtime credentials used by systemd consumers."""
+    runtime = env.get('XDG_RUNTIME_DIR')
+    if not runtime:
+        return None
+    if not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', scope):
+        raise RuntimeError('invalid consumer scope')
+    try:
+        directory = os.open(Path(runtime) / 'bws-secrets',
+                            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    try:
+        info = os.fstat(directory)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise RuntimeError('unsafe credential cache directory')
+        try:
+            fd = os.open(scope + '.env', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=directory)
+        except FileNotFoundError:
+            return None
+        with os.fdopen(fd) as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or info.st_mode & 0o077):
+                raise RuntimeError('unsafe credential cache file')
+            cached = {}
+            for line in stream:
+                fields = shlex.split(line)
+                if len(fields) != 1 or '=' not in fields[0]:
+                    raise RuntimeError('invalid credential cache entry')
+                name, value = fields[0].split('=', 1)
+                if name in cached:
+                    raise RuntimeError('duplicate credential cache entry')
+                cached[name] = value
+        if any(not cached.get(name) for name in mappings):
+            raise RuntimeError('incomplete consumer credential cache')
+        return {source: cached[name] for name, source in mappings.items()}
+    finally:
+        os.close(directory)
 
 
 def main():
@@ -73,7 +116,9 @@ def main():
     # An unmapped Hermes profile receives no injected credentials; it may use
     # its own OAuth/native configuration. Explicit scope typos still fail closed.
     mappings = scopes.get(scope, {}) if args.scope == 'hermes' else scopes[scope]
-    values = vault(os.environ) if mappings else {}
+    values = cached_values(os.environ, scope, mappings) if mappings else {}
+    if values is None:
+        values = vault(os.environ)
     env = dict(os.environ)
     env.pop('BWS_ACCESS_TOKEN', None)
     env.pop('TYPESAFE_API_KEY', None)
