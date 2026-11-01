@@ -28,6 +28,10 @@ packages = [
 # NVIDIA drivers
 # ---------------------------------------------------------
 [nvidia]
+# groot also runs gpu-unlock (tensor FP32-accumulate unlock, RTX 3080 Ti): built locally
+# from github.com/Zagitta/gpu-unlock @7eb51bc (cd packaging/arch && makepkg -f; pacman -U),
+# not from the third-party AUR copy. Enabled by gpu_unlock.targets= in
+# config/host/etc/kernel/cmdline; remove that option to disable.
 packages = [
     "nvidia-utils",
     "lib32-nvidia-utils",
