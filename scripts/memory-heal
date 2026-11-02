@@ -293,7 +293,7 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
         if host.unit('ctx-import.service').get('ActiveState') in ('active', 'activating'):
             return 'import already running'
         rc, _, _ = host.systemctl('start', '--no-block', 'ctx-import.service')
-        return f"import started rc={rc} (runs only when MemAvailable > 6 GiB; now {f.data['mem_available_kib']//1024} MiB)"
+        return f"import started rc={rc} (runs only when MemAvailable > 4.5 GiB; now {f.data['mem_available_kib']//1024} MiB)"
     if name == 'resume':
         host.systemctl('reset-failed', f.subject)
         rc, _, _ = host.systemctl('start', '--no-block', f.subject)

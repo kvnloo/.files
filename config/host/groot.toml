@@ -4902,3 +4902,12 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "memory-heal 2026-11-02: GraphRAG index runs died silently (10-20 stall, 11-02 OOM at 482/11350); a restartable unit resumes from the LLM cache."
+
+[[user]]
+live = "~/.config/systemd/user/ctx-import.service.d/63-memory-cap.conf"
+source = "config/systemd/user/ctx-import.service.d/63-memory-cap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+migration_sha256 = "cebc2403c9c9efcf15792037c85253a051d098d9203eb6dae1af0294c2e2451c"
+reason = "memory-heal 2026-11-02: hand-written live drop-in brought under IaC; 6 GiB gate never opened (ctx 7 days stale), replaced by cap + OOM kill order."
