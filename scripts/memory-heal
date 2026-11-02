@@ -334,11 +334,11 @@ def escalate(f: Finding, spec, state_dir: Path, host: Host, apply: bool):
              f'as a diff against scripts/memory-heal and config/host/memory-system-intent.toml in the .files repo). '
              f'Say plainly if the evidence is insufficient.')
     unit = f'memory-heal-llm-{f.fingerprint}'
-    sandbox = ['--property=ProtectSystem=strict', '--property=ProtectHome=read-only', '--property=NoNewPrivileges=yes',
-               '--property=PrivateTmp=yes', f'--property=ReadWritePaths={inc.parent}']
-    sandbox += [f'--property=ReadWritePaths={p}' for p in e.get('writable', [])]
+    # NOT sandboxed: a systemd sandbox on this unit does not confine Hermes' tools (tested 2026-11-02 with
+    # ProtectSystem=strict/ProtectHome=read-only/PrivateUsers=yes: a terminal-tool write outside the
+    # allowlist still succeeded), so read-only rests on the brief. Open gap: a Hermes read-only toolset.
     host.run(['systemd-run', '--user', '--unit', unit, '--slice', 'agent.slice', '--collect',
-              f'--property=RuntimeMaxSec={e["timeout_s"]}', *sandbox, *e['command'], brief], timeout=30)
+              f'--property=RuntimeMaxSec={e["timeout_s"]}', *e['command'], brief], timeout=30)
     return f'{inc} (LLM diagnosis {unit})'
 
 
