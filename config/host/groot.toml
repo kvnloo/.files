@@ -1147,7 +1147,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "9cd8197c80ac39aa5a38352ad7ee84deaa11ab8403084bd107a3119890871fe4"
+migration_sha256 = "f8b72f1e141a1a89de531307817c7bdca656f509e95a6d161523e287e984681b"
 
 [[user]]
 live = "~/.config/systemd/user/z0int-policy.service"
