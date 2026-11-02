@@ -4631,7 +4631,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "9265cb6a9bb50c325fdf7e78e867add21170ebfe4c564cde96c23301301b1495"
+migration_sha256 = "6f8ce5d725af7345b1755af4efb5118308c783afcdd23a61bf3b1f08cf06bb59"
 
 [[user]]
 live = "~/.config/systemd/user/ctx-import.service.d/90-service-watch.conf"
@@ -4658,7 +4658,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
+migration_sha256 = "dfd9278fb883d98d2fb7be4f4842df428997ad0fbb22e3129f6aeba7f0ea123c"
 
 # ctx-import.timer is NOT enabled (no timers.target.wants link): ctx stays MANUAL per the 2026-10-25 decision
 # (perf-fixes-20261025 "Correction 21:25": the hourly refresh caused 162 global OOM kills). The unit and
