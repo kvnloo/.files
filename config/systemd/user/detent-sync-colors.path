@@ -1,0 +1,8 @@
+[Unit]
+Description=Send desktop colours to Detent on the phone when they change
+
+[Path]
+PathChanged=%h/.config/noctalia/colors.json
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Send the desktop colours (Noctalia's colors.json, which pywal fills from the live wallpaper)
+# to the Detent launcher's "hyprland" theme on each phone. Run by detent-sync-colors.path
+# whenever the colours change; safe to run by hand at any time.
+#   DETENT_SERIALS   space-separated ro.serialno values (default: the S25 Ultra)
+#   DETENT_PACKAGES  Detent packages to try (default: the hypr build, then stock)
+set -uo pipefail
+COLORS=${DETENT_COLORS:-$HOME/.config/noctalia/colors.json}
+SERIALS=${DETENT_SERIALS:-R5CY93G2WNH}
+PACKAGES=${DETENT_PACKAGES:-app.detent.launcher.hypr app.detent.launcher}
+[[ -r $COLORS ]] || { echo "no $COLORS" >&2; exit 0; }
+bg=$(jq -r '.mSurface // empty' "$COLORS"); fg=$(jq -r '.mOnSurface // empty' "$COLORS"); acc=$(jq -r '.mPrimary // empty' "$COLORS")
+[[ -n $bg && -n $fg && -n $acc ]] || { echo "colors.json lacks mSurface/mOnSurface/mPrimary" >&2; exit 1; }
+
+# Map each connected adb transport to its hardware serial.
+declare -A transport
+while read -r t state; do
+  [[ $state == device ]] || continue
+  s=$(timeout 10 adb -s "$t" shell getprop ro.serialno </dev/null 2>/dev/null | tr -d '\r')
+  [[ -n $s && -z ${transport[$s]:-} ]] && transport[$s]=$t
+done < <(adb devices | tail -n +2)
+
+rc=0
+for serial in $SERIALS; do
+  t=${transport[$serial]:-}
+  if [[ -z $t ]]; then echo "$serial: not connected over adb, skipped"; continue; fi
+  sent=0
+  for pkg in $PACKAGES; do
+    timeout 10 adb -s "$t" shell pm path "$pkg" </dev/null >/dev/null 2>&1 || continue
+    out=$(timeout 15 adb -s "$t" shell am broadcast -a app.detent.launcher.SET_COLORS \
+      -n "$pkg/app.detent.launcher.ColorsReceiver" --es bg "$bg" --es fg "$fg" --es accent "$acc" </dev/null 2>&1)
+    if grep -q 'result=1' <<<"$out"; then echo "$serial $pkg: bg=$bg fg=$fg accent=$acc"; sent=1; fi
+  done
+  [[ $sent == 1 ]] || { echo "$serial: no Detent build with the colour receiver" >&2; rc=1; }
+done
+exit $rc
