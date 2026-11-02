@@ -349,7 +349,9 @@ def main() -> int:
             except Exception as e:      # a remedy that throws is itself an incident
                 result = f'remedy error: {e!r}'
                 f.remedy = None
-            state['attempts'][f.fingerprint] = tries + [now]
+            # Waiting on work already in flight is not a remedy attempt; only real actions count.
+            if not result.startswith(('waits for', 'sync already running', 'import already running')):
+                state['attempts'][f.fingerprint] = tries + [now]
             actions.append({'fingerprint': f.fingerprint, 'invariant': f.invariant, 'subject': f.subject, 'result': result})
         if actions:
             time.sleep(args.settle)

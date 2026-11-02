@@ -6,7 +6,7 @@
 schema = "memory-system-intent.v1"
 
 [limits]
-attempts_per_fingerprint = 3   # remedy attempts before escalation, per rolling window
+attempts_per_fingerprint = 4   # real remedy attempts (waiting on in-flight work does not count) before escalation
 window_hours = 6
 escalate_once_per_hours = 24   # one LLM diagnosis + incident per fingerprint per day
 
