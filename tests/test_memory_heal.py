@@ -175,3 +175,20 @@ class Invariants(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DaemonRestartPolicy(unittest.TestCase):
+    """Invariant at the source: every declared memory daemon restarts on ANY exit (2026-11-02: uniichat-luna
+    exited 0 mid-import and Restart=on-failure left it down)."""
+
+    def test_every_declared_service_daemon_restarts_always(self):
+        root = Path(__file__).resolve().parents[1] / 'config/systemd/user'
+        for row in SPEC['daemon']:
+            unit = row['unit']
+            if not unit.endswith('.service'):
+                continue
+            texts = [(root / unit).read_text()] if (root / unit).exists() else []
+            texts += [p.read_text() for p in sorted((root / (unit + '.d')).glob('*.conf'))] if (root / (unit + '.d')).exists() else []
+            restart = [l.split('=', 1)[1].strip() for t in texts for l in t.splitlines() if l.startswith('Restart=')]
+            self.assertTrue(restart, f'{unit}: no Restart= in tracked unit or drop-ins')
+            self.assertEqual(restart[-1], 'always', f'{unit}: Restart={restart[-1]}')

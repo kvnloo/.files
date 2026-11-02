@@ -4911,3 +4911,19 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 migration_sha256 = "cebc2403c9c9efcf15792037c85253a051d098d9203eb6dae1af0294c2e2451c"
 reason = "memory-heal 2026-11-02: hand-written live drop-in brought under IaC; 6 GiB gate never opened (ctx 7 days stale), replaced by cap + OOM kill order."
+
+[[user]]
+live = "~/.config/systemd/user/agentsview.service.d/30-restart-always.conf"
+source = "config/systemd/user/agentsview.service.d/30-restart-always.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: memory daemons restart on any exit."
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/30-restart-always.conf"
+source = "config/systemd/user/z0intelligence.service.d/30-restart-always.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: memory daemons restart on any exit."
