@@ -3,13 +3,14 @@
 # to the Detent launcher's "hyprland" theme on each phone. Run by detent-sync-colors.path
 # whenever the colours change; safe to run by hand at any time.
 #   DETENT_SERIALS   space-separated ro.serialno values (default: the S25 Ultra)
-#   DETENT_PACKAGES  Detent packages to try (default: the hypr build, then stock)
+#   DETENT_PACKAGES  Detent packages to try (default: the fork builds, then stock)
 set -uo pipefail
 COLORS=${DETENT_COLORS:-$HOME/.config/noctalia/colors.json}
 SERIALS=${DETENT_SERIALS:-R5CY93G2WNH}
-PACKAGES=${DETENT_PACKAGES:-app.detent.launcher.hypr app.detent.launcher}
+PACKAGES=${DETENT_PACKAGES:-app.detent.launcher.kvn app.detent.launcher.hypr app.detent.launcher}
 [[ -r $COLORS ]] || { echo "no $COLORS" >&2; exit 0; }
 bg=$(jq -r '.mSurface // empty' "$COLORS"); fg=$(jq -r '.mOnSurface // empty' "$COLORS"); acc=$(jq -r '.mPrimary // empty' "$COLORS")
+bg=${bg#\#}; fg=${fg#\#}; acc=${acc#\#}  # the device shell reads "#" as a comment
 [[ -n $bg && -n $fg && -n $acc ]] || { echo "colors.json lacks mSurface/mOnSurface/mPrimary" >&2; exit 1; }
 
 # Map each connected adb transport to its hardware serial.
@@ -27,7 +28,7 @@ for serial in $SERIALS; do
   sent=0
   for pkg in $PACKAGES; do
     timeout 10 adb -s "$t" shell pm path "$pkg" </dev/null >/dev/null 2>&1 || continue
-    out=$(timeout 15 adb -s "$t" shell am broadcast -a app.detent.launcher.SET_COLORS \
+    out=$(timeout 15 adb -s "$t" shell am broadcast -f 0x20 -a app.detent.launcher.SET_COLORS \
       -n "$pkg/app.detent.launcher.ColorsReceiver" --es bg "$bg" --es fg "$fg" --es accent "$acc" </dev/null 2>&1)
     if grep -q 'result=1' <<<"$out"; then echo "$serial $pkg: bg=$bg fg=$fg accent=$acc"; sent=1; fi
   done
