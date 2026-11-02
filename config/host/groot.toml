@@ -4566,6 +4566,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Memory recall gate (canon reaches every turn, MCP finds owner words, harness sources reconciled); codified from the hand-placed unit, byte-identical."
+migration_sha256 = "b8f8b4b2794ad5a432a624d367687383a704e9723c6a00df04c6bef61b39583b"
 
 [[user]]
 live = "~/.config/systemd/user/memory-recall-check.timer"
@@ -4885,3 +4886,11 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.local/bin/memory-recall-check"
+source = "scripts/memory-recall-check"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the recall check ran from an untracked operations-dir copy; code is tracked, questions/receipts stay private in RECALL_DIR."

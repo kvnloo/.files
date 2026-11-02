@@ -234,8 +234,10 @@ def check(spec, host: Host):
         at = dt.datetime.fromisoformat(receipt['at']).timestamp()
         if not receipt.get('pass') or (now - at) / 3600 > r['max_age_hours']:
             unresolved = (receipt.get('sources') or {}).get('unresolved', [])
+            # Any source the recall check finds behind disk is an archive-sync problem: same remedy.
+            lag = any('AgentsView' in u and 'behind disk' in u for u in unresolved)
             findings.append(Finding('recall_pass', 'recall-check', f"pass={receipt.get('pass')} unresolved={unresolved[:4]}",
-                                    'derived', {'unresolved': unresolved}))
+                                    'sync_archive' if lag else 'derived', {'unresolved': unresolved}))
     except (OSError, ValueError, KeyError) as e:
         findings.append(Finding('recall_pass', 'recall-check', f'receipt unreadable: {e}', None))
     # zero-byte JSON state anywhere it is known to break readers

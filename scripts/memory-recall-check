@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Recall check for Kevin's established workflows.
+
+Exercises the real paths an agent depends on, not service health alone:
+  packet  - the State Packet injected into every Hermes/OMP/Claude turn carries each canon line
+  mcp     - the z0int-memory MCP (same command Hermes runs) finds the owner's original words
+  fts     - Hermes clean state.db FTS finds the owner's original words
+  skills  - no live skill instructs agents to use Codex Cloud for the phone lane
+  sources - every active harness history root reaches AgentsView and ctx (`z0int memory sources --apply`
+            registers missing ctx roots first, so a new harness/profile/path layout self-heals or fails here)
+Exit 0 only if every check passes. Writes a JSON receipt next to this file.
+"""
+import json, os, re, sqlite3, subprocess, sys, time
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Questions (recall-tests.json, private) and the receipt live in the data dir, not in this public repo.
+HERE = Path(os.environ.get("RECALL_DIR", "/mnt/zer0models/workspace/zer0/data/operations/memory-repair-20261025"))
+TESTS = json.loads((HERE / "recall-tests.json").read_text())
+HOME = Path.home()
+ORIENT = HOME / ".local/lib/z0-state-packet/current/src/z0int/orientation.py"
+MCP = HOME / ".local/bin/z0int-memory-mcp"
+FTS_DB = HOME / ".hermes/profiles/clean/state.db"
+SKILL_DIRS = [HOME / ".hermes/profiles/clean/skills", HOME / ".omp/agent/managed-skills"]
+
+
+def packet_text() -> str:
+    out = subprocess.run([sys.executable, str(ORIENT)], capture_output=True, text=True, timeout=30)
+    return out.stdout
+
+
+def mcp_search(queries: list[str], timeout: float = 60) -> dict[str, dict]:
+    proc = subprocess.Popen([str(MCP)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True)
+    def send(msg):
+        proc.stdin.write(json.dumps(msg) + "\n"); proc.stdin.flush()
+    def recv(want_id):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            msg = json.loads(line)
+            if msg.get("id") == want_id:
+                return msg
+        raise TimeoutError(want_id)
+    results = {}
+    try:
+        send({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+            "protocolVersion": "2024-11-05", "capabilities": {},
+            "clientInfo": {"name": "recall-check", "version": "1"}}})
+        recv(0)
+        send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        for i, q in enumerate(queries, 1):
+            send({"jsonrpc": "2.0", "id": i, "method": "tools/call",
+                  "params": {"name": "search", "arguments": {"query": q, "limit": 5}}})
+            msg = recv(i)
+            text = msg.get("result", {}).get("content", [{}])[0].get("text", "{}")
+            results[q] = json.loads(text)
+    finally:
+        proc.kill()
+    return results
+
+
+def fts_hits(phrase: str) -> int:
+    con = sqlite3.connect(f"file:{FTS_DB}?mode=ro", uri=True)
+    try:
+        q = '"' + phrase.replace('"', '') + '"'
+        return con.execute("select count(*) from messages_fts where messages_fts match ?", (q,)).fetchone()[0]
+    finally:
+        con.close()
+
+
+def skill_violations() -> list[str]:
+    bad = re.compile(r"(send|route|launch)[^.\n]{0,60}(through|via|to) Codex Cloud", re.I)
+    found = []
+    for root in SKILL_DIRS:
+        for path in root.rglob("*.md"):
+            if ".bak" in path.name:
+                continue
+            text = path.read_text(errors="replace")
+            if "REJECTED" in text[:400]:
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                m = bad.search(line)
+                # Only a negation BEFORE the instruction excuses it ("never send ... via Codex Cloud").
+                if m and not re.search(r"\b(never|not|don't|do not|rejected)\b", line[:m.start() + 1], re.I):
+                    found.append(f"{path}:{n}: {line.strip()[:160]}")
+    return found
+
+
+Z0INT = HOME / ".local/lib/z0int-shadow/current"
+
+
+def source_coverage() -> dict:
+    env = {**os.environ, "PYTHONPATH": str(Z0INT / "src"),
+           "CTX_DATA_ROOT": os.environ.get("CTX_DATA_ROOT", "/mnt/zer0models/host-offload/home_kvn_.ctx"),
+           "AGENTSVIEW_DATA_DIR": os.environ.get("AGENTSVIEW_DATA_DIR", "/mnt/zer0models/sft-svlm/data/agentsview")}
+    try:
+        p = subprocess.run([str(Z0INT / ".venv/bin/python"), "-m", "z0int.memory.sources", "--apply", "--json"],
+                           capture_output=True, text=True, timeout=180, env=env)
+        return json.loads(p.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+        return {"ok": False, "unresolved": [f"sources check did not run: {type(e).__name__}"]}
+
+
+def main() -> int:
+    rows, ok = [], True
+    packet = packet_text()
+    fresh = bool(packet) and "packet stale" not in packet
+    mcp = {}
+    mcp_error = None
+    try:
+        mcp = mcp_search([t["source_phrase"] for t in TESTS if t.get("source_phrase")])
+    except Exception as exc:  # report, never hide
+        mcp_error = repr(exc)
+    for t in TESTS:
+        r = {"id": t["id"], "question": t["question"]}
+        r["packet"] = fresh and all(s in packet for s in t["packet_must_contain"])
+        phrase = t.get("source_phrase")
+        if phrase:
+            res = mcp.get(phrase, {})
+            texts = " ".join(x.get("text", "") for x in res.get("results", []))
+            r["mcp"] = res.get("status") == "ok" and phrase.lower() in texts.lower()
+            r["mcp_status"] = res.get("status", mcp_error or "missing")
+            if t.get("fts"):
+                r["fts"] = fts_hits(phrase) > 0
+        checks = [v for k, v in r.items() if k in ("packet", "mcp", "fts")]
+        r["pass"] = all(checks)
+        ok &= r["pass"]
+        rows.append(r)
+    violations = skill_violations()
+    ok &= not violations
+    sources = source_coverage()
+    ok &= bool(sources.get("ok"))
+    receipt = {"at": datetime.now(timezone.utc).isoformat(), "pass": ok, "packet_fresh": fresh,
+               "mcp_error": mcp_error, "tests": rows, "skill_violations": violations,
+               "sources": {k: sources.get(k) for k in ("ok", "unresolved", "applied", "warnings")}}
+    (HERE / "recall-receipt.json").write_text(json.dumps(receipt, indent=1))
+    for r in rows:
+        print(("PASS " if r["pass"] else "FAIL ") + r["id"],
+              {k: r[k] for k in ("packet", "mcp", "mcp_status", "fts") if k in r})
+    print("skill violations:", len(violations), *violations[:5], sep="\n  ")
+    print("sources:", "PASS" if sources.get("ok") else "FAIL", *sources.get("unresolved", [])[:8],
+          *[f"applied {a['name']}" for a in sources.get("applied", [])], sep="\n  ")
+    print("OVERALL", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
