@@ -95,6 +95,8 @@ roots = ["~/.z0int/policy", "~/.local/state/z0int"]
 
 [escalation]
 # A bounded LLM diagnosis per novel incident. It may read anything and write only the incident report.
+# Enforced by systemd (ProtectSystem=strict, ProtectHome=read-only); writable = Hermes' own state only.
 command = ["hermes", "-p", "clean", "-z"]
+writable = ["/workspace/hermes-home"]
 timeout_s = 900
 state = "/mnt/zer0models/workspace/zer0/data/operations/memory-heal"

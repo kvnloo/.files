@@ -292,8 +292,11 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
     if name == 'run_ctx_import':
         if host.unit('ctx-import.service').get('ActiveState') in ('active', 'activating'):
             return 'import already running'
+        if f.data.get('mem_available_kib', 0) <= CTX_MIN_AVAILABLE_KIB:
+            # ctx-import's ExecCondition would skip the start: starting it is not a remedy attempt.
+            return f"waits for MemAvailable > {CTX_MIN_AVAILABLE_KIB // 1024} MiB (now {f.data['mem_available_kib'] // 1024} MiB)"
         rc, _, _ = host.systemctl('start', '--no-block', 'ctx-import.service')
-        return f"import started rc={rc} (runs only when MemAvailable > 4.5 GiB; now {f.data['mem_available_kib']//1024} MiB)"
+        return f'import started rc={rc}'
     if name == 'resume':
         host.systemctl('reset-failed', f.subject)
         rc, _, _ = host.systemctl('start', '--no-block', f.subject)
@@ -301,6 +304,9 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
     if name in ('derived', 'rerun_last'):
         return 'waits for the underlying invariant'
     raise ValueError(f'no such remedy: {name}')
+
+
+CTX_MIN_AVAILABLE_KIB = 4718592  # mirrors ctx-import.service.d/63-memory-cap.conf ExecCondition
 
 
 # ---------------------------------------------------------------- state, escalation, receipts
@@ -313,13 +319,13 @@ def load_state(path: Path):
 
 def escalate(f: Finding, spec, state_dir: Path, host: Host, apply: bool):
     inc = state_dir / 'incidents' / f'{f.fingerprint}.md'
+    if not apply:
+        return f'{inc} (not written: --check)'
     inc.parent.mkdir(parents=True, exist_ok=True)
     body = (f'# memory-heal incident {f.fingerprint}\n\n- invariant: `{f.invariant}`\n- subject: `{f.subject}`\n'
             f'- detail: {f.detail}\n- first unresolved: {dt.datetime.now().isoformat(timespec="seconds")}\n\n'
             f'```json\n{json.dumps(f.data, indent=1)[:6000]}\n```\n')
     inc.write_text(body)
-    if not apply:
-        return str(inc)
     e = spec['escalation']
     brief = (f'memory-heal could not repair a unified-memory invariant. Read {inc} and '
              f'{SPEC} (the architecture as data) and the unified-memory-operations skill. Diagnose the root cause '
@@ -328,8 +334,11 @@ def escalate(f: Finding, spec, state_dir: Path, host: Host, apply: bool):
              f'as a diff against scripts/memory-heal and config/host/memory-system-intent.toml in the .files repo). '
              f'Say plainly if the evidence is insufficient.')
     unit = f'memory-heal-llm-{f.fingerprint}'
+    sandbox = ['--property=ProtectSystem=strict', '--property=ProtectHome=read-only', '--property=NoNewPrivileges=yes',
+               '--property=PrivateTmp=yes', f'--property=ReadWritePaths={inc.parent}']
+    sandbox += [f'--property=ReadWritePaths={p}' for p in e.get('writable', [])]
     host.run(['systemd-run', '--user', '--unit', unit, '--slice', 'agent.slice', '--collect',
-              f'--property=RuntimeMaxSec={e["timeout_s"]}', *e['command'], brief], timeout=30)
+              f'--property=RuntimeMaxSec={e["timeout_s"]}', *sandbox, *e['command'], brief], timeout=30)
     return f'{inc} (LLM diagnosis {unit})'
 
 
@@ -342,7 +351,8 @@ def main() -> int:
     spec = tomllib.loads(args.spec.read_text())
     host = Host()
     state_dir = Path(spec['escalation']['state'])
-    state_dir.mkdir(parents=True, exist_ok=True)
+    if not args.check:
+        state_dir.mkdir(parents=True, exist_ok=True)
     state_path = state_dir / 'state.json'
     state = load_state(state_path)
     lim = spec['limits']
@@ -385,8 +395,9 @@ def main() -> int:
                      for f in after], 'escalations': escalations}
     for f in row['before']:
         f['data'] = {k: v for k, v in f['data'].items() if k != 'journal_tail'}
-    with (state_dir / 'heal.jsonl').open('a') as out:
-        out.write(json.dumps(row) + '\n')
+    if not args.check:  # --check observes and reports only: no receipts, state or incidents
+        with (state_dir / 'heal.jsonl').open('a') as out:
+            out.write(json.dumps(row) + '\n')
     if not args.check:
         tmp = state_path.with_suffix('.tmp'); tmp.write_text(json.dumps(state)); os.replace(tmp, state_path)
     lines = [f"# memory-heal {row['ts']}", '', f'{len(before)} findings, {len(actions)} remedies, {len(after)} still failing.', '']
@@ -396,7 +407,8 @@ def main() -> int:
               if x['fingerprint'] not in {f.fingerprint for f in before}]
     lines += ['', 'Actions:'] + [f"- {a['invariant']} {a['subject']}: {a['result']}" for a in actions]
     lines += ['', 'Escalated:'] + [f'- {e}' for e in escalations]
-    (state_dir / 'STATUS.md').write_text('\n'.join(lines) + '\n')
+    if not args.check:
+        (state_dir / 'STATUS.md').write_text('\n'.join(lines) + '\n')
     print('\n'.join(lines))
     return 1 if after else 0
 

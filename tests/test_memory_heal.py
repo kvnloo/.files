@@ -126,6 +126,22 @@ class Invariants(unittest.TestCase):
         heal.remedy(f, SPEC, host, Path('/nonexistent'))
         self.assertIn(('start', '--no-block', 'graphrag-index.service'), host.calls)
 
+    def test_ctx_start_that_execcondition_would_skip_is_a_wait(self):
+        """Unii probe 12: four 'import started rc=0' were counted as attempts although ExecCondition skipped each."""
+        f = heal.Finding('ctx_fresh', 'ctx-import', 'stale', 'run_ctx_import', {'mem_available_kib': 4 * 1024 * 1024})
+        host = self.healthy(units={'ctx-import.service': {'ActiveState': 'inactive'}})
+        result = heal.remedy(f, SPEC, host, Path('/nonexistent'))
+        self.assertTrue(result.startswith('waits for'), result)
+        self.assertNotIn(('start', '--no-block', 'ctx-import.service'), host.calls)
+
+    def test_check_mode_escalation_writes_nothing(self):
+        """Unii probes 20/30: --check wrote incidents/<fp>.md before testing apply."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            f = heal.Finding('oneshot_ok', 'x.service', 'failed', None, {})
+            heal.escalate(f, SPEC, Path(tmp), self.healthy(), apply=False)
+            self.assertEqual(list(Path(tmp).rglob('*')), [])
+
     def test_unwanted_timer_is_red(self):
         """ctx-import.timer was linked but not in timers.target.wants after the 10-31 reboot."""
         wanted = {t['unit'] for t in SPEC['timer']} - {'ctx-import.timer'}
