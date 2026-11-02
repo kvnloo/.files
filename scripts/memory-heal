@@ -89,7 +89,12 @@ class Host:
         db = Path(os.path.realpath(expand(hermes_home))) / 'profiles' / profile / 'state.db'
         con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=10)
         try:
-            v = con.execute('select max(started_at) from sessions where started_at < ?', (before,)).fetchone()[0]
+            # AgentsView archives only sessions with messages; empty acp/cron shells are not a lag.
+            try:
+                v = con.execute('select max(started_at) from sessions where started_at < ? and message_count > 0',
+                                (before,)).fetchone()[0]
+            except sqlite3.OperationalError:
+                v = con.execute('select max(started_at) from sessions where started_at < ?', (before,)).fetchone()[0]
         finally:
             con.close()
         return float(v) if v else None
