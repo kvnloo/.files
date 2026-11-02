@@ -3910,6 +3910,22 @@ owner = "scripts/install-host-drift"
 reason = "Immutable checker closure; docs/fleet/DESKTOP-ADMISSION.md."
 
 [[user]]
+live = "~/.local/bin/hermes-mobile-serve"
+source = "scripts/hermes-mobile-serve.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/install-host-drift"
+reason = "Keep the Hermes mobile app's tailnet :9119 mapping on the dashboard proxy; debug captures auto-restore it (2026-11-02 dead-capture outage)."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-web-proxy.service.d/80-tailnet-serve.conf"
+source = "config/systemd/user/hermes-drive-web-proxy.service.d/80-tailnet-serve.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Re-assert the Hermes mobile tailnet mapping on every proxy start (2026-11-02 dead-capture outage)."
+
+[[user]]
 live = "~/.local/bin/service-watch"
 source = "scripts/service-watch.py"
 scope = "user"
