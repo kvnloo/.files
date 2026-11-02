@@ -1,0 +1,18 @@
+[Unit]
+Description=GraphRAG knowledge-base index of the owner's chat history (resumable; LLM cache keeps progress)
+Documentation=file:///mnt/zer0models/sft-svlm/data/graphrag/README.md
+# memory-heal 2026-11-02: two runs (10-20, 11-02) died silently mid-index (stall, then OOM kill at 482/11350)
+# and nothing restarted them. The index resumes from its cache, so restarting is always safe.
+StartLimitIntervalSec=6h
+StartLimitBurst=8
+
+[Service]
+Type=exec
+WorkingDirectory=/mnt/zer0models/sft-svlm/data/graphrag
+ExecStart=/bin/bash -c './scripts/run.sh index --root . >> logs/index-run-service.txt 2>&1'
+Restart=on-failure
+RestartSec=10min
+Nice=15
+IOSchedulingClass=idle
+OOMScoreAdjust=700
+MemoryMax=3G

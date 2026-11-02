@@ -4894,3 +4894,11 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "memory-heal 2026-11-02: the recall check ran from an untracked operations-dir copy; code is tracked, questions/receipts stay private in RECALL_DIR."
+
+[[user]]
+live = "~/.config/systemd/user/graphrag-index.service"
+source = "config/systemd/user/graphrag-index.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: GraphRAG index runs died silently (10-20 stall, 11-02 OOM at 482/11350); a restartable unit resumes from the LLM cache."

@@ -187,6 +187,9 @@ def check(spec, host: Host):
                 findings.append(Finding('oneshot_ok', row['unit'],
                                         f"failed (status {u.get('ExecMainStatus')}), class={cls or 'unknown'}", None,
                                         {'journal_tail': host.journal(row['unit'], 25)[-3000:]}))
+    for row in spec.get('resumable', []):
+        if host.unit(row['unit']).get('ActiveState') == 'failed':
+            findings.append(Finding('resumable_running', row['unit'], 'failed; resumes from its cache', 'resume'))
     for row in spec.get('expected_failed', []):
         if host.unit(row['unit']).get('ActiveState') == 'failed':
             findings.append(Finding('expected_failed', row['unit'], f"failed by design ({row['when']})", 'reset_failed'))
@@ -286,6 +289,10 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
             return 'import already running'
         rc, _, _ = host.systemctl('start', '--no-block', 'ctx-import.service')
         return f"import started rc={rc} (runs only when MemAvailable > 6 GiB; now {f.data['mem_available_kib']//1024} MiB)"
+    if name == 'resume':
+        host.systemctl('reset-failed', f.subject)
+        rc, _, _ = host.systemctl('start', '--no-block', f.subject)
+        return f'resumed rc={rc}'
     if name in ('derived', 'rerun_last'):
         return 'waits for the underlying invariant'
     raise ValueError(f'no such remedy: {name}')

@@ -118,6 +118,14 @@ class Invariants(unittest.TestCase):
         just_started = self.healthy(native={'clean': NOW - 60}, archived={'clean': NOW - 3 * 3600})
         self.assertEqual(heal.check(SPEC, just_started), [])
 
+    def test_failed_resumable_job_is_resumed(self):
+        """2026-11-02: the GraphRAG index was OOM-killed at 482/11350 and nothing restarted it."""
+        host = self.healthy(units={'graphrag-index.service': {'ActiveState': 'failed', 'Result': 'oom-kill'}})
+        [f] = heal.check(SPEC, host)
+        self.assertEqual((f.invariant, f.remedy), ('resumable_running', 'resume'))
+        heal.remedy(f, SPEC, host, Path('/nonexistent'))
+        self.assertIn(('start', '--no-block', 'graphrag-index.service'), host.calls)
+
     def test_unwanted_timer_is_red(self):
         """ctx-import.timer was linked but not in timers.target.wants after the 10-31 reboot."""
         wanted = {t['unit'] for t in SPEC['timer']} - {'ctx-import.timer'}

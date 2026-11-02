@@ -57,6 +57,10 @@ known = ["zero_byte_json"]
 unit = "memory-recall-check.service"
 known = ["derived"]          # fails when another invariant fails; heal those, then re-run it
 
+# Long jobs that resume from their own cache: a failed run (OOM, start-limit) is restarted, never escalated.
+[[resumable]]
+unit = "graphrag-index.service"
+
 # Units that are failed by design outside their window: reset, never restart.
 # ctx.service is the auto-mode supervisor; ctx-import-hourly opens an auto window, and in manual mode
 # ctx removes the supervisor environment file, so the unit fails on start.
