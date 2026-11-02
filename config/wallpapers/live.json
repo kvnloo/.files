@@ -1,0 +1,54 @@
+{
+  "about": "Kevin's live wallpapers. Desktop scenes come from the Steam workshop folder; phone packages (.mpkg) are kept outside Git at mobile_store. scripts/wallpaper-phone.sh puts them on a phone.",
+  "workshop_dir": "/workspace/SteamLibrary/steamapps/workshop/content/431960",
+  "mobile_store": "/mnt/zer0models/workspace/zer0/data/wallpapers/mpkg",
+  "wallpapers": [
+    {
+      "workshop_id": "2133182232",
+      "title": "Forgotten Ruins (Ambient Sounds) in 4K",
+      "workshop_url": "https://steamcommunity.com/sharedfiles/filedetails/?id=2133182232",
+      "mobile": {
+        "file": "2133182232.mpkg",
+        "sha256": "421f04378beab28a1086be08a781f89c36307d51869b230615623beeac1f1dca",
+        "bytes": 31937964,
+        "source": "converted on groot from the Steam copy (scripts/wallpaper-pkg2mpkg.py)"
+      },
+      "screens": {
+        "groot": "DP-1",
+        "s25": "installed",
+        "s22": "installed"
+      }
+    },
+    {
+      "workshop_id": "2981249186",
+      "title": "4K SCI-FI Black Hole",
+      "workshop_url": "https://steamcommunity.com/sharedfiles/filedetails/?id=2981249186",
+      "mobile": {
+        "file": "2981249186.mpkg",
+        "sha256": "3c4ef53aabaf2d5dcfce631f4da4d23b73a02adc75b118a1e968bf18823111c2",
+        "bytes": 5713624,
+        "source": "exported by the S22 Wallpaper Engine app"
+      },
+      "screens": {
+        "s25": "active (home + lock)",
+        "s22": "installed"
+      }
+    },
+    {
+      "workshop_id": "1888636115",
+      "title": "Abstract Landscape",
+      "workshop_url": "https://steamcommunity.com/sharedfiles/filedetails/?id=1888636115",
+      "mobile": {
+        "file": "1888636115.mpkg",
+        "sha256": "69b84b0f14af9713b0b2b2fd57b3492c0e98140b94c0a0b026e3f946fe8845f0",
+        "bytes": 2914266,
+        "source": "exported by the S22 Wallpaper Engine app"
+      },
+      "screens": {
+        "groot": "DP-2",
+        "s25": "installed",
+        "s22": "installed"
+      }
+    }
+  ]
+}
