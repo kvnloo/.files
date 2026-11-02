@@ -61,16 +61,14 @@ if [[ "$OSTYPE" == darwin* ]]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Claude Code (separate work/home configs)
+# Claude Code: ~/.claude is the personal home; work stays separate
 # ──────────────────────────────────────────────────────────────────────────────
 alias claude-work='CLAUDE_CONFIG_DIR=$HOME/.claude-work claude'
-alias claude-home='CLAUDE_CONFIG_DIR=$HOME/.claude-home claude'
-alias claude-mem='bun "/Users/kvn/.claude-work/plugins/cache/thedotmack/claude-mem/10.5.6/scripts/worker-service.cjs"'
 
 # tokenmaxxing uses ccusage, which accepts a comma-separated CLAUDE_CONFIG_DIR list.
 # Do NOT export this globally — Claude Code itself expects a single config dir.
 tokenmaxxing() {
-  CLAUDE_CONFIG_DIR="${HOME}/.claude,${HOME}/.claude-home,${HOME}/.claude-work" \
+  CLAUDE_CONFIG_DIR="${HOME}/.claude,${HOME}/.claude-work" \
     command tokenmaxxing "$@"
 }
 
