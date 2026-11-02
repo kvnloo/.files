@@ -1,5 +1,5 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
-user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
+user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml", "config/host/memory-system-intent.toml"]
 user_retired_files = [
   { live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf", sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c", reason = "Use the stamped fleet command; retire the stale admission worktree override." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
@@ -4617,6 +4617,14 @@ reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window;
 migration_sha256 = "fc6bbd0cb63b39fd7b2ed04b3aa9f483dfd3d430c1dfacc87016b178492d2bb4"
 
 [[user]]
+live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
+source = "config/systemd/user/ctx-import.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the timer was linked but never wanted, so it did not start after the 10-31 reboot; ctx history was 7 days stale."
+
+[[user]]
 live = "~/.config/systemd/user/ctx-import.timer"
 source = "config/systemd/user/ctx-import.timer"
 scope = "user"
@@ -4845,3 +4853,35 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.local/bin/memory-heal"
+source = "scripts/memory-heal"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/memory-heal.service"
+source = "config/systemd/user/memory-heal.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/memory-heal.timer"
+source = "config/systemd/user/memory-heal.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/memory-heal.timer"
+source = "config/systemd/user/memory-heal.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
