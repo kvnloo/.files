@@ -880,3 +880,32 @@ class Contracts(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+class PerConnectionHooks(unittest.TestCase):
+    """Regression 2026-11-02: a 90-service-watch.conf dir per Accept=yes connection leaked (734 dirs)."""
+
+    def test_skips_and_prunes_per_connection_instances(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            base = home / '.config/systemd/user'
+            conn = 'z0int-memory-mcp@1005-53401-942302_17740424-1000.service'
+            (base / (conn + '.d')).mkdir(parents=True)
+            (base / (conn + '.d') / '90-service-watch.conf').write_text('[Unit]\nOnFailure=x\n')
+            kept = base / 'z0int-memory-mcp@7-1-2_3-1000.service.d'
+            kept.mkdir()
+            (kept / '90-service-watch.conf').write_text('x')
+            (kept / '10-human.conf').write_text('x')
+            watch = sw.Watch(home / 'state', home / 'inventory.json')
+            watch.units = {('user', conn): {}, ('user', 'agentsview.service'): {}}
+            with patch.object(Path, 'home', return_value=home), \
+                 patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, 'agentsview.service\n', '')), \
+                 patch.object(sw, 'systemctl'):
+                watch.units = {('user', 'agentsview.service'): {}}
+                watch.install_hooks()
+            self.assertFalse((base / (conn + '.d')).exists())
+            self.assertTrue(kept.exists())
+            self.assertTrue((base / 'agentsview.service.d/90-service-watch.conf').exists())
+            self.assertTrue(sw.Watch.per_connection(conn))
+            self.assertFalse(sw.Watch.per_connection('dash@main.service'))
