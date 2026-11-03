@@ -178,5 +178,33 @@ class HarnessOnlyProviders(unittest.TestCase):
                 self.assertFalse(self.HARNESS_ONLY & set(keys), f'{name} must not get {sorted(self.HARNESS_ONLY & set(keys))}')
 
 
+class NoGoogleKeys(unittest.TestCase):
+    # Owner rule (2026-11-03): no agent or LLM may ever receive a Google/Gemini key, in any
+    # scope (codexbar included). Gemini is used only through agy's own OAuth login.
+    def test_no_scope_maps_a_google_key(self):
+        scopes = json.loads((ROOT / 'config' / 'bws-consumers.json').read_text())['scopes']
+        for name, keys in scopes.items():
+            hits = [k for k, v in keys.items() if 'GOOGLE' in k.upper() or 'GEMINI' in k.upper() or 'GOOGLE' in v.upper() or 'GEMINI' in v.upper()]
+            self.assertFalse(hits, f'{name} maps {hits}')
+
+    def test_runtime_refuses_google_mapping_and_strips_inherited(self):
+        exe = module('bws-env-exec')
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'map.json'
+            config.write_text(json.dumps({'scopes': {'x': {'GEMINI_API_KEY': 'GEMINI_API_KEY'}}}))
+            with mock.patch.object(exe, 'vault', return_value={'GEMINI_API_KEY': 'fixture'}), \
+                 mock.patch('sys.argv', ['bws-env-exec', '--scope', 'x', '--config', str(config), '--', 'consumer']), \
+                 mock.patch.object(os, 'execvpe') as execute:
+                with self.assertRaises(RuntimeError):
+                    exe.main()
+            execute.assert_not_called()
+            config.write_text(json.dumps({'scopes': {'y': {}}}))
+            with mock.patch.dict(os.environ, {'GOOGLE_API_KEY': 'leak', 'PATH': '/bin'}, clear=True), \
+                 mock.patch('sys.argv', ['bws-env-exec', '--scope', 'y', '--config', str(config), '--', 'consumer']), \
+                 mock.patch.object(os, 'execvpe') as execute:
+                exe.main()
+            self.assertNotIn('GOOGLE_API_KEY', execute.call_args.args[2])
+
+
 if __name__ == '__main__':
     unittest.main()
