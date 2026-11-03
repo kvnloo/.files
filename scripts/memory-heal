@@ -306,7 +306,7 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
     raise ValueError(f'no such remedy: {name}')
 
 
-CTX_MIN_AVAILABLE_KIB = 4718592  # mirrors ctx-import.service.d/63-memory-cap.conf ExecCondition
+CTX_MIN_AVAILABLE_KIB = 6291456  # mirrors ctx-import.service.d/63-memory-cap.conf ExecCondition
 
 
 # ---------------------------------------------------------------- state, escalation, receipts
