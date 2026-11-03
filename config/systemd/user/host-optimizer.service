@@ -1,0 +1,21 @@
+[Unit]
+Description=Local host/fleet performance learner and bounded CPU-policy regression repair
+After=default.target
+ConditionPathIsMountPoint=/mnt/zer0models
+OnFailure=service-watch-failure@host-optimizer.service.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/host-optimizer tick --repair-cpu --experiments
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Nice=19
+CPUWeight=10
+IOWeight=1
+IOSchedulingClass=idle
+MemoryMax=384M
+MemorySwapMax=64M
+TasksMax=48
+TimeoutStartSec=120
+NoNewPrivileges=true
+LimitCORE=0
