@@ -203,7 +203,7 @@ run_core_links() {
   for bin in workspace-copilot phone-display.sh audio-sink audio-evolve bar-mode.sh \
              desktop-app-launcher.sh desktop-wallpaper-picker.sh wallpaper-mode.sh \
              reforge-groot-launcher.sh update-all-ui-runner.sh \
-             performance-mode.sh performance-pressure.py taildrop-phone.sh \
+             performance-mode.sh server-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh theme \
              reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py tern-hosts-sync; do
