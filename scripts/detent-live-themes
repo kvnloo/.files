@@ -6,8 +6,11 @@
 # Needs a debuggable Detent build (files are copied in with run-as).
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
-LIST=${DETENT_LIVE_LIST:-$ROOT/config/wallpapers/live.json}
-WANT=${1:-R5CY93G2WNH}; PKG=${2:-app.detent.launcher.kvn}
+# Settings shared by the phone scripts (scripts/phone-setup init writes this file).
+[[ -r ${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env"
+LIST=${DETENT_LIVE_LIST:-${LIVE_LIST:-$ROOT/config/wallpapers/live.json}}; [[ -r $LIST ]] || LIST=$ROOT/config/wallpapers/live.json
+WANT=${1:-${PHONE_SERIAL:-R5CY93G2WNH}}; PKG=${2:-${DETENT_PACKAGE:-app.detent.launcher.kvn}}
+export WE_WORKSHOP_DIR
 
 T=""
 while read -r t state; do
@@ -21,7 +24,8 @@ uv run -q --with pillow python - "$LIST" "$WORK" <<'PY'
 import colorsys, json, pathlib, sys
 from PIL import Image
 lst = json.loads(pathlib.Path(sys.argv[1]).read_text()); work = pathlib.Path(sys.argv[2])
-ws = pathlib.Path(lst["workshop_dir"]); out = []
+import os
+ws = pathlib.Path(os.environ.get("WE_WORKSHOP_DIR") or lst["workshop_dir"]); out = []
 
 def hexc(rgb): return "%02x%02x%02x" % tuple(max(0, min(255, round(c))) for c in rgb)
 def hls(rgb): return colorsys.rgb_to_hls(*(c / 255 for c in rgb))
@@ -48,7 +52,7 @@ for w in lst["wallpapers"]:
 for t in out: print(t["name"], t["bg"], t["fg"], t["accent"])
 PY
 
-STORE=$(jq -r .mobile_store "$LIST")
+STORE=${WE_MPKG_STORE:-$(jq -r .mobile_store "$LIST")}
 adb -s "$T" shell mkdir -p /data/local/tmp/detent-live
 adb -s "$T" push "$WORK/themes.json" /data/local/tmp/detent-live/ >/dev/null
 for f in $(jq -r '.[].file' "$WORK/themes.json"); do

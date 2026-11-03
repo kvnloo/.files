@@ -18,6 +18,13 @@ flowchart TD
   modules --> optional[agent-tools / tailnet / nix / audio]
 ```
 
+## Android phone (Detent, live wallpapers, agent phone control)
+
+[`docs/phone-setup/README.md`](phone-setup/README.md) is the step-by-step map for adb,
+Hermes phone-harness with the uiautomator2 fast tree, Wallpaper Engine and the Detent
+launcher fork. `scripts/phone-setup` checks each step; `scripts/phone-setup-handoff` is
+the one-liner to send someone who wants the same setup.
+
 ## Desktop file manager
 
 The desktop host uses Strata as the default folder handler (`inode/directory`).
