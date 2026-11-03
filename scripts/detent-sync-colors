@@ -5,9 +5,11 @@
 #   DETENT_SERIALS   space-separated ro.serialno values (default: the S25 Ultra)
 #   DETENT_PACKAGES  Detent packages to try (default: the fork builds, then stock)
 set -uo pipefail
+# Settings shared by the phone scripts (scripts/phone-setup init writes this file).
+[[ -r ${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env"
 COLORS=${DETENT_COLORS:-$HOME/.config/noctalia/colors.json}
-SERIALS=${DETENT_SERIALS:-R5CY93G2WNH}
-PACKAGES=${DETENT_PACKAGES:-app.detent.launcher.kvn app.detent.launcher.hypr app.detent.launcher}
+SERIALS=${DETENT_SERIALS:-${PHONE_SERIAL:-R5CY93G2WNH}}
+PACKAGES=${DETENT_PACKAGES:-${DETENT_PACKAGE:+$DETENT_PACKAGE }app.detent.launcher.kvn app.detent.launcher.hypr app.detent.launcher}
 [[ -r $COLORS ]] || { echo "no $COLORS" >&2; exit 0; }
 bg=$(jq -r '.mSurface // empty' "$COLORS"); fg=$(jq -r '.mOnSurface // empty' "$COLORS"); acc=$(jq -r '.mPrimary // empty' "$COLORS")
 bg=${bg#\#}; fg=${fg#\#}; acc=${acc#\#}  # the device shell reads "#" as a comment

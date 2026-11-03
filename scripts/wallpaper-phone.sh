@@ -5,9 +5,11 @@
 # The app then shows its preview; tap the check mark on the phone to apply one.
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-LIST="$ROOT/config/wallpapers/live.json"
+# Settings shared by the phone scripts (scripts/phone-setup init writes this file).
+[[ -r ${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env"
+LIST=${LIVE_LIST:-$ROOT/config/wallpapers/live.json}; [[ -r $LIST ]] || LIST=$ROOT/config/wallpapers/live.json
 SERIAL=${1:?adb serial}; shift
-STORE=$(jq -r .mobile_store "$LIST"); WS=$(jq -r .workshop_dir "$LIST")
+STORE=${WE_MPKG_STORE:-$(jq -r .mobile_store "$LIST")}; WS=${WE_WORKSHOP_DIR:-$(jq -r .workshop_dir "$LIST")}
 IDS=("$@"); [[ ${#IDS[@]} -gt 0 ]] || mapfile -t IDS < <(jq -r '.wallpapers[].workshop_id' "$LIST")
 mkdir -p "$STORE"
 for id in "${IDS[@]}"; do
