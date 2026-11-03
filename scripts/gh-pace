@@ -7,9 +7,10 @@ the same per-user 5000/h core pool, and only GitHub sees all of them.
 
 Local counts are used only to split that total:
   ghcache   upstream calls ghcache made that GitHub charged (non-304), from /_ghcache/stats
-  host_gh   REST `gh` invocations on this host, logged by the ~/.local/bin/gh shim (approximate:
+  host_gh   direct REST `gh` invocations on this host, logged by the ~/.local/bin/gh shim (approximate:
             one invocation is usually one request, --paginate can be more; GraphQL porcelain
-            such as `gh pr list` and `gh api graphql` is excluded because it uses its own pool)
+            such as `gh pr list` and `gh api graphql` is excluded because it uses its own pool;
+            plain `gh api` GETs the shim served through ghcache are counted under ghcache)
   external  the rest. Measured on groot 2026-11-03: every host `gh` goes through the shim and
             T3/Tern PR polling is ~3 requests/min, so this is mostly the ChatGPT GitHub connector
             (it tracked the number of live factory chats) plus Actions jobs using the owner's PAT
@@ -86,6 +87,9 @@ def host_calls(since, until):
         if ts >= until - KEEP_S:
             keep.append(ln)
         if since < ts <= until and (p[3], p[4]) not in FREE:
+            if len(p) > 6 and p[6] == "cached":  # served by ghcache; its counters charge it
+                n["cached"] = n.get("cached", 0) + 1
+                continue
             pool = pool_of(p[3], p[4])
             n[pool] += 1
             if pool == "core":

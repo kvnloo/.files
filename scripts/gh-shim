@@ -1,8 +1,19 @@
 #!/bin/bash
-# gh-pace attribution shim: log one line per host `gh` call, then exec the real gh unchanged.
-# Fields: epoch, parent pid, parent comm, argv1, argv2, cwd. Read by ~/.local/bin/gh-pace.
-# Remove this file to opt out; nothing else depends on it.
+# gh-pace shim, installed as ~/.local/bin/gh ahead of /usr/bin/gh.
+# 1. A plain `gh api` GET whose output goes to a pipe or file is served by gh-cached through
+#    ghcache (ETag-revalidated, so unchanged data is free). gh-cached exits 64 (not a read it
+#    mirrors) or 75 (ghcache down, or budget held with no cached copy) to fall through to gh.
+# 2. Every call is logged for gh-pace: epoch, parent pid, parent comm, argv1, argv2, cwd, route.
+# GH_SHIM_DIRECT=1 skips the cache. Remove this file to opt out entirely.
 log="${XDG_STATE_HOME:-$HOME/.local/state}/gh-pace/calls.tsv"
 comm=; read -r comm < "/proc/$PPID/comm" 2>/dev/null
-{ printf '%(%s)T\t%s\t%s\t%s\t%s\t%s\n' -1 "$PPID" "$comm" "${1:-}" "${2:-}" "$PWD" >> "$log"; } 2>/dev/null
+note() { { printf '%(%s)T\t%s\t%s\t%s\t%s\t%s\t%s\n' -1 "$PPID" "$comm" "${1:-}" "${2:-}" "$PWD" "$route" >> "$log"; } 2>/dev/null; }
+cached="${GH_CACHED:-$HOME/.local/bin/gh-cached}"
+if [ "${1:-}" = api ] && [ ! -t 1 ] && [ -z "${GH_SHIM_DIRECT:-}${GH_HOST:-}" ] && [ -x "$cached" ]; then
+  "$cached" "$@"; rc=$?
+  if [ "$rc" -ne 64 ] && [ "$rc" -ne 75 ]; then
+    route=cached; note "$@"; exit "$rc"
+  fi
+fi
+route=direct; note "$@"
 exec /usr/bin/gh "$@"

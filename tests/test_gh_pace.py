@@ -61,9 +61,10 @@ def test_graphql_porcelain_is_not_counted_against_core(tmp_path, monkeypatch):
         "111\t1\tbash\tpr\tlist\t/w\n",
         "112\t1\tbash\tauth\ttoken\t/w\n",   # free
         "90\t1\tbash\tapi\trepos/o/r\t/w\n",  # before the interval
+        "113\t1\tbash\tapi\trepos/o/r\t/w\tcached\n",  # ghcache charged it
     ]))
     pools, by = g.host_calls(100, 200)
-    assert pools == {"core": 1, "graphql": 1}
+    assert pools == {"core": 1, "graphql": 1, "cached": 1}
     assert by == {"bash gh api in /w": 1}
 
 
@@ -87,9 +88,78 @@ def test_shim_logs_and_passes_arguments_through(tmp_path):
     for f in ("gh", "real-gh"):
         (fake / f).chmod(0o755)
     (tmp_path / "state" / "gh-pace").mkdir(parents=True)
-    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"))
+    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"), GH_CACHED=str(fake / "none"))
     out = subprocess.run([str(fake / "gh"), "api", "repos/o/r", "--jq", ".x y"],
                          capture_output=True, text=True, env=env, cwd=tmp_path, check=True)
     assert out.stdout.strip() == "real:api repos/o/r --jq .x y"
     line = (tmp_path / "state" / "gh-pace" / "calls.tsv").read_text().strip().split("\t")
-    assert line[3:] == ["api", "repos/o/r", str(tmp_path)]
+    assert line[3:] == ["api", "repos/o/r", str(tmp_path), "direct"]
+
+    # A read gh-cached answers never reaches the real gh; a fallback code (75) does.
+    for rc, expect, route in (("0", "cached-body", "cached"), ("75", "real:api repos/o/r", "direct")):
+        (fake / "cached").write_text(f"#!/bin/sh\n[ {rc} = 0 ] && echo cached-body\nexit {rc}\n")
+        (fake / "cached").chmod(0o755)
+        env["GH_CACHED"] = str(fake / "cached")
+        out = subprocess.run([str(fake / "gh"), "api", "repos/o/r"], capture_output=True,
+                             text=True, env=env, cwd=tmp_path, check=True)
+        assert out.stdout.strip() == expect
+        last = (tmp_path / "state" / "gh-pace" / "calls.tsv").read_text().splitlines()[-1]
+        assert last.split("\t")[-1] == route
+
+
+def load_gh_cached():
+    loader = importlib.machinery.SourceFileLoader("gh_cached", str(REPO / "scripts" / "gh-cached"))
+    spec = importlib.util.spec_from_loader("gh_cached", loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_gh_cached_mirrors_only_plain_reads():
+    c = load_gh_cached()
+    assert c.parse(["api", "repos/o/r"]) == ("/repos/o/r", None, None)
+    assert c.parse(["api", "-X", "GET", "-f", "state=open", "repos/o/r/pulls", "--jq", ".[].number"]) \
+        == ("/repos/o/r/pulls?state=open", ".[].number", None)
+    assert c.parse(["api", "-H", "Accept: application/vnd.github.raw", "/repos/o/r/readme"]) \
+        == ("/repos/o/r/readme", None, "application/vnd.github.raw")
+    for argv in (["api", "-f", "body=x", "repos/o/r/issues"],      # gh POSTs -f without -X GET
+                 ["api", "-X", "PATCH", "repos/o/r"], ["api", "--paginate", "repos/o/r/pulls"],
+                 ["api", "repos/{owner}/{repo}"], ["api", "graphql", "-f", "query=x"],
+                 ["api", "-i", "repos/o/r"], ["pr", "view"]):
+        assert c.parse(argv) is None, argv
+
+
+def test_gh_cached_serves_from_the_proxy_like_gh(tmp_path, capfd):
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            code, body = {"/repos/o/r": (200, b'{"name":"r","owner":{"login":"o","id":1}}'),
+                          "/held": (503, b'{"message":"held"}')}.get(self.path, (404, b'{"message":"Not Found"}'))
+            self.send_response(code)
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    c = load_gh_cached()
+    c.BASE = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        assert c.main(["api", "repos/o/r"]) == 0
+        assert capfd.readouterr().out == '{"name":"r","owner":{"login":"o","id":1}}'
+        assert c.main(["api", "repos/o/r", "--jq", ".owner"]) == 0
+        assert capfd.readouterr().out.strip() == '{"id":1,"login":"o"}'   # gojq: compact, sorted
+        assert c.main(["api", "repos/o/missing"]) == 1
+        err = capfd.readouterr().err
+        assert "gh: Not Found (HTTP 404)" in err
+        assert c.main(["api", "held"]) == c.UNAVAILABLE
+        assert c.main(["api", "--paginate", "repos/o/r"]) == c.FALLBACK
+    finally:
+        srv.shutdown()
+    c.BASE = "http://127.0.0.1:9"  # nothing listening
+    assert c.main(["api", "repos/o/r"]) == c.UNAVAILABLE
