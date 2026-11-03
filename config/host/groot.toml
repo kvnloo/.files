@@ -1194,24 +1194,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "92ed092bcde1d498d997b37d26cf5b573b917648f78cf6c053dd5c8d7e3f9d3a"
 
 [[user]]
-live = "~/.config/systemd/user/zer0-kanban-linear-sync.service"
-source = "config/systemd/user/zer0-kanban-linear-sync.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "f71b1b3c7441f71f088281cb176ae8acbd879ae7cf733c396fa688d7c2f26030"
-
-[[user]]
-live = "~/.config/systemd/user/zer0-kanban-linear-sync.timer"
-source = "config/systemd/user/zer0-kanban-linear-sync.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "30be1b73ba0445a737753b611138ef7339aa7971a0e8daf4b77a47a7c2cfd6df"
-
-[[user]]
 live = "~/.config/systemd/user/zer0-maxine-full.service"
 source = "config/systemd/user/zer0-maxine-full.service"
 scope = "user"
