@@ -2,21 +2,21 @@
 # Handoff: copy Kevin's Android phone setup (Detent launcher fork, Wallpaper Engine live
 # wallpapers, Hermes phone-harness + uiautomator2 fast tree, adb).
 #
-#   curl -fsSL https://raw.githubusercontent.com/kvnloo/.files/feat/phone-setup-map/scripts/phone-setup-handoff | bash
+#   curl -fsSL https://raw.githubusercontent.com/kvnloo/.files/master/scripts/phone-setup-handoff | bash
 #
 # It only clones Kevin's public dotfiles, runs the read-only doctor and prints the map for your
 # agent. It installs nothing and touches no phone settings.
 set -euo pipefail
 REPO=${PHONE_SETUP_REPO:-https://github.com/kvnloo/.files.git}
 DIR=${PHONE_SETUP_DIR:-$HOME/src/kvnloo-files}
-BRANCHES=(${PHONE_SETUP_BRANCH:-feat/phone-setup-map dev master})
+BRANCHES=(${PHONE_SETUP_BRANCH:-master dev})
 
 command -v git >/dev/null || { echo "install git first" >&2; exit 1; }
 if [[ ! -d $DIR/.git ]]; then
   git clone -q --filter=blob:none "$REPO" "$DIR"
 fi
 git -C "$DIR" fetch -q origin
-for b in "${BRANCHES[@]}"; do   # the setup branch until it merges, then the main branches
+for b in "${BRANCHES[@]}"; do   # master first, dev as a fallback
   if git -C "$DIR" rev-parse -q --verify "origin/$b:docs/phone-setup/README.md" >/dev/null; then
     git -C "$DIR" checkout -q -B "$b" "origin/$b"; BRANCH=$b; break
   fi

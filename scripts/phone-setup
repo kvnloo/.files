@@ -19,7 +19,7 @@ CONF=$CONF_DIR/env
 [[ -r $CONF ]] && source "$CONF"
 DETENT_PACKAGE=${DETENT_PACKAGE:-app.detent.launcher.fork}
 DETENT_REPO=${DETENT_REPO:-https://github.com/kvnloo/detent.git}
-DETENT_BRANCH=${DETENT_BRANCH:-phone-build}
+DETENT_BRANCH=${DETENT_BRANCH:-main}
 DETENT_SRC=${DETENT_SRC:-$HOME/src/detent}
 WE_PKG=io.wallpaperengine.weclient
 U2_WHEEL_SHA=731bf4e26e35cd440cd165b399b8a4d4b795178d78b9243769e336aee6dce985
