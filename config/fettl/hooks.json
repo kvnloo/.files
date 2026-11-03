@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "claude_events": ["PreToolUse", "PostToolUse", "Stop"],
+  "hermes_event": "post_tool_call",
+  "hermes_matcher": "write_file|patch",
+  "omp_tools": ["write", "edit", "apply_patch", "notebook"],
+  "wall_seconds": 20,
+  "cpu_seconds": 15,
+  "memory_bytes": 1073741824,
+  "output_bytes": 65536,
+  "privacy_mode": "metadata_only",
+  "source_read_only": true,
+  "network": false,
+  "repairs": false
+}

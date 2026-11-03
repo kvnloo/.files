@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "hermes_homes": [
+    "~/.hermes",
+    "~/.hermes/profiles/chiefstaff",
+    "~/.hermes/profiles/clean",
+    "~/.hermes/profiles/intake"
+  ]
+}
