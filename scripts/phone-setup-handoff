@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Handoff: copy Kevin's Android phone setup (Detent launcher fork, Wallpaper Engine live
+# wallpapers, Hermes phone-harness + uiautomator2 fast tree, adb).
+#
+#   curl -fsSL https://raw.githubusercontent.com/kvnloo/.files/master/scripts/phone-setup-handoff | bash
+#
+# It only clones Kevin's public dotfiles, runs the read-only doctor and prints the map for your
+# agent. It installs nothing and touches no phone settings.
+set -euo pipefail
+REPO=${PHONE_SETUP_REPO:-https://github.com/kvnloo/.files.git}
+DIR=${PHONE_SETUP_DIR:-$HOME/src/kvnloo-files}
+BRANCHES=(${PHONE_SETUP_BRANCH:-master dev})
+
+command -v git >/dev/null || { echo "install git first" >&2; exit 1; }
+if [[ ! -d $DIR/.git ]]; then
+  git clone -q --filter=blob:none "$REPO" "$DIR"
+fi
+git -C "$DIR" fetch -q origin
+for b in "${BRANCHES[@]}"; do   # master first, dev as a fallback
+  if git -C "$DIR" rev-parse -q --verify "origin/$b:docs/phone-setup/README.md" >/dev/null; then
+    git -C "$DIR" checkout -q -B "$b" "origin/$b"; BRANCH=$b; break
+  fi
+done
+[[ -n ${BRANCH:-} ]] || { echo "no branch of $REPO has docs/phone-setup yet" >&2; exit 1; }
+
+MAP=$DIR/docs/phone-setup/README.md
+cat <<EOF
+
+Kevin's phone setup is in $DIR (branch $BRANCH).
+
+  map:     $MAP
+  checker: $DIR/scripts/phone-setup        (re-run after every step)
+
+Current state:
+EOF
+"$DIR/scripts/phone-setup" doctor || true
+cat <<EOF
+
+Paste this into Hermes (or any coding agent) on this computer:
+------------------------------------------------------------------------
+Set up my Android phone like my friend Kevin's. Read $MAP
+and follow it step by step: adb, the Hermes phone-harness plugin, the uiautomator2 fast tree,
+Wallpaper Engine, his Detent fork as my home app, and Detent themes from my live wallpapers.
+Run $DIR/scripts/phone-setup after each step and fix the first "miss".
+Ask me before anything that would delete apps or data, ask me to do the taps on the phone
+screen, and never put passwords or pairing codes in chat.
+------------------------------------------------------------------------
+EOF

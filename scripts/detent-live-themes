@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Give Detent one theme per live wallpaper in config/wallpapers/live.json.
+# Each theme takes its colours from the wallpaper's preview and carries the phone package, so
+# choosing the theme in Detent asks Wallpaper Engine to switch to that wallpaper.
+#   detent-live-themes [ADB_SERIAL] [PACKAGE]   (defaults: the S25 Ultra, app.detent.launcher.kvn)
+# Needs a debuggable Detent build (files are copied in with run-as).
+set -euo pipefail
+ROOT=$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+# Settings shared by the phone scripts (scripts/phone-setup init writes this file).
+[[ -r ${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup/env"
+LIST=${DETENT_LIVE_LIST:-${LIVE_LIST:-$ROOT/config/wallpapers/live.json}}; [[ -r $LIST ]] || LIST=$ROOT/config/wallpapers/live.json
+WANT=${1:-${PHONE_SERIAL:-R5CY93G2WNH}}; PKG=${2:-${DETENT_PACKAGE:-app.detent.launcher.kvn}}
+export WE_WORKSHOP_DIR
+
+T=""
+while read -r t state; do
+  [[ $state == device ]] || continue
+  [[ $t == "$WANT" || $(timeout 10 adb -s "$t" shell getprop ro.serialno </dev/null 2>/dev/null | tr -d '\r') == "$WANT" ]] && { T=$t; break; }
+done < <(adb devices | tail -n +2)
+[[ -n $T ]] || { echo "$WANT: not connected over adb" >&2; exit 1; }
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/detent-live.XXXX"); trap 'rm -rf "$WORK"' EXIT
+uv run -q --with pillow python - "$LIST" "$WORK" <<'PY'
+import colorsys, json, pathlib, sys
+from PIL import Image
+lst = json.loads(pathlib.Path(sys.argv[1]).read_text()); work = pathlib.Path(sys.argv[2])
+import os
+ws = pathlib.Path(os.environ.get("WE_WORKSHOP_DIR") or lst["workshop_dir"]); out = []
+
+def hexc(rgb): return "%02x%02x%02x" % tuple(max(0, min(255, round(c))) for c in rgb)
+def hls(rgb): return colorsys.rgb_to_hls(*(c / 255 for c in rgb))
+def rgb(h, l, s): return tuple(c * 255 for c in colorsys.hls_to_rgb(h, l, s))
+
+for w in lst["wallpapers"]:
+    d = ws / w["workshop_id"]
+    prev = next((p for p in d.glob("preview.*")), None)
+    if prev is None: continue
+    im = Image.open(prev).convert("RGB"); im.thumbnail((200, 200))
+    pal = im.quantize(colors=8).convert("RGB").getcolors(200 * 200)
+    pal = sorted(pal, reverse=True)                     # (count, rgb), most common first
+    base = hls(pal[0][1])                                # dominant hue sets the background
+    bg = rgb(base[0], 0.10, min(base[2], 0.35))
+    fg = rgb(base[0], 0.88, min(base[2], 0.20))
+    # Accent: the most saturated reasonably common colour, lifted to read on the dark background.
+    cand = max(pal[:6], key=lambda c: hls(c[1])[2] * (c[0] ** 0.3))
+    h, l, s = hls(cand[1]); acc = rgb(h, max(0.60, min(l, 0.72)), max(s, 0.55))
+    name = "".join(ch if ch.isalnum() else "-" for ch in w["title"].lower().split(" (")[0].replace("4k ", "")).strip("-")
+    name = "-".join(p for p in name.split("-") if p)
+    name = w.get("detent_name") or name
+    out.append({"name": name, "bg": hexc(bg), "fg": hexc(fg), "accent": hexc(acc), "file": w["mobile"]["file"]})
+(work / "themes.json").write_text(json.dumps(out, indent=1))
+for t in out: print(t["name"], t["bg"], t["fg"], t["accent"])
+PY
+
+STORE=${WE_MPKG_STORE:-$(jq -r .mobile_store "$LIST")}
+adb -s "$T" shell mkdir -p /data/local/tmp/detent-live
+adb -s "$T" push "$WORK/themes.json" /data/local/tmp/detent-live/ >/dev/null
+for f in $(jq -r '.[].file' "$WORK/themes.json"); do
+  if ! adb -s "$T" shell "run-as $PKG test -s files/live/$f" </dev/null; then
+    adb -s "$T" push "$STORE/$f" /data/local/tmp/detent-live/ >/dev/null
+  fi
+done
+adb -s "$T" shell "chmod -R a+r /data/local/tmp/detent-live; run-as $PKG sh -c 'mkdir -p files/live && cp /data/local/tmp/detent-live/* files/live/ && ls files/live'" </dev/null
+adb -s "$T" shell rm -rf /data/local/tmp/detent-live
+adb -s "$T" shell am broadcast -f 0x20 -a app.detent.launcher.RELOAD_LIVE -n "$PKG/app.detent.launcher.ColorsReceiver" </dev/null | tail -1

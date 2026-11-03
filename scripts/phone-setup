@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# Android phone setup: adb, Hermes phone-harness (+ uiautomator2 fast tree), Wallpaper Engine,
+# and the Detent launcher fork with live-wallpaper themes. Map: docs/phone-setup/README.md
+#
+#   phone-setup                 doctor: check every piece, print the next step for each gap
+#   phone-setup init            write ~/.config/phone-setup/env (fills PHONE_SERIAL if one phone)
+#   phone-setup fast-tree [WS]  install the uiautomator2 fast tree into phone-harness workspaces
+#   phone-setup detent          build the Detent fork (debug, your package id) and install it
+#   phone-setup wallpapers [ID] push live wallpapers (.mpkg) into the Wallpaper Engine app
+#   phone-setup live-themes     give Detent one theme per live wallpaper
+#   phone-setup color-sync      Linux + Noctalia only: send desktop colours to Detent on change
+#
+# Every step is idempotent and safe to re-run. Nothing here uninstalls apps or wipes data.
+set -uo pipefail
+ROOT=$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/phone-setup
+CONF=$CONF_DIR/env
+# shellcheck disable=SC1090
+[[ -r $CONF ]] && source "$CONF"
+DETENT_PACKAGE=${DETENT_PACKAGE:-app.detent.launcher.fork}
+DETENT_REPO=${DETENT_REPO:-https://github.com/kvnloo/detent.git}
+DETENT_BRANCH=${DETENT_BRANCH:-main}
+DETENT_SRC=${DETENT_SRC:-$HOME/src/detent}
+WE_PKG=io.wallpaperengine.weclient
+U2_WHEEL_SHA=731bf4e26e35cd440cd165b399b8a4d4b795178d78b9243769e336aee6dce985
+U2_JAR_SHA=0b74e83c55f443539a9f76f5ce023a51466b764b1100e4097a897053fdfc0eb6
+
+ok()   { printf '  \033[32mok\033[0m   %s\n' "$*"; }
+miss() { printf '  \033[31mmiss\033[0m %s\n' "$1"; [[ -n ${2:-} ]] && printf '       next: %s\n' "$2"; GAPS=$((GAPS+1)); }
+note() { printf '  \033[33mnote\033[0m %s\n' "$*"; }
+GAPS=0
+
+# The adb transport for PHONE_SERIAL (wireless ports change; the hardware serial does not).
+phone() {
+  local t state s
+  while read -r t state _; do
+    [[ $state == device ]] || continue
+    s=$(timeout 10 adb -s "$t" shell getprop ro.serialno </dev/null 2>/dev/null | tr -d '\r')
+    if [[ -z ${PHONE_SERIAL:-} || $s == "$PHONE_SERIAL" || $t == "$PHONE_SERIAL" ]]; then echo "$t"; return 0; fi
+  done < <(adb devices 2>/dev/null | tail -n +2)
+  return 1
+}
+dsh() { timeout 20 adb -s "$T" shell "$@" </dev/null 2>/dev/null | tr -d '\r'; }
+
+workspaces() {  # every phone-harness agent workspace Hermes has (or would create)
+  [[ -n ${PH_AGENT_WORKSPACE:-} ]] && { echo "$PH_AGENT_WORKSPACE"; return; }
+  local found=0 d
+  for d in "$HOME"/.hermes/plugins/phone-harness "$HOME"/.hermes/profiles/*/plugins/phone-harness; do
+    [[ -d $d ]] || continue
+    echo "$(dirname "$(dirname "$d")")/plugin-data/phone-harness/agent-workspace"; found=1
+  done
+  [[ $found == 1 ]] || echo "${HERMES_HOME:-$HOME/.hermes}/plugin-data/phone-harness/agent-workspace"
+}
+
+phone_harness_pkg() {  # the phone_harness package Hermes runs (for its default agent_helpers.py)
+  local py b
+  for b in phone-harness hermes; do
+    b=$(command -v $b 2>/dev/null) || continue
+    py=$(head -1 "$b" | sed -n 's/^#! *\([^ ]*python[^ ]*\).*/\1/p')
+    [[ -n $py ]] && "$py" -c 'import phone_harness,os;print(os.path.dirname(phone_harness.__file__))' 2>/dev/null && return
+  done
+  for py in "$HOME"/.hermes/hermes-agent/venv/bin/python python3; do
+    "$py" -c 'import phone_harness,os;print(os.path.dirname(phone_harness.__file__))' 2>/dev/null && return
+  done
+  return 1
+}
+
+cmd_doctor() {
+  echo "computer"
+  local c
+  for c in adb git jq uv; do command -v $c >/dev/null && ok "$c" || miss "$c not on PATH" "install it (docs/phone-setup/README.md, step 1)"; done
+  command -v hermes >/dev/null && ok "hermes" || miss "hermes not on PATH" "https://hermes-agent.nousresearch.com/docs"
+  [[ -r $CONF ]] && ok "settings: $CONF" || miss "no $CONF" "phone-setup init"
+
+  echo "hermes phone-harness"
+  local any=0 ws
+  for d in "$HOME"/.hermes/plugins/phone-harness "$HOME"/.hermes/profiles/*/plugins/phone-harness; do
+    [[ -d $d ]] && { ok "plugin: $d"; any=1; }
+  done
+  [[ $any == 1 ]] || miss "phone-harness plugin not installed" "hermes plugins install ShawnPana/phone-harness/integrations/hermes   (then restart Hermes)"
+  while read -r ws; do
+    if [[ -f $ws/fast_android.py && -f $ws/vendor/u2.jar ]] && grep -q _load_fast_android "$ws/agent_helpers.py" 2>/dev/null; then
+      ok "fast tree: $ws"
+    else miss "fast tree not in $ws" "phone-setup fast-tree"; fi
+  done < <(workspaces)
+
+  echo "phone"
+  if ! command -v adb >/dev/null; then miss "no adb, phone not checked"; return; fi
+  if ! T=$(phone); then
+    miss "no authorized phone${PHONE_SERIAL:+ with serial $PHONE_SERIAL}" "Developer options > USB or Wireless debugging, then: adb pair HOST:PORT; adb connect HOST:PORT; accept the prompt"
+    echo; echo "$GAPS gap(s)"; return 1
+  fi
+  ok "adb: $T ($(dsh getprop ro.product.model), Android $(dsh getprop ro.build.version.release), serial $(dsh getprop ro.serialno))"
+  [[ -z ${PHONE_SERIAL:-} ]] && note "PHONE_SERIAL unset; run phone-setup init to pin this phone"
+  if grep -q package: <<<"$(dsh pm path $WE_PKG)"; then ok "Wallpaper Engine app"
+  else miss "Wallpaper Engine app not installed" "Play Store: Wallpaper Engine (needs the Steam version for content)"; fi
+  if grep -q WEWallpaperService <<<"$(dsh dumpsys wallpaper)"; then ok "Wallpaper Engine is the live wallpaper"
+  else miss "Wallpaper Engine is not the live wallpaper" "open a wallpaper in the app, tap the check mark, Set wallpaper > Home and lock screens"; fi
+  if grep -q package: <<<"$(dsh pm path "$DETENT_PACKAGE")"; then
+    ok "Detent fork: $DETENT_PACKAGE ($(dsh dumpsys package "$DETENT_PACKAGE" | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1))"
+    if dsh run-as "$DETENT_PACKAGE" ls >/dev/null && [[ -n $(dsh run-as "$DETENT_PACKAGE" ls) ]]; then ok "Detent build is debuggable (live themes can be copied in)"
+    else miss "Detent build is not debuggable" "phone-setup detent (debug build)"; fi
+    if grep -q "$DETENT_PACKAGE" <<<"$(dsh cmd package resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN)"; then ok "Detent is the home app"
+    else miss "Detent is not the home app" "Settings > Apps > Default apps > Home app > Detent (or Detent's ready step: set as home app)"; fi
+    if grep -q themes.json <<<"$(dsh run-as "$DETENT_PACKAGE" ls files/live)"; then ok "Detent live themes installed"
+    else miss "no Detent live themes" "phone-setup wallpapers, then phone-setup live-themes"; fi
+  else
+    miss "Detent fork $DETENT_PACKAGE not installed" "phone-setup detent"
+  fi
+  echo; [[ $GAPS == 0 ]] && echo "all set" || echo "$GAPS gap(s)"
+  [[ $GAPS == 0 ]]
+}
+
+cmd_init() {
+  mkdir -p "$CONF_DIR"
+  if [[ ! -e $CONF ]]; then cp "$ROOT/config/phone-setup/env.example" "$CONF"; echo "wrote $CONF"; else echo "kept $CONF"; fi
+  if ! grep -q '^PHONE_SERIAL=.\+' "$CONF"; then
+    local n; n=$(adb devices 2>/dev/null | tail -n +2 | grep -c 'device$')
+    if [[ $n == 1 ]]; then
+      local t s; t=$(adb devices | tail -n +2 | awk '$2=="device"{print $1}')
+      s=$(adb -s "$t" shell getprop ro.serialno </dev/null | tr -d '\r')
+      sed -i "s/^PHONE_SERIAL=.*/PHONE_SERIAL=$s/" "$CONF"; echo "PHONE_SERIAL=$s"
+    else echo "connect exactly one phone (now: $n) and re-run, or set PHONE_SERIAL in $CONF by hand"; fi
+  fi
+}
+
+fetch_u2_jar() {  # $1 = destination; uiautomator2 3.7.0's bundled server jar, sha-checked
+  local dst=$1 tmp; tmp=$(mktemp -d "${TMPDIR:-/tmp}/u2.XXXX")
+  ( cd "$tmp" && curl -fsSL -o u2.whl "$(curl -fsSL https://pypi.org/pypi/uiautomator2/3.7.0/json |
+      jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .url')" ) || { rm -rf "$tmp"; return 1; }
+  echo "$U2_WHEEL_SHA  $tmp/u2.whl" | sha256sum -c --quiet || { rm -rf "$tmp"; echo "wheel sha mismatch" >&2; return 1; }
+  unzip -p "$tmp/u2.whl" uiautomator2/assets/u2.jar > "$tmp/u2.jar"
+  echo "$U2_JAR_SHA  $tmp/u2.jar" | sha256sum -c --quiet || { rm -rf "$tmp"; echo "jar sha mismatch" >&2; return 1; }
+  mv "$tmp/u2.jar" "$dst"; rm -rf "$tmp"
+}
+
+cmd_fast_tree() {
+  local src=$ROOT/config/phone-harness/agent-workspace ws list
+  if [[ $# -gt 0 ]]; then list=$1; else list=$(workspaces); fi
+  while read -r ws; do
+    [[ -n $ws ]] || continue
+    mkdir -p "$ws/vendor"
+    if [[ ! -f $ws/agent_helpers.py ]]; then  # what the plugin would copy in on first use
+      local pkg; pkg=$(phone_harness_pkg)
+      if [[ -n ${pkg:-} && -f $pkg/agent_workspace/agent_helpers.py ]]; then cp "$pkg/agent_workspace/agent_helpers.py" "$ws/"
+      else printf '"""Agent-editable phone helpers."""\n' > "$ws/agent_helpers.py"; fi
+    fi
+    cp "$src/fast_android.py" "$ws/"; cp "$src/README.md" "$ws/README-fast-tree.md"
+    cp "$src/vendor/ph-u2-run.sh" "$src/vendor/u2.jar.LICENSE" "$ws/vendor/"
+    if ! echo "$U2_JAR_SHA  $ws/vendor/u2.jar" | sha256sum -c --quiet >/dev/null 2>&1; then
+      fetch_u2_jar "$ws/vendor/u2.jar" || { echo "$ws: could not fetch u2.jar" >&2; return 1; }
+    fi
+    if ! grep -q _load_fast_android "$ws/agent_helpers.py"; then
+      cp "$ws/agent_helpers.py" "$ws/agent_helpers.py.before-fast-tree"
+      printf '\n\n' >> "$ws/agent_helpers.py"; cat "$src/agent_helpers.fast-tree.py" >> "$ws/agent_helpers.py"
+    fi
+    echo "fast tree installed: $ws"
+  done <<<"$list"
+}
+
+cmd_detent() {
+  command -v java >/dev/null || { echo "need JDK 17 or 21 (java on PATH or JAVA_HOME)" >&2; return 1; }
+  [[ -n ${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}} || -f $DETENT_SRC/local.properties ]] ||
+    { echo "need the Android SDK: set ANDROID_HOME (Android Studio installs it)" >&2; return 1; }
+  if [[ -d $DETENT_SRC/.git ]]; then git -C "$DETENT_SRC" fetch -q origin "$DETENT_BRANCH" && git -C "$DETENT_SRC" checkout -q -B "$DETENT_BRANCH" "origin/$DETENT_BRANCH"
+  else git clone -q -b "$DETENT_BRANCH" "$DETENT_REPO" "$DETENT_SRC"; fi
+  local code; code=$(git -C "$DETENT_SRC" rev-list --count HEAD)
+  ( cd "$DETENT_SRC" && ./gradlew --no-daemon :app:assembleDebug -PdetentId="$DETENT_PACKAGE" -PdetentCode="$code" ) || return 1
+  local apk=$DETENT_SRC/app/build/outputs/apk/debug/app-debug.apk
+  T=$(phone) || { echo "built $apk; connect the phone and: adb install -r $apk" >&2; return 1; }
+  adb -s "$T" install -r "$apk" && echo "installed $DETENT_PACKAGE ($code). Open it, finish setup, tap 'set as home app'."
+}
+
+cmd_wallpapers() { T=$(phone) || { echo "no phone" >&2; return 1; }; "$ROOT/scripts/wallpaper-phone.sh" "$T" "$@"; }
+cmd_live_themes() { T=$(phone) || { echo "no phone" >&2; return 1; }; "$ROOT/scripts/detent-live-themes" "$T" "$DETENT_PACKAGE"; }
+
+cmd_color_sync() {
+  [[ -r ${DETENT_COLORS:-$HOME/.config/noctalia/colors.json} ]] || { echo "no Noctalia colors.json; colour sync is for Hyprland + Noctalia desktops" >&2; return 1; }
+  mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user"
+  ln -sfn "$ROOT/scripts/detent-sync-colors" "$HOME/.local/bin/detent-sync-colors"
+  ln -sfn "$ROOT/config/systemd/user/detent-sync-colors.service" "$HOME/.config/systemd/user/"
+  ln -sfn "$ROOT/config/systemd/user/detent-sync-colors.path" "$HOME/.config/systemd/user/"
+  systemctl --user daemon-reload && systemctl --user enable --now detent-sync-colors.path && systemctl --user start detent-sync-colors.service
+  systemctl --user --no-pager status detent-sync-colors.service | tail -3
+}
+
+case ${1:-doctor} in
+  doctor) cmd_doctor ;;
+  init) cmd_init ;;
+  fast-tree) shift; cmd_fast_tree "$@" ;;
+  detent) cmd_detent ;;
+  wallpapers) shift; cmd_wallpapers "$@" ;;
+  live-themes) cmd_live_themes ;;
+  color-sync) cmd_color_sync ;;
+  -h|--help|help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "unknown: $1 (phone-setup help)" >&2; exit 2 ;;
+esac
