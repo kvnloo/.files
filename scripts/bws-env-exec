@@ -31,6 +31,19 @@ def vault(env):
     return {item['key']: item['value'] for item in items}
 
 
+# Owner rule (2026-11-03): no agent or LLM may receive a Google/Gemini key. Gemini runs only
+# through the agy CLI on its own OAuth login. A consumer map that names one fails closed, and
+# an inherited one is stripped from every child environment.
+GOOGLE_KEY = re.compile(r'GEMINI|GOOGLE_API_KEY|GOOGLE_GENAI|GOOGLE_GENERATIVE|GOOGLE_CLOUD_API_KEY|VERTEX', re.I)
+
+
+def refuse_google(scopes):
+    hits = sorted(scope + ':' + name for scope, mappings in scopes.items()
+                  for name, source in mappings.items() if GOOGLE_KEY.search(name) or GOOGLE_KEY.search(source))
+    if hits:
+        raise RuntimeError('Google/Gemini keys are never injected (use agy): ' + ', '.join(hits))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scope')
@@ -42,6 +55,7 @@ def main():
     if command[:1] == ['--']:
         command = command[1:]
     scopes = json.loads(Path(args.config).read_text())['scopes']
+    refuse_google(scopes)
     if args.refresh:
         values = vault(os.environ)
         runtime = Path(os.environ['XDG_RUNTIME_DIR']) / 'bws-secrets'
@@ -77,6 +91,8 @@ def main():
     env = dict(os.environ)
     env.pop('BWS_ACCESS_TOKEN', None)
     env.pop('TYPESAFE_API_KEY', None)
+    for inherited in [k for k in env if GOOGLE_KEY.search(k)]:
+        env.pop(inherited)
     for name, source in mappings.items():
         if not re.fullmatch(r'[A-Z][A-Z0-9_]*', name):
             raise RuntimeError('invalid environment name in consumer map')
