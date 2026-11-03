@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""gh-pace: burn rate of the shared GitHub API budget (account kvnloo), like burn-pace for subs.
+
+Totals come from GitHub's own counter (GET /rate_limit, which is free), not from counting
+our calls: the ChatGPT GitHub connector, the MBP, Actions PATs and host agents all draw on
+the same per-user 5000/h core pool, and only GitHub sees all of them.
+
+Local counts are used only to split that total:
+  ghcache   upstream calls ghcache made that GitHub charged (non-304), from /_ghcache/stats
+  host_gh   REST `gh` invocations on this host, logged by the ~/.local/bin/gh shim (approximate:
+            one invocation is usually one request, --paginate can be more; GraphQL porcelain
+            such as `gh pr list` and `gh api graphql` is excluded because it uses its own pool)
+  external  the rest. Measured on groot 2026-11-03: every host `gh` goes through the shim and
+            T3/Tern PR polling is ~3 requests/min, so this is mostly the ChatGPT GitHub connector
+            (it tracked the number of live factory chats) plus Actions jobs using the owner's PAT
+
+  gh-pace sample        record one sample (systemd timer, every 2 min)
+  gh-pace [--json]      sample, then print the posture
+"""
+import json, os, subprocess, sys, time, urllib.request
+from pathlib import Path
+
+STATE = Path(os.environ.get("GH_PACE_STATE", Path.home() / ".z0int/state/posture"))
+SAMPLES = STATE / "gh-rate.jsonl"
+REPORT = STATE / "gh-pace.json"
+CALLS = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "gh-pace/calls.tsv"
+GHCACHE = "http://127.0.0.1:18090/_ghcache/stats"
+RESERVE = 500           # keep this much core at all times (matches ghcache --reserve)
+WINDOW_S = 15 * 60      # observed burn = average over the last 15 minutes
+KEEP_S = 3 * 3600
+FREE = {("auth", "token"), ("auth", "status"), ("api", "rate_limit"), ("--version", "")}
+
+
+def token():
+    for k in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if os.environ.get(k):
+            return os.environ[k]
+    # Use the real user bus: a stale private DBUS address in some agent shells hides the keyring.
+    env = dict(os.environ, DBUS_SESSION_BUS_ADDRESS=f"unix:path=/run/user/{os.getuid()}/bus")
+    return subprocess.run(["/usr/bin/gh", "auth", "token"], capture_output=True, text=True,
+                          timeout=20, env=env).stdout.strip()
+
+
+def rate_limit():
+    req = urllib.request.Request("https://api.github.com/rate_limit", headers={
+        "Authorization": f"Bearer {token()}", "Accept": "application/vnd.github+json",
+        "User-Agent": "gh-pace"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        res = json.load(r)["resources"]
+    return {k: {f: res[k][f] for f in ("limit", "remaining", "used", "reset")}
+            for k in ("core", "graphql", "search") if k in res}
+
+
+def ghcache_charged():
+    try:
+        with urllib.request.urlopen(GHCACHE, timeout=5) as r:
+            s = json.load(r)["stats"]
+        return s["upstream_calls"] - s["upstream_304"]
+    except Exception:
+        return None
+
+
+# gh porcelain that goes through GraphQL (a separate pool); everything else is REST core.
+GRAPHQL_CMDS = {"pr", "issue", "repo", "project", "search", "discussion", "label", "status"}
+
+
+def pool_of(a1, a2):
+    if a1 == "api":
+        return "graphql" if a2 == "graphql" else "core"
+    return "graphql" if a1 in GRAPHQL_CMDS else "core"
+
+
+def host_calls(since, until):
+    """gh shim log lines in (since, until], minus free calls. Returns ({pool: n}, core by caller)."""
+    n, by = {"core": 0, "graphql": 0}, {}
+    try:
+        lines = CALLS.read_text().splitlines()
+    except FileNotFoundError:
+        return n, {}
+    keep = []
+    for ln in lines:
+        p = ln.split("\t")
+        if len(p) < 6 or not p[0].isdigit():
+            continue
+        ts = int(p[0])
+        if ts >= until - KEEP_S:
+            keep.append(ln)
+        if since < ts <= until and (p[3], p[4]) not in FREE:
+            pool = pool_of(p[3], p[4])
+            n[pool] += 1
+            if pool == "core":
+                who = f"{p[2]} gh {p[3]} in {p[5].replace(str(Path.home()), '~')}"
+                by[who] = by.get(who, 0) + 1
+    if len(keep) < len(lines):  # trim the log so it never grows unbounded
+        tmp = CALLS.with_suffix(".tmp")
+        tmp.write_text("".join(l + "\n" for l in keep))
+        tmp.replace(CALLS)
+    return n, by
+
+
+def load():
+    try:
+        return [json.loads(l) for l in SAMPLES.read_text().splitlines() if l.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def sample():
+    STATE.mkdir(parents=True, exist_ok=True)
+    CALLS.parent.mkdir(parents=True, exist_ok=True)
+    now = int(time.time())
+    prev = (load() or [None])[-1]
+    s = {"t": now, "rate": rate_limit(), "ghcache_charged": ghcache_charged()}
+    since = prev["t"] if prev else now - 120
+    s["host_pools"], s["host_by"] = host_calls(since, now)
+    s["host_gh"] = s["host_pools"]["core"]
+    # Charged core requests since the previous sample, from GitHub's counter.
+    if prev:
+        a, b = prev["rate"]["core"], s["rate"]["core"]
+        s["core_delta"] = b["used"] - a["used"] if a["reset"] == b["reset"] else b["used"]
+        gc0, gc1 = prev.get("ghcache_charged"), s["ghcache_charged"]
+        s["ghcache_delta"] = None if gc1 is None or gc0 is None else (gc1 - gc0 if gc1 >= gc0 else gc1)
+    rows = [r for r in load() if r["t"] >= now - KEEP_S] + [s]
+    tmp = SAMPLES.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    tmp.replace(SAMPLES)
+    REPORT.write_text(json.dumps(report(rows), indent=1))
+    return rows
+
+
+def band(remaining, ratio, held):
+    if held:
+        return {"band": "hold", "advice": "core held: no direct gh REST reads; use local clones, "
+                "ghcache stale data, or gh graphql (separate pool) until reset"}
+    if ratio is None:
+        return {"band": "unknown", "advice": "prefer local clones and ghc for reads"}
+    if ratio >= 1.5:
+        return {"band": "hard-throttle", "advice": "stop bulk/polling reads; clones + ghc only; "
+                "ask the ChatGPT connector lanes to pause GitHub reads"}
+    if ratio >= 1.0:
+        return {"band": "throttle", "advice": "reads via local clones or ghc; no new polling loops"}
+    return {"band": "ok", "advice": "fine; still prefer clones and ghc for bulk reads"}
+
+
+def report(rows):
+    s = rows[-1]
+    now, core = s["t"], s["rate"]["core"]
+    win = [r for r in rows if r["t"] > now - WINDOW_S and "core_delta" in r]
+    # Each delta covers (previous sample, this sample]; the window starts at the sample before win[0].
+    before = [p["t"] for p in rows if win and p["t"] < win[0]["t"]]
+    span = now - (before[-1] if before else now) if win else 0
+    used = sum(r["core_delta"] for r in win)
+    ghc = sum(r.get("ghcache_delta") or 0 for r in win)
+    host = sum(r.get("host_gh") or 0 for r in win)
+    by = {}
+    for r in win:
+        for k, v in (r.get("host_by") or {}).items():
+            by[k] = by.get(k, 0) + v
+    mins_left = max((core["reset"] - now) / 60, 0.5)
+    observed = used / (span / 60) if span >= 60 else None          # requests/min
+    sustainable = max(core["remaining"] - RESERVE, 0) / mins_left  # requests/min
+    ratio = (observed / sustainable if sustainable > 0 else (9.9 if observed else 0.0)) \
+        if observed is not None else None
+    held = core["remaining"] <= RESERVE
+    exhaust = (now + core["remaining"] / observed * 60) if observed else None
+    out = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now)),
+        "core": {**core, "reset_local": time.strftime("%H:%M", time.localtime(core["reset"])),
+                 "minutes_to_reset": round(mins_left, 1)},
+        "graphql": s["rate"].get("graphql"), "search": s["rate"].get("search"),
+        "window_min": round(span / 60, 1),
+        "observed_per_min": round(observed, 1) if observed is not None else None,
+        "sustainable_per_min": round(sustainable, 1),
+        "pace_ratio": round(ratio, 2) if ratio is not None else None,
+        "exhausts_at": time.strftime("%H:%M", time.localtime(exhaust)) if exhaust and exhaust < core["reset"] else None,
+        "split": {"total": used, "ghcache": ghc, "host_gh": host,
+                  "external": max(used - ghc - host, 0)},
+        "host_top": sorted(by.items(), key=lambda kv: -kv[1])[:8],
+        **band(core["remaining"], ratio, held)}
+    return out
+
+
+def main():
+    rows = sample()
+    if sys.argv[1:2] == ["sample"]:
+        return
+    r = report(rows)
+    if "--json" in sys.argv:
+        print(json.dumps(r, indent=1))
+        return
+    c, sp = r["core"], r["split"]
+    print(f"github core: {c['remaining']}/{c['limit']} left, resets {c['reset_local']} "
+          f"({c['minutes_to_reset']}m) | burn {r['observed_per_min']}/min vs sustainable "
+          f"{r['sustainable_per_min']}/min (ratio {r['pace_ratio']}) -> {r['band']}")
+    if r["exhausts_at"]:
+        print(f"  at this rate core runs out at {r['exhausts_at']}")
+    print(f"  last {r['window_min']}m: {sp['total']} charged = ghcache {sp['ghcache']} + host gh "
+          f"{sp['host_gh']} + external {sp['external']} (mostly ChatGPT connector)")
+    for who, n in r["host_top"]:
+        print(f"    {n:5d}  {who}")
+    print(f"  graphql {r['graphql']['remaining']}/{r['graphql']['limit']}, "
+          f"search {r['search']['remaining']}/{r['search']['limit']}")
+    print(f"  {r['advice']}")
+
+
+if __name__ == "__main__":
+    main()

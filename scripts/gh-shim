@@ -1,0 +1,8 @@
+#!/bin/bash
+# gh-pace attribution shim: log one line per host `gh` call, then exec the real gh unchanged.
+# Fields: epoch, parent pid, parent comm, argv1, argv2, cwd. Read by ~/.local/bin/gh-pace.
+# Remove this file to opt out; nothing else depends on it.
+log="${XDG_STATE_HOME:-$HOME/.local/state}/gh-pace/calls.tsv"
+comm=; read -r comm < "/proc/$PPID/comm" 2>/dev/null
+{ printf '%(%s)T\t%s\t%s\t%s\t%s\t%s\n' -1 "$PPID" "$comm" "${1:-}" "${2:-}" "$PWD" >> "$log"; } 2>/dev/null
+exec /usr/bin/gh "$@"
