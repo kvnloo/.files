@@ -10,7 +10,7 @@ computer (Linux/macOS/Windows)                     Android phone (10+; tested on
   Hermes + phone-harness plugin ── phone_exec ──▶  taps, typing, screen tree
      └ uiautomator2 fast tree (this repo) ──────▶  /data/local/tmp/ph-u2/u2.jar (no APK, no root)
   Wallpaper Engine (Steam) ── .mpkg ────────────▶  Wallpaper Engine app = live wallpaper
-  kvnloo/detent phone-build ── adb install ─────▶  Detent fork = home app
+  kvnloo/detent main ──── adb install ─────▶  Detent fork = home app
      ├ scripts/detent-live-themes ──────────────▶  one Detent theme per live wallpaper
      └ scripts/detent-sync-colors (optional) ───▶  Detent "hyprland" theme follows desktop colours
 ```
@@ -30,7 +30,7 @@ computer (Linux/macOS/Windows)                     Android phone (10+; tested on
 ## 0. Get this repo
 
 ```sh
-git clone -b feat/phone-setup-map https://github.com/kvnloo/.files.git ~/src/kvnloo-files
+git clone https://github.com/kvnloo/.files.git ~/src/kvnloo-files
 cd ~/src/kvnloo-files && scripts/phone-setup
 ```
 
@@ -120,9 +120,9 @@ Prove it: `adb shell dumpsys wallpaper | grep WEWallpaperService` prints a line.
 
 ## 5. Detent (fork) as the home app
 
-[Detent](https://github.com/bjarneo/detent) is a dial launcher. My fork's `phone-build`
-branch adds a transparent theme that sits over the live wallpaper, live themes, folders and
-swipe gestures. Build notes: [kvnloo/detent docs/FORK.md](https://github.com/kvnloo/detent/blob/phone-build/docs/FORK.md).
+[Detent](https://github.com/bjarneo/detent) is a dial launcher. My fork (`main`)
+adds a transparent theme that sits over the live wallpaper, live themes, folders and
+swipe gestures. Build notes: [kvnloo/detent docs/FORK.md](https://github.com/kvnloo/detent/blob/main/docs/FORK.md).
 
 ```sh
 scripts/phone-setup detent     # clones to ~/src/detent, debug build, adb install -r
