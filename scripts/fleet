@@ -116,6 +116,20 @@ def probe_path(n):
     return "~/.local/lib/fleet/fleet-node-probe" if n["kind"] == "phone" else "/usr/local/bin/fleet-node-probe"
 
 
+def decode_probe_output(text):
+    """Accept whole JSON documents (Boat) or a final compact JSON line (SSH)."""
+    text = text.strip()
+    if not text:
+        raise ValueError('probe returned no JSON output')
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        value = json.loads(text.splitlines()[-1])
+    if not isinstance(value, dict):
+        raise ValueError('probe returned JSON that is not an object')
+    return value
+
+
 def probe_error(n, message, transport):
     return {"node": n["name"], "status": "probe_error", "message": message,
             "error": f"probe_error: {message}", "transport": transport}
@@ -150,12 +164,7 @@ def probe(n, guest=False):
                        "connection closed", "connection reset", "no such file or directory")
             reason = next((text for text in reasons if text in result.stderr.lower()), "command failed")
             raise RuntimeError(f"{transport} probe exited {result.returncode}: {reason}")
-        lines = result.stdout.strip().splitlines()
-        if not lines:
-            raise ValueError(f"{transport} probe returned no JSON output")
-        value = json.loads(lines[-1])
-        if not isinstance(value, dict):
-            raise ValueError(f"{transport} probe returned JSON that is not an object")
+        value = decode_probe_output(result.stdout)
         return {"boat_limits": value} if n["kind"] == "boat" else value
     except Exception as exc:
         # A failed node must not abort concurrent admission of healthy nodes.
