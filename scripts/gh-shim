@@ -3,8 +3,12 @@
 # 1. A plain `gh api` GET whose output goes to a pipe or file is served by gh-cached through
 #    ghcache (ETag-revalidated, so unchanged data is free). gh-cached exits 64 (not a read it
 #    mirrors) or 75 (ghcache down, or budget held with no cached copy) to fall through to gh.
-# 2. Every call is logged for gh-pace: epoch, parent pid, parent comm, argv1, argv2, cwd, route.
-# GH_SHIM_DIRECT=1 skips the cache. Remove this file to opt out entirely.
+# 2. O17 (z0intelligence bend/ops_fsm, gate z0int.fsm.gh_route) decides every call that would
+#    otherwise go direct: a timer-started unit never falls back to the GitHub API for a REST
+#    read (re-run through ghc when it can be, else refused with exit 3), and a repo under
+#    gh-feedback-watch backoff refuses our writes (exit 3). A gate crash warns and goes direct.
+# 3. Every call is logged for gh-pace: epoch, parent pid, parent comm, argv1, argv2, cwd, route.
+# GH_SHIM_DIRECT=1 skips the cache (not the O17 gate). Remove this file to opt out entirely.
 log="${XDG_STATE_HOME:-$HOME/.local/state}/gh-pace/calls.tsv"
 comm=; read -r comm < "/proc/$PPID/comm" 2>/dev/null
 note() { { printf '%(%s)T\t%s\t%s\t%s\t%s\t%s\t%s\n' -1 "$PPID" "$comm" "${1:-}" "${2:-}" "$PWD" "$route" >> "$log"; } 2>/dev/null; }
@@ -14,6 +18,20 @@ if [ "${1:-}" = api ] && [ ! -t 1 ] && [ -z "${GH_SHIM_DIRECT:-}${GH_HOST:-}" ] 
   if [ "$rc" -ne 64 ] && [ "$rc" -ne 75 ]; then
     route=cached; note "$@"; exit "$rc"
   fi
+fi
+gate="${GH_O17_GATE:-$HOME/.local/lib/z0-guard/gh-route/current/src}"
+backoff="${GH_FEEDBACK_BACKOFF:-$HOME/.z0int/state/gh-feedback/BACKOFF.json}"
+if [ -d "$gate/z0int/fsm" ] && { [ "${1:-}" = api ] || { [ -s "$backoff" ] && [ "$(tr -d ' \n' < "$backoff")" != "{}" ]; }; }; then
+  GH_FEEDBACK_BACKOFF="$backoff" PYTHONPATH="$gate" /usr/bin/python3 -m z0int.fsm.gh_route shim --pid $$ -- "$@"; rc=$?
+  case "$rc" in
+    0) ;;
+    3) route=refused; note "$@"; exit 3 ;;
+    10) ghc="${GHC:-$HOME/.local/bin/ghc}"
+        if [ -x "$ghc" ]; then route=cached; note "$@"; exec "$ghc" "$@"; fi
+        echo "gh: O17: no ghc at $ghc to route this poller read through ghcache; refused" >&2
+        route=refused; note "$@"; exit 3 ;;
+    *) echo "gh: O17 gate failed (exit $rc); going direct" >&2 ;;
+  esac
 fi
 route=direct; note "$@"
 exec /usr/bin/gh "$@"

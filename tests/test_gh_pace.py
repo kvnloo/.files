@@ -88,7 +88,8 @@ def test_shim_logs_and_passes_arguments_through(tmp_path):
     for f in ("gh", "real-gh"):
         (fake / f).chmod(0o755)
     (tmp_path / "state" / "gh-pace").mkdir(parents=True)
-    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"), GH_CACHED=str(fake / "none"))
+    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"), GH_CACHED=str(fake / "none"),
+               GH_O17_GATE=str(tmp_path / "no-gate"))
     out = subprocess.run([str(fake / "gh"), "api", "repos/o/r", "--jq", ".x y"],
                          capture_output=True, text=True, env=env, cwd=tmp_path, check=True)
     assert out.stdout.strip() == "real:api repos/o/r --jq .x y"
@@ -105,6 +106,43 @@ def test_shim_logs_and_passes_arguments_through(tmp_path):
         assert out.stdout.strip() == expect
         last = (tmp_path / "state" / "gh-pace" / "calls.tsv").read_text().splitlines()[-1]
         assert last.split("\t")[-1] == route
+
+
+def test_shim_obeys_o17_gate(tmp_path):
+    """Exit 3 from the O17 gate refuses without reaching gh; 10 re-runs through ghc;
+    a crashed gate warns and goes direct (it must never brick gh)."""
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    shim = (REPO / "scripts" / "gh-shim").read_text().replace("/usr/bin/gh", str(fake / "real-gh"))
+    (fake / "gh").write_text(shim)
+    (fake / "real-gh").write_text("#!/bin/sh\necho \"real:$*\"\n")
+    (fake / "ghc").write_text("#!/bin/sh\necho \"ghc:$*\"\n")
+    for f in ("gh", "real-gh", "ghc"):
+        (fake / f).chmod(0o755)
+    gate = tmp_path / "gate"
+    (gate / "z0int" / "fsm").mkdir(parents=True)
+    (gate / "z0int" / "__init__.py").write_text("")
+    (gate / "z0int" / "fsm" / "__init__.py").write_text("")
+    (tmp_path / "state" / "gh-pace").mkdir(parents=True)
+    env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"), GH_CACHED=str(fake / "none"),
+               GH_O17_GATE=str(gate), GHC=str(fake / "ghc"),
+               GH_FEEDBACK_BACKOFF=str(tmp_path / "BACKOFF.json"))
+    for rc, code, out_, route in ((3, 3, "", "refused"), (10, 0, "ghc:api notifications", "cached"),
+                                  (0, 0, "real:api notifications", "direct"),
+                                  (1, 0, "real:api notifications", "direct")):
+        (gate / "z0int" / "fsm" / "gh_route.py").write_text(f"import sys\nsys.exit({rc})\n")
+        p = subprocess.run([str(fake / "gh"), "api", "notifications"], capture_output=True, text=True,
+                           env=env, cwd=tmp_path)
+        assert (p.returncode, p.stdout.strip()) == (code, out_), (rc, p.stderr)
+        last = (tmp_path / "state" / "gh-pace" / "calls.tsv").read_text().splitlines()[-1]
+        assert last.split("\t")[-1] == route
+    # Porcelain writes consult the gate only while a backoff is active.
+    (gate / "z0int" / "fsm" / "gh_route.py").write_text("import sys\nsys.exit(3)\n")
+    p = subprocess.run([str(fake / "gh"), "pr", "comment", "1"], capture_output=True, text=True, env=env, cwd=tmp_path)
+    assert p.stdout.strip() == "real:pr comment 1"
+    (tmp_path / "BACKOFF.json").write_text('{"o/r": {}}')
+    p = subprocess.run([str(fake / "gh"), "pr", "comment", "1"], capture_output=True, text=True, env=env, cwd=tmp_path)
+    assert p.returncode == 3
 
 
 def load_gh_cached():
