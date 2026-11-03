@@ -15,9 +15,10 @@
       },
       "screens": {
         "groot": "DP-1",
-        "s25": "installed",
+        "s25": "active (home + lock)",
         "s22": "installed"
-      }
+      },
+      "detent_name": "forgotten-ruins"
     },
     {
       "workshop_id": "2981249186",
@@ -30,9 +31,10 @@
         "source": "exported by the S22 Wallpaper Engine app"
       },
       "screens": {
-        "s25": "active (home + lock)",
+        "s25": "installed",
         "s22": "installed"
-      }
+      },
+      "detent_name": "black-hole"
     },
     {
       "workshop_id": "1888636115",
@@ -48,7 +50,8 @@
         "groot": "DP-2",
         "s25": "installed",
         "s22": "installed"
-      }
+      },
+      "detent_name": "abstract-landscape"
     }
   ]
 }
