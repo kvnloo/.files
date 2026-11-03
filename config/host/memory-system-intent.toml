@@ -1,0 +1,102 @@
+# Unified memory system: the architecture as data. scripts/memory-heal enforces every entry.
+# Source of truth for which services exist, what "healthy" means and the one allowed remedy per failure
+# class. Detection without a remedy was the recurring failure: recall-check reported clean/state.db
+# 154 h behind for six days and service-watch notified 600+ times while nothing repaired it.
+# Change the system by editing this file and memory-heal, never by hand-editing live config.
+schema = "memory-system-intent.v1"
+
+[limits]
+attempts_per_fingerprint = 4   # real remedy attempts (waiting on in-flight work does not count) before escalation
+window_hours = 6
+escalate_once_per_hours = 24   # one LLM diagnosis + incident per fingerprint per day
+
+# Long-running services. Remedy: reset-failed + restart.
+[[daemon]]
+unit = "agentsview.service"       # archive + HTTP; memory MCP reads its SQLite read-only first
+[[daemon]]
+unit = "z0intelligence.service"
+[[daemon]]
+unit = "tencentdb-memory.service"
+[[daemon]]
+unit = "uniichat-luna.service"
+[[daemon]]
+unit = "z0int-memory-mcp.socket"
+
+# Scheduled jobs. Must be enabled (timers.target.wants) and waiting. Remedy: enable --now.
+# ctx-import.timer was linked but not wanted, so it never started after the 10-31 reboot.
+[[timer]]
+unit = "agentsview-sync.timer"
+[[timer]]
+unit = "ctx-import.timer"
+[[timer]]
+unit = "memory-recall-check.timer"
+[[timer]]
+unit = "memory-corrections-capture.timer"
+[[timer]]
+unit = "memory-drift.timer"
+[[timer]]
+unit = "z0int-policy.timer"
+[[timer]]
+unit = "z0int-loop-tick.timer"
+
+# One-shot jobs whose last run must not be failed. Known failure classes map to one remedy each;
+# anything else escalates. exit 3 from z0int-loop-tick is a domain "degraded" signal: escalate, never restart.
+[[oneshot]]
+unit = "z0int-policy.service"
+known = ["zero_byte_json"]
+[[oneshot]]
+unit = "z0int-loop-tick.service"
+known = []
+[[oneshot]]
+unit = "ctx-import.service"
+known = []
+[[oneshot]]
+unit = "memory-corrections-capture.service"
+known = ["zero_byte_json"]
+[[oneshot]]
+unit = "memory-recall-check.service"
+known = ["derived"]          # fails when another invariant fails; heal those, then re-run it
+
+# Long jobs that resume from their own cache: a failed run (OOM, start-limit) is restarted, never escalated.
+[[resumable]]
+unit = "graphrag-index.service"
+
+# Units that are failed by design outside their window: reset, never restart.
+# ctx.service is the auto-mode supervisor; ctx-import-hourly opens an auto window, and in manual mode
+# ctx removes the supervisor environment file, so the unit fails on start.
+[[expected_failed]]
+unit = "ctx.service"
+when = "ctx_index_manual"
+
+# Archive coverage: every Hermes profile with a state.db must be listed explicitly in AgentsView.
+# The container form (~/.hermes/profiles) is not expanded because ~/.hermes resolves to
+# /workspace/hermes-home, and isHermesProfilesContainer requires a parent named .hermes.
+[agentsview]
+config = "~/.agentsview/config.toml"
+archive = "~/.agentsview/sessions.db"
+hermes_home = "~/.hermes"
+fixed_dirs = ["~/.hermes/sessions"]
+# Newest archived session per profile may trail the profile's own newest session by this much.
+max_lag_hours = 2
+
+[ctx]
+data_root = "/mnt/zer0models/host-offload/home_kvn_.ctx"
+import_log = "/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log"
+max_age_hours = 3
+
+[recall]
+receipt = "/mnt/zer0models/workspace/zer0/data/operations/memory-repair-20261025/recall-receipt.json"
+max_age_hours = 3
+
+# Directories whose JSON state files a crashed writer can leave at zero bytes. Remedy: move the empty
+# file to quarantine (never delete) so the reader treats the state as absent.
+[zero_byte_json]
+roots = ["~/.z0int/policy", "~/.local/state/z0int"]
+
+[escalation]
+# A bounded LLM diagnosis per novel incident. It may read anything and write only the incident report.
+# NOT technically enforced: systemd sandboxing of this unit does not reach Hermes' tool execution (tested
+# 2026-11-02). Read-only rests on the brief until Hermes offers a read-only toolset.
+command = ["hermes", "-p", "clean", "-z"]
+timeout_s = 900
+state = "/mnt/zer0models/workspace/zer0/data/operations/memory-heal"
