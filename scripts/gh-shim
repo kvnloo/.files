@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # gh-pace shim, installed as ~/.local/bin/gh ahead of /usr/bin/gh.
 # 1. A plain `gh api` GET whose output goes to a pipe or file is served by gh-cached through
 #    ghcache (ETag-revalidated, so unchanged data is free). gh-cached exits 64 (not a read it

@@ -126,7 +126,10 @@ def test_shim_obeys_o17_gate(tmp_path):
     (tmp_path / "state" / "gh-pace").mkdir(parents=True)
     env = dict(os.environ, XDG_STATE_HOME=str(tmp_path / "state"), GH_CACHED=str(fake / "none"),
                GH_O17_GATE=str(gate), GHC=str(fake / "ghc"),
-               GH_FEEDBACK_BACKOFF=str(tmp_path / "BACKOFF.json"))
+               GH_FEEDBACK_BACKOFF=str(tmp_path / "BACKOFF.json"),
+               # The stub gate is rewritten within one second at the same size; a cached .pyc
+               # would replay the previous exit code.
+               PYTHONDONTWRITEBYTECODE="1")
     for rc, code, out_, route in ((3, 3, "", "refused"), (10, 0, "ghc:api notifications", "cached"),
                                   (0, 0, "real:api notifications", "direct"),
                                   (1, 0, "real:api notifications", "direct")):
