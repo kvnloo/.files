@@ -1,0 +1,8 @@
+[Unit]
+Description=Send desktop colours to Detent on the phone
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/detent-sync-colors
+Nice=10
+TimeoutStartSec=90
