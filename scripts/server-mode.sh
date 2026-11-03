@@ -86,6 +86,11 @@ on() {
   printf '{"at":"%s","action":"on","avail_before_mb":%s,"avail_after_mb":%s,"stopped":"%s"}\n' \
     "$(date -Is)" "$before" "$after" "${stopped[*]:-}" >> "$LOG"
   echo "server mode ON: stopped ${#stopped[@]} unit(s); MemAvailable ${before} -> ${after} MB"
+  # Processes started from the desktop inherit its private D-Bus (/tmp/dbus-*), which is now gone: keyring, bws
+  # bootstrap and gh auth then fail inside them. Point new shells at the user bus; restart such services when idle.
+  if [[ ${DBUS_SESSION_BUS_ADDRESS:-} == *"/tmp/dbus-"* ]]; then
+    echo "note: this shell used the desktop D-Bus; run: export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus"
+  fi
 }
 
 off() {
