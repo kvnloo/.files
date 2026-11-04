@@ -179,6 +179,16 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn('PathChanged=', path)
         self.assertIn('--repair-cpu --experiments', service)
 
+    def test_harness_timeout_keeps_last_observation_labelled_stale_until_too_old(self):
+        failed = {'status': 'unavailable', 'reason': 'OperationalError'}
+        seen = {'status': 'observed', 'sampled_sessions': 9, 'groups': []}
+        stale = host.carry_forward(failed, seen, now=1000., previous_ts=900.)
+        self.assertEqual((stale['status'], stale['age_s'], stale['sampled_sessions']), ('stale', 100., 9))
+        again = host.carry_forward(failed, stale, now=1200., previous_ts=1000.)
+        self.assertEqual(again['age_s'], 300.)  # aged from the real observation, not the stale copy
+        self.assertEqual(host.carry_forward(failed, seen, now=9000., previous_ts=900.), failed)
+        self.assertEqual(host.carry_forward(seen, stale, now=1000., previous_ts=900.), seen)
+
 
 if __name__ == '__main__':
     unittest.main()
