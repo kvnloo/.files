@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the loc directory index of /mnt/zer0models (the system plocate db prunes /mnt)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/loc --refresh
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=30min

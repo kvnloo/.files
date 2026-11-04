@@ -349,6 +349,10 @@ def install_host_optimizer(source: Path, home: Path, apply: bool) -> int:
         'scripts/host_optimizer.py': '.local/bin/host-optimizer',
         'config/systemd/user/host-optimizer.service': '.config/systemd/user/host-optimizer.service',
         'config/systemd/user/host-optimizer.path': '.config/systemd/user/host-optimizer.path',
+        # L0 locate lever: basename index of /mnt/zer0models, which the system plocate db prunes.
+        'scripts/loc': '.local/bin/loc',
+        'config/systemd/user/loc-index.service': '.config/systemd/user/loc-index.service',
+        'config/systemd/user/loc-index.timer': '.config/systemd/user/loc-index.timer',
     }
     closure = (*links, 'scripts/host_experiments.py', 'scripts/fleet-steward',
                'scripts/fleet_steward_capacity.py', 'scripts/fleet_paths.py', 'config/fleet/storage.toml')
@@ -387,7 +391,7 @@ def install_host_optimizer(source: Path, home: Path, apply: bool) -> int:
     import json
     (backup / 'receipt.json').write_text(json.dumps({'release': str(release), 'previous': previous}, indent=2) + '\n')
     subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
-    subprocess.run(['systemctl', '--user', 'enable', '--now', 'host-optimizer.path'], check=True)
+    subprocess.run(['systemctl', '--user', 'enable', '--now', 'host-optimizer.path', 'loc-index.timer'], check=True)
     subprocess.run(['systemctl', '--user', 'start', 'host-optimizer.service'], check=True)
     print(f'APPLIED optimizer release={release}; recovery={backup}; no shared service restarted')
     return 0

@@ -46,6 +46,38 @@ owner = "scripts/apply-agent-oom"
 reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
 
 [[user]]
+live = "~/.local/bin/loc"
+source = "scripts/loc"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/loc-index.service"
+source = "config/systemd/user/loc-index.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/loc-index.timer"
+source = "config/systemd/user/loc-index.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/loc-index.timer"
+source = "config/systemd/user/loc-index.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Hourly idle-IO refresh of the loc index (AgentSys Track F)."
+
+[[user]]
 live = "~/.config/systemd/user/default.target.wants/host-optimizer.path"
 source = "config/systemd/user/host-optimizer.path"
 scope = "user"
