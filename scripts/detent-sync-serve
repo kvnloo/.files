@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Serve this machine's Detent state to the owner's phones over Tailscale.
+
+Detent (the phone launcher) polls every machine on the tailnet that runs this, through
+`tailscale serve`, so it is reachable only inside the tailnet and over https:
+
+    GET  /v1/manifest       desktop colours, live wallpapers, the last theme choice, peers
+    GET  /v1/files/<file>   a live wallpaper package listed in the manifest
+    POST /v1/selection      {"theme", "device", "at"}: a phone chose a theme
+
+Setup on each machine (once):
+    systemctl --user enable --now detent-sync-serve.service
+    tailscale serve --bg --set-path /detent http://127.0.0.1:47380
+
+Then point a phone at any one machine; it finds the others from the manifest's peers:
+    adb shell am broadcast -f 0x20 -a app.detent.launcher.SET_SYNC \
+      -n <pkg>/app.detent.launcher.ColorsReceiver --es hosts "<machine>.<tailnet>.ts.net"
+or open detent://sync?host=<machine>.<tailnet>.ts.net on the phone.
+
+Inputs (all optional; a machine without them just serves less):
+    DETENT_COLORS      Noctalia colors.json (mSurface / mOnSurface / mPrimary)
+    DETENT_LIVE_LIST   config/wallpapers/live.json; packages come from its mobile_store
+    DETENT_SYNC_STATE  where the last theme choice is kept
+    ~/.config/detent-sync/on-selection   run as `on-selection THEME DEVICE` after a phone chooses
+"""
+from __future__ import annotations
+
+import hashlib
+import http.server
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+HOME = Path.home()
+ROOT = Path(__file__).resolve().parent.parent
+PORT = int(os.environ.get("DETENT_SYNC_PORT", "47380"))
+COLORS = Path(os.environ.get("DETENT_COLORS", HOME / ".config/noctalia/colors.json"))
+LIVE_LIST = Path(os.environ.get("DETENT_LIVE_LIST", ROOT / "config/wallpapers/live.json"))
+STATE = Path(os.environ.get("DETENT_SYNC_STATE", HOME / ".local/state/detent-sync"))
+HOOK = Path(os.environ.get("DETENT_SYNC_HOOK", HOME / ".config/detent-sync/on-selection"))
+
+HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
+FILE = re.compile(r"^[A-Za-z0-9._-]{1,120}\.mpkg$")
+SHA = re.compile(r"^[0-9a-f]{64}$")
+MAX_BODY = 4096
+
+
+def hexc(v) -> str | None:
+    m = HEX.match(str(v or "").strip())
+    return m.group(1).lower() if m else None
+
+
+def colors(path: Path = COLORS) -> dict | None:
+    """Noctalia's colours, stamped with the file's change time so the newest machine wins on the phone."""
+    try:
+        c = json.loads(path.read_text())
+        out = {"bg": hexc(c.get("mSurface")), "fg": hexc(c.get("mOnSurface")), "accent": hexc(c.get("mPrimary"))}
+        if not all(out.values()):
+            return None
+        out["updated"] = int(path.stat().st_mtime * 1000)
+        return out
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def live(path: Path = LIVE_LIST) -> tuple[list[dict], dict[str, Path]] | None:
+    """The live wallpapers whose phone package is on this machine, and where each package is."""
+    try:
+        lst = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    store = Path(os.path.expanduser(lst.get("mobile_store", "")))
+    out, files = [], {}
+    for w in lst.get("wallpapers", []):
+        mob, d = w.get("mobile") or {}, w.get("detent") or {}
+        name, file = w.get("detent_name"), mob.get("file", "")
+        cols = {k: hexc(d.get(k)) for k in ("bg", "fg", "accent")}
+        if not name or not FILE.match(file) or not all(cols.values()):
+            continue
+        f = store / file
+        if not f.is_file():
+            continue
+        e = {"name": name, "title": w.get("title"), **cols, "file": file, "bytes": f.stat().st_size}
+        if SHA.match(str(mob.get("sha256", ""))) and mob.get("bytes") == e["bytes"]:
+            e["sha256"] = mob["sha256"]
+        else:
+            e["sha256"] = sha256(f)
+        out.append(e)
+        files[file] = f
+    return out, files
+
+
+_sha_cache: dict[tuple[str, float, int], str] = {}
+
+
+def sha256(f: Path) -> str:
+    st = f.stat()
+    key = (str(f), st.st_mtime, st.st_size)
+    if key not in _sha_cache:
+        h = hashlib.sha256()
+        with f.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        _sha_cache[key] = h.hexdigest()
+    return _sha_cache[key]
+
+
+def selection(state: Path = STATE) -> dict | None:
+    try:
+        s = json.loads((state / "selection.json").read_text())
+        return s if isinstance(s.get("theme"), str) and isinstance(s.get("at"), int) else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def accept_selection(body: bytes, state: Path = STATE, hook: Path = HOOK) -> tuple[int, str]:
+    """Stores a phone's theme choice when it is newer than the one kept. Returns (status, message)."""
+    try:
+        s = json.loads(body)
+        theme, device, at = s["theme"].strip(), str(s.get("device", "")).strip()[:64], int(s["at"])
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return 400, "bad selection"
+    if not theme or len(theme) > 40 or at <= 0:
+        return 400, "bad selection"
+    cur = selection(state)
+    if cur and cur["at"] >= at:
+        return 200, "older than the kept choice"
+    state.mkdir(parents=True, exist_ok=True)
+    tmp = state / "selection.json.tmp"
+    tmp.write_text(json.dumps({"theme": theme, "device": device, "at": at}))
+    tmp.replace(state / "selection.json")
+    if hook.is_file() and os.access(hook, os.X_OK):
+        subprocess.Popen([str(hook), theme, device], stdin=subprocess.DEVNULL, start_new_session=True)
+    return 200, "kept"
+
+
+_peers: tuple[float, list[str]] = (0.0, [])
+
+
+def peers() -> list[str]:
+    """Online computers on the tailnet; the phone keeps the ones that answer as Detent sync machines."""
+    global _peers
+    if time.time() - _peers[0] < 60:
+        return _peers[1]
+    names: list[str] = []
+    try:
+        st = json.loads(subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5).stdout)
+        for p in (st.get("Peer") or {}).values():
+            if p.get("Online") and p.get("OS") in ("linux", "macOS", "windows") and p.get("DNSName"):
+                names.append(p["DNSName"].rstrip("."))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    _peers = (time.time(), sorted(set(names)))
+    return _peers[1]
+
+
+def manifest() -> tuple[dict, dict[str, Path]]:
+    m: dict = {"version": 1, "host": socket.gethostname()}
+    c = colors()
+    if c:
+        m["colors"] = c
+    files: dict[str, Path] = {}
+    lv = live()
+    if lv is not None:
+        m["live"], files = lv
+    s = selection()
+    if s:
+        m["selection"] = s
+    m["peers"] = peers()
+    return m, files
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "detent-sync/1"
+
+    def log_message(self, fmt, *args):  # journald gets one line per request
+        sys.stderr.write("%s %s\n" % (self.command, self.path))
+
+    def route(self) -> str:
+        p = self.path.split("?", 1)[0]
+        return p[len("/detent"):] if p.startswith("/detent/") else p
+
+    def send(self, code: int, body: bytes, ctype="application/json", extra=None):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def do_GET(self):
+        r = self.route()
+        if r == "/v1/manifest":
+            m, _ = manifest()
+            body = json.dumps(m, sort_keys=True).encode()
+            tag = '"%s"' % hashlib.sha1(body).hexdigest()
+            if self.headers.get("If-None-Match") == tag:
+                self.send_response(304)
+                self.send_header("ETag", tag)
+                self.end_headers()
+                return
+            return self.send(200, body, extra={"ETag": tag})
+        if r.startswith("/v1/files/"):
+            name = r[len("/v1/files/"):]
+            _, files = manifest()
+            f = files.get(name) if FILE.match(name) else None
+            if f is None:
+                return self.send(404, b'{"error":"not offered"}')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(f.stat().st_size))
+            self.end_headers()
+            with f.open("rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 16), b""):
+                    self.wfile.write(chunk)
+            return
+        self.send(404, b'{"error":"not found"}')
+
+    do_HEAD = do_GET
+
+    def do_POST(self):
+        if self.route() != "/v1/selection":
+            return self.send(404, b'{"error":"not found"}')
+        n = int(self.headers.get("Content-Length") or 0)
+        if n <= 0 or n > MAX_BODY:
+            return self.send(413 if n > MAX_BODY else 400, b'{"error":"bad body"}')
+        code, msg = accept_selection(self.rfile.read(n))
+        self.send(code, json.dumps({"result": msg}).encode())
+
+
+def main(argv: list[str]) -> int:
+    if argv[1:2] == ["--manifest"]:
+        print(json.dumps(manifest()[0], indent=1, sort_keys=True))
+        return 0
+    # Loopback only: tailscale serve is the one way in, so nothing on the LAN can reach it.
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    srv.daemon_threads = True
+    threading.Thread(target=peers, daemon=True).start()
+    print(f"detent-sync-serve on 127.0.0.1:{PORT}", file=sys.stderr)
+    srv.serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

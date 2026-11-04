@@ -18,7 +18,12 @@
         "s25": "active (home + lock)",
         "s22": "installed"
       },
-      "detent_name": "forgotten-ruins"
+      "detent_name": "forgotten-ruins",
+      "detent": {
+        "bg": "112122",
+        "fg": "dae5e7",
+        "accent": "90d8df"
+      }
     },
     {
       "workshop_id": "2981249186",
@@ -34,7 +39,12 @@
         "s25": "installed",
         "s22": "installed"
       },
-      "detent_name": "black-hole"
+      "detent_name": "black-hole",
+      "detent": {
+        "bg": "1a1122",
+        "fg": "e1dae7",
+        "accent": "6168d1"
+      }
     },
     {
       "workshop_id": "1888636115",
@@ -51,7 +61,12 @@
         "s25": "installed",
         "s22": "installed"
       },
-      "detent_name": "abstract-landscape"
+      "detent_name": "abstract-landscape",
+      "detent": {
+        "bg": "111622",
+        "fg": "dadee7",
+        "accent": "5990d9"
+      }
     }
   ]
 }
