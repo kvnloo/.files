@@ -174,6 +174,20 @@ def harness_summary(path, now=None):
         conn.close()
 
 
+def carry_forward(current, previous, now, previous_ts, max_age_s=3600):
+    """Under IO pressure the AgentsView read hits its deadline; keep the last observation,
+    labelled stale with its age, instead of dropping harness coverage for that tick."""
+    if current.get('status') != 'unavailable' or not previous or not previous_ts:
+        return current
+    if previous.get('status') not in ('observed', 'stale'):
+        return current
+    observed_at = previous.get('observed_at', previous_ts)
+    if now - observed_at > max_age_s:
+        return current
+    return {**previous, 'status': 'stale', 'observed_at': observed_at,
+            'age_s': round(now - observed_at, 1), 'stale_reason': current.get('reason')}
+
+
 def cluster_summary():
     kube = shutil.which('kubectl')
     if not kube:
@@ -291,6 +305,8 @@ def tick(state, fleet_state, av, repair=False, experiments=False):
                 result[name] = {'status': 'unavailable', 'reason': type(exc).__name__}
                 result['errors'].append(name+':'+type(exc).__name__)
         observe('harnesses', lambda: harness_summary(av))
+        result['harnesses'] = carry_forward(result['harnesses'], previous.get('harnesses'),
+                                            host['ts'], previous.get('generated_at'))
         observe('cluster', cluster_summary)
         states = {}
         for unit in SERVICE_UNITS:
