@@ -164,6 +164,36 @@ Detent's `hyprland` theme over adb. Event-driven, no polling. Other desktops: ca
 `scripts/detent-sync-colors` from whatever hook your theme tool has, with
 `DETENT_COLORS` pointing at a JSON file with `mSurface`, `mOnSurface`, `mPrimary`.
 
+## 8. Native sync over Tailscale (no adb)
+
+Every computer runs a small server that only `tailscale serve` exposes, so it answers
+inside the tailnet over https and nowhere else:
+
+```sh
+ln -sfn "$PWD/scripts/detent-sync-serve" ~/.local/bin/
+ln -sfn "$PWD/config/systemd/user/detent-sync-serve.service" ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now detent-sync-serve
+tailscale serve --bg --set-path /detent http://127.0.0.1:47380
+```
+
+Point each phone at one computer once; Detent finds the rest from that computer's peers:
+
+```sh
+adb shell am broadcast -f 0x20 -a app.detent.launcher.SET_SYNC \
+  -n app.detent.launcher.kvn/app.detent.launcher.ColorsReceiver --es hosts "<machine>.<tailnet>.ts.net"
+```
+
+(or open `detent://sync?host=<machine>.<tailnet>.ts.net` on the phone). While Detent is in
+front it reads every computer every 30 s: the newest desktop colours feed the `hyprland`
+theme, the live wallpaper list (`detent` colours in `config/wallpapers/live.json`, packages
+from `mobile_store`) becomes Detent's live themes, with packages downloaded once and checked
+against their SHA-256, and a theme chosen on any phone is followed by the others. A computer
+can run `~/.config/detent-sync/on-selection THEME DEVICE` to follow along too. This replaces
+sections 6 and 7 once the phone runs a Detent build with sync; they keep working over adb.
+
+Turn on **Detent wallpaper switch** in the phone's accessibility settings (setup > feel >
+`live switch`) and choosing a live theme applies its scene in Wallpaper Engine by itself.
+
 ## Done when
 
 `scripts/phone-setup` prints `all set`, and a Hermes `phone_exec` screen read returns fast.

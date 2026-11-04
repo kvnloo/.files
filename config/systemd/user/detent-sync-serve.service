@@ -1,0 +1,13 @@
+[Unit]
+Description=Serve Detent theme state to the phones over Tailscale (tailscale serve /detent)
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/detent-sync-serve
+Restart=on-failure
+RestartSec=10
+Nice=10
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target
