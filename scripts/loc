@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# loc NAME [MORE...]: locate files/dirs whose basename contains every NAME, across /home, /workspace
+# (system plocate db) and /mnt/zer0models (directory index; the system db prunes /mnt), in ~0.1 s.
+# Rebuild the /mnt index: loc --refresh   (idle IO priority, ~minutes)
+set -euo pipefail
+export LC_ALL=C
+idx=${LOC_INDEX:-$HOME/.cache/plocate/zer0models-dirs.txt}
+if [ "${1:-}" = "--refresh" ]; then
+  mkdir -p "$(dirname "$idx")"
+  nice -n 19 ionice -c3 fd -H -t d --max-depth 6 -E .git -E node_modules -E .venv -E venv \
+    -E __pycache__ -E .cache -E target -E .gradle -E home_kvn_.ctx -E tmp -E '*.egg-info' \
+    . /mnt/zer0models > "$idx.new" 2>/dev/null || true
+  mv "$idx.new" "$idx"
+  exit 0
+fi
+[ $# -ge 1 ] || { echo "usage: loc NAME [MORE...] | loc --refresh" >&2; exit 2; }
+terms=$(printf '%s\n' "$@" | tr 'A-Z' 'a-z')
+{
+  plocate -i -l 400 -b -- "$1" 2>/dev/null || true
+  [ -r "$idx" ] && grep -iF -- "$1" "$idx"
+} | LC_ALL=C awk -v terms="$terms" 'BEGIN { n = split(terms, t, "\n") }
+  { p = $0; sub(/\/$/, "", p); b = tolower(p); sub(/.*\//, "", b)
+    for (i = 1; i <= n; i++) if (!index(b, t[i])) next
+    if (!seen[p]++) print length(p) " " p }' | sort -n -s | cut -d' ' -f2- | head -40
