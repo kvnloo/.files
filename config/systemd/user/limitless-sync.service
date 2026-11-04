@@ -1,0 +1,12 @@
+[Unit]
+Description=Limitless stack: private phone/NOOP evidence sync, nightly digest, bedtime ramp
+Documentation=file:///workspace/.files/scripts/limitless-sync
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/limitless-sync run
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=5min
+MemoryMax=256M
