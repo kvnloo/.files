@@ -1,8 +1,10 @@
+# -s 100: fire on RAM alone. zram has a resident limit (ram/2), so RAM runs out and zram writes fail
+# while swap still looks >35% free; with -s 65 earlyoom never fired and groot livelocked (2026-11-03 22:48).
 # Single-process emergency killer, not a cgroup killer. Prefer oom_score (worker
 # children inherit agent-launch's elevated score); never prefer all Python/node.
 # ps comm verified: omp, hermes, tern, node-MainThread (t3code MainPID1197),
 # "omp daemon brok", sway, qs. claude/codex are protected launch identities,
 # not present in the 2026-10-24 census. Exact comm cannot distinguish other Node
 # runtimes with the same node-MainThread name; this is deliberately disclosed.
-EARLYOOM_ARGS="-r 0 -m 5 -s 65 -n \
+EARLYOOM_ARGS="-r 0 -m 5 -s 100 -n \
  --avoid '^(systemd|systemd-.*|Hyprland|sway|qs|Xwayland|Xorg|sddm|kitty|alacritty|tmux|tmux: server|tmux: client|waybar|dunst|pipewire|wireplumber|dbus.*|NetworkManager|sshd|omp|omp daemon brok|hermes|tern|node-MainThread|claude|codex)$'"
