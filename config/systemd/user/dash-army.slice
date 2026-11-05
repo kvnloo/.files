@@ -1,0 +1,6 @@
+[Unit]
+Description=MBP Dash e2e army (outside Kueue): throttle at 4 GiB so Kueue admission is not starved (ayo 15:26)
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=4G
