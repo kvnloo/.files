@@ -180,9 +180,13 @@ args=(run --src "$src")
 for include in "${src_includes[@]}"; do args+=(--src-include "$include"); done
 [ "$guest" = 0 ] || args+=(--guest)
 [ "$python_guest" = 0 ] || args+=(--python-venv)
+# MBP Kueue jobs get per-kind defaults from fleet-kueue; other workers keep 3G for builds.
+kueue_route=0
+case $node in mbp|k3s-mbp|mbp-host) kueue_route=1 ;; "") [ "$mode" = phone ] || kueue_route=1 ;; esac
 case $mode in
   android) args+=(--class android-build --mem "${mem:-6G}" --cpus "${cpus:-4}"); jdk=${jdk:-17} ;;
-  build)   args+=(--class build --mem "${mem:-3G}"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
+  build)   args+=(--class build); if [ -n "$mem" ]; then args+=(--mem "$mem"); elif [ "$kueue_route" = 0 ]; then args+=(--mem 3G); fi
+           [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
   light)   args+=(--tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem"); [ -n "$cpus" ] && args+=(--cpus "$cpus") ;;
   phone)   args+=(--arch arm64 --tolerate phone); [ -n "$mem" ] && args+=(--mem "$mem") ;;
 esac

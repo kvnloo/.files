@@ -34,12 +34,31 @@ def workload_class(explicit, command, cpus, quota):
     return 'bench' if float(cpus) == quota else 'build'
 
 
-def default_requests(cpus, mem, tolerate):
-    """Unset requests: fleet-build --light jobs (they tolerate phones) are lint and
-    single-process tests, measured at ~1.1 CPU and <210 MiB, so they ask 1 CPU / 2 GiB and
-    the 4-CPU lanes quota runs four. Everything else keeps 2 CPU / 3 GiB."""
-    light = 'phone' in (tolerate or [])
-    return cpus or ('1' if light else '2'), mem or ('2G' if light else '3G')
+# Measured MBP pod-slice memory peaks, 3 days, 207 jobs
+# (operations/fleet-stage-lifecycle-20261104/peak-rss/SUMMARY.txt): pytest p50 <=202 MiB, max 717;
+# unittest <=108 MiB; npm build/test and vitest p50 2.6-2.8 GiB, max 3.4 GiB.
+NODE_TOOLS = {'npm', 'npx', 'pnpm', 'yarn', 'bun', 'bunx', 'node', 'vite', 'vitest', 'tsc', 'next'}
+
+
+def user_command(cmd):
+    """argv the caller asked for: fleet-build wraps it as `sh -c SCRIPT fleet-build REL ARGV...`."""
+    cmd = list(cmd or [])
+    return cmd[cmd.index('fleet-build') + 2:] if 'fleet-build' in cmd else cmd
+
+
+def default_requests(cpus, mem, tolerate, priority=None, cmd=None):
+    """Fill unset requests per job kind; explicit --cpus/--mem always win.
+    Node/JS tools: 2 CPU / 3.5 GiB. Tests (--class test, --light, pytest/unittest): 1 CPU /
+    1.5 GiB, so the 4-CPU / ~10 GiB lanes quota admits 4 at once. Other builds: 2 CPU / 3 GiB."""
+    words = ' '.join(user_command(cmd)).split()
+    tools = {Path(w).name for w in words}
+    if tools & NODE_TOOLS:
+        kind = ('2', '3.5G')
+    elif 'phone' in (tolerate or []) or priority == 'test' or 'pytest' in tools or 'unittest' in words:
+        kind = ('1', '1.5G')
+    else:
+        kind = ('2', '3G')
+    return cpus or kind[0], mem or kind[1]
 
 
 def workload_evicted(workload):
@@ -144,7 +163,7 @@ def main():
         parser.error('--src is required for submission')
     if (not args.cmd and not args.attach) or args.timeout <= 0 or args.wait < -1:
         parser.error('command, positive --timeout, and --wait >= -1 required')
-    args.cpus, args.mem = default_requests(args.cpus, args.mem, args.tolerate)
+    args.cpus, args.mem = default_requests(args.cpus, args.mem, args.tolerate, args.priority_class, args.cmd)
     # Match fleet's binary memory units, not Kubernetes decimal G/M quantities.
     match = re.fullmatch(r'(\d+(?:\.\d+)?)([KMGT]?)I?B?', args.mem.upper())
     if not match:

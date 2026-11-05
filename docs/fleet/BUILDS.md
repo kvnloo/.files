@@ -73,10 +73,14 @@ fleet-build --class build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDeb
   A busy queue is not permission to execute on groot.
 - Kueue `--mem` and `--cpus` set both container requests and limits.
   Requests above the total queue quota exit 75 immediately, before staging.
-  The default build request remains 3 GiB. Gradle remains 6 GiB. `--light` (lint,
-  pure-Python tests, scans) defaults to 1 CPU and 2 GiB, so the 4-CPU quota runs four
-  of them at once; measured light jobs use ~1.1 CPU and under 210 MiB. Pass
-  `--cpus`/`--mem` for heavier light work.
+  Unset requests on the MBP Kueue route are set per job kind by `fleet-kueue`
+  `default_requests()`, from measured pod memory peaks (207 jobs, 3 days; see
+  operations/fleet-stage-lifecycle-20261104/peak-rss/SUMMARY.txt):
+  tests (`--class test`, `--light`, pytest/unittest) 1 CPU / 1.5 GiB (pytest p50 under
+  210 MiB, max 717 MiB), so four run at once; Node/JS tools (npm, npx, bun, vite, vitest,
+  tsc) 2 CPU / 3.5 GiB (p50 2.6-2.8 GiB, max 3.4 GiB); other builds 2 CPU / 3 GiB;
+  Gradle 6 GiB. Requests are also limits, so a test that needs more RAM must pass `--mem`.
+  Explicit `--cpus`/`--mem` always win. Non-Kueue workers keep the 3 GiB build default.
   Both fit the approved 10441814016-byte (~9.73 GiB) aggregate memory quota.
   Use an explicit memory request appropriate for the actual job.
   Do not reduce a real job's request merely to obtain admission.
