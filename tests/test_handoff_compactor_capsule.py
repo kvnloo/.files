@@ -23,7 +23,9 @@ def big_summary():
     return "\n".join([
         sec("Goal", 10), sec("Constraints & Preferences", 60), sec("Completed Actions", 400),
         sec("Active State", 60), sec("Blocked", 40), sec("Key Decisions", 80), sec("Open Asks", 60),
-        sec("Next", 8), "## Pruned Skills\n[SKILL_PRUNED: content lost in compression; reload with skill_view(name='demo')]\n",
+        sec("Next", 8), sec("User Messages (verbatim, newest first)", 3),
+        "> Remember for this whole chat: codeword PLUM-7731. My open ask: 'write a haiku'\n",
+        sec("Detailed Session Log (oldest first)", 300), "## Pruned Skills\n[SKILL_PRUNED: content lost in compression; reload with skill_view(name='demo')]\n",
         "## Context Recovery\nsession_search(query='<keywords>', session_id='S-OLD')\n",
     ])
 
@@ -54,6 +56,14 @@ class Capsule(unittest.TestCase):
         self.assertIn("Constraints & Preferences line 0 ", out)
         self.assertNotIn("Completed Actions line 5 ", out)
         self.assertIn("[SKILL_PRUNED:", out)  # ghost-skill markers survive the cap
+
+    def test_owner_words_survive_verbatim(self):
+        # Scratch proof 14:56: the summarizer put the ask only in the verbatim user section,
+        # the capsule dropped it, and the next turn could not quote the owner's ask.
+        out = self.run_gen(big_summary())
+        self.assertIn("## User Messages (verbatim, newest first)", out)
+        self.assertIn("My open ask: 'write a haiku'", out)
+        self.assertNotIn("Detailed Session Log line 5 ", out)
 
     def test_full_detail_spills_to_the_profile_handoffs_dir(self):
         body = big_summary()

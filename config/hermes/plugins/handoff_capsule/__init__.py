@@ -47,8 +47,9 @@ _CHARS_PER_TOKEN = 4
 # Capsule sections in priority order with their share of the budget (chars). Anything else
 # (completed actions, decisions, history) lives only in the spill file.
 CAPSULE_SECTIONS = (
-    ("Goal", 1_200), ("Open Asks", 5_200), ("Constraints & Preferences", 3_800),
-    ("Active State", 2_000), ("Blocked", 900), ("Next", 1_400), ("Pruned Skills", 900),
+    ("Goal", 900), ("Open Asks", 3_200), ("User Messages (verbatim, newest first)", 3_500),
+    ("Constraints & Preferences", 2_400), ("Next", 1_100), ("Active State", 1_200), ("Blocked", 600),
+    ("Critical Context", 700), ("Pruned Skills", 500),
 )
 
 HANDOFF_PREFIX = (
