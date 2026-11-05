@@ -2,7 +2,7 @@
 """failed-unit-watch: keep one 'FAILED UNITS' block in a lane status file listing every
 user unit that has stayed failed for more than --min minutes (ayo 2026-11-05: nine groot
 guards sat failed unnoticed). Rewrites only its own block; stays silent otherwise."""
-import argparse, re, subprocess, time
+import argparse, json, os, re, subprocess, time
 from pathlib import Path
 
 BEGIN, END = "<!-- failed-unit-watch:start -->", "<!-- failed-unit-watch:end -->"
@@ -21,12 +21,34 @@ def failed_units(run=subprocess.run):
     return rows
 
 
-def block(rows, now_mono, min_minutes, stamp):
-    stale = [(u, (now_mono - t) / 60, r, s) for u, t, r, s in rows if t and (now_mono - t) / 60 > min_minutes]
+def track(state, rows, result_of, now_mono):
+    """Carry each unit's first failure and consecutive-failure count across watcher runs, so a unit
+    that fails anew on every timer run (its own clock resets) still ages. Cleared only by success."""
+    new = {}
+    for u, t, _r, _s in rows:
+        e = dict(state.get(u) or {"first": t or now_mono, "last": t, "streak": 1})
+        if t and t != e["last"]:
+            e["last"], e["streak"] = t, e["streak"] + 1
+        new[u] = e
+    for u, e in state.items():
+        if u not in new and result_of(u) not in ("success", ""):
+            new[u] = e  # seen mid-restart (activating): not a success, keep the streak
+    return new
+
+
+def block(rows, now_mono, min_minutes, stamp, state=None):
+    state = state or {}
+    stale = []
+    for u, t, r, s in rows:
+        e = state.get(u, {"first": t, "streak": 1})
+        m = (now_mono - e["first"]) / 60 if e["first"] else 0
+        if m > min_minutes or e["streak"] >= 3:
+            stale.append((u, m, r, s, e["streak"]))
     if not stale:
         return ""
-    lines = [BEGIN, f"- FAILED UNITS >{min_minutes} min on groot (failed-unit-watch, {stamp}):"]
-    lines += [f"  - {u}: failed {m:.0f} min, result={r} status={s}" for u, m, r, s in sorted(stale, key=lambda x: -x[1])]
+    lines = [BEGIN, f"- FAILED UNITS >{min_minutes} min or failing every run, on groot (failed-unit-watch, {stamp}):"]
+    lines += [f"  - {u}: failed {m:.0f} min, {n} consecutive failures, result={r} status={s}"
+              for u, m, r, s, n in sorted(stale, key=lambda x: -x[1])]
     return "\n".join(lines + [END])
 
 
@@ -45,9 +67,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--status", type=Path, required=True)
     ap.add_argument("--min", type=int, default=30)
+    ap.add_argument("--state", type=Path,  # runtime dir: monotonic clocks reset at boot, so does this
+                    default=Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "failed-unit-watch.json")
     a = ap.parse_args()
     now = time.clock_gettime(time.CLOCK_MONOTONIC)
-    update(a.status, block(failed_units(), now, a.min, time.strftime("%Y-%m-%d %H:%M %Z")))
+    rows = failed_units()
+    old = json.loads(a.state.read_text()) if a.state.exists() else {}
+
+    def result_of(u):
+        return subprocess.run(["systemctl", "--user", "show", u, "-p", "Result", "--value"],
+                              capture_output=True, text=True).stdout.strip()
+    state = track(old, rows, result_of, now)
+    a.state.write_text(json.dumps(state))
+    update(a.status, block(rows, now, a.min, time.strftime("%Y-%m-%d %H:%M %Z"), state))
     return 0
 
 

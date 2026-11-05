@@ -37,6 +37,24 @@ class FailedUnitWatch(unittest.TestCase):
             fuw.update(p, "")
             self.assertEqual(p.read_text(), "as of X\n- line\n")
 
+    def test_unit_failing_on_every_run_is_listed(self):
+        """artifact-leases fails each timer run, so its failed-since clock resets every few minutes and
+        it never crossed 30 min (ayo 17:2x). Consecutive failures are counted across watcher runs."""
+        state = {}
+        for now, t in ((600.0, 590.0), (1200.0, 1190.0), (1800.0, 1790.0)):  # fails anew each run
+            rows = [("artifact-leases.service", t, "exit-code", "1")]
+            state = fuw.track(state, rows, lambda u: "exit-code", now)
+            b = fuw.block(rows, now, 30, "T", state)
+        self.assertIn("artifact-leases.service", b)
+        self.assertIn("3 consecutive failures", b)
+
+    def test_streak_survives_a_run_seen_mid_restart_and_clears_on_success(self):
+        state = fuw.track({}, [("x.service", 10.0, "exit-code", "1")], lambda u: "exit-code", 20.0)
+        state = fuw.track(state, [], lambda u: "exit-code", 620.0)          # activating, not success
+        self.assertEqual(state["x.service"]["streak"], 1)
+        state = fuw.track(state, [], lambda u: "success", 1220.0)
+        self.assertEqual(state, {})
+
     def test_unit_runs_every_10_minutes(self):
         timer = (ROOT / "config/systemd/user/failed-unit-watch.timer").read_text()
         self.assertIn("OnUnitActiveSec=10min", timer)
