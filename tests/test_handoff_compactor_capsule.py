@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("handoff_compactor", ROOT / "config/hermes/plugins/handoff_compactor/__init__.py")
+spec = importlib.util.spec_from_file_location("handoff_compactor", ROOT / "config/hermes/plugins/handoff_capsule/__init__.py")
 hc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hc)
 from agent.context_compressor import ContextCompressor  # noqa: E402
@@ -78,7 +78,7 @@ class Capsule(unittest.TestCase):
     def test_hermes_discovers_it_as_a_context_engine(self):
         # Hermes only scans the first 8 KiB of __init__.py for the engine contract.
         from plugins.context_engine import _is_context_engine_dir
-        self.assertTrue(_is_context_engine_dir(ROOT / "config/hermes/plugins/handoff_compactor"))
+        self.assertTrue(_is_context_engine_dir(ROOT / "config/hermes/plugins/handoff_capsule"))
 
     def test_lean_tail(self):
         self.assertEqual(self.eng.protect_last_n, 2)
@@ -87,12 +87,13 @@ class Capsule(unittest.TestCase):
     def test_autohandoff_command(self):
         calls = []
         with mock.patch.object(hc, "_set_engine", side_effect=lambda v: calls.append(v)), \
-             mock.patch.object(hc, "_config", return_value={"context": {"engine": "handoff_compactor"}}):
+             mock.patch.object(hc, "_config", return_value={"context": {"engine": "handoff_capsule"}}):
             self.assertIn("off", hc.autohandoff_command("off"))
             hc.autohandoff_command("on")
-            self.assertIn("handoff_compactor", hc.autohandoff_command("status"))
+            self.assertIn("handoff_capsule", hc.autohandoff_command("status"))
             self.assertIn("usage", hc.autohandoff_command("bogus").lower())
-        self.assertEqual(calls, ["compressor", "handoff_compactor"])
+        self.assertEqual(calls, ["compressor", "handoff_capsule"])
+        self.assertEqual(self.eng.name, "handoff_capsule")
 
 
 if __name__ == "__main__":
