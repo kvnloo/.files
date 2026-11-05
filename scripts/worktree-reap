@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""worktree-reap: daily, proof-gated removal of finished git worktrees and branches (Kevin's
+23:25 rule; ayo RP16). Sources: the network model's branch proofs (work/branches.json) plus a
+live scan of T3 Code worktrees (~/.t3/worktrees/<repo>/<name>).
+
+Deletes only:
+  tier 1  a branch with a merged-elsewhere proof (ancestor/tree/patch/pr) that no worktree has
+          checked out -> `git branch -d` (lowercase: git itself refuses anything unmerged)
+  tier 2  a worktree whose branch is merged elsewhere, or whose creating task is done and which
+          has no commit missing from every remote -> `git worktree remove` (no --force: git
+          refuses dirty or untracked trees), then `git branch -d`
+Every item is re-checked live (head unchanged, clean, no process inside, not locked) and gets
+one receipt line. Anything else is kept and never touched; nothing is forced.
+"""
+import argparse, json, os, subprocess, time
+from pathlib import Path
+
+NETWORK = Path("/mnt/zer0models/workspace/zer0/data/operations/network-model/work/branches.json")
+RUNS = Path("/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/runs")
+T3 = Path.home() / ".t3/worktrees"
+MERGED = ("ancestor:", "tree:", "patch:", "pr:")
+
+
+def git(cd, *a, timeout=120):
+    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True, timeout=timeout)
+
+
+def merged_proof(proofs):
+    return [p for p in proofs if p.startswith(MERGED)]
+
+
+def in_use(path, proc=Path("/proc")):
+    root = os.path.realpath(path)
+    for p in proc.iterdir():
+        if p.name.isdigit():
+            try:
+                cwd = os.readlink(p / "cwd")
+            except OSError:
+                continue
+            if cwd == root or cwd.startswith(root + "/"):
+                return p.name
+    return None
+
+
+def size_kib(path):
+    out = subprocess.run(["du", "-sxk", str(path)], capture_output=True, text=True, timeout=600).stdout
+    return int(out.split()[0]) if out else None
+
+
+def t3_rows(root=T3):
+    """T3 worktrees carry no task record: the only proof is HEAD reachable from origin's default."""
+    rows = []
+    for wt in sorted(root.glob("*/*")):
+        if not (wt / ".git").is_file():
+            continue
+        br = git(wt, "branch", "--show-current").stdout.strip()
+        head = git(wt, "rev-parse", "HEAD").stdout.strip()
+        default = git(wt, "rev-parse", "--abbrev-ref", "origin/HEAD").stdout.strip() or "origin/main"
+        proof = [f"ancestor:{default}"] if git(wt, "merge-base", "--is-ancestor", "HEAD", default).returncode == 0 else []
+        common = git(wt, "rev-parse", "--git-common-dir").stdout.strip()
+        rows.append({"repo": wt.parent.name, "commondir": os.path.realpath(os.path.join(wt, common)), "branch": br,
+                     "head": head[:12], "finished": proof, "worktree": str(wt), "task": None, "source": "t3"})
+    return rows
+
+
+def decide(row, check):
+    """Return (action, reason). check() supplies live facts; pure so tests can drive it."""
+    proofs = row.get("finished") or []
+    merged = merged_proof(proofs)
+    done = any(p.startswith("task_done:") for p in proofs)
+    live = check(row)
+    if live["head"] is None or not live["head"].startswith(row["head"]):
+        return "keep", "head moved or branch gone since the proof"
+    if not row.get("worktree"):
+        return ("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged else ("keep", "no merged proof")
+    if not (merged or done):
+        return "keep", "no proof"
+    if live["dirty"]:
+        return "keep", "dirty worktree"
+    if live["locked"]:
+        return "keep", "worktree locked"
+    if live["pid"]:
+        return "keep", f"in use by pid {live['pid']}"
+    if not merged and live["unpushed"]:
+        return "keep", f"{live['unpushed']} commit(s) on no remote"
+    return "worktree", "tier2 " + ",".join(merged or [p for p in proofs if p.startswith("task_done:")]) + " + clean tree"
+
+
+def live_check(row):
+    cd = row["commondir"]
+    head = git(cd, "rev-parse", "--verify", "-q", f"refs/heads/{row['branch']}").stdout.strip() or None
+    wt = row.get("worktree")
+    if not wt:
+        return {"head": head}
+    if not Path(wt).exists():
+        return {"head": None}
+    st = git(wt, "status", "--porcelain")
+    unpushed = git(wt, "rev-list", "--count", "HEAD", "--not", "--remotes").stdout.strip()
+    gd = git(wt, "rev-parse", "--absolute-git-dir").stdout.strip()
+    return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
+            "unpushed": int(unpushed) if unpushed.isdigit() else 1,
+            "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
+
+
+def apply(row, action):
+    cd, br, wt = row["commondir"], row["branch"], row.get("worktree")
+    rec = {}
+    if action == "worktree":
+        rec["size_kib"] = size_kib(wt)
+        r = git(cd, "worktree", "remove", wt)
+        rec["worktree_removed"] = r.returncode == 0
+        if r.returncode:
+            rec["git"] = r.stderr.strip()[:300]
+            return rec
+    r = git(cd, "branch", "-d", br)
+    rec["branch_deleted"] = r.returncode == 0
+    if r.returncode:
+        rec["branch_kept"] = r.stderr.strip()[:300]
+    return rec
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--network", type=Path, default=NETWORK)
+    ap.add_argument("--max-age-h", type=float, default=36, help="refuse network proofs older than this")
+    ap.add_argument("--out", type=Path, default=RUNS / time.strftime("worktree-reap-%Y%m%d"))
+    a = ap.parse_args()
+    net = json.loads(a.network.read_text())
+    if time.time() - float(net.get("generated_at", 0)) > a.max_age_h * 3600:
+        raise SystemExit(f"network proofs older than {a.max_age_h} h; refusing")
+    rows = [r for r in net["rows"] if r.get("finished")] + t3_rows()
+    a.out.mkdir(parents=True, exist_ok=True)
+    counts, reclaimed = {}, 0
+    with open(a.out / "receipts.jsonl", "a") as f:
+        for row in rows:
+            try:
+                action, why = decide(row, live_check)
+            except (subprocess.SubprocessError, OSError) as e:
+                action, why = "keep", f"check failed: {e}"
+            rec = {"ts": time.strftime("%FT%T%z"), "repo": row["repo"], "commondir": row["commondir"],
+                   "branch": row["branch"], "head": row["head"], "worktree": row.get("worktree"),
+                   "creator": row.get("creator") or row.get("source"), "task": row.get("task"),
+                   "action": action, "why": why, "applied": False}
+            if action != "keep" and a.apply:
+                rec.update(apply(row, action), applied=True)
+                reclaimed += rec.get("size_kib") or 0
+            counts[action] = counts.get(action, 0) + 1
+            if action != "keep":
+                f.write(json.dumps(rec) + "\n")
+    summary = {"ts": time.strftime("%FT%T%z"), "apply": a.apply, "rows": len(rows), "counts": counts,
+               "reclaimed_kib": reclaimed}
+    with open(a.out / "runs.jsonl", "a") as f:
+        f.write(json.dumps(summary) + "\n")
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
