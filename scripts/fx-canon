@@ -1,23 +1,116 @@
 #!/usr/bin/env python3
-"""fx-canon: run `fx ask` with Kevin's owner canon in front of the prompt.
+"""fx-canon: the only way GPT (fx) runs here. Two jobs.
 
-fx v0.0.15 has no global instruction file. It reads the cwd's AGENTS.md and walks up only
-inside $HOME (and not into $HOME itself from a subdir); outside $HOME it reads the cwd only
-(trace: project_rules_omitted "workspace is not below home"). `--system` replaces fx's whole
-base prompt, so it is not used. Instead this prepends the generated canon block (rendered by
-owner-canon-sync from OWNER-CANON.md) to the prompt, from argv or stdin. Any other fx command
-is passed through unchanged.
+1. Owner canon. fx v0.0.15 has no global instruction file. It reads the cwd's AGENTS.md and walks
+   up only inside $HOME; `--system` replaces its whole base prompt. So the generated canon block
+   (owner-canon-sync renders it from OWNER-CANON.md) is prepended to every `fx ask` prompt, from
+   argv or stdin.
+2. PRIV2 privacy guard (Kevin 2026-11-05 13:46: "your personal data to Claude or local only").
+   a. `ask` briefs marked personal, or naming an owner source, are refused (exit 3) with a
+      content-free receipt line.
+   b+c. Every session command runs fx inside bwrap: owner data paths are masked (directories
+      become empty tmpfs, files become /dev/null), and ctx/agentsview/sqlite3 on PATH are shims
+      that fail closed. Direct reads from Python or any other tool hit the same masks.
+   Without bwrap, fx does not run (exit 4).
+~/.local/bin/fx points here; the real binary is FX_BIN.
 """
-import os, sys
+import glob, hashlib, json, os, re, shutil, sys, time
 
-FX = os.environ.get("FX_BIN", os.path.expanduser("~/.local/bin/fx"))
+HOME = os.path.expanduser("~")
+FX = os.environ.get("FX_BIN", os.path.join(HOME, ".local/lib/fx/fx"))
 BLOCK = os.path.expanduser(os.environ.get("OWNER_CANON_BLOCK", "~/.local/share/owner-canon/CANON.block.md"))
+OPS = os.environ.get("FX_PRIVACY_OPS", "/mnt/zer0models/workspace/zer0/data/operations")
+LOG = os.environ.get("FX_PRIVACY_LOG", os.path.join(HOME, ".local/state/fx-privacy/refusals.jsonl"))
 VALUE_FLAGS = {"--model", "--effort", "--provider-order", "--image", "--system", "--resume", "--resume-id"}
+# Account and config commands start no model session; everything else is sandboxed.
+UNSANDBOXED = {"login", "logout", "setup", "teams", "provider", "models", "credits", "balance",
+               "usage", "status", "doctor", "--help", "-h", "--version", "help"}
+
+# (a) A brief is refused if it is marked personal or names an owner source.
+RULES = [
+    ("marked_personal", r"\[personal\]|^\s*(privacy|data|sensitivity)\s*:\s*personal\b|--personal\b"),
+    ("state_db", r"state\.db"),
+    ("agentsview", r"agentsview|sessions\.db"),
+    ("ctx", r"\bctx\s+(search|show|grep|list|export|get)\b|CTX_DATA_ROOT|\.ctx/"),
+    ("unified_memory", r"unified-memory"),
+    ("owner_messages", r"owner[-_ ]messages?|OWNER-INTAKE|ASKS-REPLAY|task-source\.json|kevin-\S*msgs"),
+    ("personal_data_root", r"sft-svlm/data"),
+]
+
+
+def refused(brief: str):
+    for name, pat in RULES:
+        if re.search(pat, brief, re.I | re.M):
+            return name
+    return None
+
+
+def masked_paths():
+    """(c) Owner data paths a GPT session must not read, resolved through symlinks."""
+    hermes = os.path.join(HOME, ".hermes")
+    files = []
+    for pat in ("state.db*", "profiles/*/state.db*"):
+        files += glob.glob(os.path.join(hermes, pat))
+    files += glob.glob(os.path.join(OPS, "*", "OWNER-MESSAGES*"))
+    dirs = [os.path.join(HOME, ".agentsview"), os.path.join(HOME, ".ctx"),
+            os.environ.get("AGENTSVIEW_DATA_DIR", "/mnt/zer0models/sft-svlm/data/agentsview"),
+            os.environ.get("CTX_DATA_ROOT", "/mnt/zer0models/host-offload/home_kvn_.ctx"),
+            os.path.join(OPS, "unified-memory"), "/mnt/zer0models/sft-svlm/data"]
+    real = lambda ps, test: sorted({os.path.realpath(p) for p in ps if test(p)})
+    return real(dirs, os.path.isdir), real(files, os.path.isfile)
+
+
+def shim_dir():
+    """(b) ctx, agentsview and sqlite3 fail closed inside fx sessions."""
+    d = os.path.join(HOME, ".local/share/fx-privacy/shims")
+    os.makedirs(d, exist_ok=True)
+    for c in ("ctx", "agentsview", "sqlite3"):
+        p = os.path.join(d, c)
+        if not os.path.exists(p):
+            with open(p, "w") as f:
+                f.write(f"#!/bin/sh\necho 'PRIV2: {c} is blocked inside fx (owner data stays on Claude or local)' >&2\nexit 126\n")
+            os.chmod(p, 0o755)
+    return d
+
+
+def receipt(rule: str, brief: str):
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "rule": rule, "cwd": os.getcwd(),
+                            "brief_sha256": hashlib.sha256(brief.encode()).hexdigest()[:16],
+                            "brief_chars": len(brief)}) + "\n")
+
+
+def exec_sandboxed(argv, stdin_bytes=None):
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        print("fx-canon: PRIV2 needs bwrap to sandbox fx; refusing to run unsandboxed", file=sys.stderr)
+        return 4
+    dirs, files = masked_paths()
+    args = [bwrap, "--dev-bind", "/", "/"]
+    for d in dirs:
+        args += ["--tmpfs", d]
+    for f in files:
+        args += ["--ro-bind", "/dev/null", f]
+    path = shim_dir() + ":" + os.environ.get("PATH", "")
+    args += ["--setenv", "PATH", path, "--setenv", "FX_PRIVACY_SANDBOX", "1", "--", FX, *argv]
+    if stdin_bytes is not None:
+        r, w = os.pipe()
+        if os.fork() == 0:
+            os.close(r)
+            with os.fdopen(w, "wb") as out:
+                out.write(stdin_bytes)
+            os._exit(0)
+        os.close(w)
+        os.dup2(r, 0)
+    os.execv(bwrap, args)
 
 
 def main(argv):
-    if not argv or argv[0] != "ask":
+    if argv and argv[0] in UNSANDBOXED:
         os.execv(FX, [FX, *argv])
+    if not argv or argv[0] != "ask":
+        return exec_sandboxed(argv)  # interactive, session resume, pr, issue, ...
     try:
         block = open(BLOCK, encoding="utf-8").read().strip()
     except OSError:
@@ -25,8 +118,7 @@ def main(argv):
     if not block:
         print(f"fx-canon: canon block missing at {BLOCK}; run owner-canon-sync", file=sys.stderr)
         return 2
-    head = "Owner rules that apply to this whole request (from the owner canon):\n" + block + "\n\n"
-    opts, i, rest = [], 1, argv[1:]
+    opts, i, rest = [], 1, None
     while i < len(argv):
         a = argv[i]
         if a == "--":
@@ -37,20 +129,17 @@ def main(argv):
         if a in VALUE_FLAGS and "=" not in a and i + 1 < len(argv):
             opts.append(argv[i + 1]); i += 1
         i += 1
-    else:
-        rest = []
+    brief = " ".join(rest) if rest else sys.stdin.read()
+    rule = refused(brief) or refused(" ".join(opts))
+    if rule:
+        receipt(rule, brief)
+        print(f"fx-canon: PRIV2 refused ({rule}): Kevin's personal data goes to Claude or local only, "
+              "never GPT. Run this on Claude, or remove the owner source from the brief.", file=sys.stderr)
+        return 3
+    head = "Owner rules that apply to this whole request (from the owner canon):\n" + block + "\n\n"
     if rest:
-        os.execv(FX, [FX, "ask", *opts, "--", head + " ".join(rest)])
-    r, w = os.pipe()
-    if os.fork() == 0:
-        os.close(r)
-        with os.fdopen(w, "wb") as out:
-            out.write(head.encode())
-            out.write(sys.stdin.buffer.read())
-        os._exit(0)
-    os.close(w)
-    os.dup2(r, 0)
-    os.execv(FX, [FX, "ask", *opts])
+        return exec_sandboxed(["ask", *opts, "--", head + brief])
+    return exec_sandboxed(["ask", *opts], (head + brief).encode())
 
 
 if __name__ == "__main__":
