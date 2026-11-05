@@ -77,6 +77,8 @@ def decide(row, check):
         return "keep", "no proof"
     if live["linked"]:
         return "keep", "path reached through a symlink (git would empty the target)"
+    if live["outside"]:
+        return "keep", "real path outside the repo's parent tree"
     if live["main"]:
         return "keep", "main checkout of the repo"
     if live["dirty"]:
@@ -104,6 +106,8 @@ def live_check(row):
     return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
             "unpushed": int(unpushed) if unpushed.isdigit() else 1,
             "linked": os.path.islink(wt),
+            "outside": not os.path.realpath(wt).startswith(
+                os.path.dirname(os.path.dirname(os.path.realpath(cd))) + os.sep),
             "main": os.path.realpath(gd) == os.path.realpath(cd),
             "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
 

@@ -94,6 +94,18 @@ class Reap(unittest.TestCase):
         recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
         self.assertTrue([r for r in recs if r["branch"] == "done-clean"][0]["worktree_removed"])
 
+    def test_worktree_outside_repo_parent_tree_is_kept(self):
+        outside = Path(tempfile.mkdtemp())   # not under the repo's parent directory
+        wt = outside / "far"
+        g(self.repo, "worktree", "add", "-q", "-b", "far", str(wt))
+        g(wt, "commit", "-q", "--allow-empty", "-m", "far"); g(wt, "push", "-q", "origin", "far")
+        d = json.loads(self.net.read_text())
+        d["rows"].append({"repo": "repo", "commondir": self.cd, "branch": "far", "head": g(self.repo, "rev-parse", "far")[:12],
+                          "finished": ["task_done:t_9(done)"], "worktree": str(wt), "creator": "test", "task": None})
+        self.net.write_text(json.dumps(d))
+        self.run_reap("--apply")
+        self.assertTrue((wt / ".git").exists())
+
     def test_moved_head_is_kept(self):
         g(self.wts["done-clean"], "commit", "-q", "--allow-empty", "-m", "new work")
         g(self.wts["done-clean"], "push", "-q", "origin", "done-clean")
