@@ -7,28 +7,44 @@ window by default instead of compacting. Activate with
 It is the built-in ContextCompressor (same trigger accounting, tail protection, tool-pair
 repair, session rotation and failure fallbacks) with three changes:
 
-1. Size caps: hand off at 250k prompt tokens for Claude-class models and 120k for GPT
-   models, or at 85% of a smaller window. Research basis: Sol loses ~25% of solved tasks
-   by 250k; Opus ~15% at 250k of task-related context.
+1. Size caps: hand off at ``context.handoff_tokens`` (default 150k for Claude-class models,
+   100k for GPT models; N11, 2026-11-05), or at 85% of a smaller window. Research basis: Sol
+   loses ~25% of solved tasks by 250k; Opus ~15% at 250k of task-related context.
 2. The summarizer writes a handoff capsule: open asks quoted with status, the owner's
    constraints verbatim, exact state pointers, and Next.
+4. The capsule is capped at ~4k tokens (goal, open asks, constraints verbatim, pointers, Next);
+   the full summary spills to ``<HERMES_HOME>/handoffs/<session>.md`` (N11). The tail is lean:
+   the last owner message plus the last reply. Opt out with ``config set context.engine
+   compressor`` or ``/autohandoff off``.
 3. The capsule is framed as live working state. The stock prefix says requests in the
    summary "were already addressed", which closed open asks silently.
 """
 from __future__ import annotations
 
 import logging
+import os
+import re
+import subprocess
+from pathlib import Path
 from typing import Any, Optional
 
 from agent.context_compressor import SUMMARY_PREFIX, ContextCompressor
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_CAP_TOKENS = 250_000
-GPT_CAP_TOKENS = 120_000
+CLAUDE_CAP_TOKENS = 150_000
+GPT_CAP_TOKENS = 100_000
 THRESHOLD_PERCENT = 0.85
-# A handoff carries state in the capsule, so keep only a short verbatim tail.
-PROTECT_LAST_N = 6
+# A handoff carries state in the capsule, so keep only the last owner message and the last reply.
+PROTECT_LAST_N = 2
+CAPSULE_TOKENS = 4_000
+_CHARS_PER_TOKEN = 4
+# Capsule sections in priority order with their share of the budget (chars). Anything else
+# (completed actions, decisions, history) lives only in the spill file.
+CAPSULE_SECTIONS = (
+    ("Goal", 1_200), ("Open Asks", 5_200), ("Constraints & Preferences", 3_800),
+    ("Active State", 2_000), ("Blocked", 900), ("Next", 1_400), ("Pruned Skills", 900),
+)
 
 HANDOFF_PREFIX = (
     "[HANDOFF — NEW CONTEXT WINDOW] The previous context window reached its size cap and was "
@@ -62,8 +78,100 @@ def _is_gpt(model: str) -> bool:
     return "gpt" in m or m.startswith(("o3", "o4"))
 
 
-def _cap_for(model: str) -> int:
+def _cap_for(model: str, override: Optional[int] = None) -> int:
+    if override:
+        return int(override)
     return GPT_CAP_TOKENS if _is_gpt(model) else CLAUDE_CAP_TOKENS
+
+
+def _config() -> dict[str, Any]:
+    try:
+        from hermes_cli.config import load_config_readonly
+        return load_config_readonly() or {}
+    except Exception:  # noqa: BLE001 - fall back to defaults rather than fail agent start
+        logger.warning("handoff_compactor: could not read config; using defaults", exc_info=True)
+        return {}
+
+
+def _handoff_tokens() -> Optional[int]:
+    v = (_config().get("context") or {}).get("handoff_tokens")
+    try:
+        return int(v) if v else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _hermes_home() -> Path:
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+    except Exception:  # noqa: BLE001
+        return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+
+
+def _sections(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for m in re.finditer(r"^## (.+?)\n(.*?)(?=^## |\Z)", text, re.S | re.M):
+        out.setdefault(m.group(1).strip(), m.group(2).rstrip())
+    return out
+
+
+def _clip(body: str, limit: int, spill: str) -> str:
+    if len(body) <= limit:
+        return body
+    cut = body[:limit].rsplit("\n", 1)[0]
+    return f"{cut}\n- [cut here; the rest is in {spill}]"
+
+
+def _spill(session_id: str, full: str) -> Path:
+    d = _hermes_home() / "handoffs"
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', session_id or 'unknown-session')}.md"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a") as f:
+        f.write(full.rstrip() + "\n\n")
+    os.chmod(path, 0o600)
+    return path
+
+
+def build_capsule(full_body: str, session_id: str) -> str:
+    """Cap a full handoff summary to CAPSULE_TOKENS and spill the full text to the profile."""
+    path = _spill(session_id, full_body)
+    secs = _sections(full_body)
+    parts = []
+    for name, limit in CAPSULE_SECTIONS:
+        if secs.get(name, "").strip():
+            parts.append(f"## {name}\n{_clip(secs[name], limit, path)}")
+    if not parts:  # unstructured (fallback) summary: keep its head
+        parts.append(_clip(full_body, sum(l for _, l in CAPSULE_SECTIONS), path))
+    recovery = secs.get("Context Recovery", "").strip()
+    parts.append(f"## Pointers\n- Full handoff detail (completed actions, decisions, files, history): {path} "
+                 "(read_file it for anything not here)." + (f"\n{_clip(recovery, 700, path)}" if recovery else ""))
+    body = "\n\n".join(parts)
+    limit = CAPSULE_TOKENS * _CHARS_PER_TOKEN - len(HANDOFF_PREFIX) - 2
+    return _clip(body, limit, path) if len(body) > limit else body
+
+
+def _set_engine(value: str) -> None:
+    env = {**os.environ, "HERMES_HOME": str(_hermes_home())}
+    subprocess.run(["hermes", "config", "set", "context.engine", value], env=env, check=True,
+                   capture_output=True, text=True, timeout=60)
+
+
+def autohandoff_command(raw_args: str = "") -> str:
+    arg = (raw_args or "").strip().lower()
+    if arg == "off":
+        _set_engine("compressor")
+        return "Auto-handoff off: context.engine=compressor (stock compaction) from the next session."
+    if arg == "on":
+        _set_engine("handoff_compactor")
+        return "Auto-handoff on: context.engine=handoff_compactor from the next session."
+    if arg in ("", "status"):
+        ctx = _config().get("context") or {}
+        return (f"context.engine={ctx.get('engine') or 'compressor'}; handoff at "
+                f"{ctx.get('handoff_tokens') or f'{CLAUDE_CAP_TOKENS} (Claude) / {GPT_CAP_TOKENS} (GPT)'} tokens; "
+                f"capsule cap {CAPSULE_TOKENS} tokens; detail in {_hermes_home() / 'handoffs'}")
+    return "usage: /autohandoff on|off|status"
 
 
 def _reframe(content: Any) -> Any:
@@ -106,13 +214,28 @@ class HandoffCompactor(ContextCompressor):
                                              memory_context, has_user_turn)
         return f"{base}\n\n{HANDOFF_ADDENDUM}"
 
+    _handoff_override: Optional[int] = None
+
+    def _generate_summary(self, turns_to_summarize: list[dict[str, Any]], focus_topic: Optional[str] = None,
+                          memory_context: str = "", bypass_cooldown: bool = False) -> Optional[str]:
+        full = super()._generate_summary(turns_to_summarize, focus_topic=focus_topic,
+                                         memory_context=memory_context, bypass_cooldown=bypass_cooldown)
+        if not full:
+            return full
+        try:
+            capsule = build_capsule(self._strip_summary_prefix(full), getattr(self, "_session_id", "") or "")
+        except Exception:  # noqa: BLE001 - an uncapped capsule beats a failed handoff
+            logger.warning("handoff_compactor: capsule cap failed; using the full summary", exc_info=True)
+            return full
+        return self._with_summary_prefix(capsule)
+
     def update_model(self, model: str, context_length: int, base_url: str = "", api_key: str = "",
                      provider: str = "", api_mode: str = "") -> None:
-        self.threshold_tokens_cap = _cap_for(model)
+        self.threshold_tokens_cap = _cap_for(model, self._handoff_override)
         super().update_model(model=model, context_length=context_length, base_url=base_url,
                              api_key=api_key, provider=provider, api_mode=api_mode)
         # A model switch must re-derive the cap for the new family.
-        self.threshold_tokens_cap = _cap_for(model)
+        self.threshold_tokens_cap = _cap_for(model, self._handoff_override)
         self._threshold_tokens = None
 
     def compress(self, messages: list[dict[str, Any]], current_tokens: Optional[int] = None,
@@ -125,23 +248,17 @@ class HandoffCompactor(ContextCompressor):
 
 
 def _compression_settings() -> dict[str, Any]:
-    try:
-        from hermes_cli.config import load_config_readonly
-        cfg = load_config_readonly() or {}
-        return cfg.get("compression") or {}
-    except Exception:  # noqa: BLE001 - fall back to defaults rather than fail agent start
-        logger.warning("handoff_compactor: could not read compression config; using defaults", exc_info=True)
-        return {}
+    return _config().get("compression") or {}
 
 
 def build() -> HandoffCompactor:
     cs = _compression_settings()
-    return HandoffCompactor(
+    engine = HandoffCompactor(
         model="",
         threshold_percent=max(float(cs.get("threshold") or 0.5), THRESHOLD_PERCENT),
         protect_last_n=min(int(cs.get("protect_last_n") or 20), PROTECT_LAST_N),
         summary_target_ratio=float(cs.get("target_ratio") or 0.20),
-        threshold_tokens_cap=CLAUDE_CAP_TOKENS,
+        threshold_tokens_cap=_cap_for("", _handoff_tokens()),
         proactive_prune_tokens=int(cs.get("proactive_prune_tokens") or 0),
         proactive_prune_min_result_chars=int(cs.get("proactive_prune_min_result_chars") or 8000),
         proactive_prune_min_reclaim_tokens=int(cs.get("proactive_prune_min_reclaim_tokens") or 4096),
@@ -149,6 +266,8 @@ def build() -> HandoffCompactor:
         tail_mode=str(cs.get("tail_mode") or "lean"),
         quiet_mode=True,
     )
+    engine._handoff_override = _handoff_tokens()
+    return engine
 
 
 def register(ctx: Any) -> None:
@@ -156,3 +275,9 @@ def register(ctx: Any) -> None:
     logger.info("handoff_compactor: engine built (claude cap %d, gpt cap %d, pct %.2f)",
                 CLAUDE_CAP_TOKENS, GPT_CAP_TOKENS, engine.threshold_percent)
     ctx.register_context_engine(engine)
+    try:
+        ctx.register_command("autohandoff", handler=autohandoff_command,
+                             description="Auto-handoff instead of compaction: on, off or status",
+                             args_hint="on|off|status")
+    except Exception:  # noqa: BLE001 - older hosts without plugin commands still get the engine
+        logger.info("handoff_compactor: /autohandoff not registered", exc_info=True)
