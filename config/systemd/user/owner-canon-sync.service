@@ -1,0 +1,8 @@
+[Unit]
+Description=Regenerate the owner canon block (groot + mbp) from OWNER-CANON.md
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/owner-canon-sync --host mbp
+Nice=10
+TimeoutStartSec=180

@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""owner-canon-sync: render Kevin's locked owner canon (rules 1-15) from OWNER-CANON.md and upsert it,
+between owner-canon markers, into every harness's global instruction file. OWNER-CANON.md is the
+single source; the block is regenerated, never hand-edited.
+
+  owner-canon-sync                 render and upsert locally
+  owner-canon-sync --check         exit 1 if any target's block differs from the source (no writes)
+  owner-canon-sync --host mbp      also apply on a host over ssh (the block travels as base64 argv)
+
+The canon text stays private: it is read from the private source and written only to local
+dotfiles, never to this repo.
+"""
+import argparse, base64, os, re, subprocess, sys
+from pathlib import Path
+
+SOURCE = "/mnt/zer0models/workspace/zer0/data/operations/unified-memory/OWNER-CANON.md"
+START, END = "<!-- owner-canon:start", "<!-- owner-canon:end -->"
+# Global instruction files read by each harness. SOULs only for profiles that exist on the host;
+# harness files are created when missing. ~/AGENTS.md is what fx applies outside any git repo.
+CREATE = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.pi/agent/AGENTS.md", "~/AGENTS.md"]
+SOUL_PROFILES = ["analyst", "clean", "intake", "ossfactory", "product", "reliability", "z0i"]
+
+
+def render(source):
+    rules = []
+    for line in Path(source).read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^(\d+)\. (.+?)(?: — .*)?$", line)
+        if m and int(m.group(1)) == len(rules) + 1 and len(rules) < 15:
+            rules.append(f"{m.group(1)}. {m.group(2).strip()}")
+    if len(rules) != 15:
+        raise SystemExit(f"owner-canon-sync: expected locked rules 1-15 in {source}, found {len(rules)}")
+    return "\n".join([
+        f"{START} (generated from {SOURCE}, locked rules 1-15; edit the source, not this block) -->",
+        "## Kevin's owner canon (locked)", *rules, END]) + "\n"
+
+
+def targets(home):
+    souls = [home / f".hermes/profiles/{p}/SOUL.md" for p in SOUL_PROFILES]
+    return [(Path(str(t).replace("~", str(home), 1)), True) for t in CREATE] + \
+           [(s, False) for s in souls if s.parent.is_dir()]
+
+
+def upsert(text, block):
+    i, j = text.find(START), text.find(END)
+    if i >= 0 and j > i:
+        return text[:i] + block.rstrip("\n") + text[j + len(END):]
+    if not text.strip():
+        return block
+    return text.rstrip("\n") + "\n\n" + block
+
+
+def apply(block, check, home=Path.home()):
+    drift = 0
+    for path, create in targets(home):
+        if not path.exists() and not create:
+            continue
+        old = path.read_text(encoding="utf-8") if path.exists() else ""
+        new = upsert(old, block)
+        if new == old:
+            print(f"ok      {path}")
+            continue
+        drift += 1
+        if check:
+            print(f"drift   {path}")
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".owner-canon.tmp")
+        tmp.write_text(new, encoding="utf-8")
+        if path.exists():
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        os.replace(tmp, path)
+        print(f"updated {path}")
+    return drift
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--source", default=SOURCE)
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--host", action="append", default=[])
+    ap.add_argument("--block-b64", help=argparse.SUPPRESS)  # remote side of --host
+    a = ap.parse_args()
+    block = base64.b64decode(a.block_b64).decode() if a.block_b64 else render(a.source)
+    drift = apply(block, a.check)
+    for host in a.host:
+        args = ["--block-b64", base64.b64encode(block.encode()).decode()] + (["--check"] if a.check else [])
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", host, "python3", "-", *args],
+                           input=Path(__file__).read_bytes(), capture_output=True, timeout=120)
+        out = r.stdout.decode(errors="replace")
+        sys.stdout.write("".join(f"{host}: {l}\n" for l in out.splitlines() if re.match(r"^(ok|drift|updated) ", l)))
+        if r.returncode not in (0, 1):
+            print(f"{host}: failed rc={r.returncode} {r.stderr.decode(errors='replace')[-300:]}", file=sys.stderr)
+        drift += r.returncode != 0
+    return 1 if (a.check and drift) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
