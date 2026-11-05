@@ -34,6 +34,14 @@ def workload_class(explicit, command, cpus, quota):
     return 'bench' if float(cpus) == quota else 'build'
 
 
+def default_requests(cpus, mem, tolerate):
+    """Unset requests: fleet-build --light jobs (they tolerate phones) are lint and
+    single-process tests, measured at ~1.1 CPU and <210 MiB, so they ask 1 CPU / 2 GiB and
+    the 4-CPU lanes quota runs four. Everything else keeps 2 CPU / 3 GiB."""
+    light = 'phone' in (tolerate or [])
+    return cpus or ('1' if light else '2'), mem or ('2G' if light else '3G')
+
+
 def workload_evicted(workload):
     conditions = {c['type']: c['status'] for c in workload.get('status', {}).get('conditions', [])}
     return conditions.get('Evicted') == 'True' or (
@@ -91,8 +99,8 @@ def main():
     parser.add_argument('--priority-class', choices=('test', 'build', 'bench'))
     parser.add_argument('--checkpoint-safe', action='store_true',
                         help='command resumes atomically checkpointed work in the persistent source stage')
-    parser.add_argument('--mem', default='3G')
-    parser.add_argument('--cpus', default='2')
+    parser.add_argument('--mem')
+    parser.add_argument('--cpus')
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--wait', type=int, default=1800)
     parser.add_argument('--keep', action='store_true')
@@ -136,6 +144,7 @@ def main():
         parser.error('--src is required for submission')
     if (not args.cmd and not args.attach) or args.timeout <= 0 or args.wait < -1:
         parser.error('command, positive --timeout, and --wait >= -1 required')
+    args.cpus, args.mem = default_requests(args.cpus, args.mem, args.tolerate)
     # Match fleet's binary memory units, not Kubernetes decimal G/M quantities.
     match = re.fullmatch(r'(\d+(?:\.\d+)?)([KMGT]?)I?B?', args.mem.upper())
     if not match:

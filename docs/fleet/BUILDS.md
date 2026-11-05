@@ -73,7 +73,10 @@ fleet-build --class build --jdk 21 -- ./gradlew assembleLawnWithQuickstepPlayDeb
   A busy queue is not permission to execute on groot.
 - Kueue `--mem` and `--cpus` set both container requests and limits.
   Requests above the total queue quota exit 75 immediately, before staging.
-  The default build request remains 3 GiB. Gradle remains 6 GiB.
+  The default build request remains 3 GiB. Gradle remains 6 GiB. `--light` (lint,
+  pure-Python tests, scans) defaults to 1 CPU and 2 GiB, so the 4-CPU quota runs four
+  of them at once; measured light jobs use ~1.1 CPU and under 210 MiB. Pass
+  `--cpus`/`--mem` for heavier light work.
   Both fit the approved 10441814016-byte (~9.73 GiB) aggregate memory quota.
   Use an explicit memory request appropriate for the actual job.
   Do not reduce a real job's request merely to obtain admission.
