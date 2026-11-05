@@ -39,9 +39,17 @@ class WorkerDiskPolicyTests(unittest.TestCase):
             arguments = dict(value.split('=', 1) for value in kubelet)
             self.assertEqual(arguments['image-gc-high-threshold'], '80')
             self.assertEqual(arguments['image-gc-low-threshold'], '70')
-            self.assertIn('nodefs.available<10%', arguments['eviction-hard'].split(','))
-            self.assertIn('nodefs.available<12%', arguments['eviction-soft'].split(','))
+            self.assertIn('nodefs.available<15Gi', arguments['eviction-hard'].split(','))
+            self.assertIn('nodefs.available<20Gi', arguments['eviction-soft'].split(','))
             self.assertIn('nodefs.available=2m', arguments['eviction-soft-grace-period'].split(','))
+            # oss-factory#329: disk eviction is absolute and never stricter than fleet-health.
+            import yaml
+            fleet = yaml.safe_load((ROOT / 'config/fleet/nodes.yaml').read_text())
+            min_free = float(fleet['defaults']['health']['min_disk_free_gb'])
+            for signal in ('nodefs.available', 'imagefs.available'):
+                hard = dict(v.split('<', 1) for v in arguments['eviction-hard'].split(','))[signal]
+                self.assertTrue(hard.endswith('Gi'), hard)
+                self.assertLessEqual(float(hard[:-2]), min_free)
             plan = ['bash', str(ROOT / 'scripts/fleet-harden.sh'), 'plan', 'worker']
             for value in kubelet:
                 plan += ['--kubelet-arg', value]
