@@ -1,6 +1,5 @@
 [Unit]
 Description=Report-only tracked host configuration drift audit
-OnFailure=service-watch-failure@%n.service
 
 [Service]
 Type=oneshot

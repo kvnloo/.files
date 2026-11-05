@@ -1,7 +1,7 @@
 """OnFailure=service-watch-failure@<unit>.service must systemd-escape <unit>: '-' in an
 instance name unescapes to '/', so host-optimizer's literal OnFailure reported
-'host/optimizer.service' -> 'Invalid unit' and left a failed watcher (11-05). Use %n
-or the escaped name (\\x2d)."""
+'host/optimizer.service' -> 'Invalid unit' and left a failed watcher (11-05). %n is escaped by systemd and
+is fine. Or use the escaped name (\\x2d), as the generated 90-service-watch drop-ins do."""
 import re, unittest
 from pathlib import Path
 
