@@ -17,7 +17,8 @@ SOURCE = "/mnt/zer0models/workspace/zer0/data/operations/unified-memory/OWNER-CA
 START, END = "<!-- owner-canon:start", "<!-- owner-canon:end -->"
 # Global instruction files read by each harness. SOULs only for profiles that exist on the host;
 # harness files are created when missing. ~/AGENTS.md is what fx applies outside any git repo.
-CREATE = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.pi/agent/AGENTS.md", "~/AGENTS.md"]
+CREATE = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.pi/agent/AGENTS.md", "~/AGENTS.md",
+          "~/.local/share/owner-canon/CANON.block.md"]  # last: read by fx-canon (fx has no global file)
 SOUL_PROFILES = ["analyst", "clean", "intake", "ossfactory", "product", "reliability", "z0i"]
 
 

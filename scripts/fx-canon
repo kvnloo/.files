@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""fx-canon: run `fx ask` with Kevin's owner canon in front of the prompt.
+
+fx v0.0.15 has no global instruction file. It reads the cwd's AGENTS.md and walks up only
+inside $HOME (and not into $HOME itself from a subdir); outside $HOME it reads the cwd only
+(trace: project_rules_omitted "workspace is not below home"). `--system` replaces fx's whole
+base prompt, so it is not used. Instead this prepends the generated canon block (rendered by
+owner-canon-sync from OWNER-CANON.md) to the prompt, from argv or stdin. Any other fx command
+is passed through unchanged.
+"""
+import os, sys
+
+FX = os.environ.get("FX_BIN", os.path.expanduser("~/.local/bin/fx"))
+BLOCK = os.path.expanduser(os.environ.get("OWNER_CANON_BLOCK", "~/.local/share/owner-canon/CANON.block.md"))
+VALUE_FLAGS = {"--model", "--effort", "--provider-order", "--image", "--system", "--resume", "--resume-id"}
+
+
+def main(argv):
+    if not argv or argv[0] != "ask":
+        os.execv(FX, [FX, *argv])
+    try:
+        block = open(BLOCK, encoding="utf-8").read().strip()
+    except OSError:
+        block = ""
+    if not block:
+        print(f"fx-canon: canon block missing at {BLOCK}; run owner-canon-sync", file=sys.stderr)
+        return 2
+    head = "Owner rules that apply to this whole request (from the owner canon):\n" + block + "\n\n"
+    opts, i, rest = [], 1, argv[1:]
+    while i < len(argv):
+        a = argv[i]
+        if a == "--":
+            rest = argv[i + 1:]; break
+        if not a.startswith("-"):
+            rest = argv[i:]; break
+        opts.append(a)
+        if a in VALUE_FLAGS and "=" not in a and i + 1 < len(argv):
+            opts.append(argv[i + 1]); i += 1
+        i += 1
+    else:
+        rest = []
+    if rest:
+        os.execv(FX, [FX, "ask", *opts, "--", head + " ".join(rest)])
+    r, w = os.pipe()
+    if os.fork() == 0:
+        os.close(r)
+        with os.fdopen(w, "wb") as out:
+            out.write(head.encode())
+            out.write(sys.stdin.buffer.read())
+        os._exit(0)
+    os.close(w)
+    os.dup2(r, 0)
+    os.execv(FX, [FX, "ask", *opts])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
