@@ -5,6 +5,7 @@ import importlib.util
 import sys
 import time
 import tomllib
+import json
 import unittest
 from pathlib import Path
 
@@ -126,6 +127,13 @@ class Invariants(unittest.TestCase):
         self.assertEqual((f.invariant, f.remedy), ('archive_fresh', 'sync_archive'))
         just_started = self.healthy(native={'clean': NOW - 60}, archived={'clean': NOW - 3 * 3600})
         self.assertEqual(heal.check(SPEC, just_started), [])
+
+    def test_failed_recall_with_null_unresolved_is_a_finding_not_a_crash(self):
+        """2026-11-05 09:22: the recall receipt wrote "unresolved": null and every heal run died."""
+        host = self.healthy(receipt=json.dumps({"at": "2027-01-15T08:00:00+00:00", "pass": False,
+                                                "sources": {"ok": [], "unresolved": None}}))
+        [f] = heal.check(SPEC, host)
+        self.assertEqual((f.invariant, f.remedy), ('recall_pass', 'derived'))
 
     def test_failed_resumable_job_is_resumed(self):
         """2026-11-02: the GraphRAG index was OOM-killed at 482/11350 and nothing restarted it."""
