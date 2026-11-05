@@ -133,17 +133,21 @@ fleet-build --node avrea -- bash -lc 'bun install --frozen-lockfile && bun test'
 fleet-build --phone -- python3 -m pytest    # an arm64 phone job
 ```
 
-- Public committed source + heavy verification -> **Avrea first**. Default
-  `avrea-ubuntu-latest-4-vcpu` (16 GB); `-4-vcpu-8gb` saves minutes for
-  CPU-bound work. Standard GitHub public runners remain the no-Avrea-budget
-  baseline and fallback, not a reason to contend for MBP memory.
+- Public committed source -> **free GitHub CI first**. `fleet-build --public`
+  (or `--x86`/`--docker`) dispatches a clean, pushed HEAD to kvnloo/fleet-runner
+  on GitHub-hosted `ubuntu-latest` (4 vCPU / 16 GB, unmetered for public repos;
+  avrea-ubuntu x64 labels map there too, so no Avrea budget is reserved). Jobs
+  needing local inputs, `--keep`, JDK/Gradle or a dirty/unpushed tree stay on the
+  MBP; a full MBP queue waits, it never overflows to Boat.
 - Local/private data -> MBP Kueue by default and with `--node mbp`.
   `--node mbp-host` is an explicit host escape, not an admission bypass.
   Gradle/Android defaults remain 6 GiB, 4 CPUs and JDK 17, or `--jdk 21`.
   Requests above the configured queue quota exit 75 before staging.
   Avrea never receives uncommitted local work.
 - Phones -> light arm64-safe work (`--light`), not full dependency installs or
-  x86 jobs. Boat -> x86 overflow and Docker jobs within its trial allowance.
+  x86 jobs. Boat is paid and limited: only for work GitHub can't run, via
+  `--boat-need snapshot|fork|big|agent|url|windows` (`big` = automatic when a
+  `--public` job asks for more than 4 vCPU or 16 GB) or an explicit `--node boat`.
   Avrea ARM/macOS are available when architecture/native macOS is required,
   not the default: ARM reference-minute cost is 3x x86.
 - groot only for the GPU or a toolchain that exists only there, said explicitly.

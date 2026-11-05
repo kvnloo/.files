@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# fleet-build: run verification OFF groot. Public committed heavy work prefers
-# --node avrea; local-data/native jobs use the host fleet. Routing policy:
-# docs/fleet/README.md, "Default routing".
+# fleet-build: run verification OFF groot. --public committed work goes to free
+# GitHub CI first (kvnloo/fleet-runner on ubuntu-latest via fleet-avrea); local-data
+# and native jobs use the host fleet. Boat is paid and limited: only for work GitHub
+# can't run (--boat-need). Routing policy: docs/fleet/README.md, "Default routing".
 #
 #   fleet-build [opts] [--] CMD...        run from anywhere inside the repo
 #
@@ -29,8 +30,11 @@
 #   --fetch PATH     copy PATH back (relative to the directory you ran from); repeatable
 #   --out DIR        put fetched files in DIR (default: configured fleet bulk spool/<job>/)
 #   --src DIR        repo to ship (default: the git toplevel of the cwd)
-#   --public         reviewed public source; allow Boat overflow before queueing
-#   --x86|--docker   prefer Boat (implies --public); install job dependencies explicitly
+#   --public         reviewed public source: free GitHub CI (ubuntu-latest) first when the
+#                    clean HEAD is pushed and the job needs no local inputs; else home fleet
+#   --x86|--docker   same as --public (ubuntu-latest is x86_64 with Docker)
+#   --boat-need WHY  snapshot|fork|big|agent|url|windows: the only reasons to use Boat
+#                    (big = auto when a GitHub-eligible --public job asks >4 CPUs or >16G)
 #   --local-data     never send this job to Boat, even with --public
 #   --repo OWNER/REPO --sha SHA  Avrea: public exact head (otherwise clean local origin/HEAD)
 #   --runner LABEL --matrix FILE --parallel N --snapshot FILE --max-api-requests N
@@ -50,7 +54,7 @@ FLEET="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/fleet"
 # while a long build runs cannot break the running copy.
 {
 
-mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; prefer_boat=0; guest=0
+mode=build; jdk=""; node=""; mem=""; cpus=""; timeout=""; src=""; out=""; fetch=(); inputs=(); avrea_opts=(); keep=0; wait_s=1800; public=0; local_data=0; boat_need=""; guest=0
 gradle_args="-Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx4g\ -XX:MaxMetaspaceSize=768m\ -Dfile.encoding=UTF-8 --max-workers=4"
 priority_class=""; checkpoint_safe=0
 attach=""
@@ -64,7 +68,10 @@ while [ $# -gt 0 ]; do
     --phone) mode=phone; shift ;;
     --guest) guest=1; shift ;;
     --public) public=1; shift ;;
-    --x86|--docker) public=1; prefer_boat=1; shift ;;
+    --x86|--docker) public=1; shift ;;
+    --boat-need)
+      case $2 in snapshot|fork|big|agent|url|windows) boat_need=$2 ;; *) echo "fleet-build: --boat-need must be snapshot, fork, big, agent, url or windows" >&2; exit 2 ;; esac
+      shift 2 ;;
     --local-data) local_data=1; shift ;;
     --jdk) jdk=$2; shift 2 ;;
     --gradle-args) gradle_args=$2; shift 2 ;;
@@ -86,7 +93,7 @@ while [ $# -gt 0 ]; do
     --fetch) fetch+=("$2"); shift 2 ;;
     --input) inputs+=("$2"); shift 2 ;;
     --keep) keep=1; shift ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     --) shift; break ;;
     -*) echo "fleet-build: unknown option $1" >&2; exit 2 ;;
     *) break ;;
@@ -115,6 +122,25 @@ if [ "$bend_tools" = 1 ]; then
   tar --exclude=check.json -czf "$bend_stage/bend-tools.tar.gz" -C "$HOME/.bend" bin bend2 bendtt
   inputs+=("$bend_stage/bend-tools.tar.gz:.fleet-bend-tools.tar.gz")
 fi
+if [ -n "$boat_need" ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
+# --public goes to free GitHub CI first when nothing local is needed: a verified
+# public GitHub origin with a clean HEAD already pushed (fleet_public_placement.py).
+case ${1:-} in ./gradlew|gradlew|gradle) is_gradle=1 ;; *) is_gradle=0 ;; esac
+if [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && [ "$bend_tools" = 0 ] \
+   && { [ "$mode" = build ] || [ "$mode" = light ]; } && [ "$is_gradle" = 0 ] && [ -z "$jdk" ] \
+   && [ ${#inputs[@]} -eq 0 ] && [ ${#src_includes[@]} -eq 0 ] && [ "$keep" = 0 ] && [ $# -gt 0 ] \
+   && [ "${FLEET_GH_PLACEMENT:-1}" = 1 ]; then
+  # Exit 0 = GitHub CI, 3 = larger than ubuntu-latest (>4 vCPU/16 GB) so Boat, else home.
+  place_src=${src:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
+  set +e
+  python3 "$(dirname "$FLEET")/fleet_public_placement.py" --src "$place_src" --cpus "$cpus" --mem "$mem"
+  placed=$?
+  set -e
+  case $placed in
+    0) node=avrea; mode=build; mem=""; cpus="" ;;
+    3) boat_need=big; node=boat ;;
+  esac
+fi
 if [ "$node" = avrea ]; then
   [ "$local_data" = 0 ] || { echo "fleet-build: --local-data cannot use Avrea" >&2; exit 2; }
   [ ${#src_includes[@]} -eq 0 ] || { echo "fleet-build: --src-include selects local snapshots, not Avrea's exact Git commits" >&2; exit 2; }
@@ -129,19 +155,9 @@ if [ "$node" = avrea ]; then
   exec "$(dirname "$FLEET")/fleet-avrea" "${avrea_opts[@]}" -- "$@"
 fi
 [ ${#avrea_opts[@]} -eq 0 ] || { echo "fleet-build: Avrea-only flags require --node avrea" >&2; exit 2; }
-[ $# -gt 0 ] || { sed -n '2,32p' "$0"; exit 2; }
+[ $# -gt 0 ] || { sed -n '2,40p' "$0"; exit 2; }
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
-if [ "$prefer_boat" = 1 ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
-# --public prefers Boat up front when the MBP Kueue is backlogged or under
-# DiskPressure, and only for a GitHub origin that the API reports as public.
-# Android/JDK jobs need the MBP toolchain; phone and Bend jobs keep their lanes.
-if [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && [ "$bend_tools" = 0 ] \
-   && [ "$mode" != android ] && [ "$mode" != phone ] && [ -z "$jdk" ] && [ "${FLEET_BOAT_PLACEMENT:-1}" = 1 ]; then
-  if python3 "$(dirname "$FLEET")/fleet_boat_placement.py" --src "${src:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; then
-    node=boat
-  fi
-fi
 if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi
@@ -249,14 +265,7 @@ while :; do
   rc=$?
   set -e
   wait 2>/dev/null || true
-  # Only reviewed public jobs may overflow to Boat. No allocated job is replayed.
-  if [ $rc -eq 75 ] && [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && ! grep -q '^fleet: job ' "$err"; then
-    set +e
-    "$FLEET" run --node boat "${args[@]:1}" 2> >(tee "$err" >&2)
-    rc=$?
-    set -e
-    wait 2>/dev/null || true
-  fi
+  # A full MBP queue is not a reason to use Boat (paid, limited): wait and retry.
   # Admission holds are retryable. Once a job ID was allocated, a 75 might
   # come from a partially executed workflow; never replay side effects blindly.
   [ "$use_kueue" = 0 ] && [ $rc -eq 75 ] && ! grep -q '^fleet: job ' "$err" && [ "$(date +%s)" -lt "$deadline" ] || break

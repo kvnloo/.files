@@ -18,7 +18,7 @@ SHA = 'a' * 40
 
 
 class DispatchTests(unittest.TestCase):
-    def dispatch(self, code=0, wrong_sha=False, budget_code=0, private=False):
+    def dispatch(self, code=0, wrong_sha=False, budget_code=0, private=False, runner='avrea-ubuntu-latest-arm-4-vcpu'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         output = Path(temporary.name)
@@ -44,7 +44,7 @@ class DispatchTests(unittest.TestCase):
             if args[:2] == ('run', 'view'):
                 return {'status': 'completed', 'conclusion': 'success' if not code else 'failure', 'jobs': []}
             raise AssertionError(args)
-        argv = ['fleet-avrea', '--repo', 'owner/repo', '--sha', SHA, '--out', str(output), '--', 'python3', '-m', 'unittest']
+        argv = ['fleet-avrea', '--repo', 'owner/repo', '--sha', SHA, '--out', str(output), *(['--runner', runner] if runner else []), '--', 'python3', '-m', 'unittest']
         with patch.object(sys, 'argv', argv), patch.object(CLIENT, 'gh_json', fake_gh), patch.object(CLIENT.subprocess, 'run', fake_process), patch.object(CLIENT, 'run') as dispatch:
             result = CLIENT.main()
             return result, calls, dispatch.call_args_list, output
@@ -68,6 +68,14 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(result, 75)
         self.assertEqual(dispatch, [])
         self.assertFalse((output / 'request.json').exists())
+
+    def test_free_github_runner_skips_avrea_budget(self):
+        for runner in (None, 'ubuntu-latest', 'avrea-ubuntu-latest-4-vcpu'):
+            result, calls, dispatch, output = self.dispatch(runner=runner)
+            self.assertEqual(result, 0, runner)
+            self.assertFalse(any(argv[0].endswith('fleet-avrea-budget') for argv in calls), runner)
+            self.assertFalse(any('settle' in call.args[0] for call in dispatch), runner)
+            self.assertEqual(json.loads((output / 'budget.json').read_text())['lane'], 'github-hosted-free')
 
     def test_private_source_refused(self):
         with self.assertRaises(SystemExit) as error:

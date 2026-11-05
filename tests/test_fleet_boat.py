@@ -260,7 +260,18 @@ sys.exit(75)
         fake.chmod(0o700)
         # fleet-build now invokes this sibling directly for Kueue admission.
         shutil.copy2(fake, self.root / "fleet-kueue")
+        avrea = self.root / "fleet-avrea"
+        avrea.write_text(fake.read_text().replace("sys.exit(75)", "sys.exit(0 if Path(__file__).name == 'fleet-avrea' else 75)"))
+        avrea.chmod(0o700)
         self.calls = self.root / "calls"
+
+    def place(self, lane):
+        # Fake placement with the real size rule: 0 = GitHub CI, 3 = too big (Boat), 1 = home.
+        real = ROOT / "scripts"
+        (self.root / "fleet_public_placement.py").write_text(
+            f"import sys; sys.path.insert(0, {str(real)!r}); import fleet_public_placement as p\n"
+            "a = sys.argv; cpus = a[a.index('--cpus') + 1]; mem = a[a.index('--mem') + 1]\n"
+            f"sys.exit(3 if p.too_big(cpus, mem) else {0 if lane == 'gh' else 1})\n")
 
     def invoke(self, *flags, allocated=False):
         env = dict(os.environ, CALLS=str(self.calls))
@@ -271,39 +282,64 @@ sys.exit(75)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
         return result, calls
 
-    def test_public_job_overflows_after_preadmission_hold(self):
-        result, calls = self.invoke('--public')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(calls), 2)
-        self.assertEqual(calls[0]["backend"], "fleet-kueue")
-        self.assertEqual(calls[1]["backend"], "fleet")
-        self.assertEqual(calls[1]["argv"][1:3], ['--node', 'boat'])
-        self.assertEqual(calls[1]["argv"][-3:], ['python3', '-c', 'print(42)'])
+    def backends(self, calls):
+        return [c["backend"] for c in calls]
 
-    def test_private_and_local_data_jobs_never_overflow(self):
-        for flags in ([], ['--public', '--local-data']):
+    def node(self, call):
+        return call["argv"][call["argv"].index('--node') + 1] if '--node' in call["argv"] else None
+
+    def test_public_job_goes_to_github_ci_first(self):
+        self.place('gh')
+        for flags in (['--public'], ['--x86'], ['--docker'], ['--public', '--light'],
+                      ['--public', '--mem', '8G', '--cpus', '4']):
+            if self.calls.exists(): self.calls.unlink()
+            result, calls = self.invoke(*flags)
+            self.assertEqual(result.returncode, 0, (flags, result.stderr))
+            self.assertEqual(self.backends(calls), ["fleet-avrea"], flags)
+            argv = calls[0]["argv"]
+            self.assertNotIn('--mem', argv)
+            self.assertEqual(argv[-3:], ['python3', '-c', 'print(42)'])
+
+    def test_public_job_needing_local_state_stays_home_not_boat(self):
+        self.place('gh')
+        payload = self.root / "in.txt"; payload.write_text("x")
+        for flags in (['--public', '--local-data'], [], ['--public', '--jdk', '17'],
+                      ['--public', '--keep'], ['--public', '--input', f'{payload}:in.txt']):
+            if self.calls.exists(): self.calls.unlink()
+            result, calls = self.invoke(*flags)
+            self.assertEqual(self.backends(calls), ["fleet-kueue"], flags)
+            self.assertNotIn('boat', calls[0]["argv"])
+
+    def test_unpushed_or_private_public_job_stays_home_and_never_overflows_to_boat(self):
+        self.place('home')
+        for flags in (['--public'], []):
             if self.calls.exists(): self.calls.unlink()
             result, calls = self.invoke(*flags)
             self.assertEqual(result.returncode, 75)
-            self.assertEqual(len(calls), 1)
-            self.assertEqual(calls[0]["backend"], "fleet-kueue")
+            self.assertEqual(self.backends(calls), ["fleet-kueue"], flags)
             self.assertNotIn('boat', calls[0]["argv"])
 
     def test_allocated_job_is_never_replayed(self):
         result, calls = self.invoke('--public', allocated=True)
         self.assertEqual(result.returncode, 75)
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0]["backend"], "fleet-kueue")
+        self.assertEqual(self.backends(calls), ["fleet-kueue"])
 
-    def test_x86_and_docker_prefer_boat(self):
-        for flag in ('--x86', '--docker'):
+    def test_boat_only_for_work_github_cannot_run(self):
+        self.place('gh')
+        cases = [(['--public', '--boat-need', w], w) for w in ('snapshot', 'fork', 'agent', 'url', 'windows')]
+        cases += [(['--public', '--cpus', '8'], 'big'), (['--public', '--mem', '32G'], 'big')]
+        for flags, _ in cases:
             if self.calls.exists(): self.calls.unlink()
-            result, calls = self.invoke(flag)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(len(calls), 1)
-            self.assertEqual(calls[0]["backend"], "fleet")
-            argv = calls[0]["argv"]
-            self.assertEqual(argv[argv.index('--node') + 1], 'boat')
+            result, calls = self.invoke(*flags)
+            self.assertEqual(result.returncode, 0, (flags, result.stderr))
+            self.assertEqual(self.backends(calls), ["fleet"], flags)
+            self.assertEqual(self.node(calls[0]), 'boat', flags)
+
+    def test_boat_need_rejects_unknown_reason_and_local_data(self):
+        result, calls = self.invoke('--public', '--boat-need', 'busy')
+        self.assertEqual(result.returncode, 2)
+        result, calls = self.invoke('--local-data', '--boat-need', 'fork')
+        self.assertEqual(self.backends(calls), ["fleet-kueue"])
 
     def test_local_data_rejects_explicit_boat(self):
         result, calls = self.invoke('--local-data', '--node', 'boat')
@@ -316,48 +352,18 @@ sys.exit(75)
         self.assertEqual(calls, [])
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-    def test_public_job_prefers_boat_when_placement_says_mbp_is_backlogged(self):
-        placement = self.root / "fleet_boat_placement.py"
-        placement.write_text("import sys; sys.exit(int(__import__('os').environ.get('PLACE', '1')))\n")
-        env_backup = os.environ.get('PLACE')
-        try:
-            os.environ['PLACE'] = '0'
-            result, calls = self.invoke('--public')
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual([c["backend"] for c in calls], ["fleet"])
-            self.assertEqual(calls[0]["argv"][calls[0]["argv"].index('--node') + 1], 'boat')
-            for flags in (['--public', '--local-data'], [], ['--public', '--jdk', '17']):
-                if self.calls.exists(): self.calls.unlink()
-                result, calls = self.invoke(*flags)
-                self.assertEqual(calls[0]["backend"], "fleet-kueue", flags)
-        finally:
-            os.environ.pop('PLACE') if env_backup is None else os.environ.update(PLACE=env_backup)
-
-
-class BoatPlacementTests(unittest.TestCase):
+class PublicPlacementTests(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, str(ROOT / "scripts"))
-        import fleet_boat_placement
-        self.placement = fleet_boat_placement
-        self.healthy = {"status": {"conditions": [
-            {"type": "Ready", "status": "True"}, {"type": "DiskPressure", "status": "False"},
-            {"type": "MemoryPressure", "status": "False"}, {"type": "PIDPressure", "status": "False"}]}}
+        import fleet_public_placement
+        self.placement = fleet_public_placement
 
-    def test_pending_or_disk_pressure_selects_boat(self):
-        pending = {"status": {"pendingWorkloads": 2}}
-        self.assertEqual(self.placement.choose(True, pending, self.healthy)["reason"], "mbp-queue-pending")
-        disk = {"status": {"conditions": [{"type": "Ready", "status": "True"},
-                                          {"type": "DiskPressure", "status": "True"}]}}
-        self.assertEqual(self.placement.choose(True, {}, disk)["reason"], "mbp-disk-pressure")
-        self.assertEqual(self.placement.choose(True, {}, self.healthy)["selected_lane"], "mbp")
-
-    def test_private_or_unverified_source_stays_home(self):
-        pending = {"status": {"pendingWorkloads": 9}}
+    def test_only_public_clean_pushed_head_selects_github_ci(self):
+        self.assertEqual(self.placement.choose(True, True, True)["selected_lane"], "github-ci")
+        self.assertEqual(self.placement.choose(True, False, None)["reason"], "dirty-tree")
+        self.assertEqual(self.placement.choose(True, True, False)["reason"], "head-not-pushed")
         for public in (False, None):
-            self.assertEqual(self.placement.choose(public, pending, self.healthy)["selected_lane"], "mbp")
+            self.assertEqual(self.placement.choose(public, True, True)["selected_lane"], "mbp")
 
     def test_github_remote_parsing(self):
         for url in ("https://github.com/kvnloo/t3code.git", "git@github.com:kvnloo/t3code.git",
@@ -365,3 +371,13 @@ class BoatPlacementTests(unittest.TestCase):
             self.assertEqual(self.placement.github_repo(url), "kvnloo/t3code")
         self.assertIsNone(self.placement.github_repo("https://gitlab.com/a/b.git"))
 
+    def test_size_above_ubuntu_latest_selects_boat(self):
+        self.assertEqual(self.placement.choose(True, True, True, big=True)["selected_lane"], "boat")
+        self.assertEqual(self.placement.choose(False, True, True, big=True)["selected_lane"], "mbp")
+        for cpus, mem, big in (('', '', False), ('4', '16G', False), ('8', '', True),
+                               ('', '32G', True), ('', '20000M', True), ('2', '8Gi', False)):
+            self.assertEqual(self.placement.too_big(cpus, mem), big, (cpus, mem))
+
+
+if __name__ == '__main__':
+    unittest.main()

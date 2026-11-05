@@ -25,12 +25,22 @@ def gh_json(*args):
     return json.loads(capture(['gh', *args]))
 
 
+# kvnloo/fleet-runner main (5a6dd9d) runs these labels on GitHub-hosted
+# ubuntu-latest, which is free and unmetered for the public-only lane. They need
+# no Avrea minute reservation. Arm/macOS/Windows/Boat labels stay metered.
+FREE_LABEL = re.compile(r'ubuntu-latest|avrea-ubuntu-(?:latest|22\.04|24\.04|26\.04)-(?:1|2|4|8|16|32)-vcpu(?:-\d+gb)?')
+
+
+def free_runner(label):
+    return FREE_LABEL.fullmatch(label) is not None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src', default='.')
     parser.add_argument('--repo', help='public owner/repository; otherwise infer origin')
     parser.add_argument('--sha', help='exact commit; otherwise clean local HEAD')
-    parser.add_argument('--runner', default='avrea-ubuntu-latest-4-vcpu')
+    parser.add_argument('--runner', default='ubuntu-latest')
     parser.add_argument('--index', choices=('official', 'avrea'), help='Python package index; default detects PyPI lockfiles on the runner')
     parser.add_argument('--matrix', type=Path, help='JSON file containing command strings for parallel fan-out')
     parser.add_argument('--parallel', type=int, default=1)
@@ -89,17 +99,21 @@ def main():
             shell_command = prefix + shell_command
             matrix = [prefix + item for item in matrix]
     budget = Path(__file__).with_name('fleet-avrea-budget')
-    budget_args = [str(budget), 'check', '--repo', 'kvnloo/fleet-runner', '--runner', args.runner, '--jobs', str(len(matrix) or 1), '--timeout-minutes', str(minutes)]
-    if args.snapshot:
-        budget_args += ['--snapshot', str(args.snapshot)]
-    budget_args += ['--parallel', str(args.parallel), '--overhead-minutes', '2']
-    if args.max_api_requests is not None:
-        budget_args += ['--max-api-requests', str(args.max_api_requests)]
-    decision_process = subprocess.run(budget_args, text=True, stdout=subprocess.PIPE)
-    if decision_process.returncode:
-        print(decision_process.stdout, file=sys.stderr)
-        return decision_process.returncode
-    decision = json.loads(decision_process.stdout)
+    if free_runner(args.runner):
+        decision = {'allowed': True, 'lane': 'github-hosted-free', 'runner': args.runner,
+                    'runs_on': 'ubuntu-latest', 'reservation_id': None}
+    else:
+        budget_args = [str(budget), 'check', '--repo', 'kvnloo/fleet-runner', '--runner', args.runner, '--jobs', str(len(matrix) or 1), '--timeout-minutes', str(minutes)]
+        if args.snapshot:
+            budget_args += ['--snapshot', str(args.snapshot)]
+        budget_args += ['--parallel', str(args.parallel), '--overhead-minutes', '2']
+        if args.max_api_requests is not None:
+            budget_args += ['--max-api-requests', str(args.max_api_requests)]
+        decision_process = subprocess.run(budget_args, text=True, stdout=subprocess.PIPE)
+        if decision_process.returncode:
+            print(decision_process.stdout, file=sys.stderr)
+            return decision_process.returncode
+        decision = json.loads(decision_process.stdout)
     identifier = uuid.uuid4().hex
     output = args.out or Path(os.environ.get('FLEET_STATE', str(Path.home() / '.local/state/fleet'))) / 'runs' / ('avrea-' + identifier)
     output.mkdir(parents=True, exist_ok=True)
@@ -126,8 +140,8 @@ def main():
         time.sleep(3)
     url = f'https://github.com/{repository}/actions/runs/{run_id}'
     (output / 'run.json').write_text(json.dumps({'id': run_id, 'url': url}) + '\n')
-    settlement = [str(budget), 'settle', '--reservation-id', decision['reservation_id'], '--run-id', str(run_id)]
-    run(settlement)
+    if decision.get('reservation_id'):
+        run([str(budget), 'settle', '--reservation-id', decision['reservation_id'], '--run-id', str(run_id)])
     print(f'fleet-avrea: {url}', file=sys.stderr)
     queue_deadline = time.monotonic() + args.wait
     active_deadline = None
