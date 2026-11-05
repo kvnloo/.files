@@ -75,3 +75,45 @@ def reconcile(kc, unhealthy=False):
     if errors:
         raise RuntimeError("Kueue health reconciliation failed: " + "; ".join(errors))
     return result
+
+
+# Lane memory follows what the host already uses outside Kueue. The static budget in
+# config/k3s/kueue/queues.yaml assumed an idle host (it subtracts the frozen idle OS
+# baseline and Shmem); the dash-e2e army and the kind/docker cluster run beside Kueue,
+# so a 9 GiB job that fit the static quota starved kubelet (2026-11-05). Subtract the
+# resident memory of non-Kueue workloads; Kueue's own pods never shrink their quota.
+STATIC_MEMORY = 10441814016
+IDLE_BASELINE = 2837270528 + 1204051968  # frozen idle OS + Shmem, already in STATIC_MEMORY
+KUEUE_NAMESPACES = ("fleet-mbp", "lanes")
+MIN_CHANGE = 256 * 1024 ** 2
+
+
+def lane_memory_quota(summary):
+    node_ws = summary["node"]["memory"]["workingSetBytes"]
+    kueue_ws = sum((p.get("memory") or {}).get("workingSetBytes") or 0 for p in summary.get("pods", [])
+                   if p["podRef"]["namespace"] in KUEUE_NAMESPACES)
+    outside = max(0, node_ws - kueue_ws - IDLE_BASELINE)
+    return max(0, STATIC_MEMORY - outside)
+
+
+def reconcile_lane_memory(kc):
+    """Set lanes' node-mbp memory nominalQuota; raise and change nothing if stats are unreadable."""
+    summary = json.loads(kc("get", "--raw", "/api/v1/nodes/mbp/proxy/stats/summary").stdout)
+    want = lane_memory_quota(summary)
+    queue = json.loads(kc("get", "clusterqueue", "lanes", "-o", "json").stdout)
+    for g, group in enumerate(queue["spec"]["resourceGroups"]):
+        for f, flavor in enumerate(group["flavors"]):
+            if flavor["name"] != "node-mbp":
+                continue
+            for r, res in enumerate(flavor["resources"]):
+                if res["name"] != "memory":
+                    continue
+                have = int(res["nominalQuota"]) if str(res["nominalQuota"]).isdigit() else None
+                if have is not None and abs(want - have) < MIN_CHANGE:
+                    return {"memory_quota": have, "changed": False}
+                kc("patch", "clusterqueue", "lanes", "--type=json", "-p", json.dumps([
+                    {"op": "test", "path": "/metadata/resourceVersion", "value": queue["metadata"]["resourceVersion"]},
+                    {"op": "replace", "path": f"/spec/resourceGroups/{g}/flavors/{f}/resources/{r}/nominalQuota",
+                     "value": str(want)}]))
+                return {"memory_quota": want, "changed": True, "was": have}
+    raise RuntimeError("lanes has no node-mbp memory quota")
