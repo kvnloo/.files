@@ -289,6 +289,11 @@ def judge(n, p, k8s, online, overrides):
     return bad, warn
 
 
+# Exit code for a completed probe that found unhealthy nodes (the guard worked);
+# fleet-health.service counts it as success so crashes (1) stay visible.
+UNHEALTHY = 3
+
+
 def cmd_health(args):
     reg, nodes = registry()
     sel = [nodes[resolve(nodes, args.node)]] if args.node else list(nodes.values())
@@ -387,7 +392,7 @@ def cmd_health(args):
         flag = "OK " if not bad else "BAD"
         print(f"{flag} {name:14} action={action:10} {'; '.join(bad) or '-'}"
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
-        rc |= bool(bad)
+        rc = UNHEALTHY if bad else rc
     state_f.write_text(json.dumps(state, indent=1) + "\n")
     for hist in (hdir / "history.jsonl", hdir / "phone-keepalive.jsonl"):
         lines = hist.read_text().splitlines() if hist.exists() else []
