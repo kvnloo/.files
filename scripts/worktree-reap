@@ -75,6 +75,8 @@ def decide(row, check):
         return ("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged else ("keep", "no merged proof")
     if not (merged or done):
         return "keep", "no proof"
+    if live["linked"]:
+        return "keep", "path reached through a symlink (git would empty the target)"
     if live["main"]:
         return "keep", "main checkout of the repo"
     if live["dirty"]:
@@ -101,6 +103,7 @@ def live_check(row):
     gd = git(wt, "rev-parse", "--absolute-git-dir").stdout.strip()
     return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
             "unpushed": int(unpushed) if unpushed.isdigit() else 1,
+            "linked": os.path.islink(wt),
             "main": os.path.realpath(gd) == os.path.realpath(cd),
             "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
 
@@ -110,7 +113,7 @@ def apply(row, action):
     rec = {}
     if action == "worktree":
         rec["size_kib"] = size_kib(wt)
-        r = git(cd, "worktree", "remove", os.path.realpath(wt))  # via a symlink git empties the tree, then fails
+        r = git(cd, "worktree", "remove", wt)
         rec["worktree_removed"] = r.returncode == 0
         if r.returncode:
             rec["git"] = r.stderr.strip()[:300]
