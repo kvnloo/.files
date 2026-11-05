@@ -44,6 +44,10 @@ class Reap(unittest.TestCase):
                 row("done-dirty", ["task_done:t_2(done)"], self.wts["done-dirty"]),
                 row("done-unpushed", ["task_done:t_3(done)"], self.wts["done-unpushed"]),
                 row("main", ["tree:origin/main"], repo)]
+        link = self.tmp / "via-link"
+        link.symlink_to(self.wts["done-clean"])              # network rows can name a worktree via a symlink
+        rows[2]["worktree"] = str(link)
+        self.link = link
         self.net = self.tmp / "branches.json"
         self.net.write_text(json.dumps({"generated_at": time.time(), "rows": rows}))
         self.out = self.tmp / "run"
@@ -80,6 +84,7 @@ class Reap(unittest.TestCase):
         self.assertTrue(by["merged-ref"]["branch_deleted"])
         self.assertIn("not fully merged", by["unmerged-ref"]["branch_kept"])
         self.assertTrue(by["done-clean"]["worktree_removed"])
+        self.assertNotIn("Not a directory", json.dumps(by["done-clean"]))
 
     def test_moved_head_is_kept(self):
         g(self.wts["done-clean"], "commit", "-q", "--allow-empty", "-m", "new work")
