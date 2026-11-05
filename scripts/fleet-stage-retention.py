@@ -268,11 +268,17 @@ def reattach_detached(timeout=300):
     from fleet_paths import runs_dir
     kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml')]
     jobs = json.loads(checked(kube + ['-n', 'fleet-mbp', 'get', 'jobs', '-o', 'json']))['items']
+    # Read only the few receipts named by live Job objects: a full scan of the
+    # bulk-disk run directory at idle IO priority can outlast the Job TTL.
     receipts = {}
-    for file in runs_dir().glob('fleet-mbp-*.json'):
+    for job in jobs:
+        name = job.get('metadata', {}).get('name', '')
+        if not re.fullmatch(r'fleet-mbp-[0-9a-f]{16}', name):
+            continue
+        file = runs_dir() / f'{name}.json'
         if not file.is_symlink():
             try:
-                receipts[file.stem] = json.loads(file.read_text())
+                receipts[name] = json.loads(file.read_text())
             except (OSError, ValueError):
                 pass
     rows = []
