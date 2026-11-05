@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""failed-unit-watch: keep one 'FAILED UNITS' block in a lane status file listing every
+user unit that has stayed failed for more than --min minutes (ayo 2026-11-05: nine groot
+guards sat failed unnoticed). Rewrites only its own block; stays silent otherwise."""
+import argparse, re, subprocess, time
+from pathlib import Path
+
+BEGIN, END = "<!-- failed-unit-watch:start -->", "<!-- failed-unit-watch:end -->"
+
+
+def failed_units(run=subprocess.run):
+    out = run(["systemctl", "--user", "--failed", "--no-legend", "--plain"], capture_output=True, text=True).stdout
+    units = [l.split()[0] for l in out.splitlines() if l.strip()]
+    rows = []
+    for u in units:
+        show = run(["systemctl", "--user", "show", u, "-p", "StateChangeTimestampMonotonic", "-p", "Result",
+                    "-p", "ExecMainStatus"], capture_output=True, text=True).stdout
+        kv = dict(l.split("=", 1) for l in show.splitlines() if "=" in l)
+        rows.append((u, int(kv.get("StateChangeTimestampMonotonic") or 0) / 1e6,
+                     kv.get("Result", "?"), kv.get("ExecMainStatus", "?")))
+    return rows
+
+
+def block(rows, now_mono, min_minutes, stamp):
+    stale = [(u, (now_mono - t) / 60, r, s) for u, t, r, s in rows if t and (now_mono - t) / 60 > min_minutes]
+    if not stale:
+        return ""
+    lines = [BEGIN, f"- FAILED UNITS >{min_minutes} min on groot (failed-unit-watch, {stamp}):"]
+    lines += [f"  - {u}: failed {m:.0f} min, result={r} status={s}" for u, m, r, s in sorted(stale, key=lambda x: -x[1])]
+    return "\n".join(lines + [END])
+
+
+def update(path: Path, new_block: str) -> bool:
+    text = path.read_text() if path.exists() else ""
+    pat = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", re.S)
+    base = pat.sub("", text).rstrip("\n") + "\n"
+    out = base + (new_block + "\n" if new_block else "")
+    if out != text:
+        path.write_text(out)
+        return True
+    return False
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--status", type=Path, required=True)
+    ap.add_argument("--min", type=int, default=30)
+    a = ap.parse_args()
+    now = time.clock_gettime(time.CLOCK_MONOTONIC)
+    update(a.status, block(failed_units(), now, a.min, time.strftime("%Y-%m-%d %H:%M %Z")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
