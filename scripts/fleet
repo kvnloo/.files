@@ -369,7 +369,7 @@ def cmd_health(args):
             if not bad:
                 try:
                     # Kueue must not admit memory the host already uses outside it.
-                    queue_policy = {"stop_policy": queue_policy, **reconcile_lane_memory(kc)}
+                    queue_policy = {"stop_policy": queue_policy, **reconcile_lane_memory(kc, probes[name])}
                 except Exception as exc:
                     warn.append(f"lane memory quota unchanged: {exc}")
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,

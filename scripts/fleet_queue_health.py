@@ -88,18 +88,21 @@ KUEUE_NAMESPACES = ("fleet-mbp", "lanes")
 MIN_CHANGE = 256 * 1024 ** 2
 
 
-def lane_memory_quota(summary):
-    node_ws = summary["node"]["memory"]["workingSetBytes"]
+def lane_memory_quota(summary, host_probe):
+    """Host use comes from fleet-health's own probe (MemTotal - MemAvailable): kubelet's node figure on
+    mbp omits user.slice and docker (1.88 GiB reported vs 9.6 GiB used, 2026-11-05). Kueue pods come
+    from kubelet's per-pod stats, which are exact."""
+    used = (int(host_probe["mem_total_mb"]) - int(host_probe["mem_available_mb"])) * 1024 ** 2
     kueue_ws = sum((p.get("memory") or {}).get("workingSetBytes") or 0 for p in summary.get("pods", [])
                    if p["podRef"]["namespace"] in KUEUE_NAMESPACES)
-    outside = max(0, node_ws - kueue_ws - IDLE_BASELINE)
+    outside = max(0, used - kueue_ws - IDLE_BASELINE)
     return max(0, STATIC_MEMORY - outside)
 
 
-def reconcile_lane_memory(kc):
+def reconcile_lane_memory(kc, host_probe):
     """Set lanes' node-mbp memory nominalQuota; raise and change nothing if stats are unreadable."""
     summary = json.loads(kc("get", "--raw", "/api/v1/nodes/mbp/proxy/stats/summary").stdout)
-    want = lane_memory_quota(summary)
+    want = lane_memory_quota(summary, host_probe)
     queue = json.loads(kc("get", "clusterqueue", "lanes", "-o", "json").stdout)
     for g, group in enumerate(queue["spec"]["resourceGroups"]):
         for f, flavor in enumerate(group["flavors"]):

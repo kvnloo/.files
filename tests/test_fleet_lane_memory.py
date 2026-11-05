@@ -13,9 +13,21 @@ from fleet_queue_health import IDLE_BASELINE, STATIC_MEMORY, reconcile_lane_memo
 GiB = 1024 ** 3
 
 
+MiB = 1024 ** 2
+TOTAL_MB = 15860
+
+
+def probe(used):
+    """fleet-health's own host probe: used = MemTotal - MemAvailable (what the static budget's idle baseline measures)."""
+    return {"mem_total_mb": TOTAL_MB, "mem_available_mb": TOTAL_MB - used // MiB}
+
+
 class API:
-    def __init__(self, node_ws, pods, quota=STATIC_MEMORY, summary_error=False):
-        self.summary = {"node": {"memory": {"workingSetBytes": node_ws}},
+    def __init__(self, used, pods, quota=STATIC_MEMORY, summary_error=False):
+        self.used = used
+        # kubelet's node figure on mbp omits user.slice/docker (live 2026-11-05: 1.88 GiB vs 9.6 GiB used),
+        # so the reconciler must never read it; give it a misleading value to prove that.
+        self.summary = {"node": {"memory": {"workingSetBytes": 1 * GiB}},
                         "pods": [{"podRef": {"namespace": ns}, "memory": {"workingSetBytes": ws}} for ns, ws in pods]}
         self.summary_error = summary_error
         self.queue = {"metadata": {"resourceVersion": "7"}, "spec": {"resourceGroups": [{
@@ -46,35 +58,46 @@ class LaneMemoryTests(unittest.TestCase):
     def test_non_kueue_resident_memory_shrinks_the_quota(self):
         # Army + kind use 5 GiB above the idle baseline, a Kueue pod uses 2 GiB.
         api = API(IDLE_BASELINE + 5 * GiB + 2 * GiB, [("fleet-mbp", 2 * GiB), ("kube-system", GiB // 4)])
-        result = reconcile_lane_memory(api)
-        self.assertEqual(api.quota, STATIC_MEMORY - 5 * GiB)
-        self.assertEqual(result["memory_quota"], STATIC_MEMORY - 5 * GiB)
+        result = reconcile_lane_memory(api, probe(api.used))
+        self.assertAlmostEqual(api.quota, STATIC_MEMORY - 5 * GiB, delta=MiB)
+        self.assertAlmostEqual(result["memory_quota"], STATIC_MEMORY - 5 * GiB, delta=MiB)
+
+    def test_host_use_counts_even_when_kubelet_node_stats_miss_it(self):
+        api = API(IDLE_BASELINE + 6 * GiB, [])
+        reconcile_lane_memory(api, probe(api.used))
+        self.assertEqual(api.quota // MiB, (STATIC_MEMORY - 6 * GiB) // MiB)
+
+    def test_missing_probe_memory_leaves_the_quota_alone(self):
+        api = API(0, [], quota=STATIC_MEMORY - 3 * GiB)
+        with self.assertRaises((KeyError, TypeError, ValueError)):
+            reconcile_lane_memory(api, {})
+        self.assertEqual(api.quota, STATIC_MEMORY - 3 * GiB)
 
     def test_kueue_pods_do_not_shrink_their_own_quota(self):
         api = API(IDLE_BASELINE + 6 * GiB, [("fleet-mbp", 6 * GiB)])
-        reconcile_lane_memory(api)
+        reconcile_lane_memory(api, probe(api.used))
         self.assertEqual(api.patches, [], "quota already at the static budget")
         self.assertEqual(api.quota, STATIC_MEMORY)
 
     def test_quota_returns_to_static_when_the_host_frees_memory(self):
         api = API(IDLE_BASELINE, [], quota=STATIC_MEMORY - 6 * GiB)
-        reconcile_lane_memory(api)
+        reconcile_lane_memory(api, probe(api.used))
         self.assertEqual(api.quota, STATIC_MEMORY)
 
     def test_quota_never_goes_negative(self):
         api = API(IDLE_BASELINE + 40 * GiB, [])
-        reconcile_lane_memory(api)
+        reconcile_lane_memory(api, probe(api.used))
         self.assertEqual(api.quota, 0)
 
     def test_small_drift_does_not_rewrite_the_queue(self):
         api = API(IDLE_BASELINE + 100 * 1024 ** 2, [], quota=STATIC_MEMORY)
-        reconcile_lane_memory(api)
+        reconcile_lane_memory(api, probe(api.used))
         self.assertEqual(api.patches, [])
 
     def test_unreadable_stats_leave_the_quota_alone(self):
         api = API(0, [], quota=STATIC_MEMORY - 3 * GiB, summary_error=True)
         with self.assertRaises(RuntimeError):
-            reconcile_lane_memory(api)
+            reconcile_lane_memory(api, probe(api.used))
         self.assertEqual(api.quota, STATIC_MEMORY - 3 * GiB)
 
     def test_static_ceiling_matches_the_iac_lanes_quota(self):
