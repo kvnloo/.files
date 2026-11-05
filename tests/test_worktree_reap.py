@@ -73,18 +73,26 @@ class Reap(unittest.TestCase):
         left = self.branches()
         self.assertNotIn("merged-ref", left)                 # tier 1 deleted
         self.assertIn("unmerged-ref", left)                  # git -d refused a wrong proof
-        self.assertFalse(self.wts["done-clean"].exists())    # tier 2 worktree removed
+        self.assertTrue((self.wts["done-clean"] / ".git").exists())  # reached via a symlink: refused
         self.assertIn("done-clean", left)                    # ...branch kept: unmerged in main, -d refuses
         self.assertTrue((self.wts["done-dirty"] / "scratch.txt").exists())
         self.assertTrue(self.wts["done-unpushed"].exists())
         self.assertTrue(self.repo.exists() and "main" in left)  # the main checkout is never a reap target
         recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
         by = {x["branch"]: x for x in recs}
-        self.assertEqual(set(by), {"merged-ref", "unmerged-ref", "done-clean"})
+        self.assertEqual(set(by), {"merged-ref", "unmerged-ref"})
         self.assertTrue(by["merged-ref"]["branch_deleted"])
         self.assertIn("not fully merged", by["unmerged-ref"]["branch_kept"])
-        self.assertTrue(by["done-clean"]["worktree_removed"])
-        self.assertNotIn("Not a directory", json.dumps(by["done-clean"]))
+        self.assertNotIn("done-clean", by)
+
+    def test_real_path_worktree_is_removed(self):
+        rows = json.loads(self.net.read_text())
+        rows["rows"][2]["worktree"] = str(self.wts["done-clean"])
+        self.net.write_text(json.dumps(rows))
+        self.run_reap("--apply")
+        self.assertFalse(self.wts["done-clean"].exists())
+        recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
+        self.assertTrue([r for r in recs if r["branch"] == "done-clean"][0]["worktree_removed"])
 
     def test_moved_head_is_kept(self):
         g(self.wts["done-clean"], "commit", "-q", "--allow-empty", "-m", "new work")
