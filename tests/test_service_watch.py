@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -632,6 +633,26 @@ class Contracts(unittest.TestCase):
         with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
+
+    def test_steady_scan_writes_no_restart_rows(self):
+        self.watch.last_scan = time.time()
+        self.watch.units = {('user', f'u{i}.service'): {'health_invariant': {'kind': 'systemd'}} for i in range(50)}
+        props = {f'u{i}.service': {'ActiveState': 'active', 'NRestarts': '2'} for i in range(50)}
+        quiet = dict(journals=None, loop_invariants=None, phone_caps_invariant=None, checkout_invariants=None)
+        def scan(p):
+            with patch.object(sw, 'properties', return_value=p), patch.object(self.watch, 'record') as record, \
+                    patch.multiple(self.watch, **{k: unittest.mock.DEFAULT for k in quiet}):
+                self.watch.scan()
+                return record
+        scan(props)  # first sight stores each unit's baseline once
+        with patch.object(self.watch.store, 'set', wraps=self.watch.store.set) as writes:
+            scan(props)
+            self.assertEqual([c for c in writes.call_args_list if 'restart' in c.args[0]], [])
+            props['u7.service'] = {'ActiveState': 'active', 'NRestarts': '6'}
+            record = scan(props)
+            keys = sorted(c.args[0] for c in writes.call_args_list if 'restart' in c.args[0])
+            self.assertEqual(keys, ['restart_history:user:u7.service', 'restarts:user:u7.service'])
+            self.assertIn('restart_loop', [e['code'] for c in record.call_args_list for e in c.args[2]])
 
     def test_timer_failure_and_age(self):
         self.watch.store.set('timer-success:user:fixture.service', time.time() - 1000)

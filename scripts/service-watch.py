@@ -605,14 +605,21 @@ class Watch:
                 if prop.get('ActiveState') == 'failed' and invariant.get('kind') != 'disabled':
                     events.append(event('failed'))
                 restarts = int(prop.get('NRestarts', 0) or 0)
-                old = self.store.get('restarts:' + scope + ':' + unit, {'value': restarts, 'ts': now})
-                history = self.store.get('restart_history:' + scope + ':' + unit, [])
-                history = [[ts, delta] for ts, delta in history if ts > now - 300]
+                stored = self.store.get('restarts:' + scope + ':' + unit)
+                old = stored or {'value': restarts, 'ts': now}
+                saved_history = self.store.get('restart_history:' + scope + ':' + unit, [])
+                history = [[ts, delta] for ts, delta in saved_history if ts > now - 300]
                 delta = max(0, restarts - old['value'])
                 if delta:
                     history.append([now, delta])
-                self.store.set('restarts:' + scope + ':' + unit, {'value': restarts, 'ts': now})
-                self.store.set('restart_history:' + scope + ':' + unit, history)
+                # Write only what changed. One commit per unit per key on every 15 s scan (~750 fsyncs
+                # for 377 units on the bulk btrfs disk) held the writer lock most of the time: scans
+                # outran the 90 s watchdog (daemon killed ~3x/hour) and failure hooks hit
+                # "database is locked" after 30 s, so their alerts were lost.
+                if stored is None or stored.get('value') != restarts:
+                    self.store.set('restarts:' + scope + ':' + unit, {'value': restarts, 'ts': now})
+                if history != saved_history:
+                    self.store.set('restart_history:' + scope + ':' + unit, history)
                 total = sum(delta for _, delta in history)
                 if total >= invariant.get('max_restarts', 3):
                     events.append(event('restart_loop', restarts=total))
