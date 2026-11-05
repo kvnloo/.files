@@ -222,6 +222,13 @@ def worker(payload, leases, apply=False, root=STAGES):
                     leases.receipt_copy(path, json.loads((path / leases.SIDECAR).read_text()), archive)
                     if identity(path, os.getuid()) != token:
                         raise ValueError('stage changed during receipt archival')
+                    # identity() proved every entry is ours; payload tests can
+                    # leave owner-read-only directories that block rmtree.
+                    for base, dirs, _ in os.walk(path, followlinks=False):
+                        for entry in [Path(base)] + [Path(base) / n for n in dirs]:
+                            mode = entry.lstat().st_mode
+                            if stat.S_ISDIR(mode) and not mode & stat.S_IWUSR:
+                                entry.chmod(stat.S_IMODE(mode) | stat.S_IWUSR | stat.S_IXUSR)
                     shutil.rmtree(path)
                     row['action'] = 'deleted'
             rows.append(row)

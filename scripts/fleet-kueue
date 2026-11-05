@@ -503,7 +503,9 @@ def main():
             print(f'fleet: detached job {name}; retained checkpoint stage {stage}; '
                   f'receipt {runs / (name + ".json")}; reattach: fleet-build --attach {name}', file=sys.stderr)
         elif terminal and terminal_recorded and fetch_completed and not args.keep:
-            checked(remote(f'rm -rf -- {qstage}'))
+            # Payload tests can leave owner-read-only directories behind.
+            checked(remote(f'find {qstage} -xdev -type d -user "$(id -u)" ! -perm -u+w -exec chmod u+w {{}} + ; '
+                           f'rm -rf -- {qstage}'))
         elif terminal and not fetch_completed:
             print(f'fleet: retained {name} and {stage}; terminal retrieval/receipt not confirmed', file=sys.stderr)
 
