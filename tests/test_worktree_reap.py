@@ -42,7 +42,8 @@ class Reap(unittest.TestCase):
         rows = [row("merged-ref", ["ancestor:main"]), row("unmerged-ref", ["pr:#1"]),
                 row("done-clean", ["task_done:t_1(done)"], self.wts["done-clean"]),
                 row("done-dirty", ["task_done:t_2(done)"], self.wts["done-dirty"]),
-                row("done-unpushed", ["task_done:t_3(done)"], self.wts["done-unpushed"])]
+                row("done-unpushed", ["task_done:t_3(done)"], self.wts["done-unpushed"]),
+                row("main", ["tree:origin/main"], repo)]
         self.net = self.tmp / "branches.json"
         self.net.write_text(json.dumps({"generated_at": time.time(), "rows": rows}))
         self.out = self.tmp / "run"
@@ -72,6 +73,7 @@ class Reap(unittest.TestCase):
         self.assertIn("done-clean", left)                    # ...branch kept: unmerged in main, -d refuses
         self.assertTrue((self.wts["done-dirty"] / "scratch.txt").exists())
         self.assertTrue(self.wts["done-unpushed"].exists())
+        self.assertTrue(self.repo.exists() and "main" in left)  # the main checkout is never a reap target
         recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
         by = {x["branch"]: x for x in recs}
         self.assertEqual(set(by), {"merged-ref", "unmerged-ref", "done-clean"})
