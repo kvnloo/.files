@@ -110,7 +110,7 @@ def apply(row, action):
     rec = {}
     if action == "worktree":
         rec["size_kib"] = size_kib(wt)
-        r = git(cd, "worktree", "remove", wt)
+        r = git(cd, "worktree", "remove", os.path.realpath(wt))  # via a symlink git empties the tree, then fails
         rec["worktree_removed"] = r.returncode == 0
         if r.returncode:
             rec["git"] = r.stderr.strip()[:300]
