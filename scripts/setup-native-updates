@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Use CachyOS's packaged offline updater, not a resident updater or agent.
+set -euo pipefail
+
+mode=${1:-check}
+case "$mode" in check|enable|disable) ;; *) printf 'Usage: %s [check|enable|disable]\n' "$0" >&2; exit 2 ;; esac
+
+if [[ $mode == check ]]; then
+    pacman -Q pacman-offline pacman-contrib || true
+    systemctl is-enabled pacman-offline-prepare.timer paccache.timer || true
+    systemctl is-active pacman-offline-reboot.timer || true
+    df -h / /var/cache/pacman/pkg
+    printf '\nPolicy: daily downloads, updates on user-initiated reboot, no automatic reboot.\n'
+    exit 0
+fi
+
+if (( EUID != 0 )); then
+    printf 'Run with sudo: %s %s\n' "$0" "$mode" >&2
+    exit 1
+fi
+
+if [[ $mode == disable ]]; then
+    systemctl disable --now pacman-offline-prepare.timer
+    # Stop any in-progress preparation before clearing the pending update.
+    systemctl stop pacman-offline-prepare.service
+    /usr/bin/pacman-offline -a
+    printf 'Offline preparation disabled and pending offline update cancelled. Cache cleanup left enabled.\n'
+    exit 0
+fi
+
+# Do not enable unattended transactions on a nearly full root filesystem.
+free_kib=$(df -Pk / | /usr/bin/awk 'NR==2 {print $4}')
+if (( free_kib < 15 * 1024 * 1024 )); then
+    printf 'Refusing: root needs at least 15 GiB free before enabling offline updates.\n' >&2
+    exit 1
+fi
+if ! pacman -Q pacman-offline >/dev/null 2>&1; then
+    printf 'First install the native updater during a reviewed full upgrade:\n  sudo pacman -Syu --needed pacman-offline\n' >&2
+    exit 1
+fi
+
+# The package cache on groot is offloaded; offline boot must mount it too.
+cache_path=$(readlink -f /var/cache/pacman/pkg)
+for unit in pacman-offline.service pacman-offline-prepare.service; do
+    install -d -m 755 "/etc/systemd/system/$unit.d"
+    printf '[Unit]\nRequiresMountsFor=%s\n' "$cache_path" > "/etc/systemd/system/$unit.d/60-native-update-cache.conf"
+done
+# Prefer foreground work. No hard memory limit or timeout that could kill pacman.
+printf '[Service]\nNice=19\nIOSchedulingClass=idle\nCPUWeight=10\nIOWeight=10\n' > /etc/systemd/system/pacman-offline-prepare.service.d/60-native-update-priority.conf
+systemctl daemon-reload
+systemctl disable --now pacman-offline-reboot.timer
+# Do not start an overdue boot timer immediately during setup.
+systemctl enable pacman-offline-prepare.timer
+systemctl enable --now paccache.timer
+printf 'Enabled native daily offline preparation (starts next boot) and weekly cache cleanup.\n'
+printf 'No automatic reboots; no AUR/Cargo builds; no provider or session restarts.\n'
