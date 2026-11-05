@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -154,6 +155,60 @@ class RetentionTests(unittest.TestCase):
             self.assertEqual(rows[0]['action'], 'deleted')
             archive.assert_called_once()
             remove.assert_called_once_with(self.path)
+
+
+class ReattachTests(unittest.TestCase):
+    name = 'fleet-mbp-0123456789abcdef'
+
+    def job(self, condition='Complete', **annotations):
+        return {'metadata': {'name': self.name, 'namespace': 'fleet-mbp', 'annotations': annotations},
+                'status': {'conditions': [{'type': condition, 'status': 'True'}]}}
+
+    def test_detached_terminal_job_is_reattached(self):
+        receipts = {self.name: {'job_id': self.name, 'host': False}}
+        self.assertEqual(m.reattach_candidates([self.job()], receipts), [self.name])
+        self.assertEqual(m.reattach_candidates([self.job('Failed')], receipts), [self.name])
+
+    def test_recorded_terminal_with_failed_fetch_is_reattached(self):
+        receipts = {self.name: {'terminal': {'job': self.job()}, 'fetch_completed': False}}
+        self.assertEqual(m.reattach_candidates([self.job()], receipts), [self.name])
+        receipts[self.name]['fetch_completed'] = True
+        self.assertEqual(m.reattach_candidates([self.job()], receipts), [])
+
+    def test_live_host_foreign_or_unreceipted_jobs_are_left_alone(self):
+        receipts = {self.name: {'job_id': self.name}}
+        running = self.job()
+        running['status'] = {'active': 1}
+        self.assertEqual(m.reattach_candidates([running], receipts), [])
+        self.assertEqual(m.reattach_candidates([self.job(**{'fleet.z0.dev/host': 'true'})], receipts), [])
+        self.assertEqual(m.reattach_candidates([self.job()], {self.name: {'host': True}}), [])
+        self.assertEqual(m.reattach_candidates([self.job()], {}), [])
+        foreign = self.job()
+        foreign['metadata']['namespace'] = 'default'
+        self.assertEqual(m.reattach_candidates([foreign], receipts), [])
+        odd = self.job()
+        odd['metadata']['name'] = 'fleet-mbp-../x'
+        self.assertEqual(m.reattach_candidates([odd], {'fleet-mbp-../x': {}}), [])
+
+    def test_reattach_uses_producer_attach_without_waiting(self):
+        runs = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(runs))
+        (runs / f'{self.name}.json').write_text(json.dumps({'job_id': self.name}))
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            if 'get' in argv:
+                return m.subprocess.CompletedProcess(argv, 0, json.dumps({'items': [self.job()]}), '')
+            return m.subprocess.CompletedProcess(argv, 0, None, 'fleet: job exited 0')
+        fake_paths = type(sys)('fleet_paths')
+        fake_paths.runs_dir = lambda: runs
+        with patch.dict(sys.modules, {'fleet_paths': fake_paths}), patch.object(m.subprocess, 'run', fake_run):
+            rows = m.reattach_detached()
+        self.assertEqual(rows[0]['job'], self.name)
+        self.assertEqual(rows[0]['rc'], 0)
+        self.assertEqual(calls[-1][-4:], ['--attach', self.name, '--wait', '0'])
+        self.assertTrue(calls[-1][1].endswith('scripts/fleet-kueue'))
 
 
 if __name__ == '__main__':

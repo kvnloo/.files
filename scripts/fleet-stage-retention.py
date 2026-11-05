@@ -7,6 +7,7 @@ import math
 import json
 import os
 from pathlib import Path
+import re
 import runpy
 import shlex
 import shutil
@@ -233,7 +234,61 @@ def checked(argv, **kwargs):
     return subprocess.run(argv, check=True, capture_output=True, text=True, timeout=120, **kwargs).stdout
 
 
-def main():
+def reattach_candidates(jobs, receipts):
+    """Terminal non-host Jobs whose controller detached before recording them.
+
+    Their Kubernetes object is the only terminal proof and expires with
+    ttlSecondsAfterFinished; without it a stage can never be reclaimed.
+    """
+    names = []
+    for job in jobs:
+        meta = job.get('metadata', {})
+        name = meta.get('name', '')
+        if (meta.get('namespace') != 'fleet-mbp' or not re.fullmatch(r'fleet-mbp-[0-9a-f]{16}', name)
+                or not terminal(job) or meta.get('annotations', {}).get('fleet.z0.dev/host') == 'true'):
+            continue
+        receipt = receipts.get(name)
+        # Host scopes need independent liveness proof; attach cannot finish them.
+        if receipt is None or receipt.get('host'):
+            continue
+        recorded = receipt.get('terminal', {}).get('job', {})
+        if (recorded.get('metadata', {}).get('name') == name and terminal(recorded)
+                and receipt.get('fetch_completed') is True):
+            continue
+        names.append(name)
+    return sorted(names)
+
+
+def reattach_detached(timeout=300):
+    """Finish detached controllers through the producer's own --attach path.
+
+    Runs before the exclusive retention lock: attach records terminal evidence
+    under the shared submission lock, fetches, then deletes Job and stage.
+    """
+    from fleet_paths import runs_dir
+    kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml')]
+    jobs = json.loads(checked(kube + ['-n', 'fleet-mbp', 'get', 'jobs', '-o', 'json']))['items']
+    receipts = {}
+    for file in runs_dir().glob('fleet-mbp-*.json'):
+        if not file.is_symlink():
+            try:
+                receipts[file.stem] = json.loads(file.read_text())
+            except (OSError, ValueError):
+                pass
+    rows = []
+    for name in reattach_candidates(jobs, receipts):
+        argv = [sys.executable, str(ROOT / 'scripts/fleet-kueue'), '--attach', name, '--wait', '0']
+        try:
+            result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.PIPE, text=True, timeout=timeout)
+            rows.append({'job': name, 'action': 'reattached', 'rc': result.returncode,
+                         'stderr': result.stderr[-2000:]})
+        except subprocess.TimeoutExpired:
+            rows.append({'job': name, 'action': 'reattach-timeout', 'rc': None})
+    return rows
+
+
+def main(reattached=()):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--apply-plan', type=Path)
@@ -304,7 +359,8 @@ with tempfile.TemporaryDirectory(prefix='fleet-retention-') as tmp:
         payload['snapshot'] = snapshot()
         payload['apply'] = True
         rows = execute()
-    report = {'schema': 'z0.fleet-stage-retention.v1', 'created_at': time.time(), 'rows': rows}
+    report = {'schema': 'z0.fleet-stage-retention.v1', 'created_at': time.time(), 'rows': rows,
+              'reattached': list(reattached)}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + '\n')
 
@@ -314,5 +370,7 @@ if __name__ == '__main__':
         main()
     else:
         from fleet_stage_lock import exclusive_retention_lock
+        # Record detached terminal Jobs before their TTL erases the only proof.
+        reattached = reattach_detached() if '--automatic' in sys.argv else []
         with exclusive_retention_lock():
-            main()
+            main(reattached)
