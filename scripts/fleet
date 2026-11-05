@@ -328,6 +328,9 @@ def cmd_health(args):
             thermal = probes[name].get("max_temp_c")
             safe = not bad and isinstance(thermal, (int, float)) and not isinstance(thermal, bool) and math.isfinite(thermal) and thermal > 0
             kc("label", "--overwrite", "node", name, f"z0.dev/cpu-admit={str(safe).lower()}")
+        # Ownership lives on the node (annotation), not only in local state: a lost state file or
+        # a probe that missed the node view must not leave our own cordon in place for good.
+        owned = bool(mode == "cordon" and kn and kn["unschedulable"] and kn["cordoned_by"] == "fleet-health")
         if bad and s["bad"] >= strikes:
             if mode == "cordon" and kn and not kn["unschedulable"]:
                 kc("cordon", name)
@@ -337,8 +340,8 @@ def cmd_health(args):
             elif mode == "pause" and not s["paused"]:
                 action = "paused"
             s["paused"] = True
-        elif not bad and s["good"] >= strikes and s.get("paused"):
-            if mode == "cordon" and kn and kn["unschedulable"] and kn["cordoned_by"] == "fleet-health":
+        elif not bad and s["good"] >= strikes and (s.get("paused") or owned):
+            if owned:
                 try:
                     ready = name != "mbp" or recovery_ready(kc)
                 except Exception as exc:
@@ -353,7 +356,8 @@ def cmd_health(args):
                     action = "held"
             elif mode == "pause":
                 action = "resumed"
-            if not bad:
+            # A cordon mode keeps the pause until the node view shows it is lifted.
+            if not bad and (mode != "cordon" or action == "uncordoned" or (kn and not kn["unschedulable"])):
                 s["paused"] = False
         if name == "mbp":
             try:
