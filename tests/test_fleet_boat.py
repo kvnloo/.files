@@ -232,8 +232,11 @@ class BoatTransferTests(unittest.TestCase):
         self.assertNotIn("fleet: job ", errors.getvalue())
 
     def test_resource_request_cannot_exceed_trial_shape(self):
-        args = SimpleNamespace(keep=False, mem_mb=8000, cpus=None)
-        with self.assertRaisesRegex(ValueError, "7168"):
+        args = SimpleNamespace(keep=False, mem_mb=16000, cpus=None)
+        with self.assertRaisesRegex(ValueError, "15360"):
+            adapter.run(args)
+        args = SimpleNamespace(keep=False, mem_mb=512, cpus=None, timeout=3451, fetch=[])
+        with self.assertRaisesRegex(ValueError, "3450"):
             adapter.run(args)
 
 
@@ -315,3 +318,50 @@ sys.exit(75)
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_public_job_prefers_boat_when_placement_says_mbp_is_backlogged(self):
+        placement = self.root / "fleet_boat_placement.py"
+        placement.write_text("import sys; sys.exit(int(__import__('os').environ.get('PLACE', '1')))\n")
+        env_backup = os.environ.get('PLACE')
+        try:
+            os.environ['PLACE'] = '0'
+            result, calls = self.invoke('--public')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual([c["backend"] for c in calls], ["fleet"])
+            self.assertEqual(calls[0]["argv"][calls[0]["argv"].index('--node') + 1], 'boat')
+            for flags in (['--public', '--local-data'], [], ['--public', '--jdk', '17']):
+                if self.calls.exists(): self.calls.unlink()
+                result, calls = self.invoke(*flags)
+                self.assertEqual(calls[0]["backend"], "fleet-kueue", flags)
+        finally:
+            os.environ.pop('PLACE') if env_backup is None else os.environ.update(PLACE=env_backup)
+
+
+class BoatPlacementTests(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import fleet_boat_placement
+        self.placement = fleet_boat_placement
+        self.healthy = {"status": {"conditions": [
+            {"type": "Ready", "status": "True"}, {"type": "DiskPressure", "status": "False"},
+            {"type": "MemoryPressure", "status": "False"}, {"type": "PIDPressure", "status": "False"}]}}
+
+    def test_pending_or_disk_pressure_selects_boat(self):
+        pending = {"status": {"pendingWorkloads": 2}}
+        self.assertEqual(self.placement.choose(True, pending, self.healthy)["reason"], "mbp-queue-pending")
+        disk = {"status": {"conditions": [{"type": "Ready", "status": "True"},
+                                          {"type": "DiskPressure", "status": "True"}]}}
+        self.assertEqual(self.placement.choose(True, {}, disk)["reason"], "mbp-disk-pressure")
+        self.assertEqual(self.placement.choose(True, {}, self.healthy)["selected_lane"], "mbp")
+
+    def test_private_or_unverified_source_stays_home(self):
+        pending = {"status": {"pendingWorkloads": 9}}
+        for public in (False, None):
+            self.assertEqual(self.placement.choose(public, pending, self.healthy)["selected_lane"], "mbp")
+
+    def test_github_remote_parsing(self):
+        for url in ("https://github.com/kvnloo/t3code.git", "git@github.com:kvnloo/t3code.git",
+                    "https://github.com/kvnloo/t3code"):
+            self.assertEqual(self.placement.github_repo(url), "kvnloo/t3code")
+        self.assertIsNone(self.placement.github_repo("https://gitlab.com/a/b.git"))
+

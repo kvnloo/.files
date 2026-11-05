@@ -152,10 +152,14 @@ def callback(manifest_path):
     # provider shape, not a fictitious per-process cgroup on the guest.
     command = "cd /home/user/fleet-job/src && timeout --kill-after=5 " + str(data["timeout"]) + " " + shlex.join(data["command"])
     tick = time.monotonic()
-    result = boat.api(prefix + "/commands", "POST", {"command": command, "timeoutSeconds": min(data["timeout"] + 10, 500)})
-    sys.stdout.write(result.get("stdout", ""))
-    sys.stderr.write(result.get("stderr", ""))
-    rc = result.get("exitCode")
+    if data["timeout"] > 490:
+        # Past the 600 s synchronous API limit: detached start plus offset polling.
+        rc = boat.run_detached(sid, command, data["timeout"] + 10)
+    else:
+        result = boat.api(prefix + "/commands", "POST", {"command": command, "timeoutSeconds": data["timeout"] + 10})
+        sys.stdout.write(result.get("stdout", ""))
+        sys.stderr.write(result.get("stderr", ""))
+        rc = result.get("exitCode")
     rc = rc if isinstance(rc, int) and 0 <= rc <= 255 else 1
     receipt = {"sandbox": sid, "payload_seconds": round(time.monotonic() - tick, 3), "exit_code": rc,
                "artifacts": [], "source_snapshot": data.get("source_snapshot")}
@@ -179,16 +183,20 @@ def run(args):
         raise ValueError("Boat leases always delete; --keep is not permitted")
     memory = args.mem_mb
     cpus = float(args.cpus or 0)
-    if memory <= 0 or memory > 7168 or not math.isfinite(cpus) or cpus < 0 or cpus > 4:
-        raise ValueError("Boat trial jobs require 1..7168 MiB and at most 4 CPUs")
-    machine = "small" if memory <= 3072 and cpus <= 2 else "default"
-    if args.timeout <= 0 or args.timeout > 450:
-        raise ValueError("Boat timeout must be 1..450 seconds within the 600-second lease")
+    if memory <= 0 or memory > 15360 or not math.isfinite(cpus) or cpus < 0 or cpus > 8:
+        raise ValueError("Boat jobs require 1..15360 MiB and at most 8 CPUs")
+    machine = ("small" if memory <= 3072 and cpus <= 2 else
+               "default" if memory <= 7168 and cpus <= 4 else "large")
+    limit = boat.MAX_TTL - 150
+    if args.timeout <= 0 or args.timeout > limit:
+        raise ValueError(f"Boat timeout must be 1..{limit} seconds within the lease")
+    # Short jobs keep the 600 s lease; longer ones lease timeout + setup/fetch margin.
+    ttl = boat.TTL if args.timeout <= 450 else min(boat.MAX_TTL, args.timeout + 150)
     for name in args.fetch or []:
         relative(name)
     # Capacity denial is pre-admission 75. omp-boat rechecks under its shared lock.
     try:
-        boat.check_capacity()
+        boat.check_capacity(machine, ttl)
     except boat.BoatError as exc:
         print("fleet: boat admission held: " + str(exc), file=sys.stderr)
         return 75
@@ -211,7 +219,7 @@ def run(args):
         started = time.monotonic()
         wrapper = os.environ.get("OMP_BOAT", str(ROOT / "scripts/boat"))
         with log.open("wb") as stream:
-            proc = subprocess.Popen([sys.executable, wrapper, "create", "--type", machine, "fleet-" + jid,
+            proc = subprocess.Popen([sys.executable, wrapper, "create", "--type", machine, "--ttl", str(ttl), "fleet-" + jid,
                 "--", sys.executable, str(Path(__file__).resolve()), "--callback", str(manifest)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             try:
                 for line in proc.stdout:

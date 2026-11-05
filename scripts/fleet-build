@@ -133,6 +133,15 @@ fi
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
 if [ "$prefer_boat" = 1 ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
+# --public prefers Boat up front when the MBP Kueue is backlogged or under
+# DiskPressure, and only for a GitHub origin that the API reports as public.
+# Android/JDK jobs need the MBP toolchain; phone and Bend jobs keep their lanes.
+if [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ -z "$node" ] && [ "$bend_tools" = 0 ] \
+   && [ "$mode" != android ] && [ "$mode" != phone ] && [ -z "$jdk" ] && [ "${FLEET_BOAT_PLACEMENT:-1}" = 1 ]; then
+  if python3 "$(dirname "$FLEET")/fleet_boat_placement.py" --src "${src:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; then
+    node=boat
+  fi
+fi
 if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi

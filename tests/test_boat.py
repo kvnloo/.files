@@ -48,10 +48,81 @@ class BoatPolicyTest(unittest.TestCase):
                 activeSandboxes=3, maxActiveSandboxes=4)):
             boat.check_capacity()
 
-    def test_paid_account_is_not_implicit_authorization(self):
+    def test_unknown_billing_state_is_refused(self):
         with patch.object(boat, "limits", return_value=self.limits(accessTier="standard")):
-            with self.assertRaisesRegex(boat.BoatError, "Trial-only"):
+            with self.assertRaisesRegex(boat.BoatError, "Unknown billing"):
                 boat.check_capacity()
+
+    NOW = datetime(2026, 11, 5, 17, 0, tzinfo=timezone.utc)
+
+    def paid(self, remaining=555.56, **overrides):
+        data = self.limits(accessTier="standard", billingStatus="active", maxActiveSandboxes=100,
+                           nextStartDollars=0, trialComputeCapSeconds=None,
+                           planIncluded=dict(vmHours=555.56, vmHoursRemaining=remaining,
+                                             periodEnd="2026-11-30T22:23:28.000Z"))
+        data.update(overrides)
+        return data
+
+    def test_paced_budget_is_remaining_minus_reserve_over_days_left(self):
+        budget = boat.pacing(self.paid(), self.NOW)
+        self.assertEqual(budget["days_left"], 26)
+        self.assertAlmostEqual(budget["daily_seconds"], (555.56 * 0.9) * 3600 / 26)
+
+    def test_paid_plan_admits_within_paced_budget(self):
+        with patch.object(boat, "limits", return_value=self.paid(last24hUsageSeconds=3600)):
+            boat.check_capacity("large", 3600, now=self.NOW)
+
+    def test_paid_plan_refuses_past_paced_budget(self):
+        with patch.object(boat, "limits", return_value=self.paid(last24hUsageSeconds=19 * 3600)):
+            with self.assertRaisesRegex(boat.AdmissionError, "Paced"):
+                boat.check_capacity("large", 3600, now=self.NOW)
+
+    def test_reserve_and_wallet_are_never_spent(self):
+        # 55.5 h left of 555.56 is inside the 10% reserve: nothing is usable, even with a burst.
+        with patch.object(boat, "limits", return_value=self.paid(remaining=55.5)), \
+                patch.dict(boat.os.environ, OMP_BOAT_DAILY_VMH="60"):
+            with self.assertRaisesRegex(boat.AdmissionError, "reserve"):
+                boat.check_capacity("small", 600, now=self.NOW)
+        for price in (0.03, None):
+            with self.subTest(price=price), \
+                    patch.object(boat, "limits", return_value=self.paid(nextStartDollars=price)):
+                with self.assertRaisesRegex(boat.AdmissionError, "wallet"):
+                    boat.check_capacity(now=self.NOW)
+
+    def test_missing_plan_data_is_refused(self):
+        with patch.object(boat, "limits", return_value=self.paid(planIncluded=None)):
+            with self.assertRaisesRegex(boat.AdmissionError, "unknown"):
+                boat.check_capacity(now=self.NOW)
+
+    def test_burst_override_is_capped_by_reserve(self):
+        with patch.dict(boat.os.environ, OMP_BOAT_DAILY_VMH="1000"):
+            budget = boat.pacing(self.paid(remaining=100), self.NOW)
+        self.assertAlmostEqual(budget["daily_seconds"], (100 - 55.556) * 3600)
+
+    def test_active_leases_reserve_heaviest_longest_shape(self):
+        # 10 active leases reserve 10 x 2 x 3600 s = 20 VM-h, over today's ~19 VM-h pace.
+        with patch.object(boat, "limits", return_value=self.paid(activeSandboxes=10)):
+            with self.assertRaisesRegex(boat.AdmissionError, "Paced"):
+                boat.check_capacity(now=self.NOW)
+
+    def test_long_lease_ttl_is_in_name_for_reaper(self):
+        self.assertEqual(boat.lease_ttl("omp-fleet-x-ttl3600"), 3600)
+        self.assertEqual(boat.lease_ttl("omp-fleet-x-ttl9999"), boat.MAX_TTL)
+        self.assertEqual(boat.lease_ttl("omp-fleet-x"), boat.TTL)
+
+    def test_detached_command_polls_offsets_until_exit(self):
+        replies = iter([{"processId": 7},
+                        {"running": True, "stdout": "a", "stdoutNextOffset": 1, "stderrNextOffset": 0},
+                        {"running": False, "exitCode": 3, "stdout": "b", "stdoutNextOffset": 2}])
+        paths = []
+        def api(path, method="GET", body=None, headers=None):
+            paths.append(path)
+            return next(replies)
+        out = boat.io.StringIO() if hasattr(boat, "io") else __import__("io").StringIO()
+        with patch.object(boat, "api", side_effect=api), patch.object(boat.time, "sleep"):
+            self.assertEqual(boat.run_detached("bx_23456789", "make", 60, out=out, err=out), 3)
+        self.assertEqual(out.getvalue(), "ab")
+        self.assertIn("stdoutOffset=1", paths[2])
 
     def test_account_keys_cannot_be_requested(self):
         for name in ("BOAT_API_KEY", "BWS_ACCESS_TOKEN", "UNAPPROVED_KEY"):
@@ -96,7 +167,7 @@ class BoatPolicyTest(unittest.TestCase):
             if path.endswith("/usage"):
                 return {"seconds": 1, "dollars": .00001, "sandboxType": "small"}
             self.fail("Unexpected API route " + path)
-        args = SimpleNamespace(name="failed-job", type="small", action="run", secret=[],
+        args = SimpleNamespace(name="failed-job", type="small", action="run", secret=[], ttl=600,
                                dummy_secret_test=False, command=["false"])
         with patch.object(boat, "api", side_effect=api), patch.object(boat, "reap"), \
                 patch.object(boat, "check_capacity"), patch.object(boat, "wait_ready"), \

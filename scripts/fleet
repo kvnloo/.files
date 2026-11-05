@@ -454,7 +454,7 @@ def cmd_run(args):
             die("boat: incompatible architecture or job capability", 75)
         argv = [sys.executable, str(REPO / "scripts/fleet-boat"),
                 "--mem-mb", str(mb(args.mem or "512M")),
-                "--timeout", str(min(args.timeout, 450))]
+                "--timeout", str(min(args.timeout, 3450))]
         for option, value in (("--src", args.src), ("--cpus", args.cpus)):
             if value:
                 argv += [option, value]

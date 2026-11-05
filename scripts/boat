@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import contextlib
 import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -21,7 +22,11 @@ import uuid
 
 BASE = "https://boat.dev/api/v1"
 TTL = 600
-DAILY_SECONDS = 3 * 3600
+MAX_TTL = 3600
+DAILY_SECONDS = 3 * 3600  # trial accounts only; paid plans are paced below
+RESERVE = 0.10  # share of the period's included VM time that is never spent
+# Plan VM time is counted in hours of `default` (docs.boat.dev, GET /limits).
+WEIGHT = {"small": 0.5, "default": 1.0, "large": 2.0}
 STATE = Path.home() / ".local/state/boat"
 
 
@@ -79,23 +84,86 @@ def limits():
     return {k: data.get(k) for k in (
         "accessTier", "billingStatus", "canStart", "activeSandboxes", "maxActiveSandboxes",
         "trialComputeCapSeconds", "trialLine", "creditUsedSeconds", "liveUsageSeconds",
-        "last24hUsageSeconds", "subscriptionTrialEndsAt", "machineTypes", "starts")}
+        "last24hUsageSeconds", "subscriptionTrialEndsAt", "machineTypes", "starts",
+        "planIncluded", "nextStartDollars", "wallet", "keepGoing")}
 
 
-def check_capacity():
+def pacing(data, now=None):
+    """Today's paced budget in default-seconds: (remaining - reserve) / days left."""
+    plan = data.get("planIncluded") or {}
+    total, left, end = plan.get("vmHours"), plan.get("vmHoursRemaining"), plan.get("periodEnd")
+    if not isinstance(total, (int, float)) or not isinstance(left, (int, float)) or not end:
+        raise AdmissionError("Plan VM time unknown; refusing so the wallet is never used")
+    now = now or datetime.now(timezone.utc)
+    period_end = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    days = max(1, math.ceil((period_end - now).total_seconds() / 86400))
+    usable = max(0.0, (left - RESERVE * total) * 3600)
+    daily = usable / days
+    override = os.environ.get("OMP_BOAT_DAILY_VMH")
+    if override:
+        # An owner-approved burst may spend faster today, never into the reserve.
+        daily = min(usable, float(override) * 3600)
+    return {"usable_seconds": usable, "daily_seconds": daily, "days_left": days}
+
+
+def check_capacity(machine="small", ttl=TTL, now=None):
     data = limits()
-    if data["accessTier"] != "trial" or data["billingStatus"] != "trialing":
-        raise BoatError("Trial-only wrapper: paid/expired account requires an explicit policy change")
     if not data["canStart"]:
         raise AdmissionError("Boat cannot start; inspect limits (never change billing)")
     if data["activeSandboxes"] >= data["maxActiveSandboxes"]:
         raise AdmissionError("Concurrency cap reached (provider limit)")
-    reserved = (data["activeSandboxes"] + 1) * TTL
     live = data["liveUsageSeconds"] or 0
-    if (data["last24hUsageSeconds"] or 0) + live + reserved > DAILY_SECONDS:
-        raise AdmissionError("Three-hour rolling-24h budget/reservation exhausted")
-    if (data["creditUsedSeconds"] or 0) + live + reserved > (data["trialComputeCapSeconds"] or 0):
-        raise AdmissionError("Total trial compute budget/reservation exhausted")
+    if data["accessTier"] == "trial" and data["billingStatus"] == "trialing":
+        reserved = (data["activeSandboxes"] + 1) * TTL
+        if (data["last24hUsageSeconds"] or 0) + live + reserved > DAILY_SECONDS:
+            raise AdmissionError("Three-hour rolling-24h budget/reservation exhausted")
+        if (data["creditUsedSeconds"] or 0) + live + reserved > (data["trialComputeCapSeconds"] or 0):
+            raise AdmissionError("Total trial compute budget/reservation exhausted")
+        return
+    if data["accessTier"] != "standard" or data["billingStatus"] != "active":
+        raise BoatError("Unknown billing state; only an active plan or a trial may start leases")
+    # Leases of unknown size/length are reserved at the heaviest size and longest TTL.
+    reserved = data["activeSandboxes"] * MAX_TTL * max(WEIGHT.values()) + ttl * WEIGHT[machine]
+    if data.get("nextStartDollars") != 0:
+        raise AdmissionError("Next start would bill the wallet; refusing (no overage)")
+    budget = pacing(data, now)
+    if live + reserved > budget["usable_seconds"]:
+        raise AdmissionError("Lease would reach the 10% plan reserve or the wallet; refusing")
+    if (data["last24hUsageSeconds"] or 0) + live + reserved > budget["daily_seconds"]:
+        raise AdmissionError("Paced rolling-24h budget exhausted (plan remaining / days left)")
+
+
+def run_detached(sid, command, timeout, out=None, err=None):
+    """Run past the 600 s synchronous API limit: detached start, then offset polling."""
+    out, err = out or sys.stdout, err or sys.stderr
+    started = api("/sandboxes/" + sid + "/commands", "POST", {"command": command, "detached": True})
+    pid = started.get("processId")
+    if not isinstance(pid, int):
+        raise BoatError("Detached command did not return a process ID")
+    deadline = time.monotonic() + timeout
+    offsets = {"stdoutOffset": 0, "stderrOffset": 0}
+    while True:
+        status = api(f"/sandboxes/{sid}/commands/{pid}?" + urllib.parse.urlencode(offsets))
+        out.write(status.get("stdout", "") or "")
+        err.write(status.get("stderr", "") or "")
+        offsets = {"stdoutOffset": status.get("stdoutNextOffset", offsets["stdoutOffset"]),
+                   "stderrOffset": status.get("stderrNextOffset", offsets["stderrOffset"])}
+        if status.get("more"):
+            continue
+        if not status.get("running"):
+            code = status.get("exitCode")
+            return code if isinstance(code, int) else 1
+        if time.monotonic() >= deadline:
+            with contextlib.suppress(BoatError):
+                api(f"/sandboxes/{sid}/commands/{pid}", "DELETE")
+            return 124
+        time.sleep(5)
+
+
+def lease_ttl(name):
+    """Long leases carry their TTL in the name so the stateless reaper honours it."""
+    match = re.search(r"-ttl(\d{3,4})$", name)
+    return min(MAX_TTL, int(match.group(1))) if match else TTL
 
 
 def wait_ready(sid, deadline):
@@ -140,7 +208,8 @@ def reap():
     now = datetime.now(timezone.utc)
     for sandbox in list(inventory()):
         created = datetime.fromisoformat(sandbox["createdAt"].replace("Z", "+00:00"))
-        if sandbox.get("name", "").startswith("omp-") and (now - created).total_seconds() >= TTL:
+        name = sandbox.get("name", "")
+        if name.startswith("omp-") and (now - created).total_seconds() >= lease_ttl(name):
             delete(sandbox["id"])
 
 
@@ -291,6 +360,11 @@ print(json.dumps({"env_hits":env_hits,"rootfs_hits":disk_hits,"tmpfs_noswap":Tru
 
 def lease(args):
     name = args.name if args.name.startswith("omp-") else "omp-" + args.name
+    ttl = getattr(args, "ttl", TTL)
+    if not TTL <= ttl <= MAX_TTL:
+        raise BoatError(f"--ttl must be {TTL}..{MAX_TTL} seconds")
+    if ttl != TTL:
+        name += f"-ttl{ttl}"
     if not re.fullmatch(r"omp-[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}", name):
         raise BoatError("Use a short alphanumeric sandbox name")
     secrets = selected_secrets(args.secret, args.dummy_secret_test)
@@ -306,9 +380,9 @@ def lease(args):
     try:
         reap()
         with creation_lock():
-            check_capacity()
+            check_capacity(args.type, ttl)
             result = api("/sandboxes", "POST", {
-                "name": name, "type": args.type, "ttlSeconds": TTL, "noEnv": True,
+                "name": name, "type": args.type, "ttlSeconds": ttl, "noEnv": True,
                 "snapshots": False, "monitoring": False,
             }, {"Idempotency-Key": str(uuid.uuid4())})
             sid = result["sandbox"]["id"]
@@ -320,20 +394,24 @@ def lease(args):
         command = args.command
         if command and command[0] == "--":
             command = command[1:]
-        remaining = max(1, int(TTL - (time.monotonic() - started) - 15))
+        remaining = max(1, int(ttl - (time.monotonic() - started) - 15))
         if args.action == "run":
             if not command:
                 raise BoatError("run requires -- COMMAND [ARG ...]")
             if secrets:
                 return secret_job(sid, command, secrets, args.dummy_secret_test)
             tick = time.monotonic()
-            result = api("/sandboxes/" + sid + "/commands", "POST", {
-                "command": shlex.join(command), "timeoutSeconds": min(remaining, 500)})
-            sys.stdout.write(result.get("stdout", ""))
-            sys.stderr.write(result.get("stderr", ""))
+            if ttl > TTL:
+                code = run_detached(sid, shlex.join(command), remaining)
+            else:
+                result = api("/sandboxes/" + sid + "/commands", "POST", {
+                    "command": shlex.join(command), "timeoutSeconds": min(remaining, 590)})
+                sys.stdout.write(result.get("stdout", ""))
+                sys.stderr.write(result.get("stderr", ""))
+                code = result.get("exitCode") if isinstance(result.get("exitCode"), int) else 1
             print(json.dumps({"event": "exec", "seconds": round(time.monotonic() - tick, 3),
-                              "exit_code": result.get("exitCode")}), file=sys.stderr)
-            return result.get("exitCode") if isinstance(result.get("exitCode"), int) else 1
+                              "exit_code": code}), file=sys.stderr)
+            return code
         env = dict(os.environ, BOAT_SANDBOX_ID=sid)
         # A local callback may use the SDK; the secret is never an argument or file.
         env["BOAT_API_KEY"] = key()
@@ -368,19 +446,24 @@ def main():
     for action in ("create", "run"):
         p = sub.add_parser(action, help="Create an auto-deleted lease; local callback" if action == "create"
                            else "Create, execute a remote command, delete")
-        p.add_argument("--type", choices=("small", "default"), default="small")
+        p.add_argument("--type", choices=tuple(WEIGHT), default="small")
+        p.add_argument("--ttl", type=int, default=TTL, help=f"Lease seconds, {TTL}..{MAX_TTL}")
         p.add_argument("--secret", action="append", default=[], help="Allowlisted BWS secret name")
         p.add_argument("--dummy-secret-test", action="store_true", help="Qualify encrypted delivery without real keys")
         p.add_argument("name")
         p.add_argument("command", nargs=argparse.REMAINDER)
     p = sub.add_parser("delete", help="Delete an omp-prefixed sandbox and its automatic snapshots")
     p.add_argument("id")
-    sub.add_parser("limits", help="Read-only trial usage and capacity")
-    sub.add_parser("reap", help="Delete all omp-* sandboxes older than the 600-second lease")
+    sub.add_parser("limits", help="Read-only usage, capacity and today's paced budget")
+    sub.add_parser("reap", help="Delete omp-* sandboxes older than their lease (600 s or -ttlN)")
     args = parser.parse_args()
     try:
         if args.action == "limits":
-            print(json.dumps(limits(), indent=2))
+            data = limits()
+            if data.get("planIncluded"):
+                with contextlib.suppress(AdmissionError):
+                    data["pacing"] = pacing(data)
+            print(json.dumps(data, indent=2))
             return 0
         if args.action == "delete":
             delete(args.id)
