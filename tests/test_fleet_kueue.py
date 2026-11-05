@@ -345,6 +345,14 @@ class PreemptionLifecycleTests(unittest.TestCase):
                 if keep:
                     self.assertEqual(receipts[0]['keep_until'], receipts[0]['retention_until'])
 
+    def test_finished_job_ttl_outlives_observer_loss(self):
+        # Detached observers leave the Job object as the only terminal proof;
+        # its TTL must cover multi-day observer loss (default 7 days).
+        complete = {'spec': {'suspend': False}, 'status': {'conditions': [
+            {'type': 'Complete', 'status': 'True'}]}}
+        self.exercise([complete], checkpoint=False, job_class='build')
+        self.assertEqual(self.manifests[0]['spec']['ttlSecondsAfterFinished'], 168 * 3600)
+
     def test_unsafe_build_remains_in_protected_queue(self):
         complete = {'spec': {'suspend': False}, 'status': {'conditions': [
             {'type': 'Complete', 'status': 'True'}]}}

@@ -214,6 +214,11 @@ def main():
                    'npm_config_store_dir="$HOME/.local/share/pnpm/store"; '
                    'mkdir -p "$UV_CACHE_DIR" "$npm_config_cache" "$npm_config_store_dir"; ')
     unit = f'fleet-{name}.service'
+    # A finished Job is the only terminal proof for a detached controller. Keep
+    # it well past the hourly retention reattach and a multi-day observer outage.
+    finished_ttl = int(float(node.get('stage_retention', {}).get('finished_job_ttl_hours', 168)) * 3600)
+    if finished_ttl < 86400:
+        raise ValueError('finished Job TTL must cover at least 24 hours of observer loss')
     def start_host(runtime):
         wrapper = (
             f'[ ! -r /etc/fleet/toolchain.env ] || . /etc/fleet/toolchain.env; {cache_setup}'
@@ -270,7 +275,7 @@ def main():
             # Host reservations outlive timeout's forced-stop grace, so quota
             # cannot expire before the bounded host scope after client loss.
             'spec': {'suspend': True, 'backoffLimit': 0, 'activeDeadlineSeconds': args.timeout + (90 if args.host else 0),
-                     'ttlSecondsAfterFinished': 86400, 'template': {'metadata': {'labels': {'fleet-job': name}}, 'spec': {
+                     'ttlSecondsAfterFinished': finished_ttl, 'template': {'metadata': {'labels': {'fleet-job': name}}, 'spec': {
                          'restartPolicy': 'Never', 'automountServiceAccountToken': False,
                          'nodeSelector': {'kubernetes.io/hostname': 'mbp'},
                          'hostname': 'mbp',

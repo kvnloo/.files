@@ -80,6 +80,8 @@ nodes:
     stage_retention:
       completed_hours: 24
       keep_hours: 72
+      # Terminal Job objects outlive observer loss; retention reattaches hourly.
+      finished_job_ttl_hours: 168
     kubelet:
       system_reserved: cpu=1,memory=2Gi
       kube_reserved: cpu=500m,memory=1Gi
