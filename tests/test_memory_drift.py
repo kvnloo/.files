@@ -44,6 +44,11 @@ class FakeHost(law.Host):
                 (directory / name).write_text(text)
         return [directory]
 
+    graphical_session = True
+
+    def graphical(self):
+        return self.graphical_session
+
     def pids(self, comm):
         return [pid for pid, (c, _) in self._procs.items() if c == comm]
 
@@ -117,6 +122,18 @@ class MemoryDriftLaw(unittest.TestCase):
     def test_red_when_ui_process_left_protected_subtree(self):
         rows = self.audit(procs={7: ('Hyprland', '/user.slice/u/app.slice/x.scope')})
         self.assertFalse(next(r for r in rows if r['kind'] == 'placement')['ok'])
+
+    def test_desktop_rules_are_na_without_a_graphical_session(self):
+        intent = {**INTENT, 'cgroup': INTENT['cgroup'] + [
+            {'group': 'ui', 'path': 'u/session.slice/gone.service', 'file': 'memory.swap.max', 'equals': '0'}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            host = FakeHost(tmp, **{**GREEN, 'procs': {}})
+            host.graphical_session = False
+            rows = law.audit(intent, host)
+            self.assertTrue(all(r['ok'] for r in rows), rows)
+            self.assertEqual(sorted(r['kind'] for r in rows if r.get('na')), ['cgroup', 'placement'])
+            host.graphical_session = True  # logged in but Hyprland gone: still drift
+            self.assertFalse(all(r['ok'] for r in law.audit(intent, host)))
 
     def test_unreadable_value_is_drift_not_pass(self):
         rows = self.audit(cgroups={})
