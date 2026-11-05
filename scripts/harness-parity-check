@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Read-only post-sync verification. Invoke from groot with an evidence directory.
+set -euo pipefail
+scripts=$(cd -- "$(dirname -- "$0")" && pwd)
+evidence=${1:?usage: harness-parity-check EVIDENCE_DIRECTORY}
+cd -- "$evidence"
+ssh_args=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 mbp)
+remote_python=/home/kvn/.hermes/hermes-agent/.venv/bin/python
+python3 "$scripts/harness-parity-snapshot.py" > logs/groot-after.json 2> logs/groot-after.stderr
+printf 'groot snapshot exit=0\n'
+ssh "${ssh_args[@]}" "$remote_python -" < "$scripts/harness-parity-snapshot.py" > logs/mbp-after.json 2> logs/mbp-after.stderr
+printf 'mbp snapshot exit=0\n'
+set +e
+python3 "$scripts/harness-parity-snapshot.py" --diff logs/groot-after.json logs/mbp-after.json > logs/diff-after.json
+rc=$?
+set -e
+printf 'diff-after exit=%s\n' "$rc"
+if (( rc > 1 )); then exit "$rc"; fi
+ssh "${ssh_args[@]}" "$remote_python -c $(python3 -c 'import shlex,sys; print(shlex.quote(open(sys.argv[1]).read()))' "$scripts/harness-parity-verify.py")" < logs/sync-apply.json > logs/verify-sync.json 2> logs/verify-sync.stderr
+printf 'backup and unchanged-field verification exit=0\n'
+ssh "${ssh_args[@]}" "$remote_python -c $(python3 -c 'import shlex,sys; print(shlex.quote(open(sys.argv[1]).read()))' "$scripts/harness-parity-sync.py")" < logs/sync-source.json > logs/sync-repeat-dry-run.json 2> logs/sync-repeat-dry-run.stderr
+printf 'repeat dry-run exit=0\n'
+python3 - <<'PY'
+import json
+verification = json.load(open('logs/verify-sync.json'))
+repeat = json.load(open('logs/sync-repeat-dry-run.json'))
+diff = json.load(open('logs/diff-after.json'))
+assert verification['pass'], 'backup or unrelated-field verification failed'
+assert not repeat['changed'], 'repeat run still proposes writes'
+print('verified_files=' + str(verification['files_checked']))
+print('repeat_proposed_changes=' + str(len(repeat['changed'])))
+print('remaining_diff_rows=' + str(diff['count']))
+print('inspection_errors=' + str(len(diff['inspection_errors'])))
+PY
