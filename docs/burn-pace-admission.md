@@ -80,7 +80,17 @@ daily, monthly, and app-send windows remain separate entries. Example exact
 lane names are `opencode/deepseek-v4.1-flash-free`, `groq/<model>`,
 `chatgpt-app`, and `deepseek-app`.
 
-No live free-model or app-cap producer is installed by this change. Those lanes
+DeepSeek app lanes are per account: `deepseek-app/veeman961` (S22) and
+`deepseek-app/kevinsrajan` (S25, signed in 2026-11-05 for a separate limit).
+Their producer is `chatgpt-driver/ds_pace.py publish` (user timer
+`ds-admission-rows.timer`, every 5 min). It writes `messages/hour` windows from
+each account's own send ledger (`ds-pace.jsonl`, `ds-pace-kevinsrajan.jsonl`) as
+`locally_reconstructed`. A new account starts at the observed floor of
+3/hour: on 2026-11-02/03 the S22 account fell from 8 to 3 per hour and, after
+44 accepted sends, was limited every hour for 12 hours. The bare lane
+`deepseek-app` has no row and denies.
+
+No other live free-model or app-cap producer is installed by this change. Those lanes
 deny until their owner supplies current observations. The offline catalog is
 historical evidence, not live remaining capacity. Static limits alone do not
 establish a current balance, especially for rotating OpenCode free models.
