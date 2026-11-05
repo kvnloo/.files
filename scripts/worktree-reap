@@ -75,6 +75,8 @@ def decide(row, check):
         return ("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged else ("keep", "no merged proof")
     if not (merged or done):
         return "keep", "no proof"
+    if live["main"]:
+        return "keep", "main checkout of the repo"
     if live["dirty"]:
         return "keep", "dirty worktree"
     if live["locked"]:
@@ -99,6 +101,7 @@ def live_check(row):
     gd = git(wt, "rev-parse", "--absolute-git-dir").stdout.strip()
     return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
             "unpushed": int(unpushed) if unpushed.isdigit() else 1,
+            "main": os.path.realpath(gd) == os.path.realpath(cd),
             "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
 
 
