@@ -75,6 +75,11 @@ class Capsule(unittest.TestCase):
         with mock.patch.object(hc, "_config", return_value={"context": {"handoff_tokens": 123_000}}):
             self.assertEqual(hc.build().threshold_tokens_cap, 123_000)
 
+    def test_hermes_discovers_it_as_a_context_engine(self):
+        # Hermes only scans the first 8 KiB of __init__.py for the engine contract.
+        from plugins.context_engine import _is_context_engine_dir
+        self.assertTrue(_is_context_engine_dir(ROOT / "config/hermes/plugins/handoff_compactor"))
+
     def test_lean_tail(self):
         self.assertEqual(self.eng.protect_last_n, 2)
         self.assertEqual(self.eng.min_tail_user_messages, 1)

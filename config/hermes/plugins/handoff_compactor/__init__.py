@@ -1,4 +1,4 @@
-"""Handoff compactor: Hermes context engine that turns compaction into a session handoff.
+"""Handoff compactor: a Hermes ContextEngine plugin (register_context_engine) that turns compaction into a session handoff.
 
 Owner rule (Kevin, 2026-11-04): when a session gets long, hand off to a fresh context
 window by default instead of compacting. Activate with
