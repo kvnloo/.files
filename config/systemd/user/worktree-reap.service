@@ -1,0 +1,8 @@
+[Unit]
+Description=Reap finished git/T3 worktrees and merged branches (proof-gated, never forced; receipts)
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 %h/.local/bin/worktree-reap --apply
