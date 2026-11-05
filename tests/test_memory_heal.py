@@ -102,7 +102,8 @@ class Invariants(unittest.TestCase):
 
     def test_container_config_is_red_and_regenerated(self):
         """The 2026-10-27 regression: the profiles container silently dropped every profile."""
-        host = self.healthy(config=CONFIG_CONTAINER)
+        host = self.healthy(config=CONFIG_CONTAINER,
+                            units={'agentsview-sync.service': {'ActiveState': 'inactive', 'Result': 'success'}})
         [f] = heal.check(SPEC, host)
         self.assertEqual((f.invariant, f.remedy), ('agentsview_coverage', 'regenerate_agentsview'))
         heal.remedy(f, SPEC, host, Path('/nonexistent'))
@@ -110,6 +111,14 @@ class Invariants(unittest.TestCase):
                          ['~/.hermes/sessions', '~/.hermes/profiles/clean'])
         self.assertIn(('restart', 'agentsview.service'), host.calls)
         self.assertEqual(heal.check(SPEC, host), [])
+
+    def test_coverage_change_waits_for_a_running_sync(self):
+        """2026-11-05: a new profile made heal restart agentsview at 06:37, aborting a 30 min rebuild."""
+        host = self.healthy(config=CONFIG_CONTAINER, units={'agentsview-sync.service': {'ActiveState': 'activating'}})
+        [f] = heal.check(SPEC, host)
+        self.assertIn('deferred', heal.remedy(f, SPEC, host, Path('/nonexistent')))
+        self.assertEqual(host.calls, [])
+        self.assertEqual(host.read(heal.expand(SPEC['agentsview']['config'])), CONFIG_CONTAINER)
 
     def test_archive_lag_is_red_but_fresh_sessions_are_not(self):
         lagging = self.healthy(native={'clean': NOW - 3 * 86400}, archived={'clean': NOW - 9 * 86400})

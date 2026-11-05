@@ -279,6 +279,10 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
             host.systemctl('start', '--no-block', f.subject)
         return f'quarantined {len(moved)}: {moved[:5]}'
     if name == 'regenerate_agentsview':
+        # Restarting the daemon aborts a running sync (a full rebuild takes ~30 min); the
+        # finding persists, so the next run applies it once the sync has finished.
+        if host.unit('agentsview-sync.service').get('ActiveState') in ('active', 'activating'):
+            return 'deferred: agentsview sync running'
         path = expand(spec['agentsview']['config'])
         host.write(path, render_hermes_block(host.read(path), f.data['dirs']))
         host.systemctl('restart', 'agentsview.service')
