@@ -11,6 +11,10 @@ that, this script turns the weekly numbers into concrete knobs for the agent:
   ratio < 1  -> under-burning: spend more on high-value work
 
 Usage: burn-pace [--json]
+       burn-pace admit <lane> [--json] [--state-dir PATH]
+
+Admission reads existing caches without probing providers or writing state.
+See docs/burn-pace-admission.md for the row contract and freshness policy.
 """
 import json, subprocess, sys
 from datetime import datetime, timezone
@@ -59,6 +63,188 @@ def knobs(ratio):
     if ratio >= 0.8:
         return {"band": "on-pace", "max_workflow_agents": 6, "effort": "medium", "offload": "bulk"}
     return {"band": "under-burn", "max_workflow_agents": 12, "effort": "high", "offload": "none-required"}
+
+
+ADMISSION_MAX_AGE_S = 900
+
+
+def _read_json(path):
+    return json.loads(path.read_text())
+
+
+def _latest_sample(path):
+    # Ignore an in-progress append, but never fall back past a corrupt complete row.
+    with path.open('rb') as stream:
+        stream.seek(0, 2)
+        stream.seek(max(0, stream.tell() - 65536))
+        tail = stream.read()
+    if b'\n' not in tail:
+        raise ValueError('invalid sample: no complete row within tail')
+    complete = tail.rsplit(b'\n', 1)[0]
+    return json.loads(complete.rsplit(b'\n', 1)[-1])
+
+
+def admission_rows(state):
+    """Read the existing caches only. No OAuth, inference, refresh, or ledger writes."""
+    sample_path = state / 'burn-pace.jsonl'
+    sample = _latest_sample(sample_path) if sample_path.exists() else {'lanes': {}}
+    if not isinstance(sample, dict) or not isinstance(sample.get('lanes'), dict):
+        raise ValueError('invalid burn-pace snapshot')
+    lanes = sample['lanes']
+    for row in lanes.values():
+        if not isinstance(row, dict):
+            raise ValueError('invalid burn-pace row')
+        row['observed_at'] = sample.get('at')
+    fresh = state / 'codexbar-fresh.json'
+    usage_rows = _read_json(fresh) if fresh.exists() else []
+    if not isinstance(usage_rows, list):
+        raise ValueError('invalid cached usage rows')
+    for lane in ('claude2', 'claude3'):
+        probe = state / f'{lane}-headers.json'
+        if lane in lanes and probe.exists():
+            usage_rows.append(_read_json(probe)['row'])
+    seen = set()
+    for raw in usage_rows:
+        lane = raw['provider']
+        if lane in seen:
+            raise ValueError('invalid duplicate usage lane')
+        seen.add(lane)
+        if lane in lanes:
+            lanes[lane]['usage'] = raw.get('usage')
+    additional = state / 'admission-rows.json'
+    if additional.exists():
+        extra = _read_json(additional)
+        for lane, row in extra['lanes'].items():
+            if lane in lanes or lane in ('claude', 'claude2', 'claude3', 'codex'):
+                raise ValueError('invalid duplicate or reserved admission lane')
+            if not isinstance(row, dict):
+                raise ValueError('invalid admission row')
+            row.setdefault('observed_at', extra.get('at'))
+            lanes[lane] = row
+    return sample
+
+
+def _timestamp(value):
+    clock = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    if clock.tzinfo is None:
+        raise ValueError('invalid timestamp: timezone required')
+    return clock
+
+
+def _fresh_timestamp(value, now):
+    age = (now - _timestamp(value)).total_seconds()
+    if not 0 <= age <= ADMISSION_MAX_AGE_S:
+        raise ValueError('stale or future timestamp; refresh usage')
+
+
+def _number(value):
+    import math
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError('invalid quota number')
+    return value
+
+
+def _window_reason(name, used, reset, now):
+    if not 0 <= _number(used) <= 100:
+        raise ValueError('invalid used percentage')
+    if _timestamp(reset) <= now:
+        return f'{name} reset passed; refresh usage'
+    if used >= 100:
+        return f'{name} exhausted until {reset}'
+    return None
+
+
+def _admission_reason(lane, snapshot, now):
+    row = snapshot['lanes'].get(lane)
+    if row is None and lane not in snapshot['lanes']:
+        return 'quota unknown: no live row for lane'
+    if not isinstance(row, dict):
+        raise ValueError('invalid lane row')
+    _fresh_timestamp(row.get('observed_at', snapshot.get('at')), now)
+    if any(error.get('provider') == lane for error in snapshot.get('probe_errors', [])):
+        return 'probe error: refresh lane usage'
+    if row.get('status') in ('blocked', 'exhausted', 'unknown'):
+        return f'lane status {row["status"]}; refresh usage'
+    if row.get('blocked_until') and _timestamp(row['blocked_until']) > now:
+        return f'lane blocked until {row["blocked_until"]}'
+
+    if 'usage' in row:
+        usage = row['usage']
+        _fresh_timestamp(usage['updatedAt'], now)
+        if usage.get('status') not in (None, 'allowed', 'allowed_warning'):
+            return 'provider status blocks admission; refresh usage'
+        windows = [(name, usage[name]) for name in ('primary', 'secondary', 'tertiary') if usage.get(name) is not None]
+        windows += [(extra['id'], extra['window']) for extra in usage.get('extraRateWindows', [])]
+        if not windows:
+            return 'quota unknown: no usage windows'
+        for name, window in windows:
+            reason = _window_reason(name, window['usedPercent'], window['resetsAt'], now)
+            if reason:
+                return reason
+    elif 'windows' in row:
+        if row.get('source') not in ('account_observed', 'provider_header', 'locally_reconstructed'):
+            return 'quota source unknown or historical; live observation required'
+        if not isinstance(row['windows'], list):
+            raise ValueError('invalid quota windows')
+        if not row['windows']:
+            return 'quota unknown: no cap windows'
+        for window in row['windows']:
+            limit = _number(window['limit'])
+            remaining = _number(window['remaining'])
+            if not 0 <= remaining <= limit or limit <= 0:
+                raise ValueError('invalid remaining or limit')
+            name = window['name']
+            reset = window['resets_at']
+            if _timestamp(reset) <= now:
+                return f'{name} reset passed; refresh usage'
+            if remaining < 1:
+                return f'{name} exhausted until {reset}'
+    else:
+        return 'quota unknown: no cached usage or cap windows'
+
+    if 'weekly_used_pct' in row and not 0 <= _number(row['weekly_used_pct']) < 100:
+        return 'weekly quota exhausted or invalid; refresh usage'
+    band = row.get('band')
+    if band in ('hard-throttle', 'hold', 'blocked'):
+        return f'pace {band}'
+    if band == 'unknown' or ('usage' in row and band is None):
+        return 'unknown pace; refresh usage'
+    if band is not None and band not in ('under-burn', 'on-pace', 'throttle', 'ok'):
+        return 'unknown pace band'
+    if 'max_workflow_agents' in row and _number(row['max_workflow_agents']) <= 0:
+        return 'no workflow agents admitted by pace'
+    if lane in (snapshot.get('z0_factory') or {}).get('avoid', []):
+        return 'lane is on z0 factory avoid list'
+    return None
+
+
+def admit(lane, rows=None, *, now=None, state=None):
+    """Return {lane, decision, reason} from live cached rows. Unknown means deny.
+
+    Optional rows is a burn-pace snapshot for deterministic callers/tests. With no
+    rows, read STATE on every call. This is an advisory check, not a reservation.
+    """
+    now = now or datetime.now(timezone.utc)
+    try:
+        snapshot = rows if rows is not None else admission_rows(Path(state) if state is not None else STATE)
+        reason = _admission_reason(lane, snapshot, now)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
+        # Never expose raw file content, provider diagnostics, or account identity.
+        reason = 'invalid or missing quota data/timestamp; refresh live rows'
+    return {'lane': lane, 'decision': 'deny' if reason else 'allow',
+            'reason': reason or 'live quota windows have capacity and pace permits work'}
+
+
+def admission_cli(args):
+    import argparse
+    parser = argparse.ArgumentParser(prog='burn-pace admit', description='Read-only quota admission; unknown capacity denies.')
+    parser.add_argument('lane')
+    parser.add_argument('--json', action='store_true')
+    parser.add_argument('--state-dir', type=Path, default=STATE)
+    options = parser.parse_args(args)
+    result = admit(options.lane, state=options.state_dir)
+    print(json.dumps(result) if options.json else f'{result["decision"]} {options.lane}: {result["reason"]}')
+    return 0 if result['decision'] == 'allow' else 1
 
 
 def main():
@@ -110,4 +296,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == 'admit':
+        sys.exit(admission_cli(sys.argv[2:]))
     main()
