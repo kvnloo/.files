@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Keep the S22 sender's ADB transport alive without touching the phone UI.
+
+Why it drops: Android turns Wireless debugging (TLS port) off or onto a new
+random port when Wi-Fi disconnects/reconnects (seen 2026-11-04 09:46: Wi-Fi
+drop + MAC_CHANGE + band switch, uptime unchanged, so no reboot). Legacy
+tcpip mode on 5555 survives Wi-Fi changes but not a reboot or adbd restart.
+
+Each run (timer, every 2 min): detect -> repair -> append a receipt line.
+  1. Find a live transport whose ro.serialno matches. If none, `adb connect`
+     the fixed 5555 endpoints (tailnet, LAN) and the mDNS-advertised TLS port.
+  2. If connected but adbd no longer listens on 5555, re-arm `adb tcpip 5555`,
+     only while the sender's UI lock is free (never mid-send; no UI input).
+  3. Drop stale `offline` transports for this phone's hosts.
+Diagnostics per receipt (uptime, adb_wifi_enabled, BSSID, tcp port) let the
+next drop be attributed: uptime reset = reboot, BSSID change = Wi-Fi roam,
+adb_wifi_enabled=0 with same uptime = Android turned wireless debugging off.
+If nothing reconnects, the receipt says `needs_owner_pairing`.
+"""
+import fcntl, json, os, re, subprocess, sys, time
+from pathlib import Path
+
+ADB = str(Path.home() / 'android/sdk/platform-tools/adb')
+PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1.31'],
+                  'ui_lock': Path.home() / 'tmp/s22-ui.lock'}}
+STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
+
+
+def adb(*args, timeout=20):
+    try:
+        return subprocess.run([ADB, *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 124, '', 'timeout')
+
+
+def transports():
+    rows = {}
+    for line in adb('devices').stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            rows[parts[0]] = parts[1]
+    return rows
+
+
+def serial_of(transport):
+    r = adb('-s', transport, 'shell', 'getprop ro.serialno', timeout=10)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def live_transport(phone):
+    ts = transports()
+    # Prefer the fixed tcpip endpoint, then any other matching transport.
+    for t in sorted((t for t, s in ts.items() if s == 'device'), key=lambda t: not t.endswith(':5555')):
+        if serial_of(t) == phone['serial']:
+            return t
+    return None
+
+
+def mdns_endpoints(phone):
+    out = adb('mdns', 'services').stdout
+    return [line.split()[-1] for line in out.splitlines()
+            if phone['serial'] in line and '_adb-tls-connect._tcp' in line]
+
+
+def diagnostics(t):
+    script = ('cut -d" " -f1 /proc/uptime; settings get global adb_wifi_enabled; getprop service.adb.tcp.port; '
+              'dumpsys wifi | grep -m1 -o "BSSID: [0-9a-f:]*"')
+    lines = (adb('-s', t, 'shell', script, timeout=20).stdout.splitlines() + [''] * 4)[:4]
+    return {'uptime_s': float(lines[0]) if re.fullmatch(r'[0-9.]+', lines[0].strip()) else None,
+            'adb_wifi_enabled': lines[1].strip() or None, 'tcp_port': lines[2].strip() or None,
+            'bssid': lines[3].replace('BSSID:', '').strip() or None}
+
+
+def attribute(previous, diag):
+    if not previous or not diag:
+        return None
+    if previous.get('uptime_s') and diag.get('uptime_s') is not None and diag['uptime_s'] < previous['uptime_s']:
+        return 'reboot'
+    if previous.get('bssid') and diag.get('bssid') and previous['bssid'] != diag['bssid']:
+        return 'wifi-roam'
+    if previous.get('adb_wifi_enabled') == '1' and diag.get('adb_wifi_enabled') == '0':
+        return 'wireless-debugging-turned-off'
+    return None
+
+
+def keep(name, phone):
+    actions = []
+    t = live_transport(phone)
+    if t is None:
+        candidates = [f'{h}:5555' for h in phone['hosts']] + mdns_endpoints(phone)
+        for c in candidates:
+            r = adb('connect', c, timeout=15)
+            actions.append({'connect': c, 'out': (r.stdout + r.stderr).strip()[:160]})
+            if 'connected' in r.stdout and 'failed' not in r.stdout:
+                time.sleep(1)
+                if serial_of(c) == phone['serial']:
+                    t = c
+                    break
+    diag = diagnostics(t) if t else None
+    if t and diag and diag.get('tcp_port') != '5555':
+        with open(phone['ui_lock'], 'a') as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                actions.append({'tcpip': 'deferred: sender holds UI lock'})
+            else:
+                r = adb('-s', t, 'tcpip', '5555', timeout=20)
+                actions.append({'tcpip': (r.stdout + r.stderr).strip()[:160]})
+                time.sleep(3)
+                for h in phone['hosts']:
+                    adb('connect', f'{h}:5555', timeout=15)
+    for stale, state in transports().items():
+        if state == 'offline' and any(stale.startswith(h + ':') for h in phone['hosts']):
+            adb('disconnect', stale)
+            actions.append({'disconnect_offline': stale})
+    t = live_transport(phone) or t
+    return t, diag, actions
+
+
+def main():
+    STATE.mkdir(parents=True, exist_ok=True)
+    last_path = STATE / 'phone-adb-keeper.last.json'
+    last = json.loads(last_path.read_text()) if last_path.exists() else {}
+    rc = 0
+    for name, phone in PHONES.items():
+        before = last.get(name, {})
+        t, diag, actions = keep(name, phone)
+        receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
+                   'state': 'ok' if t else 'needs_owner_pairing', 'was': before.get('state'),
+                   'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
+                   'diag': diag or before.get('diag'), 'actions': actions}
+        if t is None:
+            rc = 1
+        if actions or receipt['state'] != before.get('state'):
+            with open(STATE / 'phone-adb-keeper.jsonl', 'a') as fh:
+                fh.write(json.dumps(receipt) + '\n')
+        last[name] = receipt
+        print(json.dumps(receipt))
+    last_path.write_text(json.dumps(last, indent=1))
+    return rc
+
+
+if __name__ == '__main__':
+    sys.exit(main())

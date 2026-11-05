@@ -1,0 +1,7 @@
+[Unit]
+Description=Detect and repair the S22 sender ADB transport (no UI input), with receipts
+
+[Service]
+Type=oneshot
+TimeoutStartSec=150
+ExecStart=%h/workspace/.files/scripts/phone-adb-keeper
