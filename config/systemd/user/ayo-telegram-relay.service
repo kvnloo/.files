@@ -1,0 +1,6 @@
+[Unit]
+Description=Forward ayo Bot Chat replies to Telegram (stopgap while the app hides them)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/ayo-telegram-relay
