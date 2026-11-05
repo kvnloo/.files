@@ -1,0 +1,48 @@
+#!/bin/bash
+# R09 (Kevin 2026-11-04): keep groot updated around the clock using only OS features (pacman and a
+# systemd timer; no daemon, no LLM). Hold every update that needs a reboot until right before a
+# scheduled reboot.
+#   run daily        Download pending updates (checkupdates -d never touches the live sync db).
+#                    If none of them needs a reboot, apply them. Otherwise stage the whole set,
+#                    because Arch does not support partial upgrades.
+#   run maintenance  Apply the staged set from the cache, then reboot if a package that needs a
+#                    reboot changed.
+# Receipts: /var/log/os-update.jsonl. Rollback: docs/fleet/OS-UPDATE.md.
+set -u
+mode="${1:-daily}"
+state=/var/lib/os-update
+log=/var/log/os-update.jsonl
+# Packages that need a reboot. In groot's pacman.log (2026-02..2026-11), the only one that
+# appeared was the 10-07 set: linux-cachyos, intel-ucode, glibc.
+reboot_re='^(linux.*|nvidia.*|lib32-nvidia.*|.*-ucode|systemd|systemd-libs|glibc|lib32-glibc|mkinitcpio|mesa|lib32-mesa)$'
+mkdir -p "$state"
+pending=0
+rb=""
+receipt() {
+  printf '{"ts":"%s","mode":"%s","result":"%s","pending":%s,"reboot_class":"%s","rc":%s}\n' \
+    "$(date -Is)" "$mode" "$1" "$pending" "$rb" "${2:-0}" >> "$log"
+}
+list=$(checkupdates -d 2>/dev/null)
+rc=$?
+if [ "$rc" = 2 ]; then
+  receipt none 0
+  rm -f "$state/staged"
+  exit 0
+fi
+[ "$rc" = 0 ] || { receipt checkupdates-failed "$rc"; exit 1; }
+pending=$(printf '%s\n' "$list" | grep -c .)
+rb=$(printf '%s\n' "$list" | awk '{print $1}' | grep -E "$reboot_re" | tr '\n' ' ' | sed 's/ $//')
+if [ "$mode" = daily ] && [ -n "$rb" ]; then
+  printf '%s\n' "$list" > "$state/staged"
+  receipt staged-for-maintenance 0
+  exit 0
+fi
+pacman -Syu --noconfirm
+rc=$?
+[ "$rc" = 0 ] || { receipt upgrade-failed "$rc"; exit "$rc"; }
+rm -f "$state/staged"
+if [ "$mode" = maintenance ] && [ -n "$rb" ]; then
+  receipt applied-rebooting 0
+  exec /usr/bin/systemctl --no-block reboot
+fi
+receipt applied 0

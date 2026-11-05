@@ -1,0 +1,10 @@
+[Unit]
+Description=R09 maintenance window (enable only after Kevin picks the time; see docs/fleet/OS-UPDATE.md)
+
+[Timer]
+# Placeholder. Kevin picks the reboot window before this timer is enabled.
+OnCalendar=Sun *-*-* 04:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

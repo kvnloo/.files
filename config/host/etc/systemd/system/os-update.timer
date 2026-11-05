@@ -1,0 +1,10 @@
+[Unit]
+Description=R09 daily pacman update (updates that need no reboot)
+
+[Timer]
+OnCalendar=*-*-* 03:30
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=R09 daily pacman update; updates that need a reboot are staged for the maintenance window
+Documentation=file:///workspace/.files/docs/fleet/OS-UPDATE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/os-update/run daily
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20
+TimeoutStartSec=2h

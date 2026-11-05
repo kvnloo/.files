@@ -4685,3 +4685,43 @@ paths = ["/etc/NetworkManager/system-connections", "/etc/audit/plugins.d", "/etc
 owner = "scripts/apply-host-system"
 command = "cd /mnt/zer0models/worktrees/files-live && sudo scripts/apply-host-system --audit"
 reason = "ROOT-APPLY.md stage 1 closes permission-limited inventory gaps without printing credential values; unreadable paths remain unknown until audited."
+
+[[system]]
+live = "/etc/systemd/system/os-update.service"
+source = "config/host/etc/systemd/system/os-update.service"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "R09 OS updates (docs/fleet/OS-UPDATE.md)"
+
+[[system]]
+live = "/etc/systemd/system/os-update.timer"
+source = "config/host/etc/systemd/system/os-update.timer"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "R09 OS updates (docs/fleet/OS-UPDATE.md)"
+
+[[system]]
+live = "/etc/systemd/system/os-update-maintenance.service"
+source = "config/host/etc/systemd/system/os-update-maintenance.service"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "R09 OS updates (docs/fleet/OS-UPDATE.md)"
+
+[[system]]
+live = "/etc/systemd/system/os-update-maintenance.timer"
+source = "config/host/etc/systemd/system/os-update-maintenance.timer"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "R09 OS updates (docs/fleet/OS-UPDATE.md)"
+
+[[system]]
+live = "/etc/os-update/run"
+source = "config/host/etc/os-update/run"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "R09 OS updates (docs/fleet/OS-UPDATE.md)"
