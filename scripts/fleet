@@ -45,7 +45,7 @@ import fleet_phone_python as phone_python
 import fleet_boat_pool as boat_pool
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 from fleet_source import source_snapshot
-from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready
+from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready, reconcile_lane_memory
 
 BOAT = shutil.which("boat") or str(Path.home() / ".local/bin/boat")  # systemd PATH lacks ~/.local/bin
 REPO = Path(__file__).resolve().parent.parent
@@ -359,6 +359,12 @@ def cmd_health(args):
             except Exception as exc:
                 bad.append(f"Kueue admission guard: {exc}")
                 queue_policy = {"error": str(exc)}
+            if not bad:
+                try:
+                    # Kueue must not admit memory the host already uses outside it.
+                    queue_policy = {"stop_policy": queue_policy, **reconcile_lane_memory(kc)}
+                except Exception as exc:
+                    warn.append(f"lane memory quota unchanged: {exc}")
         rec = {"node": name, "ts": int(time.time()), "healthy": not bad, "reasons": bad, "warnings": warn,
                "strikes": s["bad"], "action": action, "paused": s["paused"], "probe": probes[name]}
         if name == "mbp":

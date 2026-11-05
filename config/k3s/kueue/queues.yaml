@@ -9,6 +9,9 @@
 # + unevictable/per-CPU memory. Do not reclassify active job memory as idle OS.
 # Allocatable 12046536Ki = 12335652864 bytes caps this static budget.
 # This is NOT instantaneous MemAvailable admission. Recompute after measured changes.
+# fleet health lowers lanes' memory quota below this static budget by the resident
+# memory of non-Kueue workloads on mbp (army, kind/docker; scripts/fleet_queue_health.py
+# reconcile_lane_memory) and restores it as that memory frees. This value is the ceiling.
 # CPU budget = 6 of 6.5 allocatable CPUs (8 threads): quota 4 left 2.5 cores idle and made a
 # 4-CPU test job preempt hc bench lanes (2026-11-10 mesh fill, c9e86089).
 # Default fleet-build and --node mbp use Kueue; mbp-host must reserve here too.
