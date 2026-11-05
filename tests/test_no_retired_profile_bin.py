@@ -18,6 +18,11 @@ class NoRetiredProfileBin(unittest.TestCase):
         unit = (ROOT / "config/systemd/user/uniichat-luna.service").read_text()
         self.assertIn("/home/kvn/.hermes/tools/bws-2.0.0-linux-x64:", unit)
 
+    def test_default_hermes_home_is_not_the_retired_profile(self):
+        conf = (ROOT / "config/environment.d/hermes-home.conf").read_text()
+        self.assertIn("HERMES_HOME=/home/kvn/.hermes\n", conf)
+        self.assertNotIn("profiles/chiefstaff", conf.split("\n", 2)[-1])
+
 
 if __name__ == "__main__":
     unittest.main()
