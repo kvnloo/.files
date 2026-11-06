@@ -77,7 +77,7 @@ spec:
             tcpSocket: {port: 8080}
             periodSeconds: 10
           resources:
-            requests: {cpu: 10m, memory: 24Mi}
+            requests: {cpu: 200m, memory: 64Mi}  # == limits: Guaranteed QoS, adj -997 (scripts/k3s-qos-reconcile)
             limits: {cpu: 200m, memory: 64Mi}
           securityContext:
             allowPrivilegeEscalation: false
