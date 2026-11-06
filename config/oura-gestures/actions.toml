@@ -1,0 +1,9 @@
+# No shell is used: each value is an argv list.
+# Only gestures explicitly listed here run commands.
+[actions]
+double_tap = ["tern", "ctl", "carly", "open"]
+triple_tap = ["tern", "ctl", "carly", "close"]
+
+# Optional gestures (commented out until calibrated with your ring):
+# quadruple_tap = ["tern", "ctl", "carly", "new"]  # resets conversation!
+# shake = ["notify-send", "Oura gesture", "Shake detected"]

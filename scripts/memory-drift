@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Memory drift law (L10 effective_equals_declared): live memory policy must equal the intent.
+
+Reads the EFFECTIVE values, never the unit files:
+  - cgroup files under /sys/fs/cgroup (memory.min, memory.max, memory.swap.max, ...),
+  - `systemctl [--user] show -p <Property>` for the unit's resolved value,
+  - the drop-in that WINS for a property (last assignment across DropInPaths, which systemd
+    orders by file name across all directories); it must be the declared owner file,
+  - runtime property overrides in user.control / system.control that set a declared key,
+  - the real cgroup of named processes (/proc/<pid>/cgroup; `systemctl show -p Slice` lies
+    for units started before a Slice= drop-in),
+  - sysctl values.
+
+A check is DRIFT when the live value differs from the intent, when a later-sorting drop-in
+or a runtime override owns the key, or when the value cannot be read. Exit 0 = all green,
+1 = drift (loud), 2 = the intent file itself is unusable.
+
+Usage: memory-drift [--intent FILE] [--groups ui,app,...] [--json]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tomllib
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_INTENT = ROOT / 'config/host/groot-memory-intent.toml'
+SIZE = re.compile(r'^(\d+(?:\.\d+)?)([KMGT]?)$')
+FACTOR = {'': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3, 'T': 1024 ** 4}
+
+
+def normalize(value: str) -> str:
+    """Compare sizes as bytes; 'infinity' and 'max' are the same value."""
+    text = str(value).strip()
+    if text in ('infinity', 'max', ''):
+        return 'max' if text else ''
+    match = SIZE.match(text)
+    if match:
+        number, unit = match.groups()
+        return str(int(float(number) * FACTOR[unit]))
+    return text
+
+
+def run(args: list[str]) -> str:
+    result = subprocess.run(args, capture_output=True, text=True, timeout=15)
+    if result.returncode != 0:
+        raise RuntimeError(f'{" ".join(args)}: rc={result.returncode} {result.stderr.strip()}')
+    return result.stdout
+
+
+class Host:
+    """Everything the law reads. Tests replace it with a fixture."""
+
+    def __init__(self, cgroup_root=Path('/sys/fs/cgroup'), proc=Path('/proc'), uid=None):
+        self.cgroup_root = cgroup_root
+        self.proc = proc
+        self.uid = os.getuid() if uid is None else uid
+
+    def cgroup_file(self, path: str, name: str) -> str:
+        return (self.cgroup_root / path / name).read_text().strip()
+
+    def show(self, scope: str, unit: str, prop: str) -> str:
+        args = ['systemctl'] + (['--user'] if scope == 'user' else []) + ['show', unit, '-p', prop, '--value']
+        return run(args).strip()
+
+    def dropin_paths(self, scope: str, unit: str) -> list[str]:
+        return self.show(scope, unit, 'DropInPaths').split()
+
+    def fragment(self, scope: str, unit: str) -> str:
+        return self.show(scope, unit, 'FragmentPath')
+
+    def read_text(self, path: str) -> str:
+        return Path(path).read_text()
+
+    def control_dirs(self, scope: str, unit: str) -> list[Path]:
+        if scope == 'user':
+            return [Path.home() / f'.config/systemd/user.control/{unit}.d',
+                    Path(f'/run/user/{self.uid}/systemd/user.control/{unit}.d')]
+        return [Path(f'/etc/systemd/system.control/{unit}.d'),
+                Path(f'/run/systemd/system.control/{unit}.d')]
+
+    def pids(self, comm: str) -> list[int]:
+        found = []
+        for entry in self.proc.iterdir():
+            if entry.name.isdigit():
+                try:
+                    if (entry / 'comm').read_text().strip() == comm:
+                        found.append(int(entry.name))
+                except OSError:
+                    continue
+        return found
+
+    def pid_cgroup(self, pid: int) -> str:
+        return (self.proc / str(pid) / 'cgroup').read_text().strip().split('::', 1)[-1]
+
+    def sysctl(self, key: str) -> str:
+        return (self.proc / 'sys' / key.replace('.', '/')).read_text().strip()
+
+
+def assigns(text: str, key: str) -> list[str]:
+    return re.findall(rf'^\s*{re.escape(key)}\s*=\s*(.*?)\s*$', text, re.M)
+
+
+def winning_source(host: Host, scope: str, unit: str, key: str) -> tuple[str | None, str | None]:
+    """The file whose assignment systemd applies: last one in fragment, then drop-in order."""
+    winner = None
+    value = None
+    for path in [host.fragment(scope, unit), *host.dropin_paths(scope, unit)]:
+        if not path:
+            continue
+        try:
+            found = assigns(host.read_text(path), key)
+        except OSError:
+            continue
+        if found:
+            winner, value = path, found[-1]
+    return winner, value
+
+
+def check_unit(host: Host, row: dict) -> list[str]:
+    scope, unit, key, want = row.get('scope', 'user'), row['unit'], row['property'], row['equals']
+    problems = []
+    live = host.show(scope, unit, key)
+    if normalize(live) != normalize(want):
+        problems.append(f'{scope}:{unit} {key}: live={live} intent={want}')
+    owner = row.get('owner')
+    if owner:
+        winner, value = winning_source(host, scope, unit, key)
+        if winner is None or os.path.basename(winner) != owner:
+            problems.append(f'{scope}:{unit} {key}: winning drop-in is {winner} (value {value}), '
+                            f'intent owner is {owner}; a later-sorting file shadows it')
+    for directory in host.control_dirs(scope, unit):
+        if directory.is_dir():
+            for path in sorted(directory.iterdir()):
+                try:
+                    if assigns(path.read_text(), key):
+                        problems.append(f'{scope}:{unit} {key}: runtime override {path} '
+                                        '(set-property residue; not in IaC)')
+                except OSError:
+                    continue
+    return problems
+
+
+def check_cgroup(host: Host, row: dict) -> list[str]:
+    path, name, want = row['path'], row['file'], row['equals']
+    live = host.cgroup_file(path, name)
+    if normalize(live) != normalize(want):
+        return [f'cgroup {path}/{name}: live={live} intent={want}']
+    return []
+
+
+def check_placement(host: Host, row: dict) -> list[str]:
+    comm, under = row['comm'], row['under']
+    pids = host.pids(comm)
+    if not pids:
+        return [] if row.get('optional') else [f'placement {comm}: no process found']
+    return [f'placement {comm} pid {pid}: cgroup {cg} is not under {under}'
+            for pid in pids for cg in [host.pid_cgroup(pid)] if f'/{under}' not in cg]
+
+
+def check_sysctl(host: Host, row: dict) -> list[str]:
+    live = host.sysctl(row['key'])
+    if live != str(row['equals']):
+        return [f'sysctl {row["key"]}: live={live} intent={row["equals"]}']
+    return []
+
+
+CHECKS = {'unit': check_unit, 'cgroup': check_cgroup, 'placement': check_placement, 'sysctl': check_sysctl}
+
+
+def audit(intent: dict, host: Host, groups: set[str] | None = None) -> list[dict]:
+    rows = []
+    for kind, check in CHECKS.items():
+        for row in intent.get(kind, []):
+            group = row.get('group', 'base')
+            if groups and group not in groups:
+                continue
+            try:
+                problems = check(host, row)
+            except Exception as error:  # an unreadable value is drift, never a pass
+                problems = [f'{kind} {row}: cannot read live value: {error}']
+            rows.append({'kind': kind, 'group': group, 'ok': not problems, 'problems': problems,
+                         'why': row.get('why', '')})
+    return rows
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--intent', type=Path, default=DEFAULT_INTENT)
+    parser.add_argument('--groups', help='comma list; default all groups')
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args(argv)
+    try:
+        intent = tomllib.loads(args.intent.read_text())
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        print(f'memory-drift: intent unusable: {error}', file=sys.stderr)
+        return 2
+    groups = set(args.groups.split(',')) if args.groups else None
+    rows = audit(intent, Host(), groups)
+    drift = [row for row in rows if not row['ok']]
+    if args.json:
+        print(json.dumps({'ok': not drift, 'checks': len(rows), 'drift': drift}, indent=1))
+    else:
+        for row in drift:
+            for problem in row['problems']:
+                print(f'DRIFT [{row["group"]}] {problem}')
+        print(f'memory-drift: {len(rows) - len(drift)}/{len(rows)} green'
+              + ('' if not drift else f'; {len(drift)} DRIFT (exit 1)'))
+    return 1 if drift else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -16,15 +16,20 @@ A peer is listed when all of these hold:
     that machine. `tern remote doctor` is not used as the gate because it stalls
     on its relay probes inside phone PRoot guests.
 
-Names and users come from ~/.config/tern/hosts.names ("<ip> <name> [user]");
-otherwise the name is the MagicDNS label and the user is kvn. The file is
+Names and users come from, in order:
+  1. ~/.config/tern/hosts.names ("<ip> <name> [user]"), an optional local override;
+  2. the private z0-hosts instance ($Z0_HOSTS_DIR, default ~/.config/z0-hosts):
+     hosts/*/devices.toml, matched by MagicDNS label or Tailscale HostName against
+     peer_hostname/aliases. The sidebar name is the first non-numeric alias, else the
+     device key; the user is root for kind="phone", else kvn. No addresses are stored;
+  3. otherwise the MagicDNS label, user kvn. The file is
 written atomically, and only when its contents change.
 
   tern-hosts-sync             sync once
   tern-hosts-sync --dry-run   print the file instead of writing it
   tern-hosts-sync --every N   sync every N seconds (runit hosts without systemd timers)
 """
-import json, os, subprocess, sys, tempfile, time
+import json, os, subprocess, sys, tempfile, time, tomllib
 from pathlib import Path
 
 CFG = Path.home() / ".config/tern"
@@ -47,6 +52,28 @@ def names():
     return out
 
 
+def devices(root=None):
+    """Label (peer_hostname or alias) -> (sidebar name, user) from the private z0-hosts devices.toml files."""
+    root = Path(root or os.environ.get("Z0_HOSTS_DIR") or Path.home() / ".config/z0-hosts").expanduser()
+    out = {}
+    for path in sorted(root.glob("hosts/*/devices.toml")):
+        try:
+            table = tomllib.loads(path.read_text())
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            print(f"tern-hosts-sync: ignoring {path.name} in {path.parent.name}: {e}", file=sys.stderr, flush=True)
+            continue
+        for key, dev in table.items():
+            if not isinstance(dev, dict):
+                continue
+            aliases = [a for a in dev.get("aliases", []) if isinstance(a, str)]
+            name = next((a for a in aliases if not a.isdigit()), key)
+            user = "root" if dev.get("kind") == "phone" else "kvn"
+            for label in [dev.get("peer_hostname"), *aliases]:
+                if isinstance(label, str) and label:
+                    out.setdefault(label, (name, user))
+    return out
+
+
 def pinned():
     """Host strings (without :port) that have a pinned Tern host key."""
     out = set()
@@ -58,7 +85,7 @@ def pinned():
     return out
 
 
-def render(ts, named, trusted):
+def render(ts, named, trusted, devs=None):
     self_ips = set(ts["Self"]["TailscaleIPs"])
     lines, skipped = [], []
     for p in sorted(ts.get("Peer", {}).values(), key=lambda p: p["DNSName"]):
@@ -66,7 +93,9 @@ def render(ts, named, trusted):
         dns = p["DNSName"].rstrip(".")
         if ip in self_ips or not p.get("Online") or p.get("OS") not in ("linux", "macOS"):
             continue
-        name, user = named.get(ip, (dns.split(".")[0] or p["HostName"], None))
+        label = dns.split(".")[0]
+        name, user = (named.get(ip) or (devs or {}).get(label) or (devs or {}).get(p.get("HostName"))
+                      or (label or p["HostName"], None))
         if not trusted & {ip, dns, dns.split(".")[0]}:
             skipped.append(f"{name} ({ip}): host key not pinned")
             continue
@@ -78,7 +107,7 @@ def render(ts, named, trusted):
 
 
 def sync(dry):
-    body, lines, skipped = render(tailscale(), names(), pinned())
+    body, lines, skipped = render(tailscale(), names(), pinned(), devices())
     for s in skipped:
         print("tern-hosts-sync: skipped", s, file=sys.stderr, flush=True)
     if dry:
@@ -96,6 +125,11 @@ def sync(dry):
 
 
 def main():
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args) or any(
+            a not in ("--dry-run", "--every") and not (i and args[i - 1] == "--every") for i, a in enumerate(args)):
+        print(__doc__, file=sys.stderr)
+        return 0 if any(a in ("-h", "--help") for a in args) else 2
     dry = "--dry-run" in sys.argv
     if "--every" in sys.argv:
         period = int(sys.argv[sys.argv.index("--every") + 1])
@@ -109,4 +143,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

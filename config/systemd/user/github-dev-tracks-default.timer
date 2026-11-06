@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily dev-tracks-default sweep (merge default into dev; default never written)
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=1d
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
