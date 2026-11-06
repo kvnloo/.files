@@ -1,6 +1,6 @@
 # Low-impact CachyOS updates
 
-Status, 2026-11-05: source-only proposal, not enabled or acceptance-complete. Read [R09 activation blockers](native-updates-review.md) before using the enable instructions. The historical observations below are not fresh repository or upstream checks.
+Status, rechecked 2026-11-06 at 02:46 UTC: this native proposal is not enabled or acceptance-complete. A separate custom updater already has active daily and maintenance timers. Do not enable a second updater. Its next maintenance deadline is November 8 at 04:00 CST, `America/Chicago`, with no workload-drain gate in the installed script. Read [R09 activation blockers](native-updates-review.md) before any activation. Source: execution `logs/revalidation-current.log`, `systemctl show`, `systemctl cat`, and `/etc/os-update/run:25-46`. The historical observations below are not fresh repository or upstream checks.
 
 Use the distribution's `pacman-offline-prepare.timer` and `paccache.timer`. Do not add a resident updater, cron job, LLM call, AUR build loop, or all-package-manager background updater.
 

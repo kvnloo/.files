@@ -4,6 +4,8 @@ This review preserves the existing native-updater proposal without activating it
 
 ## Revalidation, 2026-11-06 UTC
 
+Repeated read-only inspection at 02:46 UTC confirms both custom timers remain enabled and active, the November 8 at 04:00 CST maintenance deadline is unchanged, and the installed updater hash remains `0e085d4a8551137a35d0b325ef54dc6187168b414c79568c50887be210005f99`. Root has 22,366,540 KiB available. The previous daily receipt and retained resource counters are unchanged. No new update or recovery experiment ran. Rerun `python3 revalidate-host.py` in the evidence directory. Source: execution `logs/revalidation-current.log`, with commands and individual exit codes. The native diagnostic still exits 0 despite the missing updater, so it is not a readiness check.
+
 This section supersedes the historical host observations below. Both custom timers, `os-update.timer` and `os-update-maintenance.timer`, are now enabled and active. The native `pacman-offline` proposal remains absent. Sources: evidence `logs/20261106-readonly.log`, commands `pacman -Q` and `systemctl show`; `logs/20261106-active-updater.log`, timer properties.
 
 The maintenance timer next elapses on **2026-11-08 at 04:00 CST**, timezone `America/Chicago`. Its installed unit still calls this a placeholder requiring Kevin's choice. This review cannot establish approval from the allowed item and verdict. The daily timer next elapses on 2026-11-06 at 03:42:59 CST. Sources: `/etc/systemd/system/os-update-maintenance.timer:2-6`; evidence `logs/20261106-active-updater.log`, `timedatectl show` and `systemctl show` outputs.
@@ -35,7 +37,7 @@ The native proposal uses packaged offline preparation, not a new resident update
 | Safe non-reboot updates | Policy defers the complete Arch OS transaction. | No continuously installed safe subset is implemented or proven. |
 | Reboot class only at scheduled maintenance | Proposal disables the automatic reboot timer. | Preparation can arm the next user reboot, not specifically an approved window. There is no workload drain gate. |
 | Rollback | Disable calls the native abort command; cache cleanup retains packaged defaults. | No tested OS rollback, restored backup, or recovery boot. |
-| Resource impact | Low-priority settings and read-only probe timings exist. | No preparation or installation CPU, RAM, disk, network, or foreground-latency measurement. |
+| Resource impact | Existing daily-service counters show about 1.24 GiB peak RAM and 76.8 CPU-seconds. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
 
 Sources: `docs/native-updates.md:5-12,28-32,45-60`, `scripts/setup-native-updates:22-28,48-56`, and execution `logs/native-readonly-rerun.log`. `check` exits zero despite missing dependencies because lines 9-11 suppress individual failures. Its success is diagnostic completion, not readiness.
 
