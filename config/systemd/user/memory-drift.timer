@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the memory drift law at login (cold-boot gate) and hourly
+
+[Timer]
+# Cold-boot gate: the first run after every boot checks the policy came back with no
+# manual step. Then hourly, so a package update or a stray set-property is seen.
+OnStartupSec=5min
+OnUnitActiveSec=1h
+Persistent=false
+
+[Install]
+WantedBy=timers.target

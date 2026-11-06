@@ -5,7 +5,7 @@ CollectMode=inactive-or-failed
 [Service]
 Type=exec
 WorkingDirectory=%h/.local/share/z0int-memory-mcp
-Environment=PYTHONPATH=/mnt/zer0models/host-offload/memory-mcp-releases/b6fa5969a8d039efd9859ed389d6a3976acfb394/src
+Environment=PYTHONPATH=/mnt/zer0models/host-offload/memory-mcp-releases/0b012574df7d3f68304d829de1f7f3c4ba5c6ba4/src
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=Z0INT_MEMORY_MCP_POLICY=%h/.config/z0int/memory-mcp-policy.json
 Environment=Z0INT_MEMORY_MCP_PRINCIPAL=operator
