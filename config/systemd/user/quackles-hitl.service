@@ -1,0 +1,15 @@
+[Unit]
+Description=Quackles HITL viewer (loopback static; tailnet via tailscale serve 8478)
+After=network.target
+
+[Service]
+Type=simple
+# Host-private: QUACKLES_HITL_DIR lives in the env file, not in this public repo.
+EnvironmentFile=%h/.config/quackles-services/hitl.env
+ExecStart=/usr/bin/python3 -m http.server 18760 --bind 127.0.0.1 --directory ${QUACKLES_HITL_DIR}
+Restart=on-failure
+RestartSec=2
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

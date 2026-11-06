@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pull the hub's State Packet and owner corrections to this host, read-only (memory-services-20261027 step 6/7).
+# These are rendered artifacts, not a store: the hub (groot) renders STATE-PACKET.md every 15 min and the
+# corrections capture writes CORRECTIONS.jsonl. Claude Code / OMP hooks here read them from ~/.local/state/z0int/
+# (z0int.orientation). rsync writes each file atomically; a failed pull leaves the previous copy in place.
+set -eu
+hub="${Z0INT_STATE_HOST:-groot}"
+dest="$HOME/.local/state/z0int"
+mkdir -p "$dest"
+chmod 700 "$dest"
+exec rsync -t --timeout=60 -e "ssh -T -o BatchMode=yes -o ConnectTimeout=15" \
+  "$hub:.local/state/z0int/STATE-PACKET.md" "$hub:.local/state/z0int/CORRECTIONS.jsonl" "$dest/"

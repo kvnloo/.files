@@ -19,12 +19,12 @@ export GTK2_RC_FILES="$HOME/.gtkrc-2.0"
 # Each addition is documented with its purpose
 export PATH="/usr/local/sbin:$PATH"              # Local system binaries
 export PATH="$HOME/.local/bin:$PATH"              # User-local binaries
-export PATH="~/.npm-global/bin:$PATH"             # Global npm packages
-export PATH="$PATH:$HOME/.rvm/bin"                # Ruby Version Manager
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"  # Python 3.9 user packages
+[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"  # Global npm packages (tilde was quoted, never expanded)
+[ -d "$HOME/.rvm/bin" ] && export PATH="$PATH:$HOME/.rvm/bin"  # Ruby Version Manager
+[ -d "$HOME/Library/Python/3.9/bin" ] && export PATH="$HOME/Library/Python/3.9/bin:$PATH"  # macOS Python 3.9 user packages
 
-# Hermes profile tools (bws, hermes-with-secrets, …). HERMES_HOME set in ~/.zshenv.
-: "${HERMES_HOME:=$HOME/.hermes/profiles/chiefstaff}"
+# Hermes profile tools (hermes-with-secrets, …). HERMES_HOME set in ~/.zshenv; clean is the main profile.
+: "${HERMES_HOME:=$HOME/.hermes/profiles/clean}"
 [ -d "$HERMES_HOME/bin" ] && [[ ":$PATH:" != *":$HERMES_HOME/bin:"* ]] && export PATH="$HERMES_HOME/bin:$PATH"
 
 # Language-Specific Paths
@@ -36,8 +36,8 @@ export ANDROID_HOME=$HOME/android/sdk
 export NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
 [[ ":$PATH:" != *":$ANDROID_HOME/cmdline-tools/latest/bin:"* ]] && export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin"
 [[ ":$PATH:" != *":$ANDROID_HOME/platform-tools:"* ]] && export PATH="$PATH:$ANDROID_HOME/platform-tools"
-[[ ":$PATH:" != *":$ANDROID_HOME/emulator:"* ]] && export PATH="$PATH:$ANDROID_HOME/emulator"
-[[ ":$PATH:" != *":$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:"* ]] && export PATH="$PATH:$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+[ -d "$ANDROID_HOME/emulator" ] && [[ ":$PATH:" != *":$ANDROID_HOME/emulator:"* ]] && export PATH="$PATH:$ANDROID_HOME/emulator"
+[ -d "$NDK_HOME" ] && [[ ":$PATH:" != *":$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:"* ]] && export PATH="$PATH:$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
 # spicetify
 [ -d "$HOME/.spicetify" ] && export PATH="$PATH:$HOME/.spicetify"

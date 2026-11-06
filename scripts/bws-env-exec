@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute one named consumer with its allowlisted Bitwarden secrets, never argv."""
 import argparse
+import shutil
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,8 @@ def vault(env):
     if not token:
         raise RuntimeError('Bitwarden access token unavailable in keyring')
     child = dict(env, BWS_ACCESS_TOKEN=token)
-    binary = env.get('BWS_BIN', str(Path.home() / '.hermes/profiles/chiefstaff/bin/bws'))
+    # Shared tool install, not a profile's bin/: deleting a profile must not break secrets for every profile.
+    binary = env.get('BWS_BIN') or shutil.which('bws') or str(Path.home() / '.hermes/tools/bws-2.0.0-linux-x64/bws')
     project = env.get('HERMES_BWS_PROJECT_ID', 'ef35bed4-fc4f-42ab-a21f-b4bf013919b7')
     server = env.get('HERMES_BWS_SERVER_URL', 'https://vault.bitwarden.com')
     result = subprocess.run([binary, 'secret', 'list', project, '--server-url', server, '--output', 'json'],
