@@ -23,7 +23,8 @@ CONFIGS = {
     '.config/opencode/opencode.jsonc': ['model', 'small_model', 'instructions', 'plugin'],
 }
 HERMES_FIELDS = ['model.default', 'model.provider', 'model.reasoning_effort', 'model.max_tokens', 'model.aliases', 'context.engine', 'delegation.model', 'delegation.provider', 'delegation.fallback_providers', 'fallback_providers', 'system_prompt', 'system_prompt_file', 'agent.system_prompt_file', 'terminal.cwd']
-RULES = ['AGENTS.md', 'CLAUDE.md', '.codex/AGENTS.md', '.claude/CLAUDE.md', '.pi/agent/AGENTS.md', '.omp/agent/AGENTS.md', '.config/opencode/AGENTS.md', '.hermes/SOUL.md', '.hermes/AGENTS.md']
+CANON = '.local/share/owner-canon/CANON.block.md'
+RULES = ['AGENTS.md', 'CLAUDE.md', '.codex/AGENTS.md', '.claude/CLAUDE.md', '.pi/agent/AGENTS.md', '.omp/agent/AGENTS.md', '.config/opencode/AGENTS.md', '.hermes/SOUL.md', '.hermes/AGENTS.md', CANON]
 SECRET_KEY = re.compile(r'api.?key|token|password|secret|credential|authorization|auth', re.I)
 
 
@@ -107,11 +108,17 @@ def snapshot():
     rules.extend([Path('/workspace/CLAUDE.md'), Path('/workspace/AGENTS.md'), home / 'workspace/CLAUDE.md', home / 'workspace/AGENTS.md'])
     active = home / '.hermes/active_profile'
     values['hermes:active_profile'] = active.read_text().strip() if active.is_file() else '<unset>'
+    canon_path = home / CANON
+    canon = canon_path.read_bytes().strip() if canon_path.is_file() else None
     for path in rules:
         rel = str(path.relative_to(home)) if path.is_relative_to(home) else str(path)
         values[rel + ':exists'] = path.is_file()
         if path.is_file():
-            values[rel + ':sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+            raw = path.read_bytes()
+            values[rel + ':sha256'] = hashlib.sha256(raw).hexdigest()
+            blocks = re.findall(rb'<!-- owner-canon:start.*?<!-- owner-canon:end -->', raw, re.S)
+            values[rel + ':canon_blocks'] = len(blocks)
+            values[rel + ':canon_matches_generated'] = len(blocks) == 1 and canon is not None and blocks[0].strip() == canon
             sources[rel] = str(path.resolve())
     for name in ['hermes', 'fx', 'pi', 'claude', 'agy', 'opencode']:
         exe = shutil.which(name)

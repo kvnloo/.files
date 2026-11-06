@@ -4,7 +4,8 @@ set -euo pipefail
 scripts=$(cd -- "$(dirname -- "$0")" && pwd)
 evidence=${1:?usage: harness-parity-check EVIDENCE_DIRECTORY}
 cd -- "$evidence"
-ssh_args=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 mbp)
+# Use the owner's existing aliases and pins without unrelated system includes.
+ssh_args=(-F "$HOME/.ssh/config" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 mbp)
 remote_python=/home/kvn/.hermes/hermes-agent/.venv/bin/python
 python3 "$scripts/harness-parity-snapshot.py" > logs/groot-after.json 2> logs/groot-after.stderr
 printf 'groot snapshot exit=0\n'
