@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import tomllib
@@ -36,6 +37,12 @@ class SiblingClosureTests(unittest.TestCase):
         self.assertIn('scripts/agent_oom_policy.py', installer.sibling_imports(ROOT, sources))
 
 
+def write_fleet(root):
+    """Fixture fleet declaring this machine's hostname as the manifest host."""
+    (root / 'fleet.toml').write_text('[hosts.fixture]\nmatch_hostnames = [' + json.dumps(socket.gethostname()) +
+                                     ']\nmanifest = "config/host/groot.toml"\n')
+
+
 class UserLayerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -54,6 +61,7 @@ class UserLayerTests(unittest.TestCase):
         self.control.write_text('[Slice]\nCPUWeight=1000\n')
         manifest = self.source / 'config/host/groot.toml'
         manifest.parent.mkdir(parents=True)
+        write_fleet(self.source)
         h = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
         manifest.write_text('user_control_cleanup = [{live="~/.config/systemd/user.control/session.slice.d/50-CPUWeight.conf", sha256=' + json.dumps(h(self.control)) + '}]\n'
                             '[[user]]\nlive="~/.config/systemd/user/session.slice.d/50-desktop.conf"\nsource=' + json.dumps(self.unit) + '\nowner="scripts/apply-agent-oom"\nmigration_sha256=' + json.dumps(h(self.live)) + '\n'
