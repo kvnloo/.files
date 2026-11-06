@@ -86,13 +86,16 @@ nodes:
       # Reclaim unused images well before the node reaches disk-pressure limits.
       image_gc_high_threshold: 80
       image_gc_low_threshold: 70
-      eviction_hard: memory.available<1Gi,nodefs.available<10%,imagefs.available<10%
-      eviction_soft: memory.available<1536Mi,nodefs.available<12%,imagefs.available<12%
+      # Disk thresholds are absolute and match health.min_disk_free_gb (15 GiB),
+      # so the kubelet never holds a node that fleet-health calls healthy
+      # (oss-factory#329: 10% of 466GiB tripped at 49.6 GB free).
+      eviction_hard: memory.available<1Gi,nodefs.available<15Gi,imagefs.available<15Gi
+      eviction_soft: memory.available<1536Mi,nodefs.available<20Gi,imagefs.available<20Gi
       eviction_soft_grace: memory.available=1m,nodefs.available=2m,imagefs.available=2m
-      # Keep a 2% disk recovery margin rather than the default 10% reclaim.
+      # Keep a small fixed disk recovery margin rather than the default 10% reclaim.
       # The 466GiB root disk filled with retained fleet stages in October 2026;
       # source policy is applied only by the owner's root-authorized enrollment.
-      eviction_minimum_reclaim: imagefs.available=2%,nodefs.available=2%
+      eviction_minimum_reclaim: imagefs.available=2Gi,nodefs.available=2Gi
   omarchy-phone:
     # Owner's S25 Ultra, native adb lane by default. SSH guest requires --guest.
     # Phones: no agent resource caps; Android manages battery/thermal/RAM.
