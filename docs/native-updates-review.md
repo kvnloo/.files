@@ -2,9 +2,21 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Revalidation, 2026-11-06 UTC
+## Latest observation, 2026-11-06 at 15:02 UTC
 
-Repeated read-only inspection at 02:46 UTC confirms both custom timers remain enabled and active, the November 8 at 04:00 CST maintenance deadline is unchanged, and the installed updater hash remains `0e085d4a8551137a35d0b325ef54dc6187168b414c79568c50887be210005f99`. Root has 22,366,540 KiB available. The previous daily receipt and retained resource counters are unchanged. No new update or recovery experiment ran. Rerun `python3 revalidate-host.py` in the evidence directory. Source: execution `logs/revalidation-current.log`, with commands and individual exit codes. The native diagnostic still exits 0 despite the missing updater, so it is not a readiness check.
+This observation supersedes the historical host facts below. Both custom timers remain enabled and active. Maintenance still next runs on November 8 at 04:00 CST, `America/Chicago`. The daily timer next runs on November 7 at 03:35:51 CST. The installed maintenance unit still labels its schedule a placeholder requiring Kevin's choice. Sources: execution `logs/revalidation-latest.log:93-178,200-202`.
+
+The installed updater hash remains `0e085d4a8551137a35d0b325ef54dc6187168b414c79568c50887be210005f99`. Classification and application still use different transactions, without workload drain. Maintenance can reboot. These are source findings, not an executed installation test. Sources: execution `logs/revalidation-latest.log:225-278`; `/etc/os-update/run:25-46`.
+
+A newer daily receipt records staging at 03:43:32 CST today, exit 0, and 1,143 pending output lines. The staged file has 1,147 lines. Neither count proves unique packages or installation. Retained service counters now show `MemoryPeak=1863843840` bytes, about 1.74 GiB, and `CPUUsageNSec=34868699000`, about 34.9 CPU-seconds. IO and IP accounting remain disabled. These are observations of an existing run, not a new update experiment. Sources: execution `logs/revalidation-latest.log:180-198,280-287`.
+
+Root is XFS with 21,583,600 KiB available. The native updater, Snapper, and Timeshift packages remain absent. Missing packages do not prove that no backup exists. No successful restore drill or safe installation was established. Sources: execution `logs/revalidation-latest.log:204-223`.
+
+Rerun `python3 revalidate-host.py` in the evidence directory. It completed with exit 0, retaining the expected missing-package query exit 1. Bash syntax and both read-only native commands completed. The native diagnostic still exits 0 despite the missing updater, so it is not a readiness check. No service change, installation, or recovery drill ran in this pass. Sources: execution `logs/revalidation-latest.log:10-91,204-209,289-300`.
+
+## Earlier revalidation, 2026-11-06 at 02:46 UTC
+
+At 02:46 UTC, both custom timers were enabled and active, root had 22,366,540 KiB available, and the earlier receipt and counters were unchanged. Source: execution `logs/revalidation-current.log`. The following observations predate the latest capture.
 
 This section supersedes the historical host observations below. Both custom timers, `os-update.timer` and `os-update-maintenance.timer`, are now enabled and active. The native `pacman-offline` proposal remains absent. Sources: evidence `logs/20261106-readonly.log`, commands `pacman -Q` and `systemctl show`; `logs/20261106-active-updater.log`, timer properties.
 
@@ -37,7 +49,7 @@ The native proposal uses packaged offline preparation, not a new resident update
 | Safe non-reboot updates | Policy defers the complete Arch OS transaction. | No continuously installed safe subset is implemented or proven. |
 | Reboot class only at scheduled maintenance | Proposal disables the automatic reboot timer. | Preparation can arm the next user reboot, not specifically an approved window. There is no workload drain gate. |
 | Rollback | Disable calls the native abort command; cache cleanup retains packaged defaults. | No tested OS rollback, restored backup, or recovery boot. |
-| Resource impact | Existing daily-service counters show about 1.24 GiB peak RAM and 76.8 CPU-seconds. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
+| Resource impact | Latest daily-service counters show about 1.74 GiB peak RAM and 34.9 CPU-seconds, from `logs/revalidation-latest.log:180-188`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
 
 Sources: `docs/native-updates.md:5-12,28-32,45-60`, `scripts/setup-native-updates:22-28,48-56`, and execution `logs/native-readonly-rerun.log`. `check` exits zero despite missing dependencies because lines 9-11 suppress individual failures. Its success is diagnostic completion, not readiness.
 
