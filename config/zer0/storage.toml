@@ -10,3 +10,21 @@ idle_cache_globs = [
   ".elan/toolchains",
   ".actual/hermes/[0-9a-f]*",
 ]
+# Hard floor: below this share of / free the owner is alerted (critical) and
+# ~/.local/state/zer0-storage-autotier/root-low.json exists; launchers gate
+# heavy work on `zer0_storage_autotier.py --check` (exit 75 = refuse).
+root_floor_pct = 10
+# Per-agent scratch TTL: idle >= 3 days -> verified move into
+# /mnt/zer0models/quarantine/scratch-ttl-<date>/ behind a symlink (never rm).
+scratch_ttl_days = 3
+scratch_globs = ["tmp/*"]
+scratch_keep_globs = [
+  "tmp/z0-integ*",
+  "tmp/z0-fix*",
+  "tmp/z0-ready-*",
+  "tmp/dash-e2e-test*",
+  "tmp/dash-glass*",
+  "tmp/quackles-trace*",
+  "tmp/overnight*",
+  "tmp/*.lock",
+]

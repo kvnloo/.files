@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Install the Claude Code session guards (config/claude-code/hooks) and register them
+# in ~/.claude/settings.json. Idempotent; keeps a timestamped settings backup.
+#
+#   scripts/claude-guards-install              install release + merge settings
+#   scripts/claude-guards-install --dry-run    print the merged settings, change nothing
+#   scripts/claude-guards-install --rollback   point "current" at the previous release
+#
+# What it sets (other keys and hooks stay as they are):
+#   model = claude-opus-5-5, switchModelsOnFlag = false   (no silent model downgrade)
+#   SessionStart/UserPromptSubmit/Stop -> model-guard.py   (loud warning + receipt)
+#   PreToolUse(Bash)                   -> pane-guard.py    (never kill tern/tmux/desktop)
+#   Stop -> z0 keepworking hook, when kvnloo/z0 scripts/keepworking-install has
+#           installed ~/.local/share/z0-keepworking/current
+# Override the pinned model with Z0_EXPECTED_MODEL.
+set -euo pipefail
+repo=$(cd "$(dirname "$0")/.." && pwd)
+src="$repo/config/claude-code/hooks"
+base=${Z0_GUARD_HOME:-$HOME/.local/lib/z0-guard}
+settings=${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}
+model=${Z0_EXPECTED_MODEL:-claude-opus-5-5}
+kw_hook=${Z0_KEEPWORKING_HOOK:-$HOME/.local/share/z0-keepworking/current/lib/z0/keepworking/hook.py}
+mode=${1:-install}
+
+if [ "$mode" = --rollback ]; then
+  prev=$(readlink "$base/previous")
+  ln -sfn "$prev" "$base/current"; echo "current -> $prev"; exit 0
+fi
+
+if [ "$mode" != --dry-run ]; then
+  sha=$(git -C "$repo" rev-parse --short HEAD)
+  dirty=$(git -C "$repo" status --porcelain -- config/claude-code | grep -q . && echo -dirty || true)
+  rel="$base/releases/$sha$dirty"
+  mkdir -p "$rel"
+  cp "$src/model-guard.py" "$src/pane-guard.py" "$rel/"
+  chmod +x "$rel"/*.py
+  if [ -L "$base/current" ] && [ "$(readlink "$base/current")" != "$rel" ]; then
+    ln -sfn "$(readlink "$base/current")" "$base/previous"
+  fi
+  ln -sfn "$rel" "$base/current"
+  echo "installed $rel (current)"
+fi
+
+mkdir -p "$(dirname "$settings")"
+[ -e "$settings" ] || printf '{}\n' > "$settings"
+new=$(python3 - "$settings" "$base/current" "$model" "$kw_hook" <<'PY'
+import json, os, sys
+path, cur, model, kw = sys.argv[1:5]
+data = json.load(open(path))
+data["model"] = model
+data["switchModelsOnFlag"] = False
+hooks = data.setdefault("hooks", {})
+ours = ("/z0-guard/", "keepworking/hook.py")
+
+def strip(event):
+    groups = hooks.get(event, [])
+    kept = []
+    for g in groups:
+        hs = [h for h in g.get("hooks", []) if not any(o in h.get("command", "") for o in ours)]
+        if hs:
+            kept.append({**g, "hooks": hs})
+    hooks[event] = kept
+    return kept
+
+def add(event, cmd, matcher=None, timeout=10):
+    group = {"hooks": [{"type": "command", "command": cmd, "timeout": timeout}]}
+    if matcher is not None:
+        group = {"matcher": matcher, **group}
+    hooks[event].append(group)
+
+for ev in ("SessionStart", "UserPromptSubmit", "Stop", "PreToolUse"):
+    strip(ev)
+mg = f"python3 -I {cur}/model-guard.py"
+add("SessionStart", mg)
+add("UserPromptSubmit", mg)
+add("Stop", mg)
+add("PreToolUse", f"python3 -I {cur}/pane-guard.py", matcher="Bash")
+if os.path.isfile(kw):
+    add("Stop", f"python3 -I {kw}", timeout=20)
+for ev in list(hooks):
+    if not hooks[ev]:
+        del hooks[ev]
+print(json.dumps(data, indent=2))
+PY
+)
+if [ "$mode" = --dry-run ]; then
+  diff <(python3 -m json.tool "$settings") <(printf '%s\n' "$new") || true
+  exit 0
+fi
+backup="$settings.bak-z0-guard-$(date +%Y%m%d%H%M%S)"
+cp -p "$settings" "$backup"
+tmp="$settings.z0-guard.new"
+printf '%s\n' "$new" > "$tmp"
+chmod --reference="$settings" "$tmp" 2>/dev/null || true
+mv "$tmp" "$settings"
+echo "settings merged into $settings (backup: $backup)"
+[ -f "$kw_hook" ] && echo "keepworking Stop hook registered: $kw_hook" \
+  || echo "keepworking not installed (run kvnloo/z0 scripts/keepworking-install first); Stop hook skipped"

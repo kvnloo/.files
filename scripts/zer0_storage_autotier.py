@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 import fnmatch
+import json
 import os
 import re
 from pathlib import Path
@@ -61,6 +62,28 @@ ROOT_GIT_IDLE_DAYS = 7
 ROOT_MIN_MIB = 64
 TOP_USERS = 5
 MOVER = Path(__file__).with_name("zer0_storage_tier.py")
+# Hard floor: below this share of / free, the owner is alerted (critical) and
+# STATE_DIR/root-low.json exists so launchers can refuse heavy work
+# (`zer0_storage_autotier.py --check` exits 75 while it holds).
+ROOT_FLOOR_PCT = 10.0
+# Per-agent scratch TTL. 0 disables. Idle scratch (nothing changed for the TTL)
+# is moved by the verified mover into SCRATCH_QUARANTINE/scratch-ttl-<date>/
+# behind a compat symlink and recorded in that dir's MANIFEST.jsonl. Never rm.
+SCRATCH_TTL_DAYS = 0.0
+SCRATCH_GLOBS: tuple[str, ...] = ("tmp/*",)
+SCRATCH_KEEP_GLOBS: tuple[str, ...] = ()
+SCRATCH_MIN_MIB = 16
+SCRATCH_QUARANTINE = Path("/mnt/zer0models/quarantine")
+STATE_DIR = HOME / ".local" / "state" / "zer0-storage-autotier"
+ALERT_REPEAT_SECONDS = 6 * 3600
+
+
+def _home_relative_globs(items: object, key: str) -> tuple[str, ...]:
+    items = tuple(items or ())  # type: ignore[arg-type]
+    if any(not isinstance(item, str) or Path(item).is_absolute() or ".." in Path(item).parts for item in items):
+        raise ValueError(f"{key} must be home-relative paths")
+    return items
+
 
 # Host policy is versioned in .files; its absence preserves legacy defaults.
 POLICY_PATH = Path(os.environ.get("ZER0_STORAGE_POLICY", str(HOME / ".config/zer0/storage.toml")))
@@ -68,9 +91,11 @@ if POLICY_PATH.exists():
     with POLICY_PATH.open("rb") as stream:
         policy = tomllib.load(stream)
     ROOT_RESERVE_GIB = int(policy.get("root_reserve_gib", ROOT_RESERVE_GIB))
-    additions = tuple(policy.get("idle_cache_globs", ()))
-    if any(not isinstance(item, str) or Path(item).is_absolute() or ".." in Path(item).parts for item in additions):
-        raise ValueError("idle_cache_globs must be home-relative paths")
+    ROOT_FLOOR_PCT = float(policy.get("root_floor_pct", ROOT_FLOOR_PCT))
+    SCRATCH_TTL_DAYS = float(policy.get("scratch_ttl_days", SCRATCH_TTL_DAYS))
+    SCRATCH_GLOBS = _home_relative_globs(policy.get("scratch_globs", SCRATCH_GLOBS), "scratch_globs")
+    SCRATCH_KEEP_GLOBS = _home_relative_globs(policy.get("scratch_keep_globs", ()), "scratch_keep_globs")
+    additions = _home_relative_globs(policy.get("idle_cache_globs", ()), "idle_cache_globs")
     ROOT_TIER_GLOBS += additions
     # Managed caches are preserved by the verified mover, not deleted first.
     ROOT_CACHE_DIRS = tuple(path for path in ROOT_CACHE_DIRS
@@ -196,6 +221,19 @@ def _root_protected(path: Path) -> bool:
     return any(fnmatch.fnmatch(relative, pattern) for pattern in ROOT_PROTECT_GLOBS)
 
 
+def on_home_device(path: Path) -> bool:
+    """True when path really lives on HOME's filesystem (/ on groot).
+
+    A glob can reach another filesystem through a symlinked parent (for example
+    ~/zer0/quackles-work -> /workspace/...). Moving such a path frees nothing on /
+    and only duplicates bytes on the capacity drive.
+    """
+    try:
+        return os.stat(path).st_dev == os.stat(HOME).st_dev
+    except OSError:
+        return False
+
+
 def discover_root_candidates(used: set[str] | None = None) -> list[tuple[int, Path]]:
     """Idle, unused, unprotected bulk under ROOT_TIER_GLOBS, largest first."""
     used = paths_in_use() if used is None else used
@@ -207,6 +245,9 @@ def discover_root_candidates(used: set[str] | None = None) -> list[tuple[int, Pa
             if path in seen or path.is_symlink() or not (path.is_dir() or path.is_file()):
                 continue
             seen.add(path)
+            if not on_home_device(path):
+                print(f"root skip other-filesystem {path}", flush=True)
+                continue
             if _root_protected(path):
                 print(f"root skip protected {path}", flush=True)
                 continue
@@ -240,7 +281,23 @@ def top_space_users(home: Path | None = None, limit: int = TOP_USERS) -> list[tu
     return sorted(rows, reverse=True)[:limit]
 
 
-def notify(title: str, body: str) -> None:
+PHONE_NOTIFY = HOME / ".local" / "bin" / "z0-phone-notify"
+
+
+def notify(title: str, body: str, critical: bool = False) -> None:
+    """Desktop notification plus the owner's phone, at most once per ALERT_REPEAT_SECONDS per title class.
+
+    The desktop notifier is masked on headless sessions, so the phone path
+    (z0-phone-notify, circadian-gated unless critical) is the one that reaches
+    the owner. Both fail open.
+    """
+    stamp = STATE_DIR / ("alert-critical" if critical else "alert-low")
+    try:
+        if time.time() - stamp.stat().st_mtime < ALERT_REPEAT_SECONDS:
+            print(f"alert suppressed (sent within {ALERT_REPEAT_SECONDS}s): {title}", flush=True)
+            return
+    except OSError:
+        pass
     try:
         subprocess.run(
             ["notify-send", "-u", "critical", "-a", "zer0-storage-autotier", title, body],
@@ -249,6 +306,99 @@ def notify(title: str, body: str) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"notify-send failed: {exc}", flush=True)
+    if PHONE_NOTIFY.exists():
+        env = {**os.environ, "CIRCADIAN_CLASS": "critical" if critical else "report"}
+        try:
+            subprocess.run([str(PHONE_NOTIFY), "root-disk", title, body], check=False, timeout=60,
+                           env=env, stdin=subprocess.DEVNULL, capture_output=True)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"phone notify failed: {exc}", flush=True)
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+    except OSError:
+        pass
+
+
+def root_free_pct(path: str = "/") -> tuple[float, int]:
+    stat = os.statvfs(path)
+    free = stat.f_bavail * stat.f_frsize
+    total = stat.f_blocks * stat.f_frsize
+    return (100.0 * free / total if total else 100.0), free
+
+
+def enforce_root_floor(apply: bool) -> int:
+    """Keep STATE_DIR/root-low.json in step with the hard floor; alert when breached."""
+    pct, free = root_free_pct()
+    flag = STATE_DIR / "root-low.json"
+    low = pct < ROOT_FLOOR_PCT
+    print(f"root floor free_pct={pct:.1f} floor_pct={ROOT_FLOOR_PCT} low={low}", flush=True)
+    if not apply:
+        return 75 if low else 0
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    if not low:
+        flag.unlink(missing_ok=True)
+        return 0
+    flag.write_text(json.dumps({"ts": time.time(), "free_bytes": free, "free_pct": round(pct, 2),
+                                "floor_pct": ROOT_FLOOR_PCT}) + "\n")
+    top = top_space_users()
+    listing = "\n".join(f"{size / 1024**3:.1f} GiB  {path}" for size, path in top)
+    notify(f"Root disk CRITICAL: {pct:.1f}% free (< {ROOT_FLOOR_PCT:g}%); heavy work should refuse", listing, critical=True)
+    return 75
+
+
+def check_root_floor() -> int:
+    """Read-only admission check for launchers: 0 = ok, 75 = refuse heavy work."""
+    pct, free = root_free_pct()
+    low = pct < ROOT_FLOOR_PCT
+    print(json.dumps({"free_bytes": free, "free_pct": round(pct, 2), "floor_pct": ROOT_FLOOR_PCT, "ok": not low}))
+    return 75 if low else 0
+
+
+def _scratch_kept(path: Path) -> bool:
+    relative = path.relative_to(HOME).as_posix()
+    return _root_protected(path) or any(fnmatch.fnmatch(relative, pattern) for pattern in SCRATCH_KEEP_GLOBS)
+
+
+def ttl_scratch(apply: bool) -> int:
+    """Quarantine per-agent scratch idle for SCRATCH_TTL_DAYS (verified move + symlink, never rm)."""
+    if SCRATCH_TTL_DAYS <= 0:
+        return 0
+    used = paths_in_use_deep()
+    minimum = SCRATCH_MIN_MIB * 1024**2
+    stamp = f"{date.today():%Y-%m-%d}"
+    quarantine = SCRATCH_QUARANTINE / f"scratch-ttl-{stamp}"
+    destination_root = quarantine / HOME.relative_to(HOME.anchor)
+    code = 0
+    for pattern in SCRATCH_GLOBS:
+        for path in sorted(HOME.glob(pattern)):
+            if path.is_symlink() or not (path.is_dir() or path.is_file()):
+                continue
+            if _scratch_kept(path) or not on_home_device(path) or (path / ".git").exists():
+                continue
+            if in_use(path, used) or not is_idle(path, days=SCRATCH_TTL_DAYS):
+                continue
+            size = allocated_bytes(path)
+            if size < minimum:
+                continue
+            destination = destination_root / path.relative_to(HOME)
+            if destination.exists() or destination.is_symlink():
+                print(f"scratch skip {path}: quarantine slot taken {destination}", flush=True)
+                continue
+            mtime = path.lstat().st_mtime
+            print(f"scratch {'quarantine' if apply else 'would quarantine'} {path} bytes={size} -> {destination}", flush=True)
+            if not apply:
+                continue
+            if _run_mover(True, [str(path)], source_root=HOME, destination_root=destination_root) != 0:
+                print(f"scratch skip {path}: mover refused or failed; source left in place", flush=True)
+                code = 1
+                continue
+            quarantine.mkdir(parents=True, exist_ok=True)
+            with (quarantine / "MANIFEST.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"ts": time.time(), "src": str(path), "dst": str(destination), "bytes": size,
+                                     "mtime": mtime, "why": f"scratch idle >= {SCRATCH_TTL_DAYS:g}d",
+                                     "mode": "verified-move+symlink"}) + "\n")
+    return code
 
 
 def offload_destination() -> Path:
@@ -627,10 +777,15 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--dry-run", action="store_true", help="the default; report without changing anything")
+    mode.add_argument("--check", action="store_true", help="read-only root floor admission check; exits 75 below the floor")
     args = parser.parse_args()
+    if args.check:
+        return check_root_floor()
     codes = [tier_workspace(args.apply)]
     maybe_prune(args.apply)  # before the move phase, so moves only cover what pruning could not
     codes.append(tier_root(args.apply))
+    ttl_scratch(args.apply)
+    codes.append(enforce_root_floor(args.apply))
     if 75 in codes:
         return 75
     return next((code for code in codes if code), 0)
