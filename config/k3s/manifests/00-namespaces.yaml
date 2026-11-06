@@ -8,6 +8,10 @@
 #            no API token, drop ALL capabilities and no privilege escalation.
 #            Host toolchains mount read-only; agentjob HOME mounts read-write
 #            to preserve existing caches. This is a trusted-code lane.
+# phones:    phone-queue (60-phone-queue.yaml): the S22+/S25 front door and its
+#            Kueue-admitted phone Jobs. Trusted owner code; hostNetwork (groot adb is
+#            127.0.0.1-only, the S22+ is on groot USB) and hostPath (host UI flocks,
+#            drivers) need privileged admission, in this namespace only.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -37,6 +41,15 @@ metadata:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phones
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
 ---
 apiVersion: v1
 kind: ResourceQuota

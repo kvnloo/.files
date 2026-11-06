@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""phoneq: client for the k3s phone queue (S22+/S25) on groot. Stdlib only.
+
+  phoneq submit chat --prompt TEXT [--app chatgpt|deepseek|PKG] [--device s22|s25|any] [--harness script|fx]
+  phoneq submit goal --goal TEXT [--device ...] [--model openai-codex/gpt-6-luna] [--max-steps N]
+                     [--must-contain S]... [--must-not-contain S]... [--final-must-contain S]...
+                     [--oracle-package PKG] [--prompt-file F (goal attachment / chat prompt)]
+         common: [--submitter NAME] [--idempotency-key K] [--priority N] [--reset home|none] [--wait] [--json]
+  phoneq status ID [--json]          phoneq wait ID [--timeout S] [--json]
+  phoneq list [--submitter S] [--state S] [--limit N] [--json]
+  phoneq cancel ID [--submitter NAME] phoneq devices [--json]        phoneq health
+
+Endpoint: $PHONEQ_URL (default http://100.113.138.100:8792).
+Auth: bearer token from $PHONEQ_TOKEN or ~/.config/phoneq/token (0600; issued on groot by
+services/phone-queue/issue-tokens). Submit and cancel need it; without it reads omit results.
+Cancel works only for your own jobs: same token principal and the same --submitter.
+"""
+import argparse
+import getpass
+import json
+import os
+import socket
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+URL = os.environ.get("PHONEQ_URL", "http://100.113.138.100:8792").rstrip("/")
+TERMINAL = ("succeeded", "failed", "cancelled")
+DEFAULT_SUBMITTER = os.environ.get("PHONEQ_SUBMITTER") or f"{getpass.getuser()}@{socket.gethostname()}"
+
+
+def token():
+    if os.environ.get("PHONEQ_TOKEN"):
+        return os.environ["PHONEQ_TOKEN"].strip()
+    try:
+        with open(os.path.expanduser("~/.config/phoneq/token")) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def call(method, path, body=None, timeout=30):
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data else {}
+    tok = token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {"error": f"HTTP {e.code}"}
+    except OSError as e:
+        sys.exit(f"phoneq: cannot reach {URL}: {e}")
+
+
+def show_job(j, as_json):
+    if as_json:
+        print(json.dumps(j, indent=2))
+        return
+    dev = j.get("assigned_device") or j.get("device")
+    print(f"{j['id']}  {j['state']:<9} {j['kind']:<4} {dev:<4} {j.get('model', '')}  by {j.get('submitter')}")
+    for k in ("info", "error"):
+        if j.get(k):
+            print(f"  {k}: {j[k]}")
+    res = j.get("result") or {}
+    if res:
+        if "oracle_pass" in res:
+            print(f"  oracle_pass: {res['oracle_pass']}")
+        if res.get("final_output"):
+            print("  final_output: " + res["final_output"].strip().replace("\n", "\n    ")[:2000])
+        bits = [f"{k}={res[k]}" for k in ("steps", "ms", "cold_ms", "tokens_in", "tokens_out") if res.get(k) is not None]
+        if bits:
+            print("  " + " ".join(bits))
+        if res.get("transcript_path"):
+            print(f"  transcript: groot:{res['transcript_path']}")
+
+
+def wait(jid, timeout, as_json):
+    end = time.time() + timeout
+    last = None
+    while True:
+        status, j = call("GET", f"/v1/jobs/{jid}")
+        if status != 200:
+            sys.exit(f"phoneq: {j.get('error')}")
+        if j["state"] != last and not as_json:
+            print(f"[{time.strftime('%H:%M:%S')}] {jid} {j['state']}" + (f" — {j.get('info')}" if j.get("info") else ""),
+                  file=sys.stderr)
+            last = j["state"]
+        if j["state"] in TERMINAL:
+            show_job(j, as_json)
+            return 0 if j["state"] == "succeeded" else 1
+        if time.time() > end:
+            show_job(j, as_json)
+            return 2
+        time.sleep(2)
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="phoneq", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("submit")
+    s.add_argument("kind", choices=["chat", "goal"])
+    s.add_argument("--device", default="any", choices=["s22", "s25", "any"])
+    s.add_argument("--app")
+    s.add_argument("--prompt")
+    s.add_argument("--goal")
+    s.add_argument("--model")
+    s.add_argument("--harness", choices=["fx", "script"])
+    s.add_argument("--max-steps", type=int)
+    s.add_argument("--must-contain", action="append", default=[])
+    s.add_argument("--must-not-contain", action="append", default=[])
+    s.add_argument("--final-must-contain", action="append", default=[])
+    s.add_argument("--oracle-package")
+    s.add_argument("--prompt-file", help="read the prompt (chat) or text attachment (goal) from a file, verbatim")
+    s.add_argument("--submitter", default=DEFAULT_SUBMITTER)
+    s.add_argument("--idempotency-key")
+    s.add_argument("--priority", type=int)
+    s.add_argument("--reset", choices=["home", "none"])
+    s.add_argument("--wait", action="store_true")
+    s.add_argument("--timeout", type=float, default=1800)
+    s.add_argument("--json", action="store_true")
+    for name in ("status", "wait", "cancel"):
+        p = sub.add_parser(name)
+        p.add_argument("id")
+        p.add_argument("--json", action="store_true")
+        p.add_argument("--timeout", type=float, default=1800)
+        if name == "cancel":
+            p.add_argument("--submitter", default=DEFAULT_SUBMITTER)
+    p = sub.add_parser("list")
+    p.add_argument("--submitter")
+    p.add_argument("--state")
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("devices")
+    p.add_argument("--json", action="store_true")
+    sub.add_parser("health")
+    a = ap.parse_args()
+
+    if a.cmd == "submit":
+        body = {"kind": a.kind, "device": a.device, "submitter": a.submitter}
+        if a.prompt_file:
+            a.prompt = open(a.prompt_file, encoding="utf-8").read()
+        for k in ("app", "prompt", "goal", "model", "harness", "max_steps", "idempotency_key", "priority", "reset"):
+            v = getattr(a, k)
+            if v is not None:
+                body[k] = v
+        if a.must_contain or a.must_not_contain or a.final_must_contain or a.oracle_package:
+            body["oracle"] = {"type": "tree_text", "must_contain": a.must_contain, "must_not_contain": a.must_not_contain,
+                              "final_must_contain": a.final_must_contain}
+            if a.oracle_package:
+                body["oracle"]["package"] = a.oracle_package
+        status, out = call("POST", "/v1/jobs", body)
+        if status not in (200, 202):
+            sys.exit(f"phoneq: HTTP {status}: {out.get('error')}")
+        if a.wait:
+            if not a.json:
+                print(f"submitted {out['id']}", file=sys.stderr)
+            return wait(out["id"], a.timeout, a.json)
+        print(json.dumps(out) if a.json else out["id"])
+        return 0
+    if a.cmd == "status":
+        status, j = call("GET", f"/v1/jobs/{a.id}")
+        if status != 200:
+            sys.exit(f"phoneq: {j.get('error')}")
+        show_job(j, a.json)
+        return 0
+    if a.cmd == "wait":
+        return wait(a.id, a.timeout, a.json)
+    if a.cmd == "cancel":
+        status, j = call("POST", f"/v1/jobs/{a.id}/cancel", {"submitter": a.submitter})
+        print(json.dumps(j) if a.json else f"{j.get('id', a.id)} {j.get('state') or j.get('error')}")
+        return 0 if status == 200 else 1
+    if a.cmd == "list":
+        qs = urllib.parse.urlencode({k: v for k, v in (("submitter", a.submitter), ("state", a.state),
+                                                       ("limit", a.limit)) if v})
+        status, out = call("GET", "/v1/jobs?" + qs)
+        if a.json:
+            print(json.dumps(out, indent=2))
+        else:
+            for j in out.get("jobs", []):
+                dev = j.get("assigned_device") or j["device"]
+                print(f"{j['id']}  {j['state']:<9} {j['kind']:<4} {dev:<4} {j['created_at']}  {j['submitter']}")
+        return 0
+    if a.cmd == "devices":
+        status, out = call("GET", "/v1/devices", timeout=90)
+        if a.json:
+            print(json.dumps(out, indent=2))
+        else:
+            for d in out.get("devices", []):
+                g = d.get("gate", {})
+                lock = d.get("lock_holder")
+                print(f"{d['id']}  serial={d.get('serial')} online={d.get('online')} battery={d.get('battery')} "
+                      f"fg={d.get('foreground')} queue={d.get('queue_depth')}")
+                print(f"     gate: {'open' if g.get('allowed') else 'closed: ' + str(g.get('reason'))}"
+                      + (f"   lock: pid {lock['pid']} {lock.get('cmd', '')[:60]}" if lock else "   lock: free"))
+        return 0
+    if a.cmd == "health":
+        status, out = call("GET", "/healthz")
+        print(json.dumps(out, indent=2))
+        return 0 if status == 200 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
