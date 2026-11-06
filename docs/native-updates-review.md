@@ -2,6 +2,24 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
+## Revalidation, 2026-11-06 UTC
+
+This section supersedes the historical host observations below. Both custom timers, `os-update.timer` and `os-update-maintenance.timer`, are now enabled and active. The native `pacman-offline` proposal remains absent. Sources: evidence `logs/20261106-readonly.log`, commands `pacman -Q` and `systemctl show`; `logs/20261106-active-updater.log`, timer properties.
+
+The maintenance timer next elapses on **2026-11-08 at 04:00 CST**, timezone `America/Chicago`. Its installed unit still calls this a placeholder requiring Kevin's choice. This review cannot establish approval from the allowed item and verdict. The daily timer next elapses on 2026-11-06 at 03:42:59 CST. Sources: `/etc/systemd/system/os-update-maintenance.timer:2-6`; evidence `logs/20261106-active-updater.log`, `timedatectl show` and `systemctl show` outputs.
+
+The installed `/etc/os-update/run` matches the previously reviewed implementation at `5e57eed4f9b6d7f5466f09c5790468dc2e62e230`. It checks one package set, then refreshes and applies another with `pacman -Syu --noconfirm`. It never reads the staged list before installation and has no workload-drain gate. Maintenance can call `systemctl --no-block reboot`. These are source findings, not a reproduced upgrade or reboot. Sources: `/etc/os-update/run:25-46`; evidence `logs/20261106-active-updater.log` and `logs/20261106-resource-source.log`.
+
+A prior daily run completed on November 5 at 15:40:12 CST. Its receipt reports `staged-for-maintenance`, 1,715 pending output lines, and exit 0. This is not proof of 1,715 unique packages or an installation. The staged file currently has 1,719 lines. Sources: `/var/log/os-update.jsonl:1`; evidence `logs/20261106-active-updater.log`, service properties; `logs/20261106-resource-source.log`, `wc -l`.
+
+Systemd retains `MemoryPeak=1335037952` bytes, about 1.24 GiB, and `CPUUsageNSec=76804919000`, about 76.8 CPU-seconds, for that daily service. IO and IP accounting are disabled, so transfer volume and disk IO are unavailable. Foreground impact and installation resources remain unmeasured. Source: evidence `logs/20261106-resource-source.log`, `systemctl show os-update.service`.
+
+Root remains XFS with 22,418,848 KiB available at inspection. The cache resolves to a separate Btrfs mount. Missing `snapper` and `timeshift` packages do not prove that no backup exists, but no restore drill was established. Source: evidence `logs/20261106-readonly.log`, `df`, `findmnt`, `readlink`, and `pacman -Q`.
+
+Read-only syntax, native diagnostic, cadence audit, and commit whitespace checks passed. Diagnostic exit 0 still does not mean readiness. No transaction, recovery drill, update activation, or service change ran during revalidation. Sources: evidence `logs/20261106-readonly.log`; `scripts/setup-native-updates:8-14`.
+
+The host-setup owner must reconcile the active custom implementation with the native proposal before further deployment. Kevin must confirm or replace the live maintenance window and authorize any service changes and recovery procedure. Do not treat the older inactive-timer finding as current, or activate a second updater alongside the existing one.
+
 ## What is codified
 
 The owner asked for OS-native, low-impact updates and reboot-dependent updates immediately before scheduled maintenance. Sources: `owner-message-audit-20261104/ASK-LEDGER.md:52-56` and `owner-message-audit-20261104/REPORT.md:92`, relative to the operations directory.
