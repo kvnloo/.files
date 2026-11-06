@@ -85,3 +85,27 @@ Observed state is stored outside Git by default:
 ```
 
 The next slice adds `fleet.toml` and `./iac plan` only after observations from the real hosts are available.
+
+## Kind-only bridge retirement — apply after kind deletion
+
+This change is deliberately not an active rollout. Keep the current
+`whisperflow-kind-bridge.service` and authority Docker-bridge bind while kind
+remains live. The workload migration and its executor readiness gate are owned
+by private `kvnloo/hermes-k8s-lab` PR #1.
+
+After the owner deletes kind, run `python3 scripts/retire-kind-bridges.py` to
+check gates. Only then run it with `--apply`. The helper refuses to change the
+host while the kind node exists, Docker cannot be inspected, the current k3s
+executor Deployment is unavailable, or its loopback `/readyz` fails.
+
+Apply disables and removes only the obsolete Whisperflow forwarder, removes
+the exact `Z0INT_BIND_2=172.19.0.1` environment entry and matching authority
+`--bind 172.19.0.1` argument, retains loopback, then reloads systemd and restarts
+the authority. Secret-bearing rollback copies remain mode 0600 under
+`~/.local/state/kind-retirement/`; they must never be committed or printed.
+No host change is performed by merging this Draft PR.
+
+The Quackles workload source and arbiter units are owned by the workload
+repository. `hosts.desktop.quackles` records the source, dedicated read-only
+credential and writable persistent data location, rather than copying workload
+manifests into `.files`.
