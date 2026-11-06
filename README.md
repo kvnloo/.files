@@ -40,6 +40,20 @@ Useful commands:
 ./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
+## Android setup handoff (Detent + phone control)
+
+For a second Android device, share this command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kvnloo/.files/master/scripts/phone-setup-handoff | bash
+```
+
+It clones the public setup guide, runs a read-only diagnostic, and prints a
+step-by-step prompt for an agent. It does not install apps or change phone settings.
+The manual walkthrough and verification steps are in
+[docs/phone-setup/README.md](docs/phone-setup/README.md); the local checker is
+[scripts/phone-setup](scripts/phone-setup).
+
 ## OMP executable ownership
 
 `scripts/apply-agent-oom --apply` installs one content-stamped wrapper at both
