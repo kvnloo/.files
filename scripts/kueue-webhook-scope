@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Relax Kueue webhooks for integrations this fleet does not enable.
+
+Kueue's release manifest registers fail-closed (failurePolicy: Fail) webhooks for Deployments,
+Pods, StatefulSets and more, even when `integrations.frameworks` leaves those frameworks out.
+When the controller crash-loops (e.g. under host memory pressure), every Deployment/Pod change
+outside kube-system/kueue-system is then rejected cluster-wide, including unrelated services
+such as the vLLM-SR router (seen 2026-11-03).
+
+For each webhook whose rules only cover resources of disabled integrations, this sets
+failurePolicy to Ignore. Kueue does nothing with those objects anyway, so nothing is lost.
+Webhooks for enabled frameworks (batch/job, jobset, ray, mpijob) stay fail-closed.
+
+Usage: kueue-webhook-scope [--dry-run]   (needs kubectl + KUBECONFIG)
+"""
+import json
+import subprocess
+import sys
+
+# Resources Kueue only admits through integrations this fleet leaves disabled
+# (config/k3s Kueue manager config: frameworks = batch/job, mpijob, ray*, jobset).
+DISABLED_RESOURCES = {"deployments", "pods", "statefulsets", "leaderworkersets", "appwrappers",
+                      "paddlejobs", "pytorchjobs", "tfjobs", "xgboostjobs", "jaxjobs", "trainjobs"}
+CONFIGS = (("mutatingwebhookconfiguration", "kueue-mutating-webhook-configuration"),
+           ("validatingwebhookconfiguration", "kueue-validating-webhook-configuration"))
+
+
+def relax_patches(config: dict, disabled=DISABLED_RESOURCES) -> list[dict]:
+    """JSON-patch ops setting failurePolicy=Ignore on webhooks that only touch disabled resources."""
+    ops = []
+    for i, hook in enumerate(config.get("webhooks", [])):
+        resources = {r for rule in hook.get("rules", []) for r in rule.get("resources", [])}
+        resources = {r.split("/")[0] for r in resources}
+        if resources and resources <= disabled and hook.get("failurePolicy") != "Ignore":
+            ops.append({"op": "replace", "path": f"/webhooks/{i}/failurePolicy", "value": "Ignore"})
+    return ops
+
+
+def main(argv):
+    dry = "--dry-run" in argv
+    for kind, name in CONFIGS:
+        raw = subprocess.run(["kubectl", "get", kind, name, "-o", "json"], capture_output=True, text=True)
+        if raw.returncode != 0:
+            print(f"skip {kind}/{name}: {raw.stderr.strip()}")
+            continue
+        ops = relax_patches(json.loads(raw.stdout))
+        print(f"{kind}/{name}: {len(ops)} webhook(s) -> Ignore")
+        if ops and not dry:
+            subprocess.run(["kubectl", "patch", kind, name, "--type=json", "-p", json.dumps(ops)], check=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
