@@ -29,13 +29,44 @@ computer (Linux/macOS/Windows)                     Android phone (10+; tested on
 
 ## 0. Get this repo
 
+To forward the setup to a friend, send these commands. Download and inspect the script
+before you run it:
+
 ```sh
-git clone https://github.com/kvnloo/.files.git ~/src/kvnloo-files
+curl -fsSL https://raw.githubusercontent.com/kvnloo/.files/master/scripts/phone-setup-handoff -o phone-setup-handoff
+less phone-setup-handoff
+bash phone-setup-handoff
+```
+
+The handoff clones to `~/src/kvnloo-files`, runs the doctor, and prints a prompt you can
+paste into your agent. Missing tools or an unpaired phone appear as `miss` entries.
+The handoff does not install apps, change phone settings, or start services. Continue
+with step 1 after you read the prompt. A successful handoff is not a completed phone setup.
+
+Reruns fast-forward only a clean checkout on the selected branch with the same origin.
+Local commits, edits, untracked files, or a different branch stop the handoff without a reset.
+To keep an existing checkout separate, choose an unused destination:
+
+```sh
+PHONE_SETUP_DIR="$HOME/src/phone-setup-friend" bash phone-setup-handoff
+```
+
+If you already have this repo, run `scripts/phone-setup-handoff` from it instead of
+downloading the script. For a manual clone:
+
+```sh
+git clone -b master https://github.com/kvnloo/.files.git ~/src/kvnloo-files
 cd ~/src/kvnloo-files && scripts/phone-setup
 ```
 
+Run the shell helpers with Bash and GNU coreutils, including `readlink -f`, `timeout`,
+`sha256sum`, and GNU `sed`. Linux provides these tools. On macOS, install GNU coreutils
+and GNU sed and put their GNU-named tools on `PATH`. On Windows, use a Linux environment
+with access to the phone's adb transport. Native macOS and Windows execution is not verified.
+
 Tools on the computer: `adb`, `git`, `jq`, `uv`, `curl`, `unzip`; for building Detent also
-JDK 17 or 21 and the Android SDK.
+JDK 17 or 21 and the Android SDK. Wallpaper Engine content requires a Steam license.
+Do not buy software or change billing as part of an automated setup.
 
 ## 1. adb
 

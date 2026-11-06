@@ -9,19 +9,33 @@
 set -euo pipefail
 REPO=${PHONE_SETUP_REPO:-https://github.com/kvnloo/.files.git}
 DIR=${PHONE_SETUP_DIR:-$HOME/src/kvnloo-files}
-BRANCHES=(${PHONE_SETUP_BRANCH:-master dev})
+read -r -a BRANCHES <<< "${PHONE_SETUP_BRANCH:-master dev}"
 
+fail() { echo "$*; use a new PHONE_SETUP_DIR for a separate clone" >&2; exit 1; }
 command -v git >/dev/null || { echo "install git first" >&2; exit 1; }
-if [[ ! -d $DIR/.git ]]; then
+EXISTING=0
+if [[ -e $DIR || -L $DIR ]]; then
+  [[ -d $DIR/.git ]] || fail "$DIR is not a standalone Git checkout"
+  [[ $(git -C "$DIR" remote get-url origin) == "$REPO" ]] || fail "$DIR has a different origin"
+  [[ -z $(git -C "$DIR" status --porcelain) ]] || fail "$DIR has local changes"
+  EXISTING=1
+else
   git clone -q --filter=blob:none "$REPO" "$DIR"
 fi
 git -C "$DIR" fetch -q origin
 for b in "${BRANCHES[@]}"; do   # master first, dev as a fallback
   if git -C "$DIR" rev-parse -q --verify "origin/$b:docs/phone-setup/README.md" >/dev/null; then
-    git -C "$DIR" checkout -q -B "$b" "origin/$b"; BRANCH=$b; break
+    BRANCH=$b; break
   fi
 done
 [[ -n ${BRANCH:-} ]] || { echo "no branch of $REPO has docs/phone-setup yet" >&2; exit 1; }
+if [[ $EXISTING == 1 ]]; then
+  [[ $(git -C "$DIR" symbolic-ref -q --short HEAD) == "$BRANCH" ]] || fail "$DIR is not on $BRANCH"
+  git -C "$DIR" merge-base --is-ancestor HEAD "origin/$BRANCH" || fail "$DIR has local commits or rewritten upstream history"
+  git -C "$DIR" merge -q --ff-only "origin/$BRANCH"
+else
+  git -C "$DIR" checkout -q "$BRANCH"
+fi
 
 MAP=$DIR/docs/phone-setup/README.md
 cat <<EOF
