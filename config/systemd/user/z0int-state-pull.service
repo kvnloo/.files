@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull the hub's State Packet and owner corrections (read-only artifacts for the harness hooks)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/z0int-state-pull
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=120

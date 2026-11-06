@@ -1,0 +1,15 @@
+[Unit]
+Description=Quackles lineage timeline (loopback static export; tailnet via tailscale serve 8479)
+After=network.target
+
+[Service]
+Type=simple
+# Host-private: QUACKLES_LINEAGE_DIR is an immutable snapshot of a static export, set in the env file.
+EnvironmentFile=%h/.config/quackles-services/lineage.env
+ExecStart=/usr/bin/python3 -m http.server 18461 --bind 127.0.0.1 --directory ${QUACKLES_LINEAGE_DIR}
+Restart=on-failure
+RestartSec=2
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

@@ -589,6 +589,125 @@ def test_main_dry_run_flag_never_applies(monkeypatch):
     monkeypatch.setattr(autotier, "tier_workspace", lambda apply: seen.append(("ws", apply)) or 0)
     monkeypatch.setattr(autotier, "tier_root", lambda apply: seen.append(("root", apply)) or 0)
     monkeypatch.setattr(autotier, "maybe_prune", lambda apply: seen.append(("prune", apply)))
+    monkeypatch.setattr(autotier, "ttl_scratch", lambda apply: seen.append(("ttl", apply)) or 0)
+    monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: seen.append(("floor", apply)) or 0)
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--dry-run"])
     assert autotier.main() == 0
-    assert seen == [("ws", False), ("prune", False), ("root", False)]
+    assert seen == [("ws", False), ("prune", False), ("root", False), ("ttl", False), ("floor", False)]
+
+
+# --- root floor + scratch TTL ---------------------------------------------
+
+def test_policy_reads_floor_and_scratch_ttl(tmp_path):
+    policy = tmp_path / "storage.toml"
+    policy.write_text('root_floor_pct = 12\nscratch_ttl_days = 3\nscratch_keep_globs = ["tmp/keep*"]\n')
+    code = (
+        "import runpy; p=runpy.run_path(" + repr(str(SCRIPT)) + "); "
+        "assert p['ROOT_FLOOR_PCT']==12.0; assert p['SCRATCH_TTL_DAYS']==3.0; "
+        "assert p['SCRATCH_KEEP_GLOBS']==('tmp/keep*',)"
+    )
+    subprocess.run([sys.executable, "-c", code], env={**os.environ, "ZER0_STORAGE_POLICY": str(policy)}, check=True)
+
+
+def test_policy_rejects_scratch_escape(tmp_path):
+    policy = tmp_path / "storage.toml"
+    policy.write_text('scratch_globs = ["/etc/*"]\n')
+    result = subprocess.run([sys.executable, "-c", "import runpy; runpy.run_path(" + repr(str(SCRIPT)) + ")"],
+                            env={**os.environ, "ZER0_STORAGE_POLICY": str(policy)}, capture_output=True, text=True)
+    assert result.returncode != 0 and "home-relative" in result.stderr
+
+
+def test_root_candidates_skip_other_filesystem(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    (home / "tmp" / "a").mkdir(parents=True)
+    monkeypatch.setattr(autotier, "HOME", home)
+    monkeypatch.setattr(autotier, "ROOT_TIER_GLOBS", ("tmp/*",))
+    monkeypatch.setattr(autotier, "on_home_device", lambda path: False)
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: True)
+    assert autotier.discover_root_candidates(used=set()) == []
+
+
+def test_on_home_device_follows_symlinked_parent(monkeypatch, tmp_path):
+    monkeypatch.setattr(autotier, "HOME", tmp_path)
+    (tmp_path / "x").mkdir()
+    assert autotier.on_home_device(tmp_path / "x")
+    assert not autotier.on_home_device(tmp_path / "missing")
+
+
+def _floor(monkeypatch, tmp_path, pct):
+    notes = []
+    monkeypatch.setattr(autotier, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(autotier, "root_free_pct", lambda path="/": (pct, int(pct * GIB)))
+    monkeypatch.setattr(autotier, "top_space_users", lambda: [(GIB, Path("/home/kvn/x"))])
+    monkeypatch.setattr(autotier, "notify", lambda title, body, critical=False: notes.append((title, critical)))
+    return notes
+
+
+def test_floor_breach_flags_and_alerts_critical(monkeypatch, tmp_path):
+    notes = _floor(monkeypatch, tmp_path, 4.0)
+    assert autotier.enforce_root_floor(apply=True) == 75
+    assert (tmp_path / "state" / "root-low.json").exists()
+    assert notes and notes[0][1] is True
+    assert autotier.check_root_floor() == 75
+
+
+def test_floor_ok_clears_flag(monkeypatch, tmp_path):
+    notes = _floor(monkeypatch, tmp_path, 4.0)
+    autotier.enforce_root_floor(apply=True)
+    monkeypatch.setattr(autotier, "root_free_pct", lambda path="/": (18.0, 18 * GIB))
+    assert autotier.enforce_root_floor(apply=True) == 0
+    assert not (tmp_path / "state" / "root-low.json").exists()
+    assert autotier.check_root_floor() == 0
+    assert len(notes) == 1
+
+
+def test_floor_dry_run_writes_nothing(monkeypatch, tmp_path):
+    notes = _floor(monkeypatch, tmp_path, 4.0)
+    assert autotier.enforce_root_floor(apply=False) == 75
+    assert not (tmp_path / "state").exists() and not notes
+
+
+def test_notify_rate_limited(monkeypatch, tmp_path):
+    monkeypatch.setattr(autotier, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(autotier, "PHONE_NOTIFY", tmp_path / "absent")
+    runs = []
+    monkeypatch.setattr(autotier.subprocess, "run", lambda *a, **k: runs.append(a))
+    autotier.notify("t", "b", critical=True)
+    autotier.notify("t", "b", critical=True)
+    assert len(runs) == 1
+
+
+def _scratch_env(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    for name in ("old", "keep-me", "fresh", "repo"):
+        (home / "tmp" / name).mkdir(parents=True)
+        (home / "tmp" / name / "blob").write_bytes(b"z" * 4096)
+    (home / "tmp" / "repo" / ".git").mkdir()
+    monkeypatch.setattr(autotier, "HOME", home)
+    monkeypatch.setattr(autotier, "SCRATCH_TTL_DAYS", 3.0)
+    monkeypatch.setattr(autotier, "SCRATCH_GLOBS", ("tmp/*",))
+    monkeypatch.setattr(autotier, "SCRATCH_KEEP_GLOBS", ("tmp/keep*",))
+    monkeypatch.setattr(autotier, "SCRATCH_MIN_MIB", 0)
+    monkeypatch.setattr(autotier, "SCRATCH_QUARANTINE", tmp_path / "quarantine")
+    monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: set())
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: path.name != "fresh")
+    calls = []
+    monkeypatch.setattr(autotier, "_run_mover",
+                        lambda apply, selected, source_root=None, destination_root=None: calls.append((selected, destination_root)) or 0)
+    return home, calls
+
+
+def test_scratch_ttl_quarantines_only_idle_unkept_non_git(monkeypatch, tmp_path):
+    home, calls = _scratch_env(monkeypatch, tmp_path)
+    assert autotier.ttl_scratch(apply=True) == 0
+    assert [selected for selected, _dest in calls] == [[str(home / "tmp" / "old")]]
+    manifests = list((tmp_path / "quarantine").glob("scratch-ttl-*/MANIFEST.jsonl"))
+    assert len(manifests) == 1 and str(home / "tmp" / "old") in manifests[0].read_text()
+
+
+def test_scratch_ttl_dry_run_and_disabled_move_nothing(monkeypatch, tmp_path):
+    _home, calls = _scratch_env(monkeypatch, tmp_path)
+    assert autotier.ttl_scratch(apply=False) == 0
+    monkeypatch.setattr(autotier, "SCRATCH_TTL_DAYS", 0.0)
+    assert autotier.ttl_scratch(apply=True) == 0
+    assert calls == []

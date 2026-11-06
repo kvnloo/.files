@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Keep `dev` containing the default branch in every owned kvnloo repo.
+
+Owner rule (2026-09-30, OSS-2): "dev tracks main". Merges into dev are
+authorized; the default branch is never written.
+
+For each non-fork, non-archived repo that has a `dev` branch distinct from
+its default branch:
+  * dev already contains default         -> nothing to do
+  * dev is strictly behind default        -> fast-forward dev (force=false)
+  * dev and default diverged              -> open (or reuse) a sync PR
+                                             default -> dev and merge it once
+                                             GitHub reports it CLEAN (mergeable,
+                                             every check green)
+Conflicting or red sync PRs stay open for a human. Stdlib + `gh` only.
+Runs as ExecStartPost of kvnloo-fork-sync.service (daily).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+
+OWNER = "kvnloo"
+SYNC_TITLE = "sync: merge {default} into dev (dev tracks {default})"
+TRAILER = "\n\n\U0001f916 Generated with [Claude Code](https://claude.com/claude-code)"
+REPOS_QUERY = """
+query($owner:String!,$endCursor:String){user(login:$owner){repositories(
+ ownerAffiliations:OWNER,isArchived:false,isFork:false,first:100,after:$endCursor){
+ pageInfo{hasNextPage endCursor}
+ nodes{name defaultBranchRef{name} dev:ref(qualifiedName:"refs/heads/dev"){name}}}}}
+"""
+
+
+def gh(*args: str, check: bool = True) -> str:
+    p = subprocess.run(["gh", *args], text=True, capture_output=True)
+    if check and p.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args[:3])}: {p.stderr.strip()[:300]}")
+    return p.stdout
+
+
+def repos(owner: str) -> list[tuple[str, str]]:
+    out = gh("api", "graphql", "--paginate", "-f", f"query={REPOS_QUERY}", "-F", f"owner={owner}",
+             "--jq", '.data.user.repositories.nodes[]|select(.dev!=null and .defaultBranchRef!=null)'
+             '|[.name,.defaultBranchRef.name]|@tsv')
+    rows = [line.split("\t") for line in out.splitlines() if line.strip()]
+    return [(name, default) for name, default in rows if default != "dev"]
+
+
+def decide(ahead_by: int, behind_by: int) -> str:
+    """ahead_by/behind_by come from compare dev...default (default relative to dev)."""
+    if ahead_by == 0:
+        return "ok"
+    if behind_by == 0:
+        return "fast-forward"
+    return "sync-pr"
+
+
+def sync_repo(owner: str, name: str, default: str, dry_run: bool) -> dict:
+    full = f"{owner}/{name}"
+    cmp = json.loads(gh("api", f"repos/{full}/compare/dev...{default}",
+                        "--jq", "{ahead_by,behind_by,status}"))
+    action = decide(int(cmp["ahead_by"]), int(cmp["behind_by"]))
+    rec = {"repo": full, "default": default, **cmp, "action": action}
+    if action == "ok" or dry_run:
+        return rec
+    if action == "fast-forward":
+        sha = gh("api", f"repos/{full}/commits/{default}", "--jq", ".sha").strip()
+        gh("api", "-X", "PATCH", f"repos/{full}/git/refs/heads/dev", "-f", f"sha={sha}", "-F", "force=false")
+        rec["result"] = f"dev -> {sha[:7]}"
+        return rec
+    prs = json.loads(gh("pr", "list", "-R", full, "--base", "dev", "--head", default, "--state", "open",
+                        "--json", "number,mergeStateStatus,mergeable"))
+    if prs:
+        number = prs[0]["number"]
+    else:
+        body = (f"Owner rule: dev must contain the default branch. {default} has "
+                f"{cmp['ahead_by']} commits dev lacks. Opened by github-dev-tracks-default "
+                f"(kvnloo-fork-sync.timer).{TRAILER}")
+        url = gh("pr", "create", "-R", full, "--base", "dev", "--head", default,
+                 "--title", SYNC_TITLE.format(default=default), "--body", body).strip()
+        number = int(url.rstrip("/").rsplit("/", 1)[-1])
+    state = json.loads(gh("pr", "view", str(number), "-R", full, "--json", "mergeStateStatus,mergeable"))
+    rec["pr"] = number
+    rec["merge_state"] = state["mergeStateStatus"]
+    if state["mergeable"] == "MERGEABLE" and state["mergeStateStatus"] == "CLEAN":
+        gh("pr", "merge", str(number), "-R", full, "--merge")
+        rec["result"] = "merged"
+    else:
+        rec["result"] = "left open (not CLEAN yet; next run retries)"
+    return rec
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--owner", default=OWNER)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    failures = 0
+    todo = repos(args.owner)
+    for name, default in todo:
+        try:
+            rec = sync_repo(args.owner, name, default, args.dry_run)
+        except Exception as exc:  # one flaky repo must not stop the sweep
+            failures += 1
+            rec = {"repo": f"{args.owner}/{name}", "error": str(exc)}
+        if rec.get("action") != "ok":
+            print(json.dumps(rec), flush=True)
+    print(json.dumps({"checked": len(todo), "failures": failures}), flush=True)
+    # Fail the unit (service-watch alerts) only when the sweep is mostly broken.
+    return 1 if todo and failures * 2 > len(todo) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

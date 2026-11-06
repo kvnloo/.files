@@ -1,0 +1,11 @@
+[Unit]
+Description=Pull the hub's State Packet every 15 minutes (it is rendered every 15 minutes; hooks reject it after 2 h)
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:2/15
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
