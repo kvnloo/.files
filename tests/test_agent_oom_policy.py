@@ -148,6 +148,45 @@ class DecideTests(unittest.TestCase):
         self.assertIn(80, protected)
 
 
+class AgentToolingTests(unittest.TestCase):
+    """2026-11-05 19:1x: earlyoom kills the highest oom_score first. At adj 800 it took
+    3 MiB observer shells, kubectl and bot-to-bot DM delivery (642 SIGKILLs that day)
+    while freeing nothing. Agent tooling stays at the floor with the chain above it."""
+    def tree(self):
+        procs = session_tree()
+        run = USER + '/app.slice/run-p1.scope'
+        procs[60] = P(60, 1, 'zsh', ['/usr/bin/zsh', '-lic', 'set +m; fleet-kueue --attach fleet-mbp-1 --wait -1 > o'],
+                      'zsh', run)
+        procs[61] = P(61, 60, 'python3', ['/usr/bin/python3', '/h/.local/bin/fleet-kueue', '--attach', 'j'],
+                      'python3.14', run)
+        procs[62] = P(62, 61, 'kubectl', ['kubectl', '--kubeconfig', 'k', 'get', 'job'], 'kubectl', run)
+        procs[63] = P(63, 60, 'sleep', ['sleep', '60'], 'sleep', run)
+        procs[64] = P(64, 31, 'python3', ['/x/python3', '/h/hermes-agent/tools/bot_mode_dm.py', '--run-delivery'],
+                      'python3.14', GATEWAY)
+        procs[65] = P(65, 31, 'bash', ['bash', '-c', 'timeout 3200 fleet-build --node mbp-host -- bash x.sh'],
+                      'bash', GATEWAY)
+        return procs
+
+    def test_observers_kubectl_and_dm_delivery_are_protected(self):
+        protected, disposable, _ = policy.decide(self.tree(), {**MAINS, 'run-p1.scope': 60})
+        for pid in (60, 61, 62, 64, 65):
+            self.assertIn(pid, protected, pid)
+            self.assertNotIn(pid, disposable, pid)
+        self.assertIn(31, protected)           # the shell above a spared tool stays too
+
+    def test_ordinary_tools_stay_disposable(self):
+        protected, disposable, _ = policy.decide(self.tree(), {**MAINS, 'run-p1.scope': 60})
+        for pid in (24, 25, 26, 27, 32, 33, 53):
+            self.assertIn(pid, disposable, pid)
+        self.assertNotIn(63, protected)        # a spared shell's sleep child is not protected
+
+    def test_word_match_only(self):
+        procs = self.tree()
+        procs[66] = P(66, 24, 'python3', ['python3', 'fleetingly.py', 'kubectlx'], 'python3.14', SCOPE)
+        protected, disposable, _ = policy.decide(procs, MAINS)
+        self.assertIn(66, disposable)
+
+
 class FakeProc:
     """A /proc where unprivileged writes below the inherited floor are refused."""
 

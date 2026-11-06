@@ -56,6 +56,11 @@ DESKTOP = frozenset({'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell', 'systemd
 # Desktop infrastructure stays protected even when no harness pane survives.
 # Browsers and ordinary desktop applications remain excluded from relief, but
 # do not gain infrastructure protection.
+# Agent tooling: observers of remote jobs, cluster clients and bot-to-bot DM delivery.
+# They hold a few MiB, so killing them frees nothing, but earlyoom kills the highest
+# oom_score first and at adj 800 they went before every real hog (2026-11-05: 642
+# SIGKILLs, including fleet observers and DM delivery). They stay at the floor.
+TOOLING = re.compile(r'(?:^|[\s/;|&(\'"])(?:kubectl|fleet|fleet-build|fleet-kueue|bot_mode_dm\.py)(?=$|[\s;|&)\'"])')
 DESKTOP_CORE = frozenset({'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell',
                           'pipewire', 'pipewire-pulse', 'wireplumber', 'pulseaudio',
                           'Xwayland', 'hypridle', 'qs', 'tern', 'dbus-broker'})
@@ -230,7 +235,9 @@ def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set, set]:
                if p.ppid in roots and procs[p.ppid].comm == 'omp'
                and p.exe == 'omp' and _entry(p) == 'omp'
                and p.args[1:2] == ('__omp_worker_daemon_broker',)}
-    protected = roots | front | backends | desktop | brokers
+    tooling = {pid for pid, p in procs.items() if pid not in managers
+               and any(TOOLING.search(arg) for arg in p.args)}
+    protected = roots | front | backends | desktop | brokers | tooling
     for pid in list(protected):
         protected.update(above(pid))
     for pid in list(protected):

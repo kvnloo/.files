@@ -1,0 +1,8 @@
+[Unit]
+Description=Local model servers (llama.cpp lanes): one shared memory cap
+# 2026-11-05 groot OOM: per-unit caps of 5 + 3 + 8 GiB on a 23 GiB host bounded nothing together.
+# MemoryHigh throttles and reclaims first; MemoryMax OOM-kills inside this slice only.
+
+[Slice]
+MemoryHigh=5G
+MemoryMax=6G
