@@ -42,6 +42,13 @@ class BurnPaceTests(unittest.TestCase):
         out = self.run_pace('')
         self.assertEqual(out.get('status'), 'unknown')
 
+    def test_exhausted_weekly_never_admits_workflows(self):
+        row = {'provider': 'claude', 'usage': {'secondary': {
+            'usedPercent': 100, 'windowMinutes': 10080, 'resetsAt': '2099-01-01T00:00:00Z'}}}
+        out = self.run_pace(json.dumps([row]))
+        self.assertEqual(out['lanes']['claude']['band'], 'hard-stop-exhausted')
+        self.assertEqual(out['lanes']['claude']['max_workflow_agents'], 0)
+
     def test_healthy_probe_has_no_errors(self):
         row = {"provider": "claude", "usage": {"secondary": {"usedPercent": 50, "windowMinutes": 10080,
                                                             "resetsAt": "2099-01-01T00:00:00Z"}}}

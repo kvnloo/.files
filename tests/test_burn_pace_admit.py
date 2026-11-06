@@ -51,6 +51,46 @@ class AdmitTests(unittest.TestCase):
     def test_short_window_exhaustion(self):
         self.assert_denied(paid(primary=100), 'primary exhausted')
 
+    def test_weekly_stop_matches_deployed_gate(self):
+        self.assertEqual(self.decide(paid(94.9))['decision'], 'allow')
+        for used in (95, 99.9):
+            self.assert_denied(paid(used), '95%')
+        row = paid()
+        row['usage']['secondary']['usedPercent'] = 95
+        self.assert_denied(row, '95%')
+        row = paid(95)
+        row['usage']['secondary']['usedPercent'] = 20
+        self.assert_denied(row, '95%')
+        self.assertEqual(self.module['knobs'](None, 95)['max_workflow_agents'], 0)
+
+    def test_numeric_pace_stop_cannot_be_hidden_by_band(self):
+        row = paid()
+        row['pace_ratio'] = 1.49
+        self.assertEqual(self.decide(row)['decision'], 'allow')
+        row['pace_ratio'] = 1.5
+        self.assert_denied(row, 'pace ratio')
+        for value in (float('nan'), float('inf'), True, '1.5', -1):
+            row['pace_ratio'] = value
+            self.assert_denied(row, 'invalid')
+
+    def test_missing_extra_window_reset_is_unknown_not_unlimited(self):
+        row = paid()
+        row['usage']['extraRateWindows'] = [
+            {'id': 'claude-routines', 'window': {'usedPercent': 0, 'windowMinutes': 10080}}]
+        self.assert_denied(row, 'claude-routines reset unknown')
+
+    def test_header_cache_cannot_borrow_another_subscriptions_quota(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp)
+            row = paid()
+            del row['usage']
+            (state / 'burn-pace.jsonl').write_text(json.dumps({
+                'at': AT, 'lanes': {'claude': row, 'claude2': row}}) + '\n')
+            probe = state / 'claude2-headers.json'
+            for provider, decision in (('claude', 'deny'), ('claude2', 'allow')):
+                probe.write_text(json.dumps({'row': {'provider': provider, 'usage': paid()['usage']}}))
+                self.assertEqual(self.admit(provider, state=state, now=NOW)['decision'], decision)
+
     def test_every_reported_paid_window_binds(self):
         row = paid()
         row['usage']['tertiary'] = {'usedPercent': 100, 'resetsAt': RESET}

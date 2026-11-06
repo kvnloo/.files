@@ -16,14 +16,15 @@ The returned dictionary has the same shape as CLI JSON.
 
 Admission reads only these files. It never invokes the regular refresh command,
 CodexBar, OAuth, inference, a phone, or a credential store. It writes nothing.
-The existing `burn-pace --json` refresh behavior is unchanged.
+The `burn-pace --json` refresh command remains separate from admission.
 
 - `burn-pace.jsonl`: latest complete row, including paid pacing and the factory
   avoid list. The reader examines at most the final 64 KiB, ignores an unfinished
   append, and denies if the latest complete row is corrupt.
 - `codexbar-fresh.json`: cached paid usage, joined by exact provider name.
 - `claude2-headers.json` and `claude3-headers.json`: cached extra-subscription
-  usage when the corresponding pacing lane exists.
+  usage when the corresponding pacing lane exists. A provider identifier that
+  differs from the file's lane denies instead of borrowing another account's quota.
 - Optional `admission-rows.json`: free-model and app observations, in the shape
   below. Duplicate lanes and attempts to replace the paid subscriptions deny.
 
@@ -31,12 +32,19 @@ A timestamp more than 900 seconds old, a future timestamp, missing quota,
 invalid numbers, historical provenance, or a passed reset denies admission.
 A passed reset requires a new observation, not an assumed replenishment.
 Timestamps must include a timezone. Both paid usage and pacing must be fresh.
+A paid window without a reset denies with `<window> reset unknown`; admission
+never invents a reset or ignores an unmeasured window.
 All reported paid primary, secondary, tertiary, and extra windows bind. An
 exhausted window denies even when pacing calls it `unknown`. Missing optional
 paid windows such as Codex's null primary are not fabricated.
 
-`hard-throttle`, `hold`, `blocked`, unknown pacing, zero workflow agents, and a
-factory avoid entry deny. `throttle` allows a single admission check while
+Weekly usage at or above 95% and a numeric pace ratio at or above 1.5 deny,
+even if the cached band disagrees. Weekly secondary usage and the summary both
+bind. Invalid numeric ratios deny. The refresh command also marks 95% weekly
+usage `hard-stop-exhausted`, with zero workflow agents, even without a ratio.
+
+`hard-throttle`, `hard-stop-exhausted`, `hold`, `blocked`, unknown pacing, zero
+workflow agents, and a factory avoid entry deny. `throttle` allows a single admission check while
 retaining the existing worker cap. Explicit provider blocking also denies.
 Free-model and app rows require positive remaining capacity in every supplied
 window. Exact lane identifiers keep app, API, and individual subscriptions

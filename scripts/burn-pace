@@ -52,11 +52,17 @@ def fetch(provider):
     return [r for r in rows if "usage" in r]
 
 
-def knobs(ratio):
+WEEKLY_STOP = 95.0
+PACE_STOP = 1.5
+
+
+def knobs(ratio, used=None):
     # Map pace ratio to how hard the agent may spend. Bands are deliberately coarse.
+    if used is not None and used >= WEEKLY_STOP:
+        return {"band": "hard-stop-exhausted", "max_workflow_agents": 0, "effort": "low", "offload": "all"}
     if ratio is None:
         return {"band": "unknown", "max_workflow_agents": 4, "effort": "medium", "offload": "bulk"}
-    if ratio >= 1.5:
+    if ratio >= PACE_STOP:
         return {"band": "hard-throttle", "max_workflow_agents": 0, "effort": "low", "offload": "all-mechanical+reading"}
     if ratio >= 1.1:
         return {"band": "throttle", "max_workflow_agents": 3, "effort": "low", "offload": "bulk+implementation"}
@@ -102,7 +108,10 @@ def admission_rows(state):
     for lane in ('claude2', 'claude3'):
         probe = state / f'{lane}-headers.json'
         if lane in lanes and probe.exists():
-            usage_rows.append(_read_json(probe)['row'])
+            raw = _read_json(probe)['row']
+            if raw['provider'] != lane:
+                raise ValueError('invalid subscription cache lane')
+            usage_rows.append(raw)
     seen = set()
     for raw in usage_rows:
         lane = raw['provider']
@@ -147,6 +156,8 @@ def _number(value):
 def _window_reason(name, used, reset, now):
     if not 0 <= _number(used) <= 100:
         raise ValueError('invalid used percentage')
+    if reset is None:
+        return f'{name} reset unknown; refresh usage'
     if _timestamp(reset) <= now:
         return f'{name} reset passed; refresh usage'
     if used >= 100:
@@ -178,9 +189,11 @@ def _admission_reason(lane, snapshot, now):
         if not windows:
             return 'quota unknown: no usage windows'
         for name, window in windows:
-            reason = _window_reason(name, window['usedPercent'], window['resetsAt'], now)
+            reason = _window_reason(name, window['usedPercent'], window.get('resetsAt'), now)
             if reason:
                 return reason
+            if name == 'secondary' and window['usedPercent'] >= WEEKLY_STOP:
+                return f'weekly quota at admission stop {WEEKLY_STOP:g}% until {window["resetsAt"]}'
     elif 'windows' in row:
         if row.get('source') not in ('account_observed', 'provider_header', 'locally_reconstructed'):
             return 'quota source unknown or historical; live observation required'
@@ -202,10 +215,20 @@ def _admission_reason(lane, snapshot, now):
     else:
         return 'quota unknown: no cached usage or cap windows'
 
-    if 'weekly_used_pct' in row and not 0 <= _number(row['weekly_used_pct']) < 100:
-        return 'weekly quota exhausted or invalid; refresh usage'
+    if 'weekly_used_pct' in row:
+        used = _number(row['weekly_used_pct'])
+        if not 0 <= used <= 100:
+            raise ValueError('invalid weekly quota')
+        if used >= WEEKLY_STOP:
+            return f'weekly quota at admission stop {WEEKLY_STOP:g}%; refresh usage'
+    ratio = row.get('pace_ratio')
+    if ratio is not None:
+        if _number(ratio) < 0:
+            raise ValueError('invalid pace ratio')
+        if ratio >= PACE_STOP:
+            return f'pace ratio {ratio} at or above {PACE_STOP:g}'
     band = row.get('band')
-    if band in ('hard-throttle', 'hold', 'blocked'):
+    if band in ('hard-throttle', 'hard-stop-exhausted', 'hold', 'blocked'):
         return f'pace {band}'
     if band == 'unknown' or ('usage' in row and band is None):
         return 'unknown pace; refresh usage'
@@ -274,7 +297,7 @@ def main():
             "weekly_used_pct": used, "hours_to_reset": round(hours_left, 1),
             "sustainable_pct_per_h": round(sustainable, 3), "observed_pct_per_h": round(observed, 3),
             "pace_ratio": round(ratio, 2) if ratio else None,
-            "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio)}
+            "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio, used)}
     out["free_lane"] = FREE_LANE
     if ERRORS:
         out["probe_errors"] = ERRORS
