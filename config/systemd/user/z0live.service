@@ -10,6 +10,10 @@ Environment=Z0LIVE_DATA=/mnt/zer0models/workspace/zer0/data/z0live
 Environment=TMPDIR=/home/kvn/.hermes/profiles/clean/cache/scratch
 EnvironmentFile=-/mnt/zer0models/workspace/zer0/data/z0live/service.env
 ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/z0live/bin/z0live serve
+# The phone reaches the broker at https://<host>:8791 via Tailscale Serve. Re-apply the
+# route on every start (idempotent); '-' keeps a tailscaled hiccup from failing the broker.
+# z0live-serve-check.timer re-applies it if something drops it while the broker runs.
+ExecStartPost=-/usr/bin/tailscale serve --bg --https=8791 http://127.0.0.1:8791
 Restart=on-failure
 RestartSec=3
 UMask=0077

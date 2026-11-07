@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the z0live :8791 Tailscale Serve route every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=z0live-serve-check.service
+
+[Install]
+WantedBy=timers.target
