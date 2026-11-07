@@ -1188,6 +1188,30 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "7607f7455f1ae0c4e03b2830e8f480d0c8f0f53b7540ad5086ed13f60c0a0392"
 
 [[user]]
+live = "~/.config/systemd/user/z0live-serve-check.service"
+source = "config/systemd/user/z0live-serve-check.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Self-heal the z0live :8791 Tailscale Serve route every five minutes (t_2b2cdcea; 2026-11-06 serve reset wiped it)."
+
+[[user]]
+live = "~/.config/systemd/user/z0live-serve-check.timer"
+source = "config/systemd/user/z0live-serve-check.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Self-heal the z0live :8791 Tailscale Serve route every five minutes (t_2b2cdcea; 2026-11-06 serve reset wiped it)."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/z0live-serve-check.timer"
+source = "config/systemd/user/z0live-serve-check.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Self-heal the z0live :8791 Tailscale Serve route every five minutes (t_2b2cdcea; 2026-11-06 serve reset wiped it)."
+
+[[user]]
 live = "~/.config/systemd/user/z0live.service"
 source = "config/systemd/user/z0live.service"
 scope = "user"
