@@ -182,6 +182,24 @@ class AgentToolingTests(unittest.TestCase):
             self.assertIn(pid, disposable, pid)
         self.assertNotIn(63, protected)        # a spared shell's sleep child is not protected
 
+    def test_gateway_turn_workers_and_kanban_submitters_are_protected(self):
+        # 2026-11-07 01:10/01:13: relief SIGTERMed z0i's managed turn workers (pids 2579957,
+        # 2953469) at adj 800; each loss left the Kanban admission 'unknown' and the card
+        # crashed ('Kanban owner refused: Kanban execution unknown; retained by owner').
+        procs = self.tree()
+        kanban = USER + '/agent.slice/hermes-worker-kanban-t_x-run-1.scope'
+        procs[70] = P(70, 30, 'python3', ['/x/python3', '-m', 'agent.managed_worker'], 'python3.14', GATEWAY)
+        procs[71] = P(71, 70, 'bash', ['bash', '-c', 'tool'], 'bash', GATEWAY)
+        procs[72] = P(72, 1, 'python3', ['/x/python3', '-m', 'hermes_cli.kanban_worker_client'],
+                      'python3.14', kanban)
+        procs[73] = P(73, 24, 'python3', ['python3', 'agent.managed_worker.py'], 'python3.14', SCOPE)
+        protected, disposable, _ = policy.decide(procs, {**MAINS, 'hermes-worker-kanban-t_x-run-1.scope': 72})
+        for pid in (70, 72):
+            self.assertIn(pid, protected, pid)
+            self.assertNotIn(pid, disposable, pid)
+        self.assertIn(71, disposable)          # the turn's tools stay killable
+        self.assertIn(73, disposable)          # module match only, not a lookalike script
+
     def test_word_match_only(self):
         procs = self.tree()
         procs[66] = P(66, 24, 'python3', ['python3', 'fleetingly.py', 'kubectlx'], 'python3.14', SCOPE)
