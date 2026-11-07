@@ -23,7 +23,6 @@ def default_omp_db() -> Path:
     override = os.environ.get("CODEXBAR_OMP_DB", "").strip()
     if override:
         return Path(override)
-    data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
     # OMP keeps auth in ~/.omp/agent/agent.db, not XDG_DATA_HOME.
     return Path.home() / ".omp" / "agent" / "agent.db"
 

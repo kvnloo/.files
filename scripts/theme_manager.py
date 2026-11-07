@@ -136,7 +136,6 @@ def normalise(raw: dict, *, name: str, slug: str, mode: str | None = None) -> di
     if mode not in ("dark", "light"):
         mode = "dark" if _pywal.luminance(bg) <= _pywal.luminance(fg) else "light"
     dark = mode == "dark"
-    edge = "#000000" if dark else "#ffffff"
 
     def pick(*keys: str, default: str) -> str:
         return next((src[key] for key in keys if key in src), default)

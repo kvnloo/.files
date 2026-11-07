@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import shlex
 import stat
 import sys
 from typing import Any

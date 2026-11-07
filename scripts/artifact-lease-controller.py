@@ -2,12 +2,10 @@
 """Bounded fleet transport; only artifact-leases.py owns deletion policy."""
 import argparse
 import fcntl
-import getpass
 import json
 import os
 from pathlib import Path
 import shlex
-import socket
 import subprocess
 import sys
 import time

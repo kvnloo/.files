@@ -1,5 +1,4 @@
 """Behavioral watcher contracts; execute on MBP, never on the desktop."""
-import contextlib
 import datetime
 import http.server
 import importlib.util

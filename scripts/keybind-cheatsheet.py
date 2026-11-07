@@ -125,11 +125,6 @@ def hyprland_shortcuts(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def hyprland_bindings(path: Path) -> list[str]:
-    return [
-        f"{row['scope']:<20} {row['shortcut']:<28} {row['action']}"
-        for row in hyprland_shortcuts(path)
-    ]
 
 
 def tmux_binding(tokens: list[str]) -> tuple[str, str] | None:
@@ -200,11 +195,6 @@ def tmux_shortcuts(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def tmux_bindings(path: Path) -> list[str]:
-    return [
-        f"{row['scope']:<20} {row['shortcut']:<28} {row['action']}"
-        for row in tmux_shortcuts(path)
-    ]
 
 
 def all_shortcuts() -> list[dict[str, str]]:

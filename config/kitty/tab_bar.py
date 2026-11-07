@@ -1,6 +1,5 @@
-from kitty.boss import get_boss
 from kitty.fast_data_types import Screen, get_options
-from kitty.tab_bar import DrawData, ExtraData, TabBarData, as_rgb, draw_title
+from kitty.tab_bar import DrawData, ExtraData, TabBarData, as_rgb
 from kitty.utils import color_as_int
 
 
@@ -17,11 +16,6 @@ def draw_tab(
     opts = get_options()
     bg = screen.cursor.bg
     default_bg = as_rgb(int(draw_data.default_bg))
-
-    if is_last and not tab.is_active:
-        active_bg = as_rgb(color_as_int(opts.active_tab_background))
-    else:
-        active_bg = default_bg
 
     if tab.is_active:
         tab_bg = as_rgb(color_as_int(opts.active_tab_background))

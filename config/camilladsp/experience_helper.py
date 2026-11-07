@@ -5,7 +5,6 @@ Reads the current base config, applies modifications, writes a temp config,
 and reloads CamillaDSP via websocket.
 """
 
-import copy
 import os
 import sys
 import yaml

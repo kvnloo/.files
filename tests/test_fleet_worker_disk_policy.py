@@ -10,7 +10,6 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))

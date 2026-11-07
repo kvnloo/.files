@@ -58,14 +58,11 @@ def write_pkg(path, files, magic="PKGM0016"):
     Path(path).write_bytes(head.getvalue() + b"".join(files.values()))
 
 
-def cstr(t, o):
-    return t[o:o + 9], o + 9
-
 
 def convert_tex(t, max_side):
     """Return a mobile texture (RGBA8888, one mip, LZ4) for a desktop .tex."""
     assert t[:8] == b"TEXV0005" and t[9:17] == b"TEXI0001", t[:18]
-    fmt, flags, tw, th, iw, ih, unk = struct.unpack_from("<7I", t, 18)
+    fmt, flags, _tw, _th, iw, ih, unk = struct.unpack_from("<7I", t, 18)
     container = t[46:54]
     o = 55
     if container == b"TEXB0003":
@@ -79,8 +76,7 @@ def convert_tex(t, max_side):
         raise ValueError(f"unknown container {container}")
     if flags & 4:
         raise ValueError("animated (gif) textures not handled")
-    mips, = struct.unpack_from("<I", t, o)
-    o += 4
+    o += 4  # mips field skipped
     w, h, packed, raw_size, size = struct.unpack_from("<5I", t, o)
     o += 20
     data = t[o:o + size]

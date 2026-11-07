@@ -68,7 +68,6 @@ COMMANDS: dict[str, list[str]] = {
 }
 
 JSON_COMMANDS = {"lsblk", "findmnt", "swapon", "zram", "lscpu"}
-LINE_COMMANDS = set(COMMANDS) - JSON_COMMANDS
 
 # We intentionally do not read credential files or dump process environments.
 FORBIDDEN_PATH_PARTS = {

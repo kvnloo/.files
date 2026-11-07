@@ -738,53 +738,6 @@ def save_config(enabled: dict[str, bool]) -> None:
     CONFIG_PATH.write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def open_text_file(path: str) -> None:
-    """Open a file in a real text editor.
-
-    Resolution order (first hit wins):
-      1. $CODEXBAR_EDITOR — explicit override (graphical command line).
-      2. $VISUAL / $EDITOR — terminal editor, opened in a detected terminal.
-      3. Common GUI editors discovered on PATH.
-      4. xdg-open as a last resort (which is what was wrong before — it sends
-         JSON to the browser on most setups).
-    """
-    explicit = os.environ.get("CODEXBAR_EDITOR")
-    if explicit:
-        subprocess.Popen([*explicit.split(), path])
-        return
-
-    gui_editors = [
-        "code", "codium", "code-oss",
-        "zed",
-        "gnome-text-editor", "gedit", "kate", "mousepad", "xed", "leafpad",
-        "sublime_text", "subl",
-    ]
-    for editor in gui_editors:
-        which = subprocess.run(["which", editor], capture_output=True, text=True)
-        if which.returncode == 0 and which.stdout.strip():
-            subprocess.Popen([editor, path])
-            return
-
-    terminal_editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if terminal_editor:
-        terminals = [
-            ("kitty", ["kitty", "-e"]),
-            ("alacritty", ["alacritty", "-e"]),
-            ("foot", ["foot"]),
-            ("wezterm", ["wezterm", "start", "--"]),
-            ("gnome-terminal", ["gnome-terminal", "--"]),
-            ("konsole", ["konsole", "-e"]),
-            ("xterm", ["xterm", "-e"]),
-        ]
-        for term, cmd in terminals:
-            which = subprocess.run(["which", term], capture_output=True, text=True)
-            if which.returncode == 0:
-                subprocess.Popen([*cmd, *terminal_editor.split(), path])
-                return
-
-    # Last resort. Usually opens the browser for .json — which is exactly what
-    # we were trying to avoid — but better than silently failing.
-    subprocess.Popen(["xdg-open", path])
 
 
 class CodexBarPopup(Gtk.Application):
