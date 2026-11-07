@@ -1,0 +1,30 @@
+# Hermes small-host preset (MBP 15 GB; phones later). Kanban t_85eb74e3, Kevin 2026-11-07.
+#
+# Cuts LOAD only. Owner rule 2026-11-07: no memory/CPU caps, no session-cache caps, no fewer
+# worker slots -- caps slowed turns down and got them OOM-killed. Same harness and model rules
+# as groot (parity rule): nothing here touches model, providers, fallback, toolsets or skills.
+#
+# Apply:   scripts/hermes-apply-preset config/hermes/presets/small-host.yaml [--dry-run]
+# Revert:  scripts/hermes-apply-preset config/hermes/presets/small-host.yaml --revert
+# Each run backs up every config.yaml it changes to config.yaml.pre-preset-<UTC stamp>.
+#
+# Measured on the MBP before (2026-11-07 15:20, gateway up 2 d, 30 multiplexed profiles):
+# gateway 623 MB RSS + 102 MB swap, cgroup 895 MB, and 312 "A2A: could not bind :9900"
+# errors per hour -- 29 profiles inherit the root's A2A platform and all retry the same port.
+
+# Root-profile settings: "key: value" passed to `hermes config set`.
+root:
+  mcp_servers.lark.enabled: false        # no Lark/Feishu traffic in 2 days of gateway logs
+
+# Plugins disabled in the root profile (`hermes plugins disable`).
+disable_plugins:
+  - platforms/feishu
+
+# Every non-root profile: settings applied unless the profile already sets the key itself.
+# The A2A listener is a singleton bound to one port, so only the root profile runs it.
+profiles:
+  platforms.a2a.enabled: false          # `hermes config set` canonical key (gateway.platforms.* lands here)
+
+# Not settings, but part of the preset (check by hand on a new host):
+# - No local plugin indexes (file-search, QMD): use groot's over the tailnet.
+# - No local llama/vLLM servers; ollama stays idle on-demand only (nvpair proxies use it).

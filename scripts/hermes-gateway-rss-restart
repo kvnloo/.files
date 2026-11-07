@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# hermes-gateway-rss-restart: restart the Hermes gateway when its own memory (main process RSS+swap,
+# not the cgroup) passes a threshold, but only while it is idle. A restart, never a throttle.
+#
+# Stopgap until the gateway heap growth is fixed at its root (kanban t_85eb74e3). Idle detector:
+# `hermes gateway restart` without --yes refuses while any turn, cron job or delegation is live,
+# the same check hermes-restart-when-idle uses. Logs before/after RSS to the journal.
+#   HERMES_GATEWAY_RESTART_RSS_MB  threshold (default 3072)
+#   --dry-run                      report only
+set -u
+threshold_mb=${HERMES_GATEWAY_RESTART_RSS_MB:-3072}
+unit=${HERMES_GATEWAY_UNIT:-hermes-gateway.service}
+
+mem_mb() { awk '/^(VmRSS|VmSwap):/{s+=$2} END{print int(s/1024)}' "/proc/$1/status" 2>/dev/null || echo 0; }
+
+pid=$(systemctl --user show "$unit" -p MainPID --value)
+[ "${pid:-0}" -gt 0 ] || { echo "$unit not running"; exit 0; }
+before=$(mem_mb "$pid")
+# Act on the gateway's own home, not the caller's (a profile shell exports a profile HERMES_HOME).
+HERMES_HOME=$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^HERMES_HOME=//p')
+export HERMES_HOME=${HERMES_HOME:-$HOME/.hermes}
+hermes=${HERMES_BIN:-$HERMES_HOME/hermes-agent/.hermes/bin/hermes}
+[ -x "$hermes" ] || hermes=$(command -v hermes) || { echo "error: no hermes CLI"; exit 1; }
+if [ "$before" -lt "$threshold_mb" ]; then
+  echo "ok: $unit pid=$pid rss+swap=${before}MB < ${threshold_mb}MB"
+  exit 0
+fi
+if [ "${1:-}" = "--dry-run" ]; then
+  echo "would restart: $unit pid=$pid rss+swap=${before}MB >= ${threshold_mb}MB (if idle)"
+  exit 0
+fi
+if ! "$hermes" gateway restart; then
+  echo "deferred: $unit pid=$pid rss+swap=${before}MB >= ${threshold_mb}MB but not idle"
+  exit 0
+fi
+for _ in $(seq 60); do
+  new=$(systemctl --user show "$unit" -p MainPID --value)
+  [ "${new:-0}" -gt 0 ] && [ "$new" != "$pid" ] && break
+  sleep 2
+done
+echo "restarted while idle: $unit pid $pid (${before}MB) -> ${new:-?} ($(mem_mb "${new:-0}")MB)"

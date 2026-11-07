@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart the Hermes gateway when idle and over its RSS threshold (stopgap, t_85eb74e3)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hermes-gateway-rss-restart
