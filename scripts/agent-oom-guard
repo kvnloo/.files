@@ -45,6 +45,10 @@ KILLED = re.compile(r'Killed process (\d+) \((.*?)\).*?anon-rss:(\d+)kB.*?oom_sc
 # per RELIEF_COOLDOWN, so it stays visible without repeating).
 QUIET_RELIEF = frozenset({'none', 'waiting', 'cooldown', 'no-candidate',
                           'unavailable', 'unit-discovery-unavailable', 'would-term'})
+# Same rule for the delegated file-cache reclaim: while the zone is threatened
+# the cache step repeats its 'would-reclaim-cache' verdict every tick.
+QUIET_CACHE_RELIEF = frozenset({'cache-reclaim-pending', 'cache-reclaim-cooldown',
+                                'would-reclaim-cache'})
 
 
 def log(message: str, priority: int = 6) -> None:
@@ -308,8 +312,7 @@ def main() -> int:
             if result['relief']['action'] not in QUIET_RELIEF:
                 log(f'pressure relief: {json.dumps(result["relief"])}', 4)
             cache_action = result.get('cache_relief')
-            if cache_action and cache_action['action'] not in {
-                    'cache-reclaim-pending', 'cache-reclaim-cooldown'}:
+            if cache_action and cache_action['action'] not in QUIET_CACHE_RELIEF:
                 log(f'file-cache relief: {json.dumps(cache_action)}', 4)
             now = time.monotonic()
             # All blocking diagnostics run in the bounded housekeeping thread.
