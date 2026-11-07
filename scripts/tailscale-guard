@@ -1,0 +1,37 @@
+#!/bin/sh
+# ~/.local/bin/tailscale: guard and log in front of /usr/bin/tailscale.
+# `serve reset` / `funnel reset` delete every route on the host, not just the caller's
+# (2026-11-06 06:24 one agent reset wiped ~20 routes, z0live :8791 among them).
+# They are refused unless TAILSCALE_ALLOW_SERVE_RESET=1. Remove one route with
+# `tailscale serve --https=<port> off`. Every serve/funnel change is logged and
+# re-checks the Hermes mobile :9119 mapping (hermes-mobile-serve-ensure.service).
+REAL=${TAILSCALE_REAL:-/usr/bin/tailscale}
+LOG_DIR="$HOME/.local/state/hermes-mobile-serve"
+log() {
+  mkdir -p "$LOG_DIR"
+  echo "$(date -Is) ppid=$PPID $(tr '\0' ' ' </proc/$PPID/cmdline 2>/dev/null | cut -c1-200) :: $1tailscale $ARGS" \
+    >>"$LOG_DIR/serve-calls.log"
+}
+ARGS="$*"
+cmd= reset= status=
+for a; do
+  case $a in
+    -*) ;;
+    *) if [ -z "$cmd" ]; then cmd=$a
+       else case $a in reset) reset=1 ;; status) status=1 ;; esac; fi ;;
+  esac
+done
+case $cmd in serve|funnel) ;; *) exec "$REAL" "$@" ;; esac
+if [ -n "$reset" ] && [ "${TAILSCALE_ALLOW_SERVE_RESET:-}" != 1 ]; then
+  log "REFUSED "
+  echo "tailscale-guard: refused '$cmd reset': it deletes every serve route on this host." >&2
+  echo "  Remove only your route: tailscale $cmd --https=<port> off" >&2
+  echo "  Owner-approved full reset: TAILSCALE_ALLOW_SERVE_RESET=1 tailscale $cmd reset" >&2
+  exit 3
+fi
+"$REAL" "$@"; rc=$?
+if [ -z "$status" ]; then
+  log ""
+  systemctl --user start --no-block hermes-mobile-serve-ensure.service 2>/dev/null
+fi
+exit $rc
