@@ -54,22 +54,59 @@ optional = true
 group = "base"
 unit = "agent.slice"
 property = "MemoryMax"
-equals = "10G"
-owner = "60-oomd-desktop-guard.conf"
-why = "one owner for the agent ceiling; a 50-MemoryMax.conf residue (14G) shadowed by 60- was attempt #33"
-
-[[cgroup]]
-group = "base"
-path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
-file = "memory.max"
-equals = "10G"
+equals = "16G"
+owner = "70-owner-speed-20261106.conf"
+why = "throttle at 13G, hard cap 16G per owner decision 2026-11-06"
 
 [[unit]]
 group = "base"
 unit = "agent.slice"
 property = "MemoryHigh"
-equals = "infinity"
-why = "slice-wide MemoryHigh is the recorded livelock"
+equals = "13G"
+owner = "70-owner-speed-20261106.conf"
+why = "reclaim instead of killing; 13G throttle, 16G hard cap"
+
+[[unit]]
+group = "base"
+unit = "agent.slice"
+property = "MemorySwapMax"
+equals = "6G"
+owner = "70-owner-speed-20261106.conf"
+why = "agents may park cold pages in zram up to 6G"
+
+[[unit]]
+group = "base"
+unit = "agent.slice"
+property = "CPUWeight"
+equals = "100"
+owner = "70-owner-speed-20261106.conf"
+why = "default CPU share, no starvation vs idle services"
+
+[[unit]]
+group = "base"
+unit = "agent.slice"
+property = "IOWeight"
+equals = "100"
+owner = "70-owner-speed-20261106.conf"
+why = "default IO share"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
+file = "memory.max"
+equals = "16G"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
+file = "memory.high"
+equals = "13G"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
+file = "memory.swap.max"
+equals = "6G"
 
 [[unit]]
 group = "base"
@@ -77,6 +114,35 @@ unit = "ctx-import.service"
 property = "MemoryMax"
 equals = "4G"
 why = "ctx stays manual; the hourly import is the only automatic ctx job and it is bounded"
+
+[[unit]]
+group = "base"
+unit = "model-servers.slice"
+property = "MemoryHigh"
+equals = "5G"
+owner = "model-servers.slice"
+why = "throttle and reclaim first for local model servers"
+
+[[unit]]
+group = "base"
+unit = "model-servers.slice"
+property = "MemoryMax"
+equals = "6G"
+owner = "model-servers.slice"
+why = "hard cap for all llama.cpp lanes together"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/model.slice/model-servers.slice"
+file = "memory.high"
+equals = "5G"
+why = "live slice path: model.slice/model-servers.slice (the plain user@1000.service path does not exist)"
+
+[[cgroup]]
+group = "base"
+path = "user.slice/user-1000.slice/user@1000.service/model.slice/model-servers.slice"
+file = "memory.max"
+equals = "6G"
 
 [[sysctl]]
 group = "base"
@@ -112,15 +178,45 @@ equals = "256M"
 
 [[cgroup]]
 group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
+file = "memory.high"
+equals = "200M"
+
+[[cgroup]]
+group = "ui"
 path = "user.slice/user-1000.slice/user@1000.service/session.slice/wireplumber.service"
 file = "memory.swap.max"
 equals = "0"
 
 [[cgroup]]
 group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/wireplumber.service"
+file = "memory.max"
+equals = "256M"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/wireplumber.service"
+file = "memory.high"
+equals = "200M"
+
+[[cgroup]]
+group = "ui"
 path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire-pulse.service"
 file = "memory.swap.max"
 equals = "0"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire-pulse.service"
+file = "memory.max"
+equals = "256M"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire-pulse.service"
+file = "memory.high"
+equals = "200M"
 
 [[cgroup]]
 group = "ui"
@@ -139,14 +235,8 @@ equals = "0"
 group = "batch"
 unit = "agent.slice"
 property = "MemorySwapMax"
-equals = "4G"
-owner = "60-oomd-desktop-guard.conf"
-
-[[cgroup]]
-group = "batch"
-path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
-file = "memory.swap.max"
-equals = "4G"
+equals = "6G"
+owner = "70-owner-speed-20261106.conf"
 
 [[unit]]
 group = "batch"
@@ -154,6 +244,123 @@ unit = "agentsview.service"
 property = "MemorySwapMax"
 equals = "3G"
 owner = "62-swap-bound.conf"
+
+# ctx.service: batch indexer with crash-loop history (100+ oom_memcg kills/7d)
+# Keep hard MemoryMax=5G, add MemoryHigh=4G (80%) so it reclaims before dying
+[[unit]]
+group = "batch"
+unit = "ctx.service"
+property = "MemoryHigh"
+equals = "4G"
+owner = "50-resource-policy.conf"
+why = "reclaim at 80% of hard cap; crash-loop history (100+ oom_memcg kills/7d)"
+
+[[unit]]
+group = "batch"
+unit = "ctx.service"
+property = "MemoryMax"
+equals = "5G"
+owner = "50-resource-policy.conf"
+why = "hard ceiling for ctx import pipeline"
+
+[[unit]]
+group = "batch"
+unit = "ctx.service"
+property = "MemorySwapMax"
+equals = "2G"
+owner = "50-resource-policy.conf"
+why = "swap buffer for cold pages"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/app.slice/ctx.service"
+file = "memory.high"
+equals = "4G"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/app.slice/ctx.service"
+file = "memory.max"
+equals = "5G"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/app.slice/ctx.service"
+file = "memory.swap.max"
+equals = "2G"
+
+# app-t3code-agents.slice: T3 agent slice with leak history
+# Keep hard MemoryMax=4G, add MemoryHigh=3G (80%)
+[[unit]]
+group = "batch"
+unit = "app-t3code-agents.slice"
+property = "MemoryHigh"
+equals = "3G"
+owner = "50-host-budget.conf"
+why = "reclaim at 80% of hard cap; T3 agent leak history"
+
+[[unit]]
+group = "batch"
+unit = "app-t3code-agents.slice"
+property = "MemoryMax"
+equals = "4G"
+owner = "50-host-budget.conf"
+why = "hard ceiling for T3 agent aggregate"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/app-t3code-agents.slice"
+file = "memory.high"
+equals = "3G"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/app-t3code-agents.slice"
+file = "memory.max"
+equals = "4G"
+
+# z0-worker-supervision.service: operational supervisor, bounded
+[[unit]]
+group = "batch"
+unit = "z0-worker-supervision.service"
+property = "MemoryHigh"
+equals = "400M"
+owner = "50-bounded-operational.conf"
+why = "reclaim at 80% of hard cap; operational projection only"
+
+[[unit]]
+group = "batch"
+unit = "z0-worker-supervision.service"
+property = "MemoryMax"
+equals = "512M"
+owner = "50-bounded-operational.conf"
+why = "hard ceiling for supervision engine"
+
+[[unit]]
+group = "batch"
+unit = "z0-worker-supervision.service"
+property = "MemorySwapMax"
+equals = "128M"
+owner = "50-bounded-operational.conf"
+why = "small swap buffer"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice/z0-worker-supervision.service"
+file = "memory.high"
+equals = "400M"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice/z0-worker-supervision.service"
+file = "memory.max"
+equals = "512M"
+
+[[cgroup]]
+group = "batch"
+path = "user.slice/user-1000.slice/user@1000.service/agent.slice/z0-worker-supervision.service"
+file = "memory.swap.max"
+equals = "128M"
 
 # ---- app: DEFERRED 2026-10-27 -------------------------------------------------
 # A hard app.slice ceiling was withdrawn before apply: in the 2 h before, app.slice used
