@@ -5,6 +5,8 @@ After=network-online.target
 [Service]
 WorkingDirectory=/mnt/zer0models/workspace/zer0/products/garden_room
 ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/products/garden_room/server.py --host 127.0.0.1 --port 8790
+# Re-apply this unit's tailnet route on every start (a `serve reset` on 2026-11-06 wiped it).
+ExecStartPost=-/usr/bin/tailscale serve --bg --https=8790 http://127.0.0.1:8790
 Restart=on-failure
 RestartSec=3
 

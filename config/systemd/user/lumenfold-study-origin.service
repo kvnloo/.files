@@ -6,6 +6,8 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/workspace/zer0/experiments/miniature-transformation-ad-lab
 ExecStart=/usr/bin/python tools/range_http_server.py --directory outputs/v3/private-process-blog --port 9152
+# Re-apply this unit's tailnet route on every start (a `serve reset` on 2026-11-06 wiped it).
+ExecStartPost=-/usr/bin/tailscale serve --bg --set-path=/lumenfold-study http://127.0.0.1:9152
 Restart=always
 RestartSec=2
 NoNewPrivileges=true

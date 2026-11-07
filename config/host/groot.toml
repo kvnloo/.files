@@ -4894,3 +4894,11 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Explicit Noctalia no-swap guarantee survives placement changes; enforced by memory-drift group ui."
+
+[[user]]
+live = "~/.local/bin/tailscale"
+source = "scripts/tailscale-guard"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Refuse host-wide `tailscale serve/funnel reset` unless TAILSCALE_ALLOW_SERVE_RESET=1 and log every serve change (t_1d6aa948; 2026-11-06 reset wiped ~20 routes)."
