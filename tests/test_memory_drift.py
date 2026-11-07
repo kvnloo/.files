@@ -44,6 +44,11 @@ class FakeHost(law.Host):
                 (directory / name).write_text(text)
         return [directory]
 
+    graphical_session = True
+
+    def graphical(self):
+        return self.graphical_session
+
     def pids(self, comm):
         return [pid for pid, (c, _) in self._procs.items() if c == comm]
 
@@ -118,6 +123,18 @@ class MemoryDriftLaw(unittest.TestCase):
         rows = self.audit(procs={7: ('Hyprland', '/user.slice/u/app.slice/x.scope')})
         self.assertFalse(next(r for r in rows if r['kind'] == 'placement')['ok'])
 
+    def test_desktop_rules_are_na_without_a_graphical_session(self):
+        intent = {**INTENT, 'cgroup': INTENT['cgroup'] + [
+            {'group': 'ui', 'path': 'u/session.slice/gone.service', 'file': 'memory.swap.max', 'equals': '0'}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            host = FakeHost(tmp, **{**GREEN, 'procs': {}})
+            host.graphical_session = False
+            rows = law.audit(intent, host)
+            self.assertTrue(all(r['ok'] for r in rows), rows)
+            self.assertEqual(sorted(r['kind'] for r in rows if r.get('na')), ['cgroup', 'placement'])
+            host.graphical_session = True  # logged in but Hyprland gone: still drift
+            self.assertFalse(all(r['ok'] for r in law.audit(intent, host)))
+
     def test_unreadable_value_is_drift_not_pass(self):
         rows = self.audit(cgroups={})
         self.assertFalse(next(r for r in rows if r['kind'] == 'cgroup')['ok'])
@@ -132,6 +149,33 @@ class MemoryDriftLaw(unittest.TestCase):
         for row in intent['unit']:
             if 'owner' in row:
                 self.assertIn(row['owner'], dropins, row)
+
+
+    def test_desktop_no_swap_is_declared_installed_and_audited(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        manifest = tomllib.loads((ROOT / 'config/host/groot.toml').read_text())
+        for unit, section in [('session.slice', 'Slice'), ('noctalia-shell.service', 'Service')]:
+            relative = f'config/systemd/user/{unit}.d/60-desktop-no-swap.conf'
+            text = (ROOT / relative).read_text()
+            self.assertIn(f'[{section}]', text)
+            self.assertIn('MemorySwapMax=0', text)
+            self.assertTrue(any(r['source'] == relative for r in manifest['user']))
+            declaration = next(r for r in intent['unit']
+                               if r['unit'] == unit and r['property'] == 'MemorySwapMax')
+            self.assertEqual(declaration['equals'], '0')
+            self.assertEqual(declaration['owner'], '60-desktop-no-swap.conf')
+            with tempfile.TemporaryDirectory() as tmp:
+                files = {f'/d/{unit}.d/60-desktop-no-swap.conf': text}
+                for live, expected in [('0', True), ('infinity', False)]:
+                    host = FakeHost(tmp, {(unit, 'MemorySwapMax'): live}, files, {})
+                    rows = law.audit({'unit': [declaration]}, host)
+                    self.assertEqual(rows[0]['ok'], expected, rows)
+
+    def test_desktop_no_swap_does_not_blanket_unswap_background_apps(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        self.assertFalse(any(r['unit'] in {'app.slice', 'agent.slice'}
+                             and r['property'] == 'MemorySwapMax' and r['equals'] == '0'
+                             for r in intent['unit']))
 
 
 if __name__ == '__main__':

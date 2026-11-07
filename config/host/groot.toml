@@ -1,6 +1,7 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/agent.slice.d/70-owner-speed-20261106.conf", sha256 = "bc827de897fcf649a9d6bfa88d91e2d8ed7f464366637f9552c50e2701d23ee7", reason = "X2b 2026-11-07: owner 2026-11-06 values folded into 60-oomd-desktop-guard.conf and 50-interactive-budget.conf." },
   { live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf", sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c", reason = "Use the stamped fleet command; retire the stale admission worktree override." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-qualified-8212.service", sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
@@ -4845,3 +4846,19 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.config/systemd/user/session.slice.d/60-desktop-no-swap.conf"
+source = "config/systemd/user/session.slice.d/60-desktop-no-swap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Interactive desktop subtree never enters swap; enforced by memory-drift group ui. No restart or global swapoff."
+
+[[user]]
+live = "~/.config/systemd/user/noctalia-shell.service.d/60-desktop-no-swap.conf"
+source = "config/systemd/user/noctalia-shell.service.d/60-desktop-no-swap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Explicit Noctalia no-swap guarantee survives placement changes; enforced by memory-drift group ui."

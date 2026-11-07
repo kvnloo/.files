@@ -222,8 +222,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_source_envelope(self):
         policy = (ROOT / 'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf').read_text()
-        self.assertIn('MemoryHigh=infinity', policy)
-        self.assertIn('MemoryMax=10G', policy)
+        self.assertIn('MemoryHigh=13G', policy)
+        self.assertIn('MemoryMax=16G', policy)
         # oomd kills whole cgroups, i.e. the harness with all its subagents.
         self.assertIn('ManagedOOMMemoryPressure=auto', policy)
         self.assertNotIn('ManagedOOMMemoryPressure=kill', policy)

@@ -17,7 +17,9 @@ Environment=MALLOC_ARENA_MAX=2
 ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghcache.py --listen 127.0.0.1:18090 --pod-listen 10.42.0.1:18091 --core-per-hour 3000 --reserve 500 --max-upstream 3
 Restart=on-failure
 RestartSec=10
-MemoryMax=256M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=256M
+MemoryMax=384M
 CPUQuota=50%
 Nice=5
 

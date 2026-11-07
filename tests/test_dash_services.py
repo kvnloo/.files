@@ -21,6 +21,10 @@ def unit(name):
 def environment(name):
     return dict(line.split('=', 1) for line in shlex.split((ROOT / f'config/dash-services/{name}.env').read_text()))
 
+def size(text):
+    return int(text[:-1]) * {'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3}[text[-1]]
+
+
 class DashServices(unittest.TestCase):
     def test_atomic_link_replaces_previous_release(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -42,8 +46,9 @@ class DashServices(unittest.TestCase):
             self.assertEqual(config['Service']['RestartSec'], '10')
             self.assertEqual(config['Unit']['StartLimitIntervalSec'], '0')
             self.assertTrue(config['Service']['ExecStartPre'].endswith('/dash-wait-tailnet'))
-            self.assertNotIn('MemoryHigh', config['Service'])
-            self.assertIn('MemoryMax', config['Service'])
+            # X2b: throttle (MemoryHigh) before the hard stop; never kill at the soft budget.
+            high, hard = (config['Service'][k] for k in ('MemoryHigh', 'MemoryMax'))
+            self.assertLess(size(high), size(hard))
         self.assertEqual(unit('bridge')['Service']['OOMPolicy'], 'continue')
         self.assertEqual(unit('metro')['Service']['OOMPolicy'], 'continue')
 

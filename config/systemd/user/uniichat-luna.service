@@ -2,7 +2,9 @@
 Description=[systemd-run] /home/kvn/.local/bin/unii serve 8798
 
 [Service]
-MemoryMax=1572864000
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=1500M
+MemoryMax=2250M
 Nice=5
 Restart=on-failure
 Slice=agent.slice

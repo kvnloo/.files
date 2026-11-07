@@ -16,7 +16,9 @@ TimeoutStartSec=120
 OOMPolicy=continue
 # Measured startup/health peak 178798592 bytes; 1GiB includes child headroom.
 # Not a worst-case agent-turn measurement; no soft throttling of control plane.
-MemoryMax=1G
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=1G
+MemoryMax=1536M
 
 [Install]
 WantedBy=default.target

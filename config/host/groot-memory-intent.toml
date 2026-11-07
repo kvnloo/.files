@@ -54,22 +54,23 @@ optional = true
 group = "base"
 unit = "agent.slice"
 property = "MemoryMax"
-equals = "10G"
+equals = "16G"
 owner = "60-oomd-desktop-guard.conf"
-why = "one owner for the agent ceiling; a 50-MemoryMax.conf residue (14G) shadowed by 60- was attempt #33"
+why = "one owner for the agent ceiling; owner 2026-11-06 raised 10G->16G (10G OOM-killed 13 workers); a 50-MemoryMax.conf residue (14G) shadowed by 60- was attempt #33"
 
 [[cgroup]]
 group = "base"
 path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
 file = "memory.max"
-equals = "10G"
+equals = "16G"
 
 [[unit]]
 group = "base"
 unit = "agent.slice"
 property = "MemoryHigh"
-equals = "infinity"
-why = "slice-wide MemoryHigh is the recorded livelock"
+equals = "13G"
+owner = "60-oomd-desktop-guard.conf"
+why = "owner 2026-11-06: throttle at 13G instead of killing at 10G; 3G headroom below MemoryMax avoids the recorded MemoryHigh-near-swap-cap livelock"
 
 [[unit]]
 group = "base"
@@ -84,7 +85,35 @@ key = "vm.swappiness"
 equals = "180"
 why = "declared, not inherited: the CachyOS udev rule resets it at zram init"
 
-# ---- ui: no swap for the compositor unit and fixed-size UI leaves -----------------
+# ---- ui: no swap for the desktop subtree, shell and fixed-size UI leaves ----------
+[[unit]]
+group = "ui"
+unit = "session.slice"
+property = "MemorySwapMax"
+equals = "0"
+owner = "60-desktop-no-swap.conf"
+why = "desktop latency must not depend on zram swap-ins; children inherit this ceiling"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice"
+file = "memory.swap.max"
+equals = "0"
+
+[[unit]]
+group = "ui"
+unit = "noctalia-shell.service"
+property = "MemorySwapMax"
+equals = "0"
+owner = "60-desktop-no-swap.conf"
+why = "explicit shell guarantee even if launch placement changes"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/noctalia-shell.service"
+file = "memory.swap.max"
+equals = "0"
+
 [[unit]]
 group = "ui"
 unit = "wayland-wm@hyprland.desktop.service"
@@ -108,6 +137,12 @@ equals = "0"
 group = "ui"
 path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
 file = "memory.max"
+equals = "384M"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
+file = "memory.high"
 equals = "256M"
 
 [[cgroup]]
@@ -139,14 +174,14 @@ equals = "0"
 group = "batch"
 unit = "agent.slice"
 property = "MemorySwapMax"
-equals = "4G"
+equals = "6G"
 owner = "60-oomd-desktop-guard.conf"
 
 [[cgroup]]
 group = "batch"
 path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
 file = "memory.swap.max"
-equals = "4G"
+equals = "6G"
 
 [[unit]]
 group = "batch"
