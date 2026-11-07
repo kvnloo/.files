@@ -39,6 +39,12 @@ KILL_POLL = 20.0
 SUMMARY = 300.0
 HISTORY = 900.0      # how long a vanished PID keeps its last class for kill attribution
 KILLED = re.compile(r'Killed process (\d+) \((.*?)\).*?anon-rss:(\d+)kB.*?oom_score_adj:(-?\d+)')
+# Relief actions that repeat on every tick while the zone is threatened are not
+# news: a journal line per second is the spam the summary already covers. A
+# victim, a real transition or an error is still logged (report-only-term once
+# per RELIEF_COOLDOWN, so it stays visible without repeating).
+QUIET_RELIEF = frozenset({'none', 'waiting', 'cooldown', 'no-candidate',
+                          'unavailable', 'unit-discovery-unavailable', 'would-term'})
 
 
 def log(message: str, priority: int = 6) -> None:
@@ -299,7 +305,7 @@ def main() -> int:
                 totals[key] += len(result[key])
             for failure in result['failures']:
                 log(f'write failed {failure}', 4)
-            if result['relief']['action'] not in {'none', 'waiting', 'cooldown'}:
+            if result['relief']['action'] not in QUIET_RELIEF:
                 log(f'pressure relief: {json.dumps(result["relief"])}', 4)
             cache_action = result.get('cache_relief')
             if cache_action and cache_action['action'] not in {
