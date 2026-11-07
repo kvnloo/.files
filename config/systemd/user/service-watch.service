@@ -21,8 +21,9 @@ ReadOnlyPaths=%h/.omp/agent
 ReadWritePaths=%h/.config/systemd/user /mnt/zer0models/workspace/zer0/data/operations/service-watch
 Environment=PATH=/home/kvn/.bun/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=%h
-MemoryHigh=infinity
-MemoryMax=256M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=256M
+MemoryMax=384M
 CPUQuota=15%
 TasksMax=32
 

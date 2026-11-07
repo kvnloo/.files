@@ -13,7 +13,9 @@ Restart=on-failure
 RestartSec=10
 TimeoutStartSec=120
 # Measured startup/manifest peak 20357120 bytes; 128MiB hard ceiling.
-MemoryMax=128M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=128M
+MemoryMax=192M
 
 [Install]
 WantedBy=default.target

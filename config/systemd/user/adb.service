@@ -10,7 +10,9 @@ ExecCondition=/bin/sh -c '/usr/bin/ss -Hltn "sport = :5037" | grep -q . && exit 
 ExecStart=%h/android/sdk/platform-tools/adb -L tcp:5037 server nodaemon
 Restart=on-failure
 RestartSec=10
-MemoryMax=512M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=512M
+MemoryMax=768M
 
 [Install]
 WantedBy=default.target

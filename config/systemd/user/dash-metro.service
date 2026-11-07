@@ -15,7 +15,9 @@ RestartSec=10
 TimeoutStartSec=120
 OOMPolicy=continue
 # Measured startup/manifest peak 615993344 bytes; 2GiB headroom, no MemoryHigh.
-MemoryMax=2G
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=2G
+MemoryMax=3G
 
 [Install]
 WantedBy=default.target

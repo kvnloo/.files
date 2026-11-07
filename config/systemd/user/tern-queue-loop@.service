@@ -6,7 +6,9 @@ After=network-online.target
 Type=simple
 ExecStart=/bin/bash /mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/bin/tern-queue-loop.sh %i
 Slice=agent.slice
-MemoryMax=600M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=600M
+MemoryMax=900M
 Nice=5
 IOWeight=10
 Restart=always

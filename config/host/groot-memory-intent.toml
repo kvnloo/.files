@@ -137,6 +137,12 @@ equals = "0"
 group = "ui"
 path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
 file = "memory.max"
+equals = "384M"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/pipewire.service"
+file = "memory.high"
 equals = "256M"
 
 [[cgroup]]
