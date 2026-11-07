@@ -602,6 +602,12 @@ class GuardLoopTests(unittest.TestCase):
         for action in ('term', 'kill', 'released', 'changed', 'gone',
                        'report-only-term', 'pending'):
             self.assertNotIn(action, guard.QUIET_RELIEF, action)
+        for action in ('would-reclaim-cache', 'cache-reclaim-pending',
+                       'cache-reclaim-cooldown'):
+            self.assertIn(action, guard.QUIET_CACHE_RELIEF, action)
+        for action in ('cache-reclaim-started', 'cache-reclaim-requested',
+                       'cache-reclaim-unavailable'):
+            self.assertNotIn(action, guard.QUIET_CACHE_RELIEF, action)
         procs = policy.scan()
         mains = {'known.service': 1}
         protected, tools, jobs = policy.decide(procs, mains)
