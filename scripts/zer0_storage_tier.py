@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import time
 
 DEFAULT_DEST = Path("/mnt/zer0models/zer0-tier")

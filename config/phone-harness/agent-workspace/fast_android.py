@@ -282,7 +282,6 @@ def _fast_tree(self):
         if not nodes:
             raise ValueError("hierarchy parsed to zero nodes")
         _U2["last_xml"] = xml
-        self._tree_busy_until = 0.0
         _U2["fast_reads"] += 1
         return nodes
     except Exception as e:

@@ -33,10 +33,7 @@ import sys
 import json
 import shutil
 import subprocess
-import tempfile
-import textwrap
 from pathlib import Path
-from collections import defaultdict
 from datetime import datetime, timezone
 
 # Known ASUS AMI setup variable GUIDs and names.

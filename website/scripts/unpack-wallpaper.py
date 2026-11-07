@@ -110,10 +110,6 @@ def run_magick(args: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
-def short_mask_name(tex_path: str) -> str:
-    """materials/masks/waterwaves_mask_HASH → waterwaves_mask_HASH.webp"""
-    name = Path(tex_path).name
-    return f"{name}.webp"
 
 
 def build_scene_gen(scene: dict, out_rel: str = "/media/ruins") -> dict:

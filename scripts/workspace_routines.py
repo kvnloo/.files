@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
 import statistics
@@ -70,11 +69,6 @@ def _json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
 
-def _state_dir() -> Path:
-    override = os.environ.get("WORKSPACE_COPILOT_STATE_DIR")
-    if override:
-        return Path(override).expanduser()
-    return Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "workspace-copilot"
 
 
 def flow_binds_path() -> Path:
@@ -246,11 +240,6 @@ def record_semantic_action(
     }
 
 
-def tag_episode_source(db: Any, episode_id: int, source: str) -> None:
-    db.execute(
-        "UPDATE context_episodes SET action_source=? WHERE id=?",
-        (normalize_source(source), episode_id),
-    )
 
 
 def _day_bucket(ts: float) -> str:
