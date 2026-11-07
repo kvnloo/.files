@@ -142,6 +142,16 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(batch, {90, 91, 92, 94})
         self.assertFalse(batch & (protected | disposable))
 
+    def test_z0int_loop_tick_is_exempt_from_batch_relief(self):
+        # Owner decision 2026-11-07 (t_15eaa9d7): the tick is capped by its unit, not relieved.
+        procs = session_tree()
+        procs[95] = P(95, 1, 'python', ['python', '-m', 'z0int.cli', 'loop', 'tick'], 'python',
+                      USER + '/app.slice/z0int-loop-tick.service')
+        procs[96] = P(96, 1, 'python', ['python'], 'python', USER + '/app.slice/z0int-policy.service')
+        _, disposable, batch = policy.decide(procs, MAINS)
+        self.assertNotIn(95, batch | disposable)
+        self.assertIn(96, batch)
+
     def test_dashboard_launched_as_module_is_a_root(self):
         procs = session_tree()
         procs[80] = P(80, 1, 'hermes', ['/x/python3', '-m', 'hermes_cli.main', 'dashboard'], 'python3.14',
