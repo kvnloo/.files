@@ -3271,6 +3271,14 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "6f971f79177c5c69787a9d21a93e8c5fcbae613dd08955fbf55560b73a833766"
 
 [[user]]
+live = "~/.config/systemd/user/z0int-loop-tick.service.d/40-relief-exempt.conf"
+source = "config/systemd/user/z0int-loop-tick.service.d/40-relief-exempt.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Owner decision 2026-11-07 (t_15eaa9d7): tick exempt from agent-oom-guard relief, capped with MemoryHigh=1.5G and Nice."
+
+[[user]]
 live = "~/.config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
 source = "config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
 scope = "user"

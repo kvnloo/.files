@@ -46,9 +46,13 @@ REPORT_ONLY = True
 FLOOR_ADJ = 100
 DISPOSABLE_ADJ = 800
 BATCH_ADJ = 900
+# z0int-loop-tick is deliberately absent (Kevin 2026-11-07 13:50, t_15eaa9d7): relief TERMed
+# the hourly tick 3 times in 8 h, so no tick finished under pressure. It keeps its
+# inherited score and is capped by its own unit instead (MemoryHigh=1.5G, Nice=19,
+# idle IO: z0int-loop-tick.service.d/40-relief-exempt.conf).
 BATCH_UNIT = re.compile(r'^(agentsview-sync|ctx-import|worktree-reaper|artifact-leases|z0-state-packet'
                         r'|dev\.cribble\.agent\.sync|agent-telemetry-refresh'
-                        r'|z0int-(policy|loop-tick|choice-[0-9a-f]+))\.service$')
+                        r'|z0int-(policy|choice-[0-9a-f]+))\.service$')
 HARNESSES = frozenset({'hermes', 'claude', 'omp', 'codex', 'pi', 'opencode'})
 # Services that host agent sessions under a generic interpreter name (the gateway,
 # dashboard, garden-room and z0live hosts): their unit's main process is a root.
