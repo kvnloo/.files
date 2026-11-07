@@ -9,7 +9,9 @@ Restart=always
 RestartSec=2
 # Lowest score an unprivileged unit may take; the guard itself must outlive tools.
 OOMScoreAdjust=100
-MemoryMax=192M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=192M
+MemoryMax=288M
 CPUQuota=25%
 Nice=5
 

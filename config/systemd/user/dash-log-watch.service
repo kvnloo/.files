@@ -18,8 +18,9 @@ Environment=PATH=/home/kvn/.local/bin:/home/kvn/android/sdk/platform-tools:/usr/
 Environment=HERMES_HOME=%h/.hermes/profiles/clean
 Environment=TMPDIR=%h/.hermes/profiles/clean/cache/scratch
 WorkingDirectory=%h
-MemoryHigh=infinity
-MemoryMax=768M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=768M
+MemoryMax=1152M
 CPUQuota=25%
 TasksMax=64
 StandardOutput=journal
