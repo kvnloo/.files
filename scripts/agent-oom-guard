@@ -149,10 +149,25 @@ def check(state: dict | None = None) -> list:
                       timeout=5).returncode:
         problems.append('agent-oom-guard.service is not active')
     try:
-        for line in (STATE / 'kills.jsonl').read_text().splitlines():
+        # Report only kills newer than the last summary so one protected kill
+        # is logged once, not re-logged on every SUMMARY pass.
+        kills_path = STATE / 'kills.jsonl'
+        offset_path = STATE / 'kills-reported.offset'
+        text = kills_path.read_text()
+        offset = 0
+        try:
+            offset = int(offset_path.read_text().strip())
+        except (OSError, ValueError):
+            offset = 0
+        if offset > len(text):        # rotated or truncated: re-report from start
+            offset = 0
+        for line in text[offset:].splitlines():
+            if not line.strip():
+                continue
             row = json.loads(line)
             if row.get('class') == 'protected':
                 problems.append(f"protected process was OOM-killed: {row}")
+        offset_path.write_text(str(len(text)))
     except (OSError, ValueError):
         pass
     pressure = policy.read_pressure()

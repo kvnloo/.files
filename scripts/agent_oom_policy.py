@@ -37,6 +37,12 @@ import re
 import threading
 from typing import NamedTuple
 
+# Kevin 2026-11-06: "keep earlyoom as the one killer".  The guard no longer
+# terminates processes or reclaims caches itself; it only scores the kernel OOM
+# order (so earlyoom drops disposable work before a root) and reports hazards.
+# Rollback: set REPORT_ONLY = False.
+REPORT_ONLY = True
+
 FLOOR_ADJ = 100
 DISPOSABLE_ADJ = 800
 BATCH_ADJ = 900
@@ -457,6 +463,7 @@ class Relief:
 
     def step(self, procs, protected, disposable, batch, pressure, now,
              proc=Path('/proc'), dry_run=False, unit_mains=None):
+        report_only = REPORT_ONLY
         if self.pending is not None:
             p, fd, deadline = self.pending
             if dry_run:
@@ -492,8 +499,14 @@ class Relief:
             return {'action': 'no-candidate'}
         if not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal'):
             return {'action': 'unavailable', 'reason': 'pidfd signaling required'}
-        if dry_run:
-            return {'action': 'would-term', 'pid': p.pid, 'start': p.start,
+        if dry_run or report_only:
+            action = 'would-term' if dry_run else 'report-only-term'
+            if not dry_run:
+                # One report per victim per cooldown, not one per tick: the
+                # report must not become the log spam it replaced.
+                self.last = now
+            return {'action': action,
+                    'pid': p.pid, 'start': p.start,
                     'reclaim_kb': reclaim_kb(proc, p)}
         fd = None
         try:
@@ -563,7 +576,7 @@ class CacheRelief:
             target = self.target()
         except OSError as error:
             return {'action': 'cache-reclaim-unavailable', 'error': str(error)}
-        if dry_run:
+        if dry_run or REPORT_ONLY:
             return {'action': 'would-reclaim-cache', 'path': str(target),
                     'requested_bytes': 268435456, 'swappiness': 0}
         self.last = now

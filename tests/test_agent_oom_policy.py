@@ -1,10 +1,12 @@
 import importlib.machinery
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -364,7 +366,8 @@ class ReliefTests(unittest.TestCase):
         p = procs[25]
         changed = dict(procs)
         changed[25] = p._replace(start='999')
-        with patch.object(policy, 'relief_candidate', return_value=p), \
+        with patch.object(policy, 'REPORT_ONLY', False), \
+                patch.object(policy, 'relief_candidate', return_value=p), \
                 patch.object(policy.os, 'pidfd_open', return_value=123), \
                 patch.object(policy.os, 'close') as closed, \
                 patch.object(policy, 'scan', return_value=changed), \
@@ -379,7 +382,8 @@ class ReliefTests(unittest.TestCase):
         protected, tools, jobs = policy.decide(procs, MAINS)
         relief = policy.Relief()
         p = procs[25]
-        with patch.object(policy, 'relief_candidate', return_value=p), \
+        with patch.object(policy, 'REPORT_ONLY', False), \
+                patch.object(policy, 'relief_candidate', return_value=p), \
                 patch.object(policy.os, 'pidfd_open', return_value=123), \
                 patch.object(policy.os, 'close'), \
                 patch.object(policy, '_same', return_value=True), \
@@ -431,6 +435,70 @@ class ReliefTests(unittest.TestCase):
                 sent.assert_not_called()
 
 
+class ReportOnlyTests(unittest.TestCase):
+    """Kevin 2026-11-06: 'keep earlyoom as the one killer'.
+
+    The guard still scores the kernel OOM order and reports a hazard, but it
+    must not signal a process itself and must not re-report the same victim
+    every tick (that is the 16k-lines/day spam this replaces).
+    """
+
+    def pressure(self):
+        return policy.zone_pressure(
+            'Node 0, zone Normal\n  pages free 16640\n high 1024\n',
+            'Node 0, zone Normal 1 2 3 0 0 0 0 0 0 0 0\n')
+
+    def test_report_only_reports_once_per_cooldown_and_never_signals(self):
+        self.assertTrue(policy.REPORT_ONLY, 'deployed default must be report-only')
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        relief = policy.Relief()
+        with patch.object(policy, 'reclaim_kb', return_value=policy.MIN_RECLAIM_KB), \
+                patch.object(policy.os, 'pidfd_open') as opened, \
+                patch.object(policy.os, 'close') as closed, \
+                patch.object(policy.signal, 'pidfd_send_signal') as sent:
+            first = relief.step(procs, protected, tools, jobs, self.pressure(), 0)
+            second = relief.step(procs, protected, tools, jobs, self.pressure(), 1)
+        self.assertEqual(first['action'], 'report-only-term')
+        self.assertIn(first['pid'], tools, 'the victim is a known disposable tool')
+        self.assertNotIn(first['pid'], protected)
+        self.assertIn('reclaim_kb', first)
+        self.assertEqual(second['action'], 'cooldown')
+        opened.assert_not_called()
+        sent.assert_not_called()
+        closed.assert_not_called()
+        self.assertIsNone(relief.pending, 'nothing is pinned, so nothing to release')
+
+    def test_report_only_is_one_switch_back_to_enforcement(self):
+        procs = session_tree()
+        protected, tools, jobs = policy.decide(procs, MAINS)
+        relief = policy.Relief()
+        p = procs[25]
+        with patch.object(policy, 'REPORT_ONLY', False), \
+                patch.object(policy, 'relief_candidate', return_value=p), \
+                patch.object(policy.os, 'pidfd_open', return_value=123), \
+                patch.object(policy.os, 'close'), \
+                patch.object(policy, '_same', return_value=True), \
+                patch.object(policy, 'scan', return_value=procs), \
+                patch.object(policy.signal, 'pidfd_send_signal') as sent:
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                         self.pressure(), 0)['action'], 'term')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                         self.pressure(), 1)['action'], 'waiting')
+            self.assertEqual(relief.step(procs, protected, tools, jobs,
+                                         self.pressure(), 2)['action'], 'kill')
+        self.assertEqual(sent.call_args_list[0].args, (123, policy.signal.SIGTERM))
+        self.assertEqual(sent.call_args_list[1].args, (123, policy.signal.SIGKILL))
+
+    def test_report_only_never_starts_a_cache_reclaim_thread(self):
+        relief = policy.CacheRelief()
+        with patch.object(relief, 'target', return_value=Path('/owned/memory.reclaim')), \
+                patch.object(policy.threading, 'Thread') as thread:
+            self.assertEqual(relief.step(0)['action'], 'would-reclaim-cache')
+            thread.assert_not_called()
+            self.assertEqual(relief.last, float('-inf'))
+
+
 class CacheReliefTests(unittest.TestCase):
     def test_only_owned_user_session_leaf_is_selected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -456,7 +524,8 @@ class CacheReliefTests(unittest.TestCase):
 
     def test_dry_run_and_single_inflight_reclaim_are_bounded(self):
         relief = policy.CacheRelief()
-        with patch.object(relief, 'target', return_value=Path('/owned/memory.reclaim')), \
+        with patch.object(policy, 'REPORT_ONLY', False), \
+                patch.object(relief, 'target', return_value=Path('/owned/memory.reclaim')), \
                 patch.object(policy.threading, 'Thread') as thread:
             self.assertEqual(relief.step(0, dry_run=True)['action'], 'would-reclaim-cache')
             thread.assert_not_called()
@@ -518,6 +587,36 @@ class GuardLoopTests(unittest.TestCase):
             result = guard.tick(state)
             self.assertEqual(result['restored'], [[77, 'python3', 200]])
             self.assertEqual(fake.score(77), 200)
+
+    def test_protected_kill_is_reported_once_per_summary(self):
+        """One protected kill was re-logged ~692x/day; a byte cursor ends that."""
+        loader = importlib.machinery.SourceFileLoader('agent_oom_guard_kills',
+                                                     str(ROOT / 'scripts/agent-oom-guard'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        guard = importlib.util.module_from_spec(spec)
+        loader.exec_module(guard)
+        row = json.dumps({'ts': 1.0, 'class': 'protected', 'pid': 42,
+                          'comm': 'hermes-gateway'})
+        quiet = SimpleNamespace(stdout='', returncode=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp)
+            (state_dir / 'kills.jsonl').write_text(row + '\n')
+            state = {'cache': {}, 'mains': {'known.service': 1}}
+            with patch.object(guard, 'STATE', state_dir), \
+                    patch.object(guard.subprocess, 'run', return_value=quiet), \
+                    patch.object(guard.policy, 'read_pressure',
+                                 return_value={'available': True, 'threatened': False,
+                                               'zones': []}):
+                first = guard.check(state)
+                again = guard.check(state)
+                third = guard.check(state)
+            self.assertEqual([p for p in first
+                              if p.startswith('protected process was OOM-killed')],
+                             [f'protected process was OOM-killed: {json.loads(row)}'])
+            self.assertEqual([p for p in again + third
+                              if p.startswith('protected process was OOM-killed')], [])
+            self.assertEqual((state_dir / 'kills-reported.offset').read_text(),
+                             str(len(row) + 1))
 
 
 if __name__ == '__main__':
