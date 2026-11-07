@@ -588,6 +588,32 @@ class GuardLoopTests(unittest.TestCase):
             self.assertEqual(result['restored'], [[77, 'python3', 200]])
             self.assertEqual(fake.score(77), 200)
 
+    def test_repeated_no_candidate_relief_is_not_news(self):
+        """'no-candidate' was logged once per second = ~5k lines/day."""
+        loader = importlib.machinery.SourceFileLoader('agent_oom_guard_quiet',
+                                                     str(ROOT / 'scripts/agent-oom-guard'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        guard = importlib.util.module_from_spec(spec)
+        loader.exec_module(guard)
+        for action in ('none', 'waiting', 'cooldown', 'no-candidate', 'unavailable',
+                       'unit-discovery-unavailable', 'would-term'):
+            self.assertIn(action, guard.QUIET_RELIEF, action)
+        # A victim, a transition or an error must still reach the journal.
+        for action in ('term', 'kill', 'released', 'changed', 'gone',
+                       'report-only-term', 'pending'):
+            self.assertNotIn(action, guard.QUIET_RELIEF, action)
+        procs = policy.scan()
+        mains = {'known.service': 1}
+        protected, tools, jobs = policy.decide(procs, mains)
+        relief = policy.Relief()
+        pressure = policy.read_pressure()
+        logged = []
+        for now in range(4):
+            action = relief.step(procs, protected, tools, jobs, pressure, now)['action']
+            if action not in guard.QUIET_RELIEF:
+                logged.append(action)
+        self.assertEqual(logged, [], 'a quiet tick must produce no journal line')
+
     def test_protected_kill_is_reported_once_per_summary(self):
         """One protected kill was re-logged ~692x/day; a byte cursor ends that."""
         loader = importlib.machinery.SourceFileLoader('agent_oom_guard_kills',
