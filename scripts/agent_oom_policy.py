@@ -71,6 +71,10 @@ DESKTOP = frozenset({'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell', 'systemd
 # oom_score first and at adj 800 they went before every real hog (2026-11-05: 642
 # SIGKILLs, including fleet observers and DM delivery). They stay at the floor.
 TOOLING = re.compile(r'(?:^|[\s/;|&(\'"])(?:kubectl|fleet|fleet-build|fleet-kueue|bot_mode_dm\.py)(?=$|[\s;|&)\'"])')
+# A gateway's turn executor and a Kanban card's submitter are the session itself, not a
+# subagent: either one's death leaves the admission 'unknown' and crashes the card
+# (2026-11-07: z0i t_84dcef20 runs 9654/9656 lost to relief at adj 800).
+TURN_MODULES = frozenset({'agent.managed_worker', 'hermes_cli.kanban_worker_client'})
 DESKTOP_CORE = frozenset({'Hyprland', 'sway', 'kwin_wayland', 'gnome-shell',
                           'pipewire', 'pipewire-pulse', 'wireplumber', 'pulseaudio',
                           'Xwayland', 'hypridle', 'qs', 'tern', 'dbus-broker'})
@@ -247,7 +251,9 @@ def decide(procs: dict, unit_mains: dict | None = None) -> tuple[set, set, set]:
                and p.args[1:2] == ('__omp_worker_daemon_broker',)}
     tooling = {pid for pid, p in procs.items() if pid not in managers
                and any(TOOLING.search(arg) for arg in p.args)}
-    protected = roots | front | backends | desktop | brokers | tooling
+    turns = {pid for pid, p in procs.items()
+             if any(a == '-m' and m in TURN_MODULES for a, m in zip(p.args[1:3], p.args[2:4]))}
+    protected = roots | front | backends | desktop | brokers | tooling | turns
     for pid in list(protected):
         protected.update(above(pid))
     for pid in list(protected):
