@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Apply (or revert) a Hermes config preset through the hermes CLI. See config/hermes/presets/*.yaml.
+
+usage: hermes-apply-preset PRESET.yaml [--dry-run | --revert]
+Root and profile settings go through `hermes [-p P] config set`, plugins through `hermes plugins
+disable`, so Hermes' own config writer and validation apply. A profile key that the profile already
+sets is left alone. Every changed config.yaml is first copied to config.yaml.pre-preset-<stamp>.
+"""
+import os, shutil, subprocess, sys, time
+from pathlib import Path
+
+import yaml
+
+HOME = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+HERMES = os.environ.get("HERMES_BIN") or shutil.which("hermes") or str(HOME / "hermes-agent/.hermes/bin/hermes")
+STAMP = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def lookup(cfg, dotted):
+    for part in dotted.split("."):
+        if not isinstance(cfg, dict) or part not in cfg:
+            return None
+        cfg = cfg[part]
+    return cfg
+
+
+def run(args, dry):
+    print(("would run: " if dry else "run: ") + " ".join(args))
+    if not dry:
+        subprocess.run(args, check=True, stdout=subprocess.DEVNULL)
+
+
+def backup(cfg_path, dry, done):
+    if not dry and cfg_path not in done and cfg_path.exists():
+        shutil.copy2(cfg_path, cfg_path.with_name(f"config.yaml.pre-preset-{STAMP}"))
+        done.add(cfg_path)
+
+
+def revert():
+    for cfg_path in [HOME / "config.yaml", *sorted(HOME.glob("profiles/*/config.yaml"))]:
+        backups = sorted(cfg_path.parent.glob("config.yaml.pre-preset-*"))
+        if backups:
+            shutil.copy2(backups[-1], cfg_path)
+            print(f"restored {cfg_path} from {backups[-1].name}")
+
+
+def main(argv):
+    if len(argv) < 2:
+        sys.exit(__doc__)
+    if "--revert" in argv:
+        return revert()
+    dry = "--dry-run" in argv
+    preset = yaml.safe_load(Path(argv[1]).read_text()) or {}
+    done = set()
+    root_cfg = yaml.safe_load((HOME / "config.yaml").read_text()) or {}
+    for key, value in (preset.get("root") or {}).items():
+        if lookup(root_cfg, key) != value:
+            backup(HOME / "config.yaml", dry, done)
+            run([HERMES, "config", "set", key, yaml.safe_dump(value).splitlines()[0]], dry)
+    disabled = set(lookup(root_cfg, "plugins.disabled") or [])
+    for plugin in preset.get("disable_plugins") or []:
+        if plugin not in disabled:
+            backup(HOME / "config.yaml", dry, done)
+            run([HERMES, "plugins", "disable", plugin], dry)
+    for cfg_path in sorted(HOME.glob("profiles/*/config.yaml")):
+        cfg = yaml.safe_load(cfg_path.read_text()) or {}
+        for key, value in (preset.get("profiles") or {}).items():
+            if lookup(cfg, key) is None:
+                backup(cfg_path, dry, done)
+                run([HERMES, "-p", cfg_path.parent.name, "config", "set", key,
+                     yaml.safe_dump(value).splitlines()[0]], dry)
+    print(f"{'dry run' if dry else 'applied'}: {len(done)} config file(s) backed up")
+
+
+if __name__ == "__main__":
+    main(sys.argv)
