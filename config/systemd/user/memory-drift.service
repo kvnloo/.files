@@ -1,0 +1,10 @@
+[Unit]
+Description=Memory drift law: live memory policy must equal config/host/groot-memory-intent.toml
+Documentation=file:///mnt/zer0models/worktrees/files-live/scripts/memory-drift
+
+[Service]
+Type=oneshot
+Nice=10
+MemoryMax=128M
+# Exit 1 on drift: the unit fails and service-watch reports it (90-service-watch.conf).
+ExecStart=/usr/bin/python3 %h/.local/bin/memory-drift

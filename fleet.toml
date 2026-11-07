@@ -11,10 +11,21 @@ onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "
 system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service", "earlyoom.service"]
 system_timers = ["tern-remote-refresh.timer", "fstrim.timer"]
 system_sockets = ["keyd-layers.socket"]
-user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service"]
+user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service", "agent-oom-guard.service"]
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
+
+[hosts.desktop.fx_skills]
+policy = "config/fx-skills.json"
+repair = "scripts/apply-fx-skills"
+profile = "~/.fx/settings.json"
+
+[hosts.desktop.memory_guard]
+service = "agent-oom-guard.service"
+source = "scripts/agent-oom-guard"
+classification = "scripts/agent_oom_policy.py"
+deployment = "scripts/apply-agent-oom"
 
 [hosts.desktop.storage]
 release_root = "/mnt/zer0models/releases"

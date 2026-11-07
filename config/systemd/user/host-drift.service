@@ -1,6 +1,8 @@
 [Unit]
 Description=Report-only tracked host configuration drift audit
-OnFailure=service-watch-failure@host-drift.service.service
+# Failure watcher: the escaped OnFailure= lives in the service-watch drop-in (90-service-watch.conf).
+# An inline OnFailure=service-watch-failure@%n.service is NOT escaped (%I turns "-" into "/") and fired a
+# second, failing watcher (memory-services-20261027 step 0a).
 
 [Service]
 Type=oneshot

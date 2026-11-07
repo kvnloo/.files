@@ -1,0 +1,15 @@
+{
+  "skill_roots": [".codex/skills"],
+  "external_skills": {
+    ".agents/skills/abab-meta-research": "/mnt/zer0models/z0-wt/salvage/skills-home/work/kvnloo-skills/skills/abab-meta-research",
+    ".agents/skills/workspace-copilot": "/workspace/.files/config/agent-skills/workspace-copilot",
+    ".config/opencode/skills/workspace-copilot": "/workspace/.files/config/agent-skills/workspace-copilot",
+    ".codex/skills/jev-codex": "/mnt/zer0models/workspace/zer0/experiments/pokemon/integrations/jev-codex"
+  },
+  "media_skills": ["general-video", "hyperframes", "hyperframes-animation", "hyperframes-audio", "hyperframes-cli", "hyperframes-core", "hyperframes-creative", "hyperframes-keyframes", "hyperframes-registry", "media-use", "motion-graphics", "product-launch-video"],
+  "stale_alias_roots": {
+    ".codex/skills": "../../.claude/skills/",
+    ".config/opencode/skills": "../../../.claude/skills/"
+  },
+  "media_source": ".agents/skills"
+}

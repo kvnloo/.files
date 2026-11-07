@@ -267,6 +267,10 @@ run_agent_skills() {
   onboard_link "$skill_src" "$HOME/.omp/skills/workspace-copilot"
   onboard_link "$skill_src" "$HOME/.cursor/skills/workspace-copilot"
 
+  if command -v fx >/dev/null 2>&1; then
+    python3 "$repo/scripts/apply-fx-skills"
+  fi
+
   if command -v agent-deck >/dev/null 2>&1; then
     agent-deck codex-hooks install >/dev/null 2>&1 || true
     agent-deck gemini-hooks install >/dev/null 2>&1 || true

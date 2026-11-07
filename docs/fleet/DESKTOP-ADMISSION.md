@@ -100,6 +100,12 @@ Child OOM ranking is independent of placement. The classifier raises disposable
 descendants of every recognized harness to at least `oom_score_adj=800`, even
 when the harness remains in `session.slice` or a child has a caller-owned limit.
 It preserves harness scores, service MainPIDs, desktop branches and higher scores.
+An OMP root's direct daemon broker is a protected control process, not a
+language-server worker: it owns managed daemons and completion subscriptions.
+Recognition requires the `omp` executable and entry point, the exact
+`__omp_worker_daemon_broker` selector in argv position one, and a direct OMP root
+parent. Broker tools, subagent brokers and lookalike processes stay disposable.
+This source rule needs separate deployment and does not guarantee OOM survival.
 
 Run `python3 scripts/install-host-drift` to preview, then add `--apply` to
 snapshot the complete tracked source closure and enable `host-drift.timer`.
@@ -395,6 +401,60 @@ OOMScoreAdjust directive is added to a scope (it is service-spawn-only).
 Residual risk: unbounded groups and concurrent capped workloads can still
 cause global OOM; reclaim protection, earlyoom avoidance and relative
 oom_score_adj ranking do not guarantee desktop survival.
+
+#### Normal-zone desktop guard (2026-10-28 repair)
+
+The 19:31–20:27 incident recorded 139 kernel kills. At failure the Normal
+zone had about65MiB free and no32KiB-or-larger blocks, despite approximately
+4GiB MemAvailable. Cache-based availability and earlyoom's percentage threshold
+did not cover graphics order-3 allocations. The existing user
+`agent-oom-guard` now reads `/proc/zoneinfo` and `/proc/buddyinfo` every second.
+Relief is eligible when a Normal zone has at most the larger of128MiB or twice
+its high watermark free, and at most32 order-3-or-larger blocks. These conservative
+incident-derived thresholds are an early reserve, not a measured universal optimum.
+Missing telemetry fails closed and is reported by `--check`.
+
+Desktop infrastructure (compositor, Noctalia/qs, Xwayland, audio, Tern) is
+protected independently of agent descendants. Lowering to the inherited user
+floor100 is attempted and permission failures remain visible. Ordinary children
+receive their ancestor's prior score; this does not give all applications immunity.
+
+Under threat the guard chooses one positively identified harness tool/subagent or
+allowlisted batch-unit process with at least256MiB resident anonymous memory.
+Agent-slice membership alone, unknown applications, small processes, desktop
+programs and protected roots are ineligible. Batch work ranks first, then largest
+eligible anonymous resident size. A pidfd pins the process before fresh identity,
+ownership and policy checks; no numeric-PID signal fallback exists. SIGTERM gets
+2s, then at most one SIGKILL after fresh reclassification. A15s cooldown bounds
+new victims; disappearance, PID reuse or promotion to protection cancels escalation.
+Unavailable service-main discovery disables process signaling rather than guessing.
+No cgroup kill, new daemon, pressure allocation, hard-cap change or root privilege
+is required. Service/journal checks run in one bounded housekeeping thread, not
+on the urgent protection path.
+Before initial service discovery completes, the guard retains prior protection
+by PID and start identity. A delayed lookup cannot temporarily restore those
+processes to a more killable score.
+
+When no safe substantial victim exists (including missing pidfd/service discovery),
+one asynchronous request asks the existing delegated `session.slice/memory.reclaim`
+for256MiB with `swappiness=0`: file-cache reclaim only, no anonymous swapout.
+The target must be beneath this user's own `user@UID.service` and owned by the
+user. There is at most one reclaim request in flight and a15s start cooldown;
+the urgent loop never waits for kernel reclaim. Outcomes are logged, including
+permission failure, unsupported swappiness syntax and EAGAIN (partial/no reclaim).
+This is a fallback for the incident's protected session file cache, not a claim
+that protected processes must be killed when small workers cannot help.
+
+Runtime observation: `agent-oom-guard --once --dry-run` reports zone telemetry and
+the proposed relief action without scores/signals; `agent-oom-guard --check`
+reports telemetry and score/cgroup hazards, not a survival guarantee.
+`--once` without `--dry-run` is an intervention-capable operation.
+Install the guard together with its adjacent `agent_oom_policy.py` source closure
+and existing `agent-oom-guard.service`; no new service or privileged install is
+needed. Dry-run mode does not consume intervention cooldown. Global OOM remains
+possible if no safe victim or reclaimable cache exists, delegated reclaim fails,
+or relief is too late. No minimum reclaim success is asserted from a request alone.
+
 
 ### Journal retention
 

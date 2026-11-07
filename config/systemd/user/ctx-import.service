@@ -11,3 +11,5 @@ ExecStart=/home/kvn/.local/bin/ctx-import-hourly
 # (a full rebuild every ~5 min). Runs after any exit, including SIGKILL.
 ExecStopPost=/home/kvn/.local/bin/ctx --data-root /mnt/zer0models/host-offload/home_kvn_.ctx index mode manual
 TimeoutStartSec=50min
+# Durable run receipt (journal rotates within hours): ~/.local/state/memory-services/receipts.jsonl
+ExecStopPost=-%h/.local/bin/memory-unit-receipt ctx-import.service

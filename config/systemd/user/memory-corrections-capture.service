@@ -1,6 +1,8 @@
 [Unit]
 Description=Capture Kevin's new re-explain complaints as owner corrections (injected per prompt in every harness)
-OnFailure=service-watch-failure@%n.service
+# Failure watcher: the escaped OnFailure= lives in the service-watch drop-in (90-service-watch.conf).
+# An inline OnFailure=service-watch-failure@%n.service is NOT escaped (%I turns "-" into "/") and fired a
+# second, failing watcher (memory-services-20261027 step 0a).
 
 [Service]
 Type=oneshot
@@ -11,3 +13,5 @@ ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/memory
 Nice=19
 IOSchedulingClass=idle
 TimeoutStartSec=90min
+# Durable run receipt (journal rotates within hours): ~/.local/state/memory-services/receipts.jsonl
+ExecStopPost=-%h/.local/bin/memory-unit-receipt memory-corrections-capture.service /mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/capture-last-run.json
