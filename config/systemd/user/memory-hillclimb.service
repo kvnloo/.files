@@ -11,3 +11,5 @@ MemoryMax=1G
 TimeoutStartSec=900
 # Seed rotates daily so each run explores a different mutation path from the stored best.
 ExecStart=/bin/sh -c 'exec /usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/hillclimb.py --budget 120 --seed $(date +%%j)'
+# Reopened-failure ledger (heal fingerprints + owner re-explanations over time) -> REOPENED.md
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/reopened.py
