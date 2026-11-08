@@ -5,6 +5,8 @@ string items instead of dicts; it restarts every ~10 s and never pushes. This su
 reproduces that class and locks in tolerant parsing.
 """
 import importlib.machinery
+import os
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -45,6 +47,51 @@ class NoticeItemsParsing(unittest.TestCase):
 
     def test_null_payload(self):
         self.assertEqual(dp.notice_items(None), [])
+
+
+class PhoneIpResolution(unittest.TestCase):
+    """phone_ip() must never return a hard-coded tailnet address."""
+
+    def setUp(self):
+        self._saved_env = os.environ.pop("DASH_PHONE_IP", None)
+        self._saved_config = dp.PHONE_IP_CONFIG
+        self.tmp = Path(tempfile.mkdtemp(prefix="dash-push-test-"))
+        dp.PHONE_IP_CONFIG = self.tmp / "phone.env"
+
+    def tearDown(self):
+        if self._saved_env is None:
+            os.environ.pop("DASH_PHONE_IP", None)
+        else:
+            os.environ["DASH_PHONE_IP"] = self._saved_env
+        dp.PHONE_IP_CONFIG = self._saved_config
+
+    def test_phone_ip_from_env(self):
+        os.environ["DASH_PHONE_IP"] = "100.117.226.39"
+        self.assertEqual(dp.phone_ip(), "100.117.226.39")
+
+    def test_phone_ip_from_local_config(self):
+        dp.PHONE_IP_CONFIG.write_text("# local only, never in git\nPHONE_IP=100.117.226.39\n")
+        self.assertEqual(dp.phone_ip(), "100.117.226.39")
+
+    def test_phone_ip_config_strips_quotes(self):
+        dp.PHONE_IP_CONFIG.write_text('PHONE_IP=" 100.117.226.39 "\n')
+        self.assertEqual(dp.phone_ip(), "100.117.226.39")
+
+    def test_phone_ip_env_wins_over_config(self):
+        os.environ["DASH_PHONE_IP"] = "100.117.226.39"
+        dp.PHONE_IP_CONFIG.write_text("PHONE_IP=100.64.0.1\n")
+        self.assertEqual(dp.phone_ip(), "100.117.226.39")
+
+    def test_phone_ip_unset_fail_closed(self):
+        dp.PHONE_IP_CONFIG.write_text("# nothing configured\n")
+        self.assertEqual(dp.phone_ip(), "")
+        self.assertEqual(dp.phone_serial(), None)
+
+    def test_no_hard_coded_tailnet_address(self):
+        source = Path(dp.__file__).read_text()
+        self.assertNotIn("100.117.226.39", source)
+        self.assertNotIn('(owner 2026-11-03:', source)
+        self.assertNotIn('"notifications only happen if i open the app"', source.lower())
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dash push fallback (owner 2026-11-03: "notifications only happen if i open the app").
+"""Dash push fallback.
 
 Dash notices reach the phone only over a live WebSocket to dash-bridge (:4747). This watcher
 polls ~/.dash/notices.json; for each NEW notice it checks whether a Dash client socket is
@@ -12,14 +12,37 @@ getIntentSender for uid 2000), so the body says where to look. Dedupe: same titl
 30 min is dropped; at most 12 pushes per hour.
 State: state.json (seen ids, push log). Log: push.jsonl.
 """
-import json, subprocess, time, re, pathlib, datetime as dt
+import json, os, subprocess, time, re, pathlib, datetime as dt
 
 HERE = pathlib.Path(__file__).resolve().parent
 NOTICES = pathlib.Path.home() / ".dash/notices.json"
 STATE = HERE / "state.json"
 LOG = HERE / "push.jsonl"
-PHONE_IP = "100.117.226.39"          # S25 (SM-S938U) tailnet address
+PHONE_IP_ENV = "DASH_PHONE_IP"                    # env override
+PHONE_IP_CONFIG = pathlib.Path.home() / ".dash/phone.env"  # local config, outside git
 DEDUPE_S, HOURLY_MAX = 30 * 60, 12
+
+
+def phone_ip():
+    """S25 tailnet address: $DASH_PHONE_IP, else PHONE_IP=... in ~/.dash/phone.env.
+
+    Never hard-coded: the tailnet address is private and this repo is public.
+    Returns "" (fail closed) when nothing is configured.
+    """
+    ip = os.environ.get(PHONE_IP_ENV, "").strip()
+    if ip:
+        return ip
+    if PHONE_IP_CONFIG.exists():
+        for raw in PHONE_IP_CONFIG.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            if key.strip() == "PHONE_IP":
+                val = val.strip().strip('"').strip("'").strip()
+                if val:
+                    return val
+    return ""
 
 
 def log(**k):
@@ -42,15 +65,18 @@ def dash_connected():
 
 
 def phone_serial():
+    ip = phone_ip()
+    if not ip:
+        return None
     _, out = sh("adb", "devices")
     for ln in out.splitlines():
-        if ln.startswith(PHONE_IP + ":") and ln.endswith("\tdevice"):
+        if ln.startswith(ip + ":") and ln.endswith("\tdevice"):
             return ln.split("\t")[0]
     # wireless debugging port changes after reboots; mDNS discovery reconnects it
     _, out = sh("adb", "mdns", "services")
-    for m in re.finditer(rf"{re.escape(PHONE_IP)}:(\d+)", out):
-        sh("adb", "connect", f"{PHONE_IP}:{m.group(1)}")
-        return f"{PHONE_IP}:{m.group(1)}"
+    for m in re.finditer(rf"{re.escape(ip)}:(\d+)", out):
+        sh("adb", "connect", f"{ip}:{m.group(1)}")
+        return f"{ip}:{m.group(1)}"
     return None
 
 
