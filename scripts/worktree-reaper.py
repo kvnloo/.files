@@ -224,6 +224,31 @@ def symlink_references(home=None, extra_roots=None, out=None):
     return refs, errors
 
 
+def wrapper_references(bin_dirs=None):
+    """Paths named inside small text launchers (sh/python wrappers) that units and PATH execute."""
+    refs = collections.defaultdict(set)
+    for directory in bin_dirs or [Path.home() / '.local/bin']:
+        try:
+            entries = list(Path(directory).iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink() or not entry.is_file() or entry.stat().st_size > 65536:
+                    continue
+                data = entry.read_bytes()
+            except OSError:
+                continue
+            if b'\0' in data[:4096]:
+                continue  # binary
+            data = data.decode(errors='replace')
+            for token in ('${HOME}', '$HOME', '~'):
+                data = data.replace(token, str(Path.home()))
+            for m in PATH_PATTERN.finditer(data):
+                refs[os.path.realpath(m.group(0).rstrip('\\'))].add('wrapper-script:' + str(entry))
+    return refs
+
+
 def references(out=None):
     refs = collections.defaultdict(set)
     errors = []
@@ -238,6 +263,8 @@ def references(out=None):
     for target, reasons in HOOK_REFERENCES.items():
         refs[target].update(reasons)
     for target, reasons in active_guard_references().items():
+        refs[target].update(reasons)
+    for target, reasons in wrapper_references().items():
         refs[target].update(reasons)
     installed_refs, installed_errors = symlink_references(out=out)
     for target, reasons in installed_refs.items():

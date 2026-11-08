@@ -124,6 +124,20 @@ class ReaperBehavior(unittest.TestCase):
         self.assertEqual(len(refs[str(self.repo / 'missing-after-removal')]), 2)
         self.assertEqual(self.inspect(refs)['class'], 'LIVE')
 
+    def test_wrapper_script_contents_keep_checkout_live(self):
+        # 2026-11-07: a unit ran %h/.local/bin/z0bridge, a plain sh wrapper that
+        # exec'd a worktree file. Unit text and symlinks never named the worktree,
+        # so it was classified WIP and removed; the unit then crash-looped 12k/day.
+        self.age(self.repo)
+        bin_dir = self.base / 'home/.local/bin'
+        bin_dir.mkdir(parents=True)
+        (bin_dir / 'tool').write_text(f'#!/bin/sh\nexec bun {self.repo}/src/cli.ts "$@"\n')
+        (bin_dir / 'blob').write_bytes(b'\x7fELF\x00' + str(self.repo).encode())
+        refs = reaper.wrapper_references([bin_dir])
+        self.assertIn(str(self.repo / 'src/cli.ts'), refs)
+        self.assertEqual(self.inspect(refs)['class'], 'LIVE')
+        self.assertFalse(any('blob' in r for rs in refs.values() for r in rs))
+
     def test_installed_plugin_checkout_is_live_without_symlinks(self):
         home = self.base / 'home'
         plugins = home / '.omp/agent/extensions'
