@@ -103,14 +103,21 @@ class Host:
         con = sqlite3.connect(f'file:{os.path.realpath(expand(archive))}?mode=ro', uri=True, timeout=30)
         real = os.path.realpath(expand(hermes_home))
         try:
-            rows = con.execute("select file_path, max(started_at) from sessions where agent='hermes' "
-                               "and file_path like ? group by file_path", (real + '/profiles/%/state.db',)).fetchall()
+            # AgentsView keys Hermes sessions as '<profile>/state.db#<session-id>' (one row per session);
+            # strip the fragment so every profile's sessions group together.
+            rows = con.execute("select case when instr(file_path, '#') > 0 "
+                               "then substr(file_path, 1, instr(file_path, '#') - 1) else file_path end as db, "
+                               "max(started_at) from sessions where agent='hermes' and file_path like ? group by db",
+                               (real + '/profiles/%/state.db%',)).fetchall()
         finally:
             con.close()
         out = {}
         for path, started in rows:
-            out[Path(path).parent.name] = dt.datetime.fromisoformat(started[:26].rstrip('Z')).replace(
-                tzinfo=dt.timezone.utc).timestamp()
+            if not path.endswith('/state.db') or not started:
+                continue
+            ts = dt.datetime.fromisoformat(started[:26].rstrip('Z')).replace(tzinfo=dt.timezone.utc).timestamp()
+            name = Path(path).parent.name
+            out[name] = max(ts, out.get(name, 0))
         return out
 
     def mem_available_kib(self):
@@ -241,7 +248,7 @@ def check(spec, host: Host):
         receipt = json.loads(host.read(r['receipt']))
         at = dt.datetime.fromisoformat(receipt['at']).timestamp()
         if not receipt.get('pass') or (now - at) / 3600 > r['max_age_hours']:
-            unresolved = (receipt.get('sources') or {}).get('unresolved', [])
+            unresolved = (receipt.get('sources') or {}).get('unresolved') or []
             # Any source the recall check finds behind disk is an archive-sync problem: same remedy.
             lag = any('AgentsView' in u and 'behind disk' in u for u in unresolved)
             findings.append(Finding('recall_pass', 'recall-check', f"pass={receipt.get('pass')} unresolved={unresolved[:4]}",
@@ -279,6 +286,10 @@ def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
             host.systemctl('start', '--no-block', f.subject)
         return f'quarantined {len(moved)}: {moved[:5]}'
     if name == 'regenerate_agentsview':
+        # Restarting the daemon aborts a running sync (a full rebuild takes ~30 min); the
+        # finding persists, so the next run applies it once the sync has finished.
+        if host.unit('agentsview-sync.service').get('ActiveState') in ('active', 'activating'):
+            return 'deferred: agentsview sync running'
         path = expand(spec['agentsview']['config'])
         host.write(path, render_hermes_block(host.read(path), f.data['dirs']))
         host.systemctl('restart', 'agentsview.service')

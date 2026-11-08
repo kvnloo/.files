@@ -208,3 +208,29 @@ class DaemonRestartPolicy(unittest.TestCase):
             restart = [l.split('=', 1)[1].strip() for t in texts for l in t.splitlines() if l.startswith('Restart=')]
             self.assertTrue(restart, f'{unit}: no Restart= in tracked unit or drop-ins')
             self.assertEqual(restart[-1], 'always', f'{unit}: Restart={restart[-1]}')
+
+
+class RealArchiveNewest(unittest.TestCase):
+    """2026-11-08: AgentsView keys Hermes rows '<profile>/state.db#<session>'; the old
+    `like '%/state.db'` matched nothing, so every profile read as 56 years behind and sync was
+    re-triggered for all 18 profiles every run."""
+
+    def test_fragment_keyed_rows_group_per_profile(self):
+        import os, sqlite3, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / 'hh'
+            (home / 'profiles').mkdir(parents=True)
+            db = Path(d) / 'sessions.db'
+            con = sqlite3.connect(db)
+            con.execute('create table sessions (agent text, file_path text, started_at text)')
+            p = os.path.realpath(home) + '/profiles'
+            con.executemany('insert into sessions values (?,?,?)', [
+                ('hermes', f'{p}/clean/state.db#a', '2026-11-08T12:00:00.123456789Z'),
+                ('hermes', f'{p}/clean/state.db#b', '2026-11-08T13:00:00Z'),
+                ('hermes', f'{p}/ayo/state.db', '2026-11-07T10:00:00Z'),
+                ('claude', f'{p}/ayo/state.db#x', '2026-11-09T10:00:00Z'),
+            ])
+            con.commit(); con.close()
+            got = heal.Host().archive_newest(str(db), str(home))
+            self.assertEqual(set(got), {'clean', 'ayo'})
+            self.assertEqual(time.strftime('%H', time.gmtime(got['clean'])), '13')
