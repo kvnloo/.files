@@ -106,3 +106,6 @@ export PATH="$HOME/.empryo/bin:$PATH"
 
 # Added by Actual Computer installer
 export PATH="$HOME/.actual/bin:$PATH"
+
+# vllm-sr shell completion
+eval "$(vllm-sr completion show zsh)"
