@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""z0int-claude-marketplace — durable z0intelligence Claude marketplace.
+
+ensure  — (re)create plugins/marketplaces/z0intelligence in every Claude config dir
+          from a local seed mirror of git@github.com:kvnloo/z0intelligence.git,
+          then bookkeep known_marketplaces.json / installed_plugins.json.
+check   — run `claude plugin list` per config dir and fail loudly when any plugin
+          enabled in settings.json is missing or reports "failed to load".
+
+The 21-hour z0int capture gap (2026-11-07) was caused by exactly this: the
+marketplace clone was host state, existed only in ~/.claude, and nothing
+alerted when ~/.claude-sub2 / ~/.claude-ultra lost it. This script is the
+driver/kubelet-probe equivalent: wired into Claude config provisioning via
+.zfiles systemd units (config/systemd/user/z0int-claude-marketplace.{service,timer}).
+
+Env overrides:
+  Z0INT_CLAUDE_CONFIG_DIRS  colon-separated config dirs
+                            (default: $HOME/.claude:$HOME/.claude-sub2:$HOME/.claude-ultra)
+  Z0INT_MARKETPLACE_SEED    local bare mirror (default:
+                            $HOME/.z0int/seeds/z0intelligence.git)
+  Z0INT_MARKETPLACE_ORIGIN  upstream (default: git@github.com:kvnloo/z0intelligence.git)
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+MARKETPLACE = "z0intelligence"
+DEFAULT_ORIGIN = "git@github.com:kvnloo/z0intelligence.git"
+PLUGIN_IDS = ("z0intelligence@z0intelligence", "z0-obspack@z0intelligence")
+VERSION = "0.1.0"
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def config_dirs() -> list[Path]:
+    raw = os.environ.get("Z0INT_CLAUDE_CONFIG_DIRS") or ""
+    if raw:
+        return [Path(p).expanduser() for p in raw.split(":") if p]
+    home = Path.home()
+    return [home / ".claude", home / ".claude-sub2", home / ".claude-ultra"]
+
+
+def default_seed() -> Path:
+    return Path(os.environ.get("Z0INT_MARKETPLACE_SEED") or
+                "/mnt/zer0models/home-offload/kvn/.claude-marketplace-seed/z0intelligence.git")
+
+
+def origin() -> str:
+    return os.environ.get("Z0INT_MARKETPLACE_ORIGIN") or DEFAULT_ORIGIN
+
+
+def run(argv: list[str], timeout: int = 120, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def git_head(target: Path) -> str | None:
+    proc = run(["git", "-C", str(target), "rev-parse", "--verify", "HEAD"], timeout=30)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def marketplace_healthy(target: Path) -> bool:
+    if not (target / ".claude-plugin" / "marketplace.json").exists():
+        return False
+    return git_head(target) is not None
+
+
+def state_dir() -> Path:
+    return Path(os.environ.get("Z0INT_STATE_DIR") or str(Path.home() / ".z0int" / "state"))
+
+
+def write_state(name: str, obj: dict) -> None:
+    sd = state_dir()
+    sd.mkdir(parents=True, exist_ok=True)
+    (sd / name).write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+
+
+def prepare_seed(seed: Path, origin_url: str) -> str | None:
+    """Ensure the local seed mirror exists and is fresh. Returns error or None."""
+    seed.parent.mkdir(parents=True, exist_ok=True)
+    if not (seed / ".git").exists():
+        if seed.exists():
+            shutil.rmtree(seed)
+        proc = run(["git", "clone", "--mirror", "--quiet", origin_url, str(seed)], timeout=600)
+        if proc.returncode != 0:
+            return f"seed clone from {origin_url} failed: {proc.stderr.strip()[-500:]}"
+        return None
+    proc = run(["git", "-C", str(seed), "remote", "update", "--quiet", "origin"], timeout=300)
+    if proc.returncode != 0:
+        # Offline or upstream unreachable: the existing seed is still a valid source.
+        return None
+    return None
+
+
+def clone_from_seed(seed: Path, tmp: Path) -> str | None:
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    proc = run(["git", "clone", "--quiet", str(seed), str(tmp)], timeout=600)
+    if proc.returncode != 0:
+        return f"clone from seed failed: {proc.stderr.strip()[-500:]}"
+    return None
+
+
+def upsert_known_marketplaces(d: Path, target: Path, sha: str) -> None:
+    path = d / "plugins" / "known_marketplaces.json"
+    obj = {}
+    if path.exists():
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            obj = {}
+    obj[MARKETPLACE] = {
+        "source": {"source": "github", "repo": "kvnloo/z0intelligence"},
+        "installLocation": str(target),
+        "lastUpdated": now_iso(),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+
+
+def upsert_installed_plugins(d: Path, target: Path, sha: str) -> None:
+    path = d / "plugins" / "installed_plugins.json"
+    obj = {"version": 2, "plugins": {}}
+    if path.exists():
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            obj = {"version": 2, "plugins": {}}
+    plugins = obj.setdefault("plugins", {})
+    entry_base = {
+        "version": VERSION,
+        "installPath": str(d / "plugins" / "cache" / MARKETPLACE / "{plugin}" / VERSION),
+        "installedAt": now_iso(),
+        "lastUpdated": now_iso(),
+        "gitCommitSha": sha,
+    }
+    for plugin_id in PLUGIN_IDS:
+        plugin = plugin_id.split("@")[0]
+        if plugins.get(plugin_id):
+            continue
+        entry = dict(entry_base)
+        entry["scope"] = "user"
+        entry["installPath"] = entry["installPath"].format(plugin=plugin)
+        plugins[plugin_id] = [entry]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2) + "\n", encoding="utf-8")
+
+
+def cmd_ensure() -> int:
+    seed = default_seed()
+    origin_url = origin()
+    seed_err = prepare_seed(seed, origin_url)
+    if seed_err:
+        print(f"z0int-claude-marketplace ensure: FATAL seed unusable: {seed_err}", file=sys.stderr)
+        write_state("z0int-claude-marketplace-ensure.json",
+                    {"checked_at": now_iso(), "seed": str(seed), "all_ok": False,
+                     "error": f"seed: {seed_err}", "dirs": []})
+        return 1
+
+    results = []
+    for d in config_dirs():
+        d = d.expanduser()
+        target = d / "plugins" / "marketplaces" / MARKETPLACE
+        entry: dict = {"dir": str(d), "target": str(target)}
+        try:
+            if marketplace_healthy(target):
+                entry.update(action="healthy", sha=git_head(target), ok=True)
+            else:
+                if target.exists() or target.is_symlink():
+                    backup = Path(str(target) + f".broken-{int(time.time())}")
+                    shutil.move(str(target), str(backup))
+                    entry["backup"] = str(backup)
+                tmp = Path(str(target) + ".tmp")
+                err = clone_from_seed(seed, tmp)
+                if err:
+                    entry.update(action="failed", ok=False, error=err)
+                    results.append(entry)
+                    continue
+                os.replace(tmp, target)
+                sha = git_head(target)
+                upsert_known_marketplaces(d, target, sha)
+                upsert_installed_plugins(d, target, sha)
+                entry.update(action="recreated", sha=sha, ok=True)
+        except Exception as exc:  # noqa: BLE001 — one dir must not abort the others
+            entry.update(action="failed", ok=False, error=f"{type(exc).__name__}: {exc}")
+        results.append(entry)
+
+    all_ok = all(e["ok"] for e in results)
+    state = {"checked_at": now_iso(), "seed": str(seed), "all_ok": all_ok, "dirs": results}
+    write_state("z0int-claude-marketplace-ensure.json", state)
+    for e in results:
+        tag = "ok" if e["ok"] else "FAILED"
+        print(f"z0int-claude-marketplace ensure [{tag}] {e['dir']} -> {e.get('action','?')}"
+              + (f" sha={e.get('sha')}" if e.get("sha") else "")
+              + (f" error={e.get('error')}" if e.get("error") else ""), file=sys.stderr)
+    return 0 if all_ok else 1
+
+
+def parse_plugin_list(text: str) -> dict[str, dict]:
+    """Parse `claude plugin list` output into {plugin_id: {scope, status, error}}."""
+    plugins: dict[str, dict] = {}
+    current = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        m = re.match(r"^❯\s+(\S+)", line)
+        if m:
+            current = m.group(1)
+            plugins.setdefault(current, {"scope": set(), "status": None, "error": None})
+            continue
+        if current is None:
+            continue
+        m = re.match(r"^Scope:\s+(\S+)", line, re.I)
+        if m:
+            plugins[current]["scope"].add(m.group(1)); continue
+        m = re.match(r"^Status:\s+(\S+)(?:\s+(.*))?$", line, re.I)
+        if m:
+            plugins[current]["status"] = m.group(1)
+            if m.group(2):
+                plugins[current]["error"] = m.group(2); continue
+        m = re.match(r"^Error:\s+(.*)$", line, re.I)
+        if m:
+            plugins[current]["error"] = m.group(1)
+    return plugins
+
+
+def cmd_check() -> int:
+    results = []
+    for d in config_dirs():
+        d = d.expanduser()
+        entry: dict = {"dir": str(d), "failures": [], "ok": True}
+        settings = d / "settings.json"
+        enabled: list[str] = []
+        if settings.exists():
+            try:
+                cfg = json.loads(settings.read_text(encoding="utf-8"))
+                enabled = [pid for pid, on in (cfg.get("enabledPlugins") or {}).items() if on]
+            except (json.JSONDecodeError, OSError):
+                pass
+        # 1) marketplace-dir integrity (cheap, no CLI needed)
+        target = d / "plugins" / "marketplaces" / MARKETPLACE
+        if not marketplace_healthy(target):
+            entry["failures"].append(f"marketplace dir {target} missing or incomplete")
+            entry["ok"] = False
+        # 2) `claude plugin list` per config dir — only the plugins this
+        #    marketplace provides and that settings.json enables are in scope.
+        proc = run(["claude", "plugin", "list"], timeout=180,
+                   env={**os.environ, "CLAUDE_CONFIG_DIR": str(d)})
+        listed = parse_plugin_list(proc.stdout)
+        for pid in enabled:
+            if pid not in PLUGIN_IDS:
+                continue
+            info = listed.get(pid)
+            if info is None:
+                entry["failures"].append(f"enabled plugin {pid} not listed by `claude plugin list`")
+                entry["ok"] = False
+                continue
+            status = (info.get("status") or "").strip()
+            error = (info.get("error") or "").strip()
+            bad = any(token in (status + " " + error).lower()
+                      for token in ("failed", "not found", "cache-miss", "unavailable"))
+            if status != "✔" or bad:
+                entry["failures"].append(
+                    f"{pid} Status: {status} {error}".strip())
+                entry["ok"] = False
+        results.append(entry)
+
+    all_ok = all(e["ok"] for e in results)
+    state = {"checked_at": now_iso(), "all_ok": all_ok, "dirs": results}
+    write_state("z0int-claude-marketplace-health.json", state)
+
+    if all_ok:
+        print("z0int-claude-marketplace check: OK — all enabled plugins load in every config dir")
+        return 0
+    print("z0int-claude-marketplace check: FAILED — capture will silently stop", file=sys.stderr)
+    for e in results:
+        if not e["ok"]:
+            for f in e["failures"]:
+                print(f"  {e['dir']}: {f}", file=sys.stderr)
+    return 1
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] not in ("ensure", "check"):
+        print("usage: z0int-claude-marketplace ensure|check", file=sys.stderr)
+        return 2
+    if sys.argv[1] == "ensure":
+        return cmd_ensure()
+    return cmd_check()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
