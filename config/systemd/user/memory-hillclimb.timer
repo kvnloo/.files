@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily memory retrieval hill-climb
+
+[Timer]
+OnCalendar=*-*-* 05:40
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
