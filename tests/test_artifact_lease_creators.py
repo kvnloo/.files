@@ -1,6 +1,7 @@
 """Creator contract tests; all remote shell publication runs in temporary dirs."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -51,6 +52,22 @@ class CreatorTests(unittest.TestCase):
             self.assertEqual(json.loads(first)['path'], str(Path(directory).resolve()))
             subprocess.run(['sh', '-c', artifact_lease.shell_create(artifact_lease.shlex.quote(directory), 'other', 's25', 'other')], check=True)
             self.assertEqual(sidecar.read_bytes(), first)
+
+    def test_portable_shell_publishes_where_hard_links_are_denied(self):
+        # Android /data/local/tmp denies link(2); fall back to an exclusive create.
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as bin_dir:
+            fake = Path(bin_dir) / 'ln'
+            fake.write_text('#!/bin/sh\necho denied >&2\nexit 1\n')
+            fake.chmod(0o755)
+            env = {**os.environ, 'PATH': f"{bin_dir}:{os.environ['PATH']}"}
+            quoted = artifact_lease.shlex.quote(directory)
+            subprocess.run(['sh', '-c', artifact_lease.shell_create(quoted, 'job', 'tab', 'fleet-adb')], check=True, env=env)
+            sidecar = Path(directory) / '.artifact-lease.json'
+            first = sidecar.read_bytes()
+            self.assertEqual(json.loads(first)['owner'], 'job')
+            subprocess.run(['sh', '-c', artifact_lease.shell_create(quoted, 'other', 's25', 'other')], check=True, env=env)
+            self.assertEqual(sidecar.read_bytes(), first)
+            self.assertEqual(sorted(p.name for p in Path(directory).iterdir()), ['.artifact-lease.json'])
 
     def test_terminal_receipt_contains_actual_return_code(self):
         with tempfile.TemporaryDirectory() as directory:

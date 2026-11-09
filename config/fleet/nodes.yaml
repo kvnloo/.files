@@ -151,6 +151,28 @@ nodes:
       strikes: 2
       on_unhealthy: pause
     lane: {}
+  lenovo-tab:
+    # Lenovo Tab P11 Gen 2 (TB350FU), Android 14, native adb lane only (no guest).
+    # Scalefusion is Device Owner; it also runs the CAROL bike, so keep jobs off the UI.
+    role: worker
+    kind: phone
+    aliases: [tab]
+    transport: adb
+    tailnet_ip: 100.94.207.126   # Android Tailscale app; adb over the tailnet on :5555
+    arch: arm64
+    classes: [phone, test]
+    capabilities: [android-native, adb-host-lane]
+    taints: []
+    model: TB350FU
+    android:
+      adb_host: 100.94.207.126
+      serial: HVA5TTYB
+      revive: false
+    health:
+      min_battery_pct_on_battery: 2
+      strikes: 2
+      on_unhealthy: pause
+    lane: {}
   groot:
     role: server
     tailnet_ip: 100.113.138.100
