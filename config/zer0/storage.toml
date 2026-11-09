@@ -9,6 +9,10 @@ idle_cache_globs = [
   ".gradle/caches",
   ".elan/toolchains",
   ".actual/hermes/[0-9a-f]*",
+  ".local/share/flatpak",
+  ".local/lib/z0int-runtime",
+  # pip --user installs (torch/CUDA stacks) land on /; tier each idle package.
+  ".local/lib/python3.*/site-packages/*",
 ]
 # Hard floor: below this share of / free the owner is alerted (critical) and
 # ~/.local/state/zer0-storage-autotier/root-low.json exists; launchers gate
