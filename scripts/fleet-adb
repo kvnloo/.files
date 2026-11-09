@@ -20,13 +20,15 @@ from fleet_paths import runs_dir
 ROOT = "/data/local/tmp/fleet-jobs"
 TOOLBOX = "/data/local/tmp/fleet-bin"
 HARDWARE = {"s22": "RFCTA1RZAQY", "galaxy-s22plus": "RFCTA1RZAQY",
-            "localhost-0": "RFCTA1RZAQY", "s25": "R5CY93G2WNH", "omarchy-phone": "R5CY93G2WNH"}
+            "localhost-0": "RFCTA1RZAQY", "s25": "R5CY93G2WNH", "omarchy-phone": "R5CY93G2WNH",
+            "tab": "HVA5TTYB", "lenovo-tab": "HVA5TTYB"}
+SHORT = {"RFCTA1RZAQY": "s22", "R5CY93G2WNH": "s25", "HVA5TTYB": "tab"}
 
 
 class Device:
     def __init__(self, node):
         self.hardware = HARDWARE[node]
-        self.node = "s22" if self.hardware == HARDWARE["s22"] else "s25"
+        self.node = SHORT[self.hardware]
         self.adb = str(Path.home() / "android/sdk/platform-tools/adb")
         if not Path(self.adb).is_file():
             raise RuntimeError("native phone lane requires ~/android/sdk/platform-tools/adb")
@@ -149,15 +151,11 @@ class Device:
         cpus = self.shell("cat /sys/devices/system/cpu/online")
         ncpu = sum(int(b) - int(a) + 1 if sep else 1
                    for part in cpus.split(",") for a, sep, b in [part.partition("-")])
+        # Native jobs need no Omalauncher guest; report it, never gate or relaunch on it.
         running = self.guest_running()
-        recovery = None if running else self.restore_guest()
-        if not running:
-            running = self.guest_running()
         return {"ts": int(time.time()), "transport": "adb", "adb_serial": self.serial,
                 "hardware_serial": self.hardware, "online": True, "ncpu": ncpu,
-                "status": "ok" if running else "guest_down",
-                "android": {"omalauncher_fgs": running}, "guest_recovery": recovery,
-                **({} if running else {"error": "guest_down: Omalauncher LinuxService missing"}),
+                "status": "ok", "guest": "up" if running else "down",
                 "load1": float(load[0]), "load5": float(load[1]),
                 "power": {"source": "adb dumpsys battery", "on_ac": charging,
                           "batteries": [{"pct": pct, "status": "Charging" if charging else "Discharging"}],
