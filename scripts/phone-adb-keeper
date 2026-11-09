@@ -22,7 +22,10 @@ from pathlib import Path
 
 ADB = str(Path.home() / 'android/sdk/platform-tools/adb')
 PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1.31'],
-                  'ui_lock': Path.home() / 'tmp/s22-ui.lock'}}
+                  'ui_lock': Path.home() / 'tmp/s22-ui.lock'},
+          # CAROL bike's Lenovo Tab P11 Gen 2 (TB350FU); Tailscale app node lenovo-tab-p11-2nd-gen.
+          'carol-tablet': {'serial': 'HVA5TTYB', 'hosts': ['100.94.207.126', '192.168.1.65'],
+                           'ui_lock': Path.home() / 'tmp/carol-tablet-ui.lock'}}
 STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
 
 
