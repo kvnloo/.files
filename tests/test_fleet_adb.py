@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 ADB = runpy.run_path(str(SCRIPTS / "fleet-adb"))
 FLEET = runpy.run_path(str(SCRIPTS / "fleet"))
 Device = ADB["Device"]
+HARDWARE = ADB["HARDWARE"]
 
 
 class NativeLaneTests(unittest.TestCase):
@@ -177,7 +178,7 @@ class NativeLaneTests(unittest.TestCase):
             self.assertEqual(device.restore_guest(), "ui_busy")
         device.shell.assert_not_called()
 
-    def test_probe_reports_guest_down_without_hiding_native_availability(self):
+    def test_native_lane_stays_healthy_and_hands_off_when_guest_is_down(self):
         device = Device.__new__(Device)
         device.serial, device.hardware = "usb", "RFCTA1RZAQY"
         device.shell = mock.Mock(side_effect=["level: 50\nscale: 100",
@@ -185,9 +186,17 @@ class NativeLaneTests(unittest.TestCase):
         device.guest_running = mock.Mock(return_value=False)
         device.restore_guest = mock.Mock(return_value="owner_busy")
         facts = device.probe()
-        self.assertEqual(facts["status"], "guest_down")
+        # The adb lane needs no Omalauncher guest: report it, never fail on it,
+        # and never launch Omalauncher from a health tick.
+        self.assertEqual(facts["status"], "ok")
+        self.assertNotIn("error", facts)
+        self.assertEqual(facts["guest"], "down")
         self.assertTrue(facts["online"])
-        self.assertEqual(facts["guest_recovery"], "owner_busy")
+        device.restore_guest.assert_not_called()
+
+    def test_tablet_is_a_native_adb_node(self):
+        self.assertEqual(HARDWARE["lenovo-tab"], "HVA5TTYB")
+        self.assertEqual(HARDWARE["tab"], "HVA5TTYB")
 
     def test_native_source_push_uses_included_immutable_snapshot_and_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:

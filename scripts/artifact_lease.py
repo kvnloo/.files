@@ -59,7 +59,10 @@ def shell_create(path, owner, node, kind, keep_receipts=()):
             'case "$p" in *\'"\'*|*\'\\\'*|*"\n"*) exit 1;; esac; '
             't=$(mktemp .artifact-lease-XXXXXX) && '
             f'printf \'%s, "path": "%s"}}\\n\' {shlex.quote(encoded)} "$p" > "$t" && '
-            '{ ln "$t" .artifact-lease.json 2>/dev/null || [ -e .artifact-lease.json ]; }; '
+            # Android's /data/local/tmp denies link(2): fall back to an O_EXCL create.
+            '{ ln "$t" .artifact-lease.json 2>/dev/null '
+            '|| (set -C; cat "$t" > .artifact-lease.json) 2>/dev/null '
+            '|| [ -e .artifact-lease.json ]; }; '
             'rc=$?; rm -f "$t"; exit "$rc")')
 
 
