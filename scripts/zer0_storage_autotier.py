@@ -236,7 +236,7 @@ def on_home_device(path: Path) -> bool:
 
 def discover_root_candidates(used: set[str] | None = None) -> list[tuple[int, Path]]:
     """Idle, unused, unprotected bulk under ROOT_TIER_GLOBS, largest first."""
-    used = paths_in_use() if used is None else used
+    used = paths_in_use_deep() if used is None else used  # mapped .so files count as in use
     minimum = ROOT_MIN_MIB * 1024**2
     found: list[tuple[int, Path]] = []
     seen: set[Path] = set()
@@ -279,6 +279,77 @@ def top_space_users(home: Path | None = None, limit: int = TOP_USERS) -> list[tu
         if size.isdigit() and len(path.relative_to(root).parts) == 2:
             rows.append((int(size), path))
     return sorted(rows, reverse=True)[:limit]
+
+
+USAGE_DIR = STATE_DIR / "usage"
+USAGE_KEEP_DAYS = 14
+
+
+def usage_snapshot(home: Path | None = None, depth: int = 3) -> dict[str, int]:
+    """Bytes per directory under home down to depth (one du pass, same filesystem)."""
+    root = home or HOME
+    result = subprocess.run(["du", "-x", "-B1", f"--max-depth={depth}", str(root)],
+                            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False)
+    rows: dict[str, int] = {}
+    for line in result.stdout.splitlines():
+        size, _, raw = line.partition("\t")
+        if size.isdigit() and raw != str(root):
+            rows[raw] = int(size)
+    return rows
+
+
+def growth_report(current: dict[str, int], limit: int = TOP_USERS, today: date | None = None) -> str:
+    """Store today's snapshot (first one wins) and name the leaf dirs that grew most since the last earlier day."""
+    today = today or date.today()
+    USAGE_DIR.mkdir(parents=True, exist_ok=True)
+    todays = USAGE_DIR / f"{today:%Y-%m-%d}.json"
+    if not todays.exists():
+        todays.write_text(json.dumps(current))
+    snapshots = sorted(USAGE_DIR.glob("*.json"))
+    for old in snapshots[:-USAGE_KEEP_DAYS]:
+        old.unlink(missing_ok=True)
+    earlier = [path for path in snapshots if path.stem < f"{today:%Y-%m-%d}"]
+    if not earlier:
+        return "growth: no earlier snapshot yet (baseline recorded)"
+    before = json.loads(earlier[-1].read_text())
+    deltas = {path: size - before.get(path, 0) for path, size in current.items()}
+    # Report leaves: drop a dir when one of its children explains most of its growth.
+    leaves = [(d, p) for p, d in deltas.items() if d > 0 and not any(
+        child.startswith(p + os.sep) and cd >= 0.5 * d for child, cd in deltas.items())]
+    top = sorted(leaves, reverse=True)[:limit]
+    lines = [f"+{d / 1024**3:.1f} GiB  {p}" for d, p in top if d >= 256 * 1024**2]
+    return f"growth since {earlier[-1].stem}:\n" + ("\n".join(lines) or "nothing grew by >=0.25 GiB")
+
+
+def sweep_orphan_tier_backups(apply: bool) -> int:
+    """Quarantine leftover <path>.tier-backup-<pid> copies from a mover that died after switching the symlink.
+
+    Only when the original path is now a symlink (switch completed), the mover
+    pid is gone and nothing uses the copy. Verified move to quarantine, never rm.
+    """
+    used = paths_in_use_deep()
+    destination_root = SCRATCH_QUARANTINE / f"tier-orphans-{date.today():%Y-%m-%d}" / HOME.relative_to(HOME.anchor)
+    freed = 0
+    for pattern in ROOT_TIER_GLOBS:
+        for backup in sorted(HOME.glob(pattern + ".tier-backup-*")):
+            original = backup.with_name(backup.name.split(".tier-backup-")[0])
+            pid = backup.name.rsplit("-", 1)[-1]
+            if backup.is_symlink() or not original.is_symlink() or not on_home_device(backup):
+                continue
+            if (pid.isdigit() and Path(f"/proc/{pid}").exists()) or in_use(backup, used):
+                print(f"orphan skip live {backup}", flush=True)
+                continue
+            size = allocated_bytes(backup)
+            print(f"orphan {'quarantine' if apply else 'would quarantine'} {backup} bytes={size}", flush=True)
+            if not apply:
+                freed += size
+                continue
+            if _run_mover(True, [str(backup)], source_root=HOME, destination_root=destination_root) != 0:
+                print(f"orphan skip {backup}: mover refused or failed", flush=True)
+                continue
+            backup.unlink()  # compat link to a dead backup name has no consumers
+            freed += size
+    return freed
 
 
 PHONE_NOTIFY = HOME / ".local" / "bin" / "z0-phone-notify"
@@ -765,6 +836,7 @@ def tier_root(apply: bool) -> int:
     if projected < reserve:
         top = top_space_users()
         listing = "\n".join(f"{size / 1024**3:.1f} GiB  {path}" for size, path in top)
+        listing += "\n" + growth_report(usage_snapshot())
         print(f"CRITICAL: root reserve still short after tiering every safe idle candidate; top space users:\n{listing}")
         if apply:  # a dry run is a diagnostic; only the real run alerts the owner
             notify(f"Root disk low: {projected / 1024**3:.1f} GiB free (< {ROOT_RESERVE_GIB} GiB)", listing)
@@ -783,6 +855,7 @@ def main() -> int:
         return check_root_floor()
     codes = [tier_workspace(args.apply)]
     maybe_prune(args.apply)  # before the move phase, so moves only cover what pruning could not
+    sweep_orphan_tier_backups(args.apply)
     codes.append(tier_root(args.apply))
     ttl_scratch(args.apply)
     codes.append(enforce_root_floor(args.apply))

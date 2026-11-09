@@ -16,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location("zer0_storage_autotier", SCRIPT)
 assert SPEC and SPEC.loader
 autotier = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(autotier)
+REAL_SWEEP = autotier.sweep_orphan_tier_backups
 
 
 def test_managed_policy_adds_preserved_idle_caches(tmp_path):
@@ -47,6 +48,7 @@ def _no_real_prune(monkeypatch):
     monkeypatch.setattr(autotier, "VERSION_DIRS", ())
     monkeypatch.setattr(autotier, "prune_tool_caches", lambda apply: 0)
     monkeypatch.setattr(autotier, "prune_flatpak", lambda apply: 0)
+    monkeypatch.setattr(autotier, "sweep_orphan_tier_backups", lambda apply: 0)
     monkeypatch.setattr(autotier, "PRUNE_STAMP", Path("/nonexistent/zer0-autotier-test-stamp"))
 
 
@@ -90,6 +92,10 @@ def test_no_safe_candidate_is_visible_failure(monkeypatch, capsys):
     monkeypatch.setattr(autotier, "discover_root_candidates", lambda: [])
     monkeypatch.setattr(autotier, "reclaim_root_junk", lambda _apply: 0)
     monkeypatch.setattr(autotier, "top_space_users", lambda: [(9, Path("/home/kvn/zer0/oss"))])
+    monkeypatch.setattr(autotier, "growth_report", lambda current: "growth: stub")
+    monkeypatch.setattr(autotier, "usage_snapshot", lambda: {})
+    monkeypatch.setattr(autotier, "ttl_scratch", lambda apply: 0)  # main() must not read the real disk floor
+    monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: 0)
     monkeypatch.setattr(autotier, "notify", lambda title, body: notes.append((title, body)))
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--apply"])
     assert autotier.main() == 75
@@ -124,6 +130,8 @@ def test_workspace_ok_still_tiers_root_candidates(monkeypatch, capsys):
         lambda: [(22 * 1024**3, autotier.HOME / "tmp" / "scratch")],
     )
     monkeypatch.setattr(autotier.subprocess, "run", run)
+    monkeypatch.setattr(autotier, "ttl_scratch", lambda apply: 0)  # main() must not read the real disk floor
+    monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: 0)
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--apply"])
     assert autotier.main() == 0
     assert len(calls) == 1
@@ -362,6 +370,8 @@ def _root_harness(monkeypatch, free_gib, candidates, moved_ok=True):
     monkeypatch.setattr(autotier, "discover_root_candidates", lambda: candidates)
     monkeypatch.setattr(autotier, "_run_mover", run_mover)
     monkeypatch.setattr(autotier, "top_space_users", lambda: [(1, Path("/home/kvn/x"))])
+    monkeypatch.setattr(autotier, "usage_snapshot", lambda: {})
+    monkeypatch.setattr(autotier, "growth_report", lambda current: "growth: stub")
     monkeypatch.setattr(autotier, "notify", lambda title, body: notes.append((title, body)))
     return calls, notes
 
@@ -711,3 +721,71 @@ def test_scratch_ttl_dry_run_and_disabled_move_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(autotier, "SCRATCH_TTL_DAYS", 0.0)
     assert autotier.ttl_scratch(apply=True) == 0
     assert calls == []
+
+
+# --- growth attribution and orphaned mover backups -----------------------
+
+
+def test_growth_report_names_leaf_that_grew(monkeypatch, tmp_path):
+    from datetime import date as _date
+    monkeypatch.setattr(autotier, "USAGE_DIR", tmp_path / "usage")
+    base = {"/h/.local": 10 * GIB, "/h/.local/lib": 8 * GIB, "/h/.local/lib/python3.14": 0, "/h/.t3": 2 * GIB}
+    assert "baseline" in autotier.growth_report(base, today=_date(2026, 11, 7))
+    now = {"/h/.local": 19 * GIB, "/h/.local/lib": 17 * GIB, "/h/.local/lib/python3.14": 9 * GIB, "/h/.t3": 2 * GIB}
+    report = autotier.growth_report(now, today=_date(2026, 11, 9))
+    assert "since 2026-11-07" in report
+    assert "+9.0 GiB  /h/.local/lib/python3.14" in report
+    assert "/h/.local/lib\n" not in report + "\n" and "/h/.t3" not in report
+    assert (tmp_path / "usage" / "2026-11-09.json").exists()
+
+
+def test_sweep_quarantines_dead_mover_backup_only(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    share = home / ".local" / "share"
+    offload = tmp_path / "offload" / "flatpak"
+    offload.mkdir(parents=True)
+    share.mkdir(parents=True)
+    (share / "flatpak").symlink_to(offload)
+    dead = share / "flatpak.tier-backup-999999999"
+    dead.mkdir()
+    (dead / "blob").write_bytes(b"x" * 4096)
+    unswitched = share / "other.tier-backup-999999998"  # original is still a real dir: keep
+    unswitched.mkdir()
+    (share / "other").mkdir()
+    live = share / f"busy.tier-backup-{os.getpid()}"
+    live.mkdir()
+    (share / "busy").symlink_to(offload)
+    calls = []
+
+    def run_mover(apply, selected, source_root=None, destination_root=None):
+        calls.append(selected)
+        src = Path(selected[0])
+        shutil.rmtree(src)
+        src.symlink_to(tmp_path)
+        return 0
+
+    monkeypatch.setattr(autotier, "HOME", home)
+    monkeypatch.setattr(autotier, "ROOT_TIER_GLOBS", (".local/share/flatpak", ".local/share/other", ".local/share/busy"))
+    monkeypatch.setattr(autotier, "SCRATCH_QUARANTINE", tmp_path / "q")
+    monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: set())
+    monkeypatch.setattr(autotier, "allocated_bytes", lambda path: 4096)
+    monkeypatch.setattr(autotier, "_run_mover", run_mover)
+    assert REAL_SWEEP(False) == 4096 and not calls
+    assert REAL_SWEEP(True) == 4096
+    assert calls == [[str(dead)]]
+    assert not dead.exists() and not dead.is_symlink()
+    assert unswitched.is_dir() and live.is_dir()
+
+
+def test_discovery_treats_mapped_files_as_in_use(monkeypatch, tmp_path):
+    now = time.time()
+    home = tmp_path / "home"
+    pkg = _tree(home, ".local/lib/python3.14/site-packages/torch", 10, now)
+    monkeypatch.setattr(autotier, "HOME", home)
+    monkeypatch.setattr(autotier, "ROOT_TIER_GLOBS", (".local/lib/python3.*/site-packages/*",))
+    monkeypatch.setattr(autotier, "ROOT_MIN_MIB", 0)
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: True)  # ctime cannot be backdated
+    monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: {str(pkg / "lib.so")})
+    assert autotier.discover_root_candidates() == []
+    monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: set())
+    assert [p for _s, p in autotier.discover_root_candidates()] == [pkg]
