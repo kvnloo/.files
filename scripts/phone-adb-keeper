@@ -16,6 +16,9 @@ Diagnostics per receipt (uptime, adb_wifi_enabled, BSSID, tcp port) let the
 next drop be attributed: uptime reset = reboot, BSSID change = Wi-Fi roam,
 adb_wifi_enabled=0 with same uptime = Android turned wireless debugging off.
 If nothing reconnects, the receipt says `needs_owner_pairing`.
+DHCP moves the LAN IP (S22 went .31 -> .8), so every run learns wlan0's IPv4
+and the next run tries it; a USB-only transport also gets a :5555 Wi-Fi peer
+so unplugging the cable never drops the phone. `wireless` names that peer.
 """
 import fcntl, json, os, re, subprocess, sys, time
 from pathlib import Path
@@ -67,11 +70,32 @@ def mdns_endpoints(phone):
 
 def diagnostics(t):
     script = ('cut -d" " -f1 /proc/uptime; settings get global adb_wifi_enabled; getprop service.adb.tcp.port; '
-              'dumpsys wifi | grep -m1 -o "BSSID: [0-9a-f:]*"')
-    lines = (adb('-s', t, 'shell', script, timeout=20).stdout.splitlines() + [''] * 4)[:4]
+              'dumpsys wifi | grep -m1 -o "BSSID: [0-9a-f:]*"; ip -4 -o addr show wlan0')
+    out = adb('-s', t, 'shell', script, timeout=20).stdout
+    lines = (out.splitlines() + [''] * 4)[:4]
+    ip = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', out)
     return {'uptime_s': float(lines[0]) if re.fullmatch(r'[0-9.]+', lines[0].strip()) else None,
             'adb_wifi_enabled': lines[1].strip() or None, 'tcp_port': lines[2].strip() or None,
-            'bssid': lines[3].replace('BSSID:', '').strip() or None}
+            'bssid': lines[3].replace('BSSID:', '').strip() if lines[3].startswith('BSSID') else None, 'lan_ip': ip.group(1) if ip else None}
+
+
+def hosts(phone, learned=None):
+    """Fixed hosts plus the last LAN IP the phone reported, deduplicated, learned first."""
+    ip = (learned or {}).get('lan_ip')
+    return list(dict.fromkeys(([ip] if ip else []) + phone['hosts']))
+
+
+def is_wireless_5555(transport):
+    return re.fullmatch(r'\d+\.\d+\.\d+\.\d+:5555', transport or '') is not None
+
+
+def connect_5555(phone, host_list):
+    for h in host_list:
+        c = f'{h}:5555'
+        r = adb('connect', c, timeout=15)
+        if 'connected' in r.stdout and 'failed' not in r.stdout and serial_of(c) == phone['serial']:
+            return c
+    return None
 
 
 def attribute(previous, diag):
@@ -86,11 +110,12 @@ def attribute(previous, diag):
     return None
 
 
-def keep(name, phone):
+def keep(name, phone, learned=None):
     actions = []
+    host_list = hosts(phone, learned)
     t = live_transport(phone)
     if t is None:
-        candidates = [f'{h}:5555' for h in phone['hosts']] + mdns_endpoints(phone)
+        candidates = [f'{h}:5555' for h in host_list] + mdns_endpoints(phone)
         for c in candidates:
             r = adb('connect', c, timeout=15)
             actions.append({'connect': c, 'out': (r.stdout + r.stderr).strip()[:160]})
@@ -110,14 +135,20 @@ def keep(name, phone):
                 r = adb('-s', t, 'tcpip', '5555', timeout=20)
                 actions.append({'tcpip': (r.stdout + r.stderr).strip()[:160]})
                 time.sleep(3)
-                for h in phone['hosts']:
-                    adb('connect', f'{h}:5555', timeout=15)
+                diag = diagnostics(t) or diag
+    if diag:
+        host_list = hosts(phone, diag)
     for stale, state in transports().items():
-        if state == 'offline' and any(stale.startswith(h + ':') for h in phone['hosts']):
+        if state == 'offline' and any(stale.startswith(h + ':') for h in host_list):
             adb('disconnect', stale)
             actions.append({'disconnect_offline': stale})
     t = live_transport(phone) or t
-    return t, diag, actions
+    wireless = t if is_wireless_5555(t) else None
+    if t and not wireless and diag and diag.get('tcp_port') == '5555':
+        wireless = connect_5555(phone, host_list)
+        actions.append({'wireless_peer': wireless})
+        t = live_transport(phone) or t
+    return t, diag, actions, wireless
 
 
 def main():
@@ -127,11 +158,11 @@ def main():
     rc = 0
     for name, phone in PHONES.items():
         before = last.get(name, {})
-        t, diag, actions = keep(name, phone)
+        t, diag, actions, wireless = keep(name, phone, before.get('diag'))
         receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
                    'state': 'ok' if t else 'needs_owner_pairing', 'was': before.get('state'),
                    'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
-                   'diag': diag or before.get('diag'), 'actions': actions}
+                   'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
         if t is None:
             rc = 1
         if actions or receipt['state'] != before.get('state'):

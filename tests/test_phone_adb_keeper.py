@@ -24,5 +24,22 @@ class AttributeTests(unittest.TestCase):
         self.assertIsNone(keeper.attribute({}, self.base))
 
 
+class EndpointTests(unittest.TestCase):
+    phone = {'serial': 'X', 'hosts': ['100.72.191.23', '192.168.1.31']}
+
+    def test_learned_lan_ip_tried_first(self):
+        self.assertEqual(keeper.hosts(self.phone, {'lan_ip': '192.168.1.8'}),
+                         ['192.168.1.8', '100.72.191.23', '192.168.1.31'])
+
+    def test_no_learned_ip_keeps_fixed_hosts(self):
+        self.assertEqual(keeper.hosts(self.phone, None), self.phone['hosts'])
+        self.assertEqual(keeper.hosts(self.phone, {'lan_ip': '100.72.191.23'}), self.phone['hosts'])
+
+    def test_usb_and_tls_are_not_wireless_5555(self):
+        self.assertTrue(keeper.is_wireless_5555('192.168.1.8:5555'))
+        for t in ('RFCTA1RZAQY', '100.117.226.39:39419', 'adb-X-a._adb-tls-connect._tcp', None):
+            self.assertFalse(keeper.is_wireless_5555(t))
+
+
 if __name__ == '__main__':
     unittest.main()
