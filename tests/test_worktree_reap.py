@@ -53,7 +53,8 @@ class Reap(unittest.TestCase):
         self.out = self.tmp / "run"
 
     def run_reap(self, *extra):
-        env = dict(os.environ, HOME=str(self.tmp))   # no T3 worktrees under the fake home
+        env = dict(os.environ, HOME=str(self.tmp),   # no T3 worktrees under the fake home
+                   WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"))
         return subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out), *extra],
                               capture_output=True, text=True, env=env)
 
@@ -123,8 +124,107 @@ class Reap(unittest.TestCase):
         self.assertIn("OnCalendar=daily", t)
         s = (ROOT / "config/systemd/user/worktree-reap.service").read_text()
         self.assertIn("--apply", s)
-        self.assertNotIn("--force", SCRIPT.read_text().split('"""', 2)[2])
+        body = SCRIPT.read_text().split('"""', 2)[2]
+        # --force only in the tier-3 path, after the snapshot ref is verified
+        self.assertEqual(body.count('"--force"'), 1)
+        self.assertLess(body.index('snapshot(row, wt)'), body.index('"--force"'))
         self.assertNotIn('"-D"', SCRIPT.read_text())
+
+    def age(self, wt, days=5):
+        old = time.time() - days * 86400
+        for d, dirs, files in os.walk(wt):
+            dirs[:] = [x for x in dirs if x != ".git"]
+            for n in files + dirs:
+                os.utime(os.path.join(d, n), (old, old), follow_symlinks=False)
+        os.utime(wt, (old, old))
+
+    def add_idle(self, name, setup, days=5):
+        wt = self.tmp / name
+        stamp = f"@{int(time.time() - days * 86400)} +0000"
+        env = dict(os.environ, GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp)
+        g(self.repo, "worktree", "add", "-q", "-b", name, str(wt))
+        subprocess.run(["git", "-C", str(wt), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "--allow-empty", "-m", name], check=True, env=env)
+        setup(wt)
+        self.age(wt, days)
+        d = json.loads(self.net.read_text())
+        d["rows"].append({"repo": "repo", "commondir": self.cd, "branch": name, "head": g(wt, "rev-parse", "HEAD")[:12],
+                          "finished": [], "worktree": str(wt), "creator": "t3", "task": None})
+        self.net.write_text(json.dumps(d))
+        return wt
+
+    def snapshots(self):
+        return g(self.repo, "for-each-ref", "--format=%(refname)", "refs/reaped/").split()
+
+    def test_idle_worktree_without_proof_is_snapshotted_then_removed(self):
+        def work(wt):
+            (wt / "notes.md").write_text("unsaved idea")                  # untracked, not ignored
+            (wt / ".gitignore").write_text("node_modules/\n.env\n")
+            (wt / ".env").write_text("TOKEN=local")                        # ignored, not regenerable
+            (wt / "node_modules").mkdir(); (wt / "node_modules/big.js").write_text("x" * 1000)
+        wt = self.add_idle("idle-dirty", work)
+        r = self.run_reap("--apply")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(wt.exists())
+        self.assertIn("idle-dirty", self.branches())                    # branch kept
+        ref = [x for x in self.snapshots() if "idle-dirty" in x]
+        self.assertEqual(len(ref), 1)
+        self.assertEqual(g(self.repo, "show", f"{ref[0]}:notes.md"), "unsaved idea")
+        self.assertEqual(g(self.repo, "rev-parse", f"{ref[0]}^"), g(self.repo, "rev-parse", "idle-dirty"))
+        self.assertNotIn("node_modules", g(self.repo, "ls-tree", "-r", "--name-only", ref[0]))
+        rec = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
+        rec = [x for x in rec if x["branch"] == "idle-dirty"][0]
+        self.assertEqual(rec["action"], "idle"); self.assertTrue(rec["worktree_removed"])
+        names = subprocess.run(["tar", "-tzf", rec["ignored_archive"]], capture_output=True, text=True).stdout.split()
+        self.assertIn(".env", names)                                     # ignored file archived
+        self.assertFalse(any("node_modules" in n for n in names))         # deps not archived
+
+    def test_idle_detached_unpushed_commits_survive_in_snapshot(self):
+        def detach(wt):
+            stamp = f"@{int(time.time() - 5 * 86400)} +0000"
+            subprocess.run(["git", "-C", str(wt), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "--allow-empty", "-m", "only here"], check=True,
+                           env=dict(os.environ, GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp))
+            g(wt, "switch", "-q", "--detach")
+            g(self.repo, "branch", "-D", "idle-detached")
+        wt = self.add_idle("idle-detached", detach)
+        d = json.loads(self.net.read_text()); d["rows"][-1]["branch"] = ""
+        d["rows"][-1]["head"] = g(wt, "rev-parse", "HEAD")[:12]; self.net.write_text(json.dumps(d))
+        head = g(wt, "rev-parse", "HEAD")
+        self.run_reap("--apply")
+        self.assertFalse(wt.exists())
+        ref = [x for x in self.snapshots() if "idle-detached" in x]
+        self.assertEqual(g(self.repo, "rev-parse", f"{ref[0]}^"), head)
+
+    def test_recent_file_keeps_worktree(self):
+        wt = self.add_idle("idle-but-touched", lambda wt: None)
+        (wt / "today.txt").write_text("working")                        # written now
+        self.run_reap("--apply")
+        self.assertTrue((wt / "today.txt").exists())
+        self.assertEqual(self.snapshots(), [])
+
+    def test_big_untracked_file_keeps_worktree(self):
+        def big(wt):
+            with open(wt / "footage.mp4", "wb") as f:
+                f.truncate(51 << 20)
+        wt = self.add_idle("idle-big", big)
+        self.run_reap("--apply")
+        self.assertTrue((wt / "footage.mp4").exists())
+
+    def test_idle_dry_run_touches_nothing(self):
+        wt = self.add_idle("idle-dry", lambda wt: (wt / "x.txt").write_text("x"))
+        self.run_reap()
+        self.assertTrue((wt / "x.txt").exists())
+        self.assertEqual(self.snapshots(), [])
+
+    def test_in_use_idle_worktree_is_kept(self):
+        wt = self.add_idle("idle-in-use", lambda wt: None)
+        p = subprocess.Popen(["sleep", "60"], cwd=wt)
+        try:
+            self.run_reap("--apply")
+        finally:
+            p.kill()
+        self.assertTrue(wt.exists())
 
 
 if __name__ == "__main__":
