@@ -21,7 +21,14 @@ root_floor_pct = 10
 # Per-agent scratch TTL: idle >= 3 days -> verified move into
 # /mnt/zer0models/quarantine/scratch-ttl-<date>/ behind a symlink (never rm).
 scratch_ttl_days = 3
-scratch_globs = ["tmp/*"]
+# Temp dirs that land loose in $HOME when a run inherits TMPDIR=$HOME and is
+# killed before TemporaryDirectory/pytest can clean up (~20 GiB on 2026-11-10).
+scratch_globs = [
+  "tmp/*",
+  "pytest-of-*/pytest-[0-9]*",
+  "glide-launch-verify-*",
+  "hermes-pytest-basetemp-*",
+]
 scratch_keep_globs = [
   "tmp/z0-integ*",
   "tmp/z0-fix*",
