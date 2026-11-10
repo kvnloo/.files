@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart Hermes backends still running code from before the checkout moved
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hermes-skew-restart
