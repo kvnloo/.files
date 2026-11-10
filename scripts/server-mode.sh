@@ -6,6 +6,7 @@
 #   server-mode off          clear the flag; the desktop returns on the next login at the console (tty1/SDDM)
 #   server-mode status
 #   server-mode failsafe     check the root failsafe (SysRq, hardware watchdog, earlyoom, sshd/tailscaled protection)
+#   server-mode screen-off   stop SDDM and power the display off; Ctrl+Alt+Del at the keyboard shows the login again
 #
 # Kept running: every user service (linger is on), so Hermes, t3 serve, tern daemon, tailscale, agents, docker,
 # k3s and dev servers survive. Only GUI processes stop. Nothing is killed by pattern: units are stopped by name,
@@ -108,6 +109,7 @@ on() {
     systemctl --user stop "$s" && stopped+=("$s")
   done
   systemctl --user stop graphical-session.target >/dev/null 2>&1 || true
+  screen_off
   sleep 3
   local after; after=$(avail_mb)
   printf '{"at":"%s","action":"on","avail_before_mb":%s,"avail_after_mb":%s,"stopped":"%s"}\n' \
@@ -121,8 +123,16 @@ on() {
   fi
 }
 
+# Display off and SDDM stopped; Ctrl+Alt+Del at the keyboard brings the login back (ctrl-alt-del.target).
+screen_off() {
+  systemctl start server-mode-console-sleep.service \
+    && echo "screen off: press Ctrl+Alt+Del at the keyboard for the login screen" \
+    || echo "warning: screen not turned off; install the console units: $ROOT_FIX"
+}
+
 off() {
   rm -f "$ACTIVE"
+  systemctl start server-mode-console-wake.service 2>/dev/null || true
   printf '{"at":"%s","action":"off"}\n' "$(date -Is)" >> "$LOG"
   echo "server mode OFF. Log in at the console (tty1 or SDDM) to start Hyprland again; nothing else needs restoring."
 }
@@ -142,5 +152,6 @@ case "${1:-status}" in
   off) off ;;
   status) status ;;
   failsafe) failsafe ;;
-  *) echo "usage: server-mode audit|on [--yes]|off|status|failsafe" >&2; exit 2 ;;
+  screen-off) screen_off ;;
+  *) echo "usage: server-mode audit|on [--yes]|off|status|failsafe|screen-off" >&2; exit 2 ;;
 esac

@@ -9,6 +9,13 @@ for u in sshd tailscaled; do
   install -Dm644 "$src/systemd/system/$u.service.d/50-failsafe.conf" /etc/systemd/system/$u.service.d/50-failsafe.conf
 done
 install -Dm644 "$src/default/earlyoom" /etc/default/earlyoom
+# Console: display off in server mode, Ctrl+Alt+Del shows SDDM (instead of rebooting).
+install -Dm755 "$src/../../../scripts/server-mode-console.sh" /usr/local/libexec/server-mode-console
+for f in systemd/system/server-mode-console-sleep.service systemd/system/server-mode-console-wake.service \
+         systemd/system/ctrl-alt-del.target systemd/system.conf.d/51-ctrl-alt-del.conf; do
+  install -Dm644 "$src/$f" "/etc/$f"
+done
+install -Dm644 "$src/polkit-1/rules.d/50-server-mode-console.rules" /etc/polkit-1/rules.d/50-server-mode-console.rules
 sysctl -q -w kernel.sysrq=1
 systemctl daemon-reload
 systemctl daemon-reexec            # picks up RuntimeWatchdogSec
@@ -17,4 +24,5 @@ for u in sshd tailscaled; do       # live equivalents of the drop-in, no restart
   for p in $(systemctl show -p MainPID --value "$u.service"); do [[ $p -gt 0 ]] && choom -p "$p" -n -1000 >/dev/null; done
 done
 systemctl restart earlyoom
+echo "ctrl-alt-del=$(systemctl show -p Id --value ctrl-alt-del.target) burst=$(systemctl show -p CtrlAltDelBurstAction --value)"
 echo "sysrq=$(sysctl -n kernel.sysrq) watchdog=$(systemctl show -p RuntimeWatchdogUSec --value) earlyoom=$(systemctl is-active earlyoom)"

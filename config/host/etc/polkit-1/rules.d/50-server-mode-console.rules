@@ -1,0 +1,7 @@
+// Let kvn run server-mode's console sleep/wake (from SSH, no password); nothing else.
+polkit.addRule(function(action, subject) {
+  if (action.id == "org.freedesktop.systemd1.manage-units" && subject.user == "kvn" &&
+      action.lookup("verb") == "start" &&
+      ["server-mode-console-sleep.service", "server-mode-console-wake.service"].indexOf(action.lookup("unit")) >= 0)
+    return polkit.Result.YES;
+});

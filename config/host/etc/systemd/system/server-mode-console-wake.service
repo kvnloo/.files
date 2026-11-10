@@ -1,0 +1,6 @@
+[Unit]
+Description=server-mode: power the display on and show the login screen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/server-mode-console wake

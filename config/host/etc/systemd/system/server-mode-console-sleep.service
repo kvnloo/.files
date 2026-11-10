@@ -1,0 +1,7 @@
+[Unit]
+Description=server-mode: stop the login screen and power the display off
+After=sddm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/server-mode-console sleep

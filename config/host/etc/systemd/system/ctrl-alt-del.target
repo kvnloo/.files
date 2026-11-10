@@ -1,0 +1,5 @@
+# Replaces the stock alias to reboot.target: on a text console (server mode) Ctrl+Alt+Del wakes the display and
+# shows SDDM instead of rebooting. Under Hyprland/SDDM the compositor owns the keys, so this only fires headless.
+[Unit]
+Description=Ctrl+Alt+Del: show the login screen
+Wants=server-mode-console-wake.service
