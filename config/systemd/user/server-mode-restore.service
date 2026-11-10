@@ -1,0 +1,12 @@
+[Unit]
+Description=server-mode: keep the display off after a reboot while server mode is on
+ConditionPathExists=%h/.local/state/server-mode/active
+
+[Service]
+Type=oneshot
+# SDDM starts its greeter during boot; wait for it so it can't reappear after the screen goes off.
+ExecStartPre=/bin/sh -c 'for i in $(seq 60); do systemctl is-active -q sddm && exit 0; sleep 1; done'
+ExecStart=%h/.local/bin/server-mode screen-off
+
+[Install]
+WantedBy=default.target

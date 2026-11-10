@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# server-mode: run groot headless while the owner drives all work from the phone (t3os-style "personal server").
+# server-mode: run groot as a personal server driven from the phone, with the display off.
 #
 #   server-mode audit        memory by unit/scope, GUI vs headless, no changes
-#   server-mode on [--yes]   stop the graphical session (Hyprland + every app it launched) and leftover GUI app scopes
-#   server-mode off          clear the flag; the desktop returns on the next login at the console (tty1/SDDM)
+#   server-mode on [--yes]   stop Hyprland (the graphical session) and turn the display off. Survives reboots until `off`.
+#   server-mode off          display back on at the SDDM login; logging in starts Hyprland again
 #   server-mode status
 #   server-mode failsafe     check the root failsafe (SysRq, hardware watchdog, earlyoom, sshd/tailscaled protection)
-#   server-mode screen-off   stop SDDM and power the display off; Ctrl+Alt+Del at the keyboard shows the login again
+#   server-mode screen-off   just the display part of `on`, without setting the flag
 #
-# Kept running: every user service (linger is on), so Hermes, t3 serve, tern daemon, tailscale, agents, docker,
-# k3s and dev servers survive. Only GUI processes stop. Nothing is killed by pattern: units are stopped by name,
-# leftover processes only by PID after checking they belong to a GUI unit.
+# Only the Hyprland unit (and what dies with the compositor) stops. Other app scopes and every user service keep
+# running (linger is on): Hermes, t3 serve, tern daemon, tailscale, agents, docker, k3s, dev servers. SDDM is then
+# stopped and the panel powered down on an empty VT; only Ctrl+Alt+Del at the keyboard (ctrl-alt-del.target)
+# brings the login screen back, other keys leave it dark.
 set -u
 STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/server-mode
 ACTIVE=$STATE_DIR/active
 LOG=$STATE_DIR/log.jsonl
-GUI_UNIT=wayland-wm@hyprland.desktop.service
+GUI_UNIT=${SERVER_MODE_GUI_UNIT:-wayland-wm@hyprland.desktop.service}
 mkdir -p "$STATE_DIR"
 
 ROOT_FIX="sudo $(cd "$(dirname "$(readlink -f "$0")")" && pwd)/server-mode-failsafe-root.sh"
@@ -82,67 +83,60 @@ print(f"\nGUI-attributable: {tot_gui//1024} MB of {tot//1024} MB resident+swap (
 PY
 }
 
-gui_scopes() {
-  systemctl --user list-units --type=scope --state=running --no-legend --plain 2>/dev/null \
-    | awk '{print $1}' | grep -E '^app-.*\.scope$' | grep -v -E '^app-(tmux|ssh)' || true
+# Display off on an empty VT with SDDM stopped; Ctrl+Alt+Del at the keyboard brings the login back.
+screen_off() {
+  systemctl start server-mode-console-sleep.service \
+    && echo "screen off: Ctrl+Alt+Del at the keyboard shows the login screen" \
+    || echo "warning: screen not turned off; install the console units: $ROOT_FIX"
+}
+
+# Re-applies screen_off after a reboot while the flag is set (user unit; linger starts it at boot).
+RESTORE_UNIT=server-mode-restore.service
+ensure_restore_unit() {
+  local src; src=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)/config/systemd/user/$RESTORE_UNIT
+  systemctl --user is-enabled --quiet "$RESTORE_UNIT" 2>/dev/null && return
+  systemctl --user link "$src" >/dev/null && systemctl --user enable "$RESTORE_UNIT" >/dev/null 2>&1
 }
 
 on() {
-  local yes=${1:-}
   local before; before=$(avail_mb)
-  if [[ $yes != --yes ]]; then
-    echo "This stops Hyprland and every GUI app (Chrome, the tern window, Xwayland, KDE Connect, clipboard watcher)."
-    echo "Unsaved work in GUI apps is lost. Re-run with --yes to proceed."; return 2
+  if systemctl --user is-active --quiet "$GUI_UNIT" && [[ ${1:-} != --yes ]]; then
+    echo "This stops Hyprland; windows that need the compositor (browser, tern window) close. Re-run with --yes."
+    return 2
   fi
   if [[ $(loginctl show-user "$USER" -p Linger --value 2>/dev/null) != yes ]]; then
     echo "refusing: linger is off, so stopping the last session could stop user services (Hermes, t3)"; return 1
   fi
   remote_ok || return 1
-  failsafe || echo "warning: root failsafe incomplete; continuing (server mode itself frees RAM)"
+  failsafe || echo "warning: root failsafe incomplete; continuing"
   printf '%s\n' "$(date -Is)" > "$ACTIVE"
-  local stopped=()
+  ensure_restore_unit
+  local stopped=""
   if systemctl --user is-active --quiet "$GUI_UNIT"; then
-    systemctl --user stop "$GUI_UNIT" && stopped+=("$GUI_UNIT")
+    systemctl --user stop "$GUI_UNIT" && stopped=$GUI_UNIT
   fi
-  local s
-  for s in $(gui_scopes); do
-    systemctl --user stop "$s" && stopped+=("$s")
-  done
   systemctl --user stop graphical-session.target >/dev/null 2>&1 || true
   screen_off
   sleep 3
-  local after; after=$(avail_mb)
   printf '{"at":"%s","action":"on","avail_before_mb":%s,"avail_after_mb":%s,"stopped":"%s"}\n' \
-    "$(date -Is)" "$before" "$after" "${stopped[*]:-}" >> "$LOG"
-  echo "server mode ON: stopped ${#stopped[@]} unit(s); MemAvailable ${before} -> ${after} MB"
-  echo "way back in: ssh $USER@$(tailscale ip -4 2>/dev/null | head -1) | console Ctrl+Alt+F2 | frozen: Alt+SysRq+F, then R-E-I-S-U-B"
-  # Processes started from the desktop inherit its private D-Bus (/tmp/dbus-*), which is now gone: keyring, bws
-  # bootstrap and gh auth then fail inside them. Point new shells at the user bus; restart such services when idle.
+    "$(date -Is)" "$before" "$(avail_mb)" "$stopped" >> "$LOG"
+  echo "MemAvailable ${before} -> $(avail_mb) MB${stopped:+; stopped $stopped}"
   if [[ ${DBUS_SESSION_BUS_ADDRESS:-} == *"/tmp/dbus-"* ]]; then
     echo "note: this shell used the desktop D-Bus; run: export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus"
   fi
-}
-
-# Display off and SDDM stopped; Ctrl+Alt+Del at the keyboard brings the login back (ctrl-alt-del.target).
-screen_off() {
-  systemctl start server-mode-console-sleep.service \
-    && echo "screen off: press Ctrl+Alt+Del at the keyboard for the login screen" \
-    || echo "warning: screen not turned off; install the console units: $ROOT_FIX"
+  echo "server mode ON. Way back in: ssh $USER@$(tailscale ip -4 2>/dev/null | head -1) | Ctrl+Alt+Del at the keyboard"
 }
 
 off() {
   rm -f "$ACTIVE"
-  systemctl start server-mode-console-wake.service 2>/dev/null || true
+  systemctl start server-mode-console-wake.service
   printf '{"at":"%s","action":"off"}\n' "$(date -Is)" >> "$LOG"
-  echo "server mode OFF. Log in at the console (tty1 or SDDM) to start Hyprland again; nothing else needs restoring."
+  echo "server mode OFF: SDDM login on screen; logging in starts Hyprland."
 }
 
 status() {
-  if [[ -e $ACTIVE && $(date -d "$(cat "$ACTIVE")" +%s) -lt $(date -d "$(uptime -s)" +%s) ]]; then
-    echo "server mode: stale flag from before the last boot ($(cat "$ACTIVE")); clearing"; rm -f "$ACTIVE"
-  fi
   if [[ -e $ACTIVE ]]; then echo "server mode: ON since $(cat "$ACTIVE")"; else echo "server mode: off"; fi
-  systemctl --user is-active --quiet "$GUI_UNIT" && echo "graphical session: running" || echo "graphical session: stopped"
+  systemctl --user is-active --quiet "$GUI_UNIT" && echo "graphical session: running" || echo "graphical session: not started"
   echo "MemAvailable: $(avail_mb) MB"
 }
 
