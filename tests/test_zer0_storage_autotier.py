@@ -85,7 +85,7 @@ def _healthy():
     return _critical(free_bytes=50 * 1024**3, free_inode_ratio=0.5, bytes_ok=True, inodes_ok=True)
 
 
-def test_no_safe_candidate_is_visible_failure(monkeypatch, capsys):
+def test_no_safe_candidate_is_quiet_success(monkeypatch, capsys):
     notes = []
     monkeypatch.setattr(autotier, "capacity", lambda *_args, **_kwargs: _critical())
     monkeypatch.setattr(autotier, "discover", lambda: [])
@@ -98,11 +98,11 @@ def test_no_safe_candidate_is_visible_failure(monkeypatch, capsys):
     monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: 0)
     monkeypatch.setattr(autotier, "notify", lambda title, body: notes.append((title, body)))
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--apply"])
-    assert autotier.main() == 75
+    assert autotier.main() == 0  # owner rule: a reserve shortfall never fails the unit
     output = capsys.readouterr().out
-    assert "dispatcher must remain frozen" in output
-    assert "root reserve still short" in output
-    assert notes and "/home/kvn/zer0/oss" in notes[0][1]
+    assert "workspace reserve short" in output
+    assert "root reserve short" in output and "/home/kvn/zer0/oss" in output
+    assert not notes  # and never alerts the owner
 
 
 def test_workspace_ok_still_tiers_root_candidates(monkeypatch, capsys):
@@ -405,17 +405,17 @@ def test_tier_root_skips_failed_move_and_existing_destination(monkeypatch, tmp_p
     candidates = [(30 * GIB, taken), (2 * GIB, home / "tmp" / "b")]
     calls, notes = _root_harness(monkeypatch, 15, candidates, moved_ok=False)
     (autotier.offload_destination() / "tmp" / "taken").mkdir(parents=True)
-    assert autotier.tier_root(apply=True) == 75
+    assert autotier.tier_root(apply=True) == 0
     assert [selected for _apply, selected, _dest in calls] == [[str(home / "tmp" / "b")]]
-    assert notes
+    assert not notes
 
 
-def test_tier_root_short_notifies_top_space_users(monkeypatch, tmp_path, capsys):
+def test_tier_root_short_logs_top_space_users_without_alert(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(autotier, "ROOT_OFFLOAD", tmp_path / "offload")
     calls, notes = _root_harness(monkeypatch, 15, [])
-    assert autotier.tier_root(apply=True) == 75
-    assert "CRITICAL" in capsys.readouterr().out
-    assert len(notes) == 1 and "/home/kvn/x" in notes[0][1]
+    assert autotier.tier_root(apply=True) == 0
+    assert "/home/kvn/x" in capsys.readouterr().out
+    assert not notes
 
 
 def test_top_space_users_lists_five_largest_second_level_dirs(monkeypatch, tmp_path):
@@ -431,8 +431,8 @@ def test_top_space_users_lists_five_largest_second_level_dirs(monkeypatch, tmp_p
 def test_tier_root_dry_run_short_reports_but_does_not_notify(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(autotier, "ROOT_OFFLOAD", tmp_path / "offload")
     calls, notes = _root_harness(monkeypatch, 15, [(1 * GIB, autotier.HOME / "tmp" / "a")])
-    assert autotier.tier_root(apply=False) == 75
-    assert "CRITICAL" in capsys.readouterr().out
+    assert autotier.tier_root(apply=False) == 0
+    assert "root reserve short" in capsys.readouterr().out
     assert not notes
 
 
@@ -653,12 +653,12 @@ def _floor(monkeypatch, tmp_path, pct):
     return notes
 
 
-def test_floor_breach_flags_and_alerts_critical(monkeypatch, tmp_path):
+def test_floor_breach_flags_launchers_without_failing_or_alerting(monkeypatch, tmp_path):
     notes = _floor(monkeypatch, tmp_path, 4.0)
-    assert autotier.enforce_root_floor(apply=True) == 75
+    assert autotier.enforce_root_floor(apply=True) == 0
     assert (tmp_path / "state" / "root-low.json").exists()
-    assert notes and notes[0][1] is True
-    assert autotier.check_root_floor() == 75
+    assert not notes
+    assert autotier.check_root_floor() == 75  # launcher admission still refuses heavy work
 
 
 def test_floor_ok_clears_flag(monkeypatch, tmp_path):
@@ -668,12 +668,12 @@ def test_floor_ok_clears_flag(monkeypatch, tmp_path):
     assert autotier.enforce_root_floor(apply=True) == 0
     assert not (tmp_path / "state" / "root-low.json").exists()
     assert autotier.check_root_floor() == 0
-    assert len(notes) == 1
+    assert not notes
 
 
 def test_floor_dry_run_writes_nothing(monkeypatch, tmp_path):
     notes = _floor(monkeypatch, tmp_path, 4.0)
-    assert autotier.enforce_root_floor(apply=False) == 75
+    assert autotier.enforce_root_floor(apply=False) == 0
     assert not (tmp_path / "state").exists() and not notes
 
 

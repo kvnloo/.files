@@ -405,17 +405,15 @@ def enforce_root_floor(apply: bool) -> int:
     low = pct < ROOT_FLOOR_PCT
     print(f"root floor free_pct={pct:.1f} floor_pct={ROOT_FLOOR_PCT} low={low}", flush=True)
     if not apply:
-        return 75 if low else 0
+        return 0
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     if not low:
         flag.unlink(missing_ok=True)
         return 0
     flag.write_text(json.dumps({"ts": time.time(), "free_bytes": free, "free_pct": round(pct, 2),
                                 "floor_pct": ROOT_FLOOR_PCT}) + "\n")
-    top = top_space_users()
-    listing = "\n".join(f"{size / 1024**3:.1f} GiB  {path}" for size, path in top)
-    notify(f"Root disk CRITICAL: {pct:.1f}% free (< {ROOT_FLOOR_PCT:g}%); heavy work should refuse", listing, critical=True)
-    return 75
+    # Owner rule: a shortfall only flags launchers (root-low.json / --check); it never fails the unit or alerts.
+    return 0
 
 
 def check_root_floor() -> int:
@@ -794,8 +792,8 @@ def tier_workspace(apply: bool) -> int:
         return 0
     candidates = discover()
     if not candidates:
-        print("CRITICAL: reserve breached with no safe bulk candidates; dispatcher must remain frozen; worktrees require reviewed migration")
-        return 75
+        print("workspace reserve short; no safe bulk candidates (informational, not a failure)")
+        return 0
     selected, projected = _select_until(free, reserve, candidates)
     print(f"workspace free={free}; selected={selected}; projected={projected}", flush=True)
     return _run_mover(apply, selected, source_root=ROOT)
@@ -837,10 +835,7 @@ def tier_root(apply: bool) -> int:
         top = top_space_users()
         listing = "\n".join(f"{size / 1024**3:.1f} GiB  {path}" for size, path in top)
         listing += "\n" + growth_report(usage_snapshot())
-        print(f"CRITICAL: root reserve still short after tiering every safe idle candidate; top space users:\n{listing}")
-        if apply:  # a dry run is a diagnostic; only the real run alerts the owner
-            notify(f"Root disk low: {projected / 1024**3:.1f} GiB free (< {ROOT_RESERVE_GIB} GiB)", listing)
-        return 75
+        print(f"root reserve short after tiering every safe idle candidate (informational, not a failure); top space users:\n{listing}")
     return 0
 
 
@@ -859,8 +854,6 @@ def main() -> int:
     codes.append(tier_root(args.apply))
     ttl_scratch(args.apply)
     codes.append(enforce_root_floor(args.apply))
-    if 75 in codes:
-        return 75
     return next((code for code in codes if code), 0)
 
 
