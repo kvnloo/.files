@@ -9,20 +9,28 @@ Deletes only:
   tier 2  a worktree whose branch is merged elsewhere, or whose creating task is done and which
           has no commit missing from every remote -> `git worktree remove` (no --force: git
           refuses dirty or untracked trees), then `git branch -d`
-Every item is re-checked live (head unchanged, clean, no process inside, not locked) and gets
-one receipt line. Anything else is kept and never touched; nothing is forced.
+  tier 3  any worktree idle for --idle-days (no file written, no commit, no process inside), with or
+          without proof (Kevin: finished worktrees must not pile up). First every non-ignored change,
+          tracked or untracked, is committed to refs/reaped/<name> (parent HEAD; KB, nothing lost;
+          the branch is kept), and only after that ref is verified is the tree removed with
+          `worktree remove --force`. It keeps trees holding an untracked, non-ignored file over 50 MB.
+Every item is re-checked live (head unchanged, no process inside, not locked) and gets one
+receipt line. Anything else is kept and never touched.
 """
-import argparse, json, os, subprocess, time
+import argparse, json, os, re, subprocess, tempfile, time
 from pathlib import Path
 
 NETWORK = Path("/mnt/zer0models/workspace/zer0/data/operations/network-model/work/branches.json")
 RUNS = Path("/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/runs")
 T3 = Path.home() / ".t3/worktrees"
 MERGED = ("ancestor:", "tree:", "patch:", "pr:")
+IDLE_DAYS = 3.0
+BIG = 50 << 20
+PRUNE = (".git", "node_modules", ".venv", "venv", "target", "dist", "build", ".next", "__pycache__")
 
 
-def git(cd, *a, timeout=120):
-    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True, timeout=timeout)
+def git(cd, *a, timeout=120, env=None):
+    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True, timeout=timeout, env=env)
 
 
 def merged_proof(proofs):
@@ -63,7 +71,7 @@ def t3_rows(root=T3):
     return rows
 
 
-def decide(row, check):
+def decide(row, check, idle_days=IDLE_DAYS):
     """Return (action, reason). check() supplies live facts; pure so tests can drive it."""
     proofs = row.get("finished") or []
     merged = merged_proof(proofs)
@@ -72,30 +80,40 @@ def decide(row, check):
     if live["head"] is None or not live["head"].startswith(row["head"]):
         return "keep", "head moved or branch gone since the proof"
     if not row.get("worktree"):
-        return ("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged else ("keep", "no merged proof")
-    if not (merged or done):
-        return "keep", "no proof"
+        return (("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged
+                else ("keep", "no merged proof"))
     if live["linked"]:
         return "keep", "path reached through a symlink (git would empty the target)"
-    if live["outside"]:
-        return "keep", "real path outside the repo's parent tree"
     if live["main"]:
         return "keep", "main checkout of the repo"
-    if live["dirty"]:
-        return "keep", "dirty worktree"
     if live["locked"]:
         return "keep", "worktree locked"
     if live["pid"]:
         return "keep", f"in use by pid {live['pid']}"
-    if not merged and live["unpushed"]:
-        return "keep", f"{live['unpushed']} commit(s) on no remote"
-    return "worktree", "tier2 " + ",".join(merged or [p for p in proofs if p.startswith("task_done:")]) + " + clean tree"
+    why = None
+    if not (merged or done):
+        why = "no proof"
+    elif live["outside"]:
+        why = "real path outside the repo's parent tree"
+    elif live["dirty"]:
+        why = "dirty worktree"
+    elif not merged and live["unpushed"]:
+        why = f"{live['unpushed']} commit(s) on no remote"
+    if why is None:
+        return "worktree", "tier2 " + ",".join(merged or [p for p in proofs if p.startswith("task_done:")]) + " + clean tree"
+    idle = live["idle"]() if callable(live.get("idle")) else live.get("idle")
+    if idle is None or not live.get("registered"):
+        return "keep", why
+    if idle < idle_days:
+        return "keep", f"{why}; active {idle:.1f} d ago"
+    return "idle", f"tier3 idle {idle:.1f} d ({why}); snapshot to refs/reaped"
 
 
 def live_check(row):
     cd = row["commondir"]
-    head = git(cd, "rev-parse", "--verify", "-q", f"refs/heads/{row['branch']}").stdout.strip() or None
     wt = row.get("worktree")
+    ref = f"refs/heads/{row['branch']}" if row.get("branch") else "HEAD"
+    head = git(wt if ref == "HEAD" and wt and Path(wt).exists() else cd, "rev-parse", "--verify", "-q", ref).stdout.strip() or None
     if not wt:
         return {"head": head}
     if not Path(wt).exists():
@@ -109,12 +127,92 @@ def live_check(row):
             "outside": not os.path.realpath(wt).startswith(
                 os.path.dirname(os.path.dirname(os.path.realpath(cd))) + os.sep),
             "main": os.path.realpath(gd) == os.path.realpath(cd),
+            "registered": registered(cd, wt),
+            "idle": lambda: idle_days_of(wt, row.get("_idle_days", IDLE_DAYS)),
             "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
+
+
+def registered(cd, wt):
+    """git itself lists this real path as a linked worktree of the repo."""
+    out = git(cd, "worktree", "list", "--porcelain").stdout
+    paths = {os.path.realpath(l[9:]) for l in out.splitlines() if l.startswith("worktree ")}
+    return os.path.realpath(wt) in paths
+
+
+def idle_days_of(wt, idle_days=IDLE_DAYS, now=None):
+    """Days since the newest sign of work: HEAD's commit or any file written (deps/build dirs pruned).
+    Stops at the first file newer than the idle window, so active trees cost one short walk."""
+    now = now or time.time()
+    commit = int(git(wt, "log", "-1", "--format=%ct").stdout.strip() or 0)
+    prune = sum([["-name", n, "-o"] for n in PRUNE], [])[:-1]
+    hit = subprocess.run(["find", os.path.realpath(wt), "-xdev", "(", *prune, ")", "-prune", "-o",
+                          "-newermt", f"@{int(now - idle_days * 86400)}", "-printf", "%T@\\n", "-quit"],
+                         capture_output=True, text=True, timeout=1800).stdout.split()
+    newest = max([commit] + [int(float(h)) for h in hit])
+    return (now - newest) / 86400 if newest else None
+
+
+def snapshot(row, wt):
+    """Commit every non-ignored change (tracked + untracked) to refs/reaped/<name>; return the ref or raise."""
+    big = [f for f in git(wt, "ls-files", "-o", "--exclude-standard", "-z").stdout.split("\0")
+           if f and os.path.isfile(os.path.join(wt, f)) and os.path.getsize(os.path.join(wt, f)) > BIG]
+    if big:
+        raise RuntimeError(f"untracked file over 50 MB: {big[0]}")
+    name = re.sub(r"[^A-Za-z0-9._/-]", "-", row.get("branch") or Path(wt).name).strip("/.") or "wt"
+    ref = f"refs/reaped/{name}-{time.strftime('%Y%m%d')}-{os.urandom(3).hex()}"
+    with tempfile.TemporaryDirectory() as td:
+        env = dict(os.environ, GIT_INDEX_FILE=os.path.join(td, "index"))
+        for step in (["read-tree", "HEAD"], ["add", "-A"]):
+            r = git(wt, *step, env=env, timeout=1800)
+            if r.returncode:
+                raise RuntimeError(f"git {step[0]}: {r.stderr.strip()[:200]}")
+        tree = git(wt, "write-tree", env=env).stdout.strip()
+    msg = f"worktree-reap snapshot of {wt}"
+    c = git(wt, "-c", "user.name=worktree-reap", "-c", "user.email=worktree-reap@localhost",
+            "commit-tree", tree, "-p", "HEAD", "-m", msg).stdout.strip()
+    if not c or git(wt, "update-ref", ref, c).returncode or git(wt, "cat-file", "-e", f"{ref}^{{tree}}").returncode:
+        raise RuntimeError("snapshot ref not written")
+    return ref
+
+
+IGNORED_ARCHIVE = Path(os.environ.get("WORKTREE_REAP_ARCHIVE", "/mnt/zer0models/quarantine/worktree-reap"))
+
+
+def archive_ignored(ref, wt):
+    """Tar gitignored files (.env, local DBs) outside dependency/build dirs; return the path or None."""
+    out = git(wt, "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z").stdout.split("\0")
+    keep = [f for f in out if f and not any(p in PRUNE for p in Path(f.rstrip("/")).parts)]
+    if not keep:
+        return None
+    dest = IGNORED_ARCHIVE / (ref.removeprefix("refs/reaped/").replace("/", "_") + ".tar.gz")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    excl = [f"--exclude={p}" for p in PRUNE]
+    r = subprocess.run(["tar", "-czf", str(dest), *excl, "-C", wt, "--null", "-T", "-"],
+                       input="\0".join(keep), capture_output=True, text=True, timeout=1800)
+    if r.returncode or not dest.is_file():
+        raise RuntimeError(f"ignored-file archive failed: {r.stderr.strip()[:200]}")
+    if dest.stat().st_size > (BIG * 4):
+        dest.unlink()
+        raise RuntimeError("ignored files over 200 MB compressed; kept")
+    return str(dest)
 
 
 def apply(row, action):
     cd, br, wt = row["commondir"], row["branch"], row.get("worktree")
     rec = {}
+    if action == "idle":
+        try:
+            rec["snapshot_ref"] = snapshot(row, wt)
+            rec["ignored_archive"] = archive_ignored(rec["snapshot_ref"], wt)
+        except (RuntimeError, subprocess.SubprocessError, OSError) as e:
+            rec["kept"] = str(e)[:300]
+            return rec
+        rec["size_kib"] = size_kib(wt)
+        r = git(cd, "worktree", "remove", "--force", os.path.realpath(wt))
+        rec["worktree_removed"] = r.returncode == 0
+        if r.returncode:
+            rec["git"] = r.stderr.strip()[:300]
+        return rec   # branch kept: an idle branch is KBs and may be resumed
     if action == "worktree":
         rec["size_kib"] = size_kib(wt)
         r = git(cd, "worktree", "remove", wt)
@@ -134,18 +232,25 @@ def main():
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--network", type=Path, default=NETWORK)
     ap.add_argument("--max-age-h", type=float, default=36, help="refuse network proofs older than this")
+    ap.add_argument("--idle-days", type=float, default=IDLE_DAYS, help="tier 3: reap worktrees idle this long")
     ap.add_argument("--out", type=Path, default=RUNS / time.strftime("worktree-reap-%Y%m%d"))
     a = ap.parse_args()
     net = json.loads(a.network.read_text())
     if time.time() - float(net.get("generated_at", 0)) > a.max_age_h * 3600:
         raise SystemExit(f"network proofs older than {a.max_age_h} h; refusing")
-    rows = [r for r in net["rows"] if r.get("finished")] + t3_rows()
+    rows, seen = [], set()
+    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows():
+        key = os.path.realpath(r["worktree"]) if r.get("worktree") else (r["commondir"], r["branch"])
+        if key not in seen:
+            seen.add(key)
+            rows.append(r)
     a.out.mkdir(parents=True, exist_ok=True)
     counts, reclaimed = {}, 0
     with open(a.out / "receipts.jsonl", "a") as f:
         for row in rows:
+            row["_idle_days"] = a.idle_days
             try:
-                action, why = decide(row, live_check)
+                action, why = decide(row, live_check, a.idle_days)
             except (subprocess.SubprocessError, OSError) as e:
                 action, why = "keep", f"check failed: {e}"
             rec = {"ts": time.strftime("%FT%T%z"), "repo": row["repo"], "commondir": row["commondir"],
