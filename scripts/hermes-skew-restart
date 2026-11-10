@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# hermes-skew-restart: put long-lived Hermes backends back on the code that is on disk.
+#
+# When the live checkout's HEAD moves (`hermes update`, an agent's cherry-pick or checkout),
+# a backend that is still running keeps its old modules, and its model picker refuses with
+# "running code from <old> but the checkout on disk is now <new> ... restart". `hermes update`
+# restarts only hermes-gateway*/hermes-serve*/hermes-dashboard* units, so hermes-web is never
+# restarted. Waiting for an idle moment also fails, because the backend hosts ~10 concurrent chats.
+# This runs from a 1-minute timer and works out from the reflog when the current HEAD arrived:
+#   gateway units  -> `systemctl reload` (SIGUSR1: drain in-flight turns, then restart) right away
+#   other units    -> restart when the unit's journal has been quiet QUIET_S, or once the skew is
+#                     GRACE_S old. Turns cut short are resumed by Hermes auto-continue (15-min window).
+# It does nothing while `hermes update` runs, because the updater restarts what it owns.
+#   HERMES_SKEW_UNITS    units to watch (default: hermes-gateway hermes-web)
+#   HERMES_SKEW_GRACE_S  max seconds a backend may serve stale code (default 600)
+#   HERMES_SKEW_QUIET_S  journal silence that counts as a safe moment (default 90)
+#   --dry-run            report only
+# reuse-checked: hermes-gateway-rss-restart -- it is triggered by memory and uses an idle-only restart, which this case never reaches.
+set -u
+checkout=${HERMES_CHECKOUT:-$HOME/.hermes/hermes-agent}
+units=${HERMES_SKEW_UNITS:-hermes-gateway hermes-web}
+grace=${HERMES_SKEW_GRACE_S:-600}
+quiet=${HERMES_SKEW_QUIET_S:-90}
+dry=0; [ "${1:-}" = "--dry-run" ] && dry=1
+now=$(date +%s)
+state=${XDG_STATE_HOME:-$HOME/.local/state}/hermes-skew-restart
+mkdir -p "$state"
+
+# Epoch at which the current HEAD sha arrived: the oldest entry of the newest reflog run with that sha.
+arrived=$(git -C "$checkout" log -g --date=unix --format='%H %gd' HEAD 2>/dev/null | awk '
+  NR==1 {sha=$1}
+  $1!=sha {exit}
+  {t=$2; gsub(/[^0-9]/, "", t)}
+  END {print t}')
+[ -n "$arrived" ] || { echo "skip: cannot read reflog of $checkout"; exit 0; }
+head=$(git -C "$checkout" rev-parse --short=10 HEAD)
+
+if pgrep -u "$(id -u)" -f '(hermes|hermes_cli\.main)( -p [^ ]+)? update( |$)' >/dev/null; then
+  echo "skip: hermes update in progress"; exit 0
+fi
+
+for unit in $units; do
+  pid=$(systemctl --user show "$unit" -p MainPID --value 2>/dev/null)
+  [ "${pid:-0}" -gt 0 ] || { echo "$unit: not running"; continue; }
+  started=$(( $(date +%s -d "$(ps -o lstart= -p "$pid")") ))
+  if [ "$started" -ge "$arrived" ]; then
+    echo "$unit: current (pid $pid started after HEAD $head arrived)"; continue
+  fi
+  age=$(( now - arrived ))
+  case "$unit" in
+    hermes-gateway|hermes-gateway-*)
+      action=(systemctl --user reload "$unit"); why="graceful drain-restart" ;;
+    *)
+      last=$(journalctl --user -u "$unit" -n 1 -o short-unix --no-pager 2>/dev/null | awk 'NR==1{print int($1)}')
+      if [ $(( now - ${last:-0} )) -ge "$quiet" ]; then why="journal quiet $(( now - ${last:-0} ))s"
+      elif [ "$age" -ge "$grace" ]; then why="stale ${age}s >= ${grace}s"
+      else echo "$unit: stale ${age}s on pre-$head code, waiting for a quiet moment"; continue
+      fi
+      action=(systemctl --user restart "$unit") ;;
+  esac
+  if [ "$dry" = 1 ]; then echo "$unit: would ${action[*]} ($why)"; continue; fi
+  # A graceful drain keeps the old pid alive for a while: signal each pid at most once per 15 min.
+  mark=$state/$unit.acted
+  if read -r mpid mt < "$mark" 2>/dev/null && [ "$mpid" = "$pid" ] && [ $(( now - mt )) -lt 900 ]; then
+    echo "$unit: already asked pid $pid to restart $(( now - mt ))s ago, waiting"; continue
+  fi
+  echo "$unit: pid $pid predates HEAD $head by ${age}s -> ${action[*]} ($why)"
+  echo "$pid $now" > "$mark"
+  "${action[@]}" || echo "$unit: ${action[*]} failed"
+done

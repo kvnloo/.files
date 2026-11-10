@@ -4815,3 +4815,48 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "OSS-2 2026-10-27: dev tracks the default branch in owned kvnloo repos (fast-forward or CLEAN sync PR; default never written)."
+
+[[user]]
+live = "~/.local/bin/hermes-skew-restart"
+source = "scripts/hermes-skew-restart"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
+migration_sha256 = "0bde6658f5013387486f4abbdb1d20ce02aef4bd1f6648a315ab3748ba2d3fd0"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-skew-restart.service"
+source = "config/systemd/user/hermes-skew-restart.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
+migration_sha256 = "2103f2573fd34a68b1d09c7f4574ffaf353dab3862b66b57b99087e6eaa4672d"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-skew-restart.timer"
+source = "config/systemd/user/hermes-skew-restart.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
+migration_sha256 = "47aa0a33380c96e966ce370209761b3f2e5126d919bd8a15527899718da29455"
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/hermes-skew-restart.timer"
+source = "config/systemd/user/hermes-skew-restart.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
+migration_sha256 = "47aa0a33380c96e966ce370209761b3f2e5126d919bd8a15527899718da29455"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-web.service.d/60-retire-on-code-skew.conf"
+source = "config/systemd/user/hermes-web.service.d/60-retire-on-code-skew.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
+migration_sha256 = "dbb003e0bb2499f4834901077a1b913b4c2a3317526e2393cd788ce3902a7841"
