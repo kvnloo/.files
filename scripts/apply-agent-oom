@@ -37,6 +37,8 @@ LINKS = {
     'config/systemd/user/agent-oom-guard.service': '.config/systemd/user/agent-oom-guard.service',
     'config/systemd/user/service.d/50-oom-continue.conf': '.config/systemd/user/service.d/50-oom-continue.conf',
     'config/systemd/user/scope.d/50-oom-continue.conf': '.config/systemd/user/scope.d/50-oom-continue.conf',
+    'config/systemd/user/service.d/55-io-accounting.conf': '.config/systemd/user/service.d/55-io-accounting.conf',
+    'config/systemd/user/scope.d/55-io-accounting.conf': '.config/systemd/user/scope.d/55-io-accounting.conf',
 }
 # Imported relative to the linked helpers' real path; stamped with them, never linked.
 CLOSURE = ('scripts/agent_oom_policy.py',)

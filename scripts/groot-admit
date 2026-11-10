@@ -13,13 +13,19 @@ benchmark 18s after the desktop started swapping.
 from __future__ import annotations
 
 import argparse
+import glob
+import json
 import os
 import sys
 import time
+from pathlib import Path
 
 MIN_AVAILABLE_MB = 6144      # MemAvailable left for the desktop after the job's own need
 MAX_FULL_PSI_AVG60 = 5.0     # /proc/pressure/memory "full" avg60, percent
 MAX_SWAP_GROWTH = 0.85       # refuse once zram/swap is this full
+MAX_ZRAM_FILL = 0.85         # compressed bytes vs zram mem_limit: swap-out fails here even with SwapFree left
+# One line per final verdict, so a fix tape can count real admissions and holds.
+VERDICTS = Path(os.environ.get("GROOT_ADMIT_LOG", "~/.local/state/groot-admit/verdicts.jsonl")).expanduser()
 
 
 def meminfo() -> dict[str, int]:
@@ -37,6 +43,42 @@ def full_psi_avg60() -> float:
     return 0.0
 
 
+def zram_fill() -> float:
+    worst = 0.0
+    for path in glob.glob("/sys/block/zram*/mm_stat"):
+        f = open(path).read().split()
+        if int(f[3]):
+            worst = max(worst, int(f[2]) / int(f[3]))
+    return worst
+
+
+def holders(top: int = 4) -> str:
+    """Name what holds the swap, so a hold says what to reclaim instead of only 'no room'."""
+    out = []
+    try:
+        t = os.statvfs("/tmp")
+        out.append(f"/tmp tmpfs {(t.f_blocks - t.f_bfree) * t.f_frsize >> 20} MiB")
+        me = open("/proc/self/cgroup").read().strip().split("::", 1)[1]
+        root = "/sys/fs/cgroup" + me.split(".service", 1)[0] + ".service"
+        swaps = []
+        for f in glob.glob(root + "/*.slice/*/memory.swap.current"):
+            swaps.append((int(open(f).read()) >> 20, f.split("/")[-2]))
+        out += [f"{name} {mb} MiB swap" for mb, name in sorted(swaps, reverse=True)[:top]]
+    except (OSError, IndexError, ValueError):
+        pass
+    return "; ".join(out)
+
+
+def record(ok: bool, need_mb: int, reason: str | None, cmd: list[str]) -> None:
+    try:
+        VERDICTS.parent.mkdir(parents=True, exist_ok=True)
+        with VERDICTS.open("a") as f:
+            f.write(json.dumps({"t": int(time.time()), "ok": ok, "need_mb": need_mb, "reason": reason,
+                                "cmd": os.path.basename(cmd[0]) if cmd else None}) + "\n")
+    except OSError:
+        pass  # the log is evidence, never a reason to hold or admit
+
+
 def why_not(need_mb: int) -> str | None:
     m = meminfo()
     avail = m["MemAvailable"] // 1024
@@ -48,6 +90,9 @@ def why_not(need_mb: int) -> str | None:
     total, free = m.get("SwapTotal", 0), m.get("SwapFree", 0)
     if total and (total - free) / total > MAX_SWAP_GROWTH:
         return f"swap {100 * (total - free) / total:.0f}% used"
+    fill = zram_fill()
+    if fill > MAX_ZRAM_FILL:
+        return f"zram compressed store {100 * fill:.0f}% of its memory limit"
     return None
 
 
@@ -59,15 +104,21 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     cmd = a.cmd[1:] if a.cmd[:1] == ["--"] else a.cmd
     deadline = time.monotonic() + a.wait
+    said = None
     while True:
         reason = why_not(a.need_mb)
         if reason is None:
             break
         if time.monotonic() >= deadline:
-            print(f"groot-admit: held: {reason}", file=sys.stderr)
+            print(f"groot-admit: held: {reason} [{holders()}]", file=sys.stderr)
+            record(False, a.need_mb, reason, cmd)
             return 75
-        print(f"groot-admit: waiting: {reason}", file=sys.stderr)
+        kind = reason.split()[0]
+        if kind != said:  # a unit may queue here for an hour: one line per reason, not one per poll
+            print(f"groot-admit: waiting: {reason}", file=sys.stderr)
+            said = kind
         time.sleep(15)
+    record(True, a.need_mb, None, cmd)
     if cmd:
         os.execvp(cmd[0], cmd)
     return 0
