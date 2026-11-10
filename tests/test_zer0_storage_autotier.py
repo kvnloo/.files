@@ -96,6 +96,7 @@ def test_no_safe_candidate_is_quiet_success(monkeypatch, capsys):
     monkeypatch.setattr(autotier, "usage_snapshot", lambda: {})
     monkeypatch.setattr(autotier, "ttl_scratch", lambda apply: 0)  # main() must not read the real disk floor
     monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: 0)
+    monkeypatch.setattr(autotier, "prune_dead_dependency_homes", lambda apply: 0)
     monkeypatch.setattr(autotier, "notify", lambda title, body: notes.append((title, body)))
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--apply"])
     assert autotier.main() == 0  # owner rule: a reserve shortfall never fails the unit
@@ -132,6 +133,7 @@ def test_workspace_ok_still_tiers_root_candidates(monkeypatch, capsys):
     monkeypatch.setattr(autotier.subprocess, "run", run)
     monkeypatch.setattr(autotier, "ttl_scratch", lambda apply: 0)  # main() must not read the real disk floor
     monkeypatch.setattr(autotier, "enforce_root_floor", lambda apply: 0)
+    monkeypatch.setattr(autotier, "prune_dead_dependency_homes", lambda apply: 0)
     monkeypatch.setattr(autotier.sys, "argv", [str(SCRIPT), "--apply"])
     assert autotier.main() == 0
     assert len(calls) == 1
@@ -789,3 +791,54 @@ def test_discovery_treats_mapped_files_as_in_use(monkeypatch, tmp_path):
     assert autotier.discover_root_candidates() == []
     monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: set())
     assert [p for _s, p in autotier.discover_root_candidates()] == [pkg]
+
+
+# --- dead dependency homes ---------------------------------------------------
+
+
+def _dep_home(base: Path, name: str, age_days: float) -> Path:
+    home = base / name / "home"
+    for sub in ("installs/abc/venv", "cache/uv/archive", "sessions"):
+        (home / sub).mkdir(parents=True)
+    (home / "installs/abc/venv/lib.so").write_bytes(b"x" * 4096)
+    (home / "cache/uv/archive/wheel").write_bytes(b"x" * 4096)
+    (home / "sessions/s.json").write_text("{}")
+    old = time.time() - age_days * 86400
+    for current, dirs, files in os.walk(home):
+        for entry in [current, *(os.path.join(current, n) for n in dirs + files)]:
+            os.utime(entry, (old, old))
+    return home
+
+
+def test_dead_dependency_home_drops_only_regenerable_dirs(monkeypatch, tmp_path):
+    idle = _dep_home(tmp_path, "idle-run", 3)
+    fresh = _dep_home(tmp_path, "fresh-run", 0)
+    busy = _dep_home(tmp_path, "busy-run", 3)
+    monkeypatch.setattr(autotier, "DEPENDENCY_HOME_GLOBS", (str(tmp_path / "*" / "home"),))
+    monkeypatch.setattr(autotier, "allocated_bytes", lambda path: 1)
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: "fresh" not in str(path))  # ctime can't be backdated
+    used = {str(busy.resolve() / "installs/abc/venv/lib.so")}
+    assert autotier.prune_dead_dependency_homes(apply=True, used=used) == 2
+    assert not (idle / "installs").exists() and not (idle / "cache/uv").exists()
+    assert (idle / "sessions/s.json").exists()  # owner data is never touched
+    assert (fresh / "installs").exists() and (busy / "installs").exists()
+
+
+def test_dead_dependency_home_dry_run_deletes_nothing(monkeypatch, tmp_path):
+    idle = _dep_home(tmp_path, "idle-run", 3)
+    monkeypatch.setattr(autotier, "DEPENDENCY_HOME_GLOBS", (str(tmp_path / "*" / "home"),))
+    monkeypatch.setattr(autotier, "allocated_bytes", lambda path: 1)
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: True)
+    assert autotier.prune_dead_dependency_homes(apply=False, used=set()) == 2
+    assert (idle / "installs").exists() and (idle / "cache/uv").exists()
+
+
+def test_home_without_installs_is_never_a_dependency_home(monkeypatch, tmp_path):
+    plain = tmp_path / "proj" / "home"
+    (plain / "cache/uv").mkdir(parents=True)
+    old = time.time() - 9 * 86400
+    os.utime(plain, (old, old))
+    monkeypatch.setattr(autotier, "DEPENDENCY_HOME_GLOBS", (str(tmp_path / "*" / "home"),))
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: True)
+    assert autotier.prune_dead_dependency_homes(apply=True, used=set()) == 0
+    assert (plain / "cache/uv").exists()

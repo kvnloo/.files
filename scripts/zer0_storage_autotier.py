@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 import fnmatch
+import glob
 import json
 import os
 import re
@@ -74,6 +75,17 @@ SCRATCH_GLOBS: tuple[str, ...] = ("tmp/*",)
 SCRATCH_KEEP_GLOBS: tuple[str, ...] = ()
 SCRATCH_MIN_MIB = 16
 SCRATCH_QUARANTINE = Path("/mnt/zer0models/quarantine")
+# Throwaway Hermes homes (test runs, per-task homes) each build their own dependency
+# environment (installs/) and uv download cache. Both are regenerable, so once the home
+# has been idle for DEPENDENCY_HOME_IDLE_DAYS and no process touches it they are deleted
+# outright, never archived. The real data root (hermes-home itself) never matches.
+DEPENDENCY_HOME_GLOBS: tuple[str, ...] = (
+    "/mnt/zer0models/project-artifacts/*/home",
+    "/workspace/hermes-home/profiles/*/cache/scratch/*",
+    "/workspace/hermes-home/profiles/*/cache/scratch/*/*",
+)
+DEPENDENCY_HOME_IDLE_DAYS = 1.0
+DEPENDENCY_SUBDIRS = ("installs", "cache/uv")
 STATE_DIR = HOME / ".local" / "state" / "zer0-storage-autotier"
 ALERT_REPEAT_SECONDS = 6 * 3600
 
@@ -95,6 +107,8 @@ if POLICY_PATH.exists():
     SCRATCH_TTL_DAYS = float(policy.get("scratch_ttl_days", SCRATCH_TTL_DAYS))
     SCRATCH_GLOBS = _home_relative_globs(policy.get("scratch_globs", SCRATCH_GLOBS), "scratch_globs")
     SCRATCH_KEEP_GLOBS = _home_relative_globs(policy.get("scratch_keep_globs", ()), "scratch_keep_globs")
+    DEPENDENCY_HOME_GLOBS = tuple(policy.get("dependency_home_globs", DEPENDENCY_HOME_GLOBS))
+    DEPENDENCY_HOME_IDLE_DAYS = float(policy.get("dependency_home_idle_days", DEPENDENCY_HOME_IDLE_DAYS))
     additions = _home_relative_globs(policy.get("idle_cache_globs", ()), "idle_cache_globs")
     ROOT_TIER_GLOBS += additions
     # Managed caches are preserved by the verified mover, not deleted first.
@@ -526,6 +540,30 @@ def remove_path(path: Path, kind: str, apply: bool) -> int:
     return size
 
 
+def prune_dead_dependency_homes(apply: bool, used: set[str] | None = None) -> int:
+    """Delete installs/ and cache/uv of idle throwaway Hermes homes; returns bytes reclaimed."""
+    homes = sorted({Path(match) for pattern in DEPENDENCY_HOME_GLOBS for match in glob.glob(pattern)
+                    if (Path(match) / "installs").is_dir() and not Path(match).is_symlink()})
+    if not homes:
+        return 0
+    used = paths_in_use_deep() if used is None else used
+    reclaimed = 0
+    for home in homes:
+        if in_use(home.resolve(), used) or not is_idle(home, DEPENDENCY_HOME_IDLE_DAYS):
+            print(f"dependency home keep {home}: active", flush=True)
+            continue
+        for sub in DEPENDENCY_SUBDIRS:
+            target = home / sub
+            if not target.is_dir() or target.is_symlink():
+                continue
+            size = allocated_bytes(target)
+            print(f"dependency home {'delete' if apply else 'would delete'} {target} bytes={size}", flush=True)
+            if apply:
+                shutil.rmtree(target, ignore_errors=True)
+            reclaimed += size
+    return reclaimed
+
+
 def paths_in_use_deep(proc: Path = Path("/proc")) -> set[str]:
     """paths_in_use plus mapped files and absolute cmdline args (venv pythons, node bins)."""
     used = paths_in_use(proc)
@@ -850,6 +888,7 @@ def main() -> int:
         return check_root_floor()
     codes = [tier_workspace(args.apply)]
     maybe_prune(args.apply)  # before the move phase, so moves only cover what pruning could not
+    prune_dead_dependency_homes(args.apply)
     sweep_orphan_tier_backups(args.apply)
     codes.append(tier_root(args.apply))
     ttl_scratch(args.apply)
