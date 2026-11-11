@@ -11,6 +11,14 @@ if [[ $(readlink "/proc/$$/fd/9" 2>/dev/null || true) != /tmp/files-live-deploy.
   exec 9>/tmp/files-live-deploy.lock
 fi
 flock 9
+# A release may only replace one it contains. On 2026-11-09 a dev release replaced a
+# hot-fix copy of fleet that carried three unmerged fixes, and fleet-health then failed
+# 316 times in 12 h. Merge the fixes first; to drop them on purpose, name the release.
+for command in fleet fleet-build fleet-kueue fleet-adb; do
+  old=$(readlink "$HOME/.local/bin/$command" 2>/dev/null || true); old=${old%/scripts/*}; old=${old##*/}
+  [[ -z $old || $old == "${HOST_STORAGE_REPLACES:-}" ]] || git -C "$repo" merge-base --is-ancestor "$old" "$sha" 2>/dev/null \
+    || { echo "refusing: $command runs from release $old, which $sha does not contain; merge its fixes first, or drop them with HOST_STORAGE_REPLACES=$old" >&2; exit 1; }
+done
 stage() {
   local name=$1 tree=$2 revision=$3 dest="/mnt/zer0models/releases/$1/$3"
   if [[ ! -e $dest ]]; then
