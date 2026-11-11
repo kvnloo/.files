@@ -9,7 +9,8 @@
 # + unevictable/per-CPU memory. Do not reclassify active job memory as idle OS.
 # Allocatable 12046536Ki = 12335652864 bytes caps this static budget.
 # This is NOT instantaneous MemAvailable admission. Recompute after measured changes.
-# CPU budget = min(4 physical cores, 6.5 allocatable CPUs) = 4.
+# CPU budget = 6 of 6.5 allocatable CPUs (8 threads): quota 4 left 2.5 cores idle and made a
+# 4-CPU test job preempt hc bench lanes (2026-11-10 mesh fill, c9e86089).
 # Default fleet-build and --node mbp use Kueue; mbp-host must reserve here too.
 # Host escapes must hold reservations for their full lifetime to share this budget.
 # The GPU flavor pins GPU work to labelled nodes.
