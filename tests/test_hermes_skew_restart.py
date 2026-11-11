@@ -72,5 +72,16 @@ esac""")
         self.assertEqual(self.acted(), [])
 
 
+class Upheld(unittest.TestCase):
+    """A blanket `systemctl --user stop <every timer>` must not leave Hermes backends unwatched."""
+
+    def test_both_backends_uphold_the_timer(self):
+        root = Path(__file__).resolve().parents[1] / "config/systemd/user"
+        for dropin in ("hermes-web.service.d/60-retire-on-code-skew.conf",
+                       "hermes-gateway.service.d/60-skew-restart.conf"):
+            lines = (root / dropin).read_text().splitlines()
+            self.assertIn("Upholds=hermes-skew-restart.timer", lines, dropin)
+
+
 if __name__ == "__main__":
     unittest.main()
