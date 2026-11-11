@@ -61,7 +61,8 @@ class EntryPolicy(unittest.TestCase):
             quotas = [line for line in text.splitlines() if line.startswith('CPUQuota=')]
             self.assertEqual(quotas, ['CPUQuota='])
         scope = (ROOT / 'config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf').read_text()
-        self.assertIn('MemoryMax=4G', scope)
+        self.assertIn('MemoryHigh=4G', scope)   # X2b: throttle at 4G, hard stop at 6G
+        self.assertIn('MemoryMax=6G', scope)
         self.assertIn('TasksMax=512', scope)
 
     def test_scope_failure_never_direct_exec_fallback(self):

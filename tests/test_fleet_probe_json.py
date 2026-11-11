@@ -16,7 +16,7 @@ def load_probe(source):
     names = {'decode_probe_output', 'probe', 'probe_error'}
     selected = ast.Module(body=[node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name in names], type_ignores=[])
-    namespace = {'json': json, 'subprocess': subprocess, 'sys': sys, 'REPO': ROOT}
+    namespace = {'json': json, 'subprocess': subprocess, 'sys': sys, 'REPO': ROOT, 'BOAT': 'boat'}
     exec(compile(selected, 'fleet-production-probe', 'exec'), namespace)
     return namespace['probe']
 
