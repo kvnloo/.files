@@ -2,7 +2,23 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-06 at 15:02 UTC
+## Latest observation, 2026-11-11 at 06:58 UTC
+
+Both custom timers remain enabled and active. Maintenance next runs November 15 at 04:00 CST, `America/Chicago`. The daily timer next runs today at 03:58:52 CST. The maintenance unit still calls its schedule a placeholder requiring Kevin's choice. No approval was established from the allowed evidence. Sources: execution `logs/20261111-revalidation.log:93-178,200-202`.
+
+The November 8 maintenance receipt reports `upgrade-failed`, exit 1. November 9's daily receipt reports `applied`, exit 0, with an empty reboot class. November 10's receipt reports staging, exit 0, with 128 output lines. The staged file has 132 lines. Counts are not unique-package counts. These are existing receipts, not transactions run by this execution. Source: execution `logs/20261111-revalidation.log:286-294`.
+
+The installed updater changed to SHA256 `2c6646cee8eb36e3a23b62ae13a8fa54a73734f9cb117dd266f98f28e401934e`. Its new comment describes a previous half-applied transaction and missing pacman binary. That comment is not independent proof of the incident's full extent. The code now runs `pacman -Syuw --noconfirm` followed by `pacman -Su --noconfirm`, after classifying separate `checkupdates -d` output. Download failure exits after refreshing the live databases. Classification is still not bound to the applied transaction, and maintenance still has no workload-drain gate before installation or reboot. Sources: `/etc/os-update/run:25-54`; execution `logs/20261111-revalidation.log:225-284`.
+
+The running kernel is `7.3.3-1-cachyos`. Installed kernel and module packages are both `7.3.3-1`. Loaded NVIDIA version `620.70.06` matches the version component of installed `nvidia-utils 620.70.06-2`. Boot time is November 9 at 08:19:43 local time. These checks establish current version observations, not a tested rollback or proof that the failed maintenance recovered itself. The bounded maintenance journal query returned no entries. Source: execution `logs/20261111-incident-readonly.log:3-28`.
+
+Root is XFS with 14,964,932 KiB available, below the proposal's 15 GiB floor of 15,728,640 KiB. The cache now resolves to `/var/cache/pacman/pkg` on root, not the previously observed separate mount. The native updater, Snapper, and Timeshift remain absent. Missing packages do not prove there is no backup. Sources: execution `logs/20261111-revalidation.log:204-223`; `scripts/setup-native-updates:31-39`.
+
+The latest retained daily counters show `MemoryPeak=185802752` bytes, about 177 MiB, and `CPUUsageNSec=7475446000`, about 7.48 CPU-seconds. IO and IP accounting are disabled. No maintenance counters are retained. This is evidence from staging, not installation or foreground-latency measurement. Source: execution `logs/20261111-revalidation.log:180-198,289`.
+
+`python3 revalidate-host.py` completed with exit 0. It preserved the expected missing-package exit 1. Bash syntax, native diagnostic, and cadence audit completed. The native diagnostic's exit 0 is still not readiness. No installation, service change, reboot, or recovery drill ran in this pass. Sources: execution `logs/20261111-revalidation.log:10-91,204-209,296-308`.
+
+## Earlier observation, 2026-11-06 at 15:02 UTC
 
 This observation supersedes the historical host facts below. Both custom timers remain enabled and active. Maintenance still next runs on November 8 at 04:00 CST, `America/Chicago`. The daily timer next runs on November 7 at 03:35:51 CST. The installed maintenance unit still labels its schedule a placeholder requiring Kevin's choice. Sources: execution `logs/revalidation-latest.log:93-178,200-202`.
 
@@ -49,7 +65,7 @@ The native proposal uses packaged offline preparation, not a new resident update
 | Safe non-reboot updates | Policy defers the complete Arch OS transaction. | No continuously installed safe subset is implemented or proven. |
 | Reboot class only at scheduled maintenance | Proposal disables the automatic reboot timer. | Preparation can arm the next user reboot, not specifically an approved window. There is no workload drain gate. |
 | Rollback | Disable calls the native abort command; cache cleanup retains packaged defaults. | No tested OS rollback, restored backup, or recovery boot. |
-| Resource impact | Latest daily-service counters show about 1.74 GiB peak RAM and 34.9 CPU-seconds, from `logs/revalidation-latest.log:180-188`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
+| Resource impact | Latest retained staging counters show about 177 MiB peak RAM and 7.48 CPU-seconds, from `logs/20261111-revalidation.log:180-198,289`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
 
 Sources: `docs/native-updates.md:5-12,28-32,45-60`, `scripts/setup-native-updates:22-28,48-56`, and execution `logs/native-readonly-rerun.log`. `check` exits zero despite missing dependencies because lines 9-11 suppress individual failures. Its success is diagnostic completion, not readiness.
 
