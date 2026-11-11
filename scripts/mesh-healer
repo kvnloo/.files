@@ -243,7 +243,8 @@ def tick(dry_run: bool = False, llm: bool = True) -> dict:
     after = measure() if done and not dry_run else before
     repaired = {a["unit"] for a in done}
     gaps = [s for s in after["slos"] if s["met"] is False and s["name"] != "failed_user_units_over_1h"]
-    diag = [d for d in (diagnose(g, state) for g in gaps[:1]) if d] if llm and not dry_run else []
+    due = [g for g in gaps if time.time() - state.get("diagnosed", {}).get(g["name"], 0) >= DIAG_COOLDOWN_S]
+    diag = [d for d in (diagnose(g, state) for g in due[:1]) if d] if llm and not dry_run else []
     summary = {s["name"]: s["value"] for s in after["slos"]}
     rec = {"schema": "mesh-healer.receipt.v1", "at": before["at"], "dry_run": dry_run,
            "before": {s["name"]: s["value"] for s in before["slos"]}, "after": summary,
