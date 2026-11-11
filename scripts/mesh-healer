@@ -300,10 +300,11 @@ def plan_kueue(m: dict, cqs: dict | None = None, node: dict | None = None, pods:
     """While Kueue work is pending >30 min: if the cohort's nominal quota for a node flavor exceeds
     what that node can schedule (allocatable minus non-Kueue pod requests), Kueue admits pods that
     then sit Pending until the PodsReady timeout requeues them. Lower the borrow-side queues'
-    nominalQuota by the excess (floor 0). One kubectl patch per queue; undo = the old value."""
+    nominalQuota by the excess (floor 0). One kubectl patch per queue; undo = the old value.
+    The clamp is not a one-way ratchet: whenever the node has headroom, a queue below its applied
+    IaC nominal (last-applied-configuration) is raised back toward it, never past what fits."""
     k = next((s for s in m["slos"] if s["name"] == "kueue_pending_over_30m"), None)
-    if not k or k["met"] is not False:
-        return []
+    pending_red = bool(k) and k["met"] is False
     cqs = cqs if cqs is not None else kube_json("get", "clusterqueues")
     node = node if node is not None else kube_json("get", "node", KUEUE_NODE)
     pods = pods if pods is not None else kube_json("get", "pods", "-A", "--field-selector", f"spec.nodeName={KUEUE_NODE}")
@@ -314,7 +315,7 @@ def plan_kueue(m: dict, cqs: dict | None = None, node: dict | None = None, pods:
         alloc = quantity(node["status"]["allocatable"][res])
         other = sum(quantity((c.get("resources", {}).get("requests") or {}).get(res, 0))
                     for p in pods["items"] if p.get("status", {}).get("phase") in ("Running", "Pending")
-                    and "kueue.x-k8s.io/queue-name" not in (p["metadata"].get("labels") or {})
+                    and not is_kueue_pod(p)
                     for c in p["spec"]["containers"])
         cap = alloc - other
         slots = []   # (queue, rg, flavor, resource index, nominal)
@@ -325,22 +326,51 @@ def plan_kueue(m: dict, cqs: dict | None = None, node: dict | None = None, pods:
                 for fi, f in enumerate(g["flavors"]):
                     for ri, r in enumerate(f["resources"]) if f["name"] == KUEUE_FLAVOR else ():
                         if r["name"] == res:
-                            slots.append((q["metadata"]["name"], gi, fi, ri, quantity(r["nominalQuota"])))
-        excess = sum(s[4] for s in slots) - cap
-        for name, gi, fi, ri, nominal in sorted(slots, key=lambda s: s[0] not in KUEUE_SHRINK_FIRST):
-            if excess <= 1e-9 or nominal <= 0:
-                continue
-            new = max(0.0, nominal - excess)
-            excess -= nominal - new
+                            slots.append((q["metadata"]["name"], gi, fi, ri, quantity(r["nominalQuota"]),
+                                          applied_nominal(q, gi, fi, ri)))
+        promised = sum(s[4] for s in slots)
+        excess = promised - cap
+        why = (f"cohort {KUEUE_COHORT} promises {round(promised, 3)} {res} on {KUEUE_NODE}, which can schedule "
+               f"{round(cap, 3)} (allocatable {round(alloc, 3)} - {round(other, 3)} non-Kueue requests)")
+        if pending_red and excess > 1e-9:
+            order, changes = sorted(slots, key=lambda s: s[0] not in KUEUE_SHRINK_FIRST), []
+            for name, gi, fi, ri, nominal, _ in order:
+                if excess <= 1e-9 or nominal <= 0:
+                    continue
+                new = max(0.0, nominal - excess)
+                excess -= nominal - new
+                changes.append(("kueue_quota_clamp", name, gi, fi, ri, nominal, new))
+        else:
+            headroom, changes = -excess, []
+            for name, gi, fi, ri, nominal, target in sorted(slots, key=lambda s: s[0] in KUEUE_SHRINK_FIRST):
+                if target is None or target - nominal <= 1e-9 or headroom <= 1e-9:
+                    continue
+                new = nominal + min(target - nominal, headroom)
+                headroom -= new - nominal
+                changes.append(("kueue_quota_restore", name, gi, fi, ri, nominal, new))
+        for kind, name, gi, fi, ri, nominal, new in changes:
             path = f"/spec/resourceGroups/{gi}/flavors/{fi}/resources/{ri}/nominalQuota"
-            patch = lambda v: json.dumps([{"op": "replace", "path": path, "value": fmt_quantity(res, v)}])
-            acts.append({"kind": "kueue_quota_clamp", "unit": f"clusterqueue/{name}", "resource": res,
-                         "why": f"cohort {KUEUE_COHORT} promises {round(sum(s[4] for s in slots), 3)} {res} on "
-                                f"{KUEUE_NODE}, which can schedule {round(cap, 3)} (allocatable {round(alloc, 3)} - "
-                                f"{round(other, 3)} non-Kueue requests); nominal {round(nominal, 3)} -> {round(new, 3)}",
+            patch = lambda v, path=path: json.dumps([{"op": "replace", "path": path, "value": fmt_quantity(res, v)}])
+            acts.append({"kind": kind, "unit": f"clusterqueue/{name}", "resource": res,
+                         "why": f"{why}; nominal {round(nominal, 3)} -> {round(new, 3)}",
                          "undo": f"kubectl patch clusterqueue {name} --type=json -p '{patch(nominal)}'",
                          "run": [["kubectl", "patch", "clusterqueue", name, "--type=json", "-p", patch(new)]]})
     return acts
+
+
+def is_kueue_pod(p: dict) -> bool:
+    """Kueue labels Job pods kueue.x-k8s.io/{cluster-queue-name,local-queue-name,podset}; only the Job
+    carries queue-name. Missing this counted every admitted pod as foreign load and clamped to ~0."""
+    return any(k.startswith("kueue.x-k8s.io/") for k in (p["metadata"].get("labels") or {}))
+
+
+def applied_nominal(q: dict, gi: int, fi: int, ri: int) -> float | None:
+    """The IaC nominal this queue was last applied with (kubectl apply), or None if unknown."""
+    try:
+        applied = json.loads(q["metadata"]["annotations"]["kubectl.kubernetes.io/last-applied-configuration"])
+        return quantity(applied["spec"]["resourceGroups"][gi]["flavors"][fi]["resources"][ri]["nominalQuota"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
 
 
 # ---------- Kanban: retry workers that died only because the gateway was down ----------

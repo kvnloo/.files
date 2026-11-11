@@ -208,6 +208,45 @@ def test_kueue_quota_clamp_only_when_pending_and_overcommitted(tmp_path, monkeyp
     assert m.plan_kueue({"slos": [{"name": "kueue_pending_over_30m", "met": True}]}, cqs, node, pods) == []
 
 
+def _applied(cq, cpu, mem):
+    cq["metadata"]["annotations"] = {"kubectl.kubernetes.io/last-applied-configuration": json.dumps(_cq(
+        cq["metadata"]["name"], cpu, mem))}
+    return cq
+
+
+def test_kueue_admitted_pods_are_not_foreign_load(tmp_path, monkeypatch):
+    # Live 11-11 05:48: admitted pods carry cluster-queue-name/podset, not queue-name. Counting them
+    # as foreign load clamped lanes 5.9 -> 1.9 CPU and 10.4 -> 3.1 GB and left MBP at 37%.
+    m = load(tmp_path, monkeypatch)
+    pending = {"slos": [{"name": "kueue_pending_over_30m", "met": False}]}
+    node = {"status": {"allocatable": {"cpu": "6500m", "memory": "12046060Ki"}}}
+    pods = {"items": [
+        {"metadata": {"labels": {}}, "status": {"phase": "Running"},
+         "spec": {"containers": [{"resources": {"requests": {"cpu": "600m", "memory": "582Mi"}}}]}},
+        {"metadata": {"labels": {"kueue.x-k8s.io/cluster-queue-name": "lanes", "kueue.x-k8s.io/podset": "main"}},
+         "status": {"phase": "Running"},
+         "spec": {"containers": [{"resources": {"requests": {"cpu": "4", "memory": "6Gi"}}}]}}]}
+    cqs = {"items": [_cq("lanes", "5900m", "10441814016"), _cq("bench-lanes", "0")]}
+    assert m.plan_kueue(pending, cqs, node, pods) == []
+
+
+def test_kueue_clamped_quota_restores_to_applied_iac_when_it_fits(tmp_path, monkeypatch):
+    m = load(tmp_path, monkeypatch)
+    node = {"status": {"allocatable": {"cpu": "6500m", "memory": "12046060Ki"}}}
+    pods = {"items": [{"metadata": {"labels": {}}, "status": {"phase": "Running"},
+                       "spec": {"containers": [{"resources": {"requests": {"cpu": "600m", "memory": "582Mi"}}}]}}]}
+    lanes = _applied(_cq("lanes", "1900m", "3134959616"), "5900m", "10441814016")
+    bench = _applied(_cq("bench-lanes", "0"), "2", "0")
+    green = {"slos": [{"name": "kueue_pending_over_30m", "met": True}]}
+    acts = m.plan_kueue(green, {"items": [lanes, bench]}, node, pods)
+    assert [(a["kind"], a["unit"], a["resource"]) for a in acts] == [
+        ("kueue_quota_restore", "clusterqueue/lanes", "cpu"), ("kueue_quota_restore", "clusterqueue/lanes", "memory")]
+    assert json.loads(acts[0]["run"][0][-1])[0]["value"] == "5900m"   # 6.5 - 0.6 fits exactly; bench stays 0
+    assert json.loads(acts[1]["run"][0][-1])[0]["value"] == "10441814016"
+    full = {"items": [_applied(_cq("lanes", "5900m", "10441814016"), "5900m", "10441814016"), bench]}
+    assert m.plan_kueue(green, full, node, pods) == []   # nothing fits: no restore, no flapping
+
+
 def test_gateway_crash_retry_once_when_gateway_answers(tmp_path, monkeypatch):
     import sqlite3
     m = load(tmp_path, monkeypatch)
