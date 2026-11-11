@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Provision the phone throughput bundle (scripts/fleet-backfill `phones`) on PHONE.
+# Usage: provision NODE   (NODE = omarchy-phone | galaxy-s22plus | lenovo-tab)
+set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+node=$1
+bundle=/data/local/tmp/z0tp
+model=${PHONE_EMBED_MODEL:-/mnt/zer0models/models/phone-throughput/Qwen3-Embedding-0.6B-Q8_0.gguf}
+llama=${PHONE_LLAMA_CPU:-/mnt/zer0models/models/zlv-tts/phone-bundle/llm-variants/cpu}
+serial=$(python3 "$here/../fleet-adb" discover "$node" | python3 -c 'import json,sys;print(json.load(sys.stdin)["serial"])')
+bin=$(mktemp -d)/phone-embed
+(cd "$here" && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$bin" .)
+adb -s "$serial" shell "mkdir -p $bundle && chmod 700 $bundle"
+adb -s "$serial" push -q "$llama" "$bundle/"
+adb -s "$serial" push -q "$bin" "$model" "$bundle/"
+adb -s "$serial" shell "chmod 755 $bundle/phone-embed $bundle/cpu/llama-server && ls -la $bundle"

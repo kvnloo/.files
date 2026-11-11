@@ -27,5 +27,20 @@
       "ctest": ["-L", "main", "--timeout", "900"],
       "nodes": ["mbp"]
     }
-  ]
+  ],
+  "phones": {
+    "_doc": "Untimed phone throughput. mask = cores hc-turbo's bench does not own (turbo/mobile.py BENCH_PIN: s25 c0, s22 f0, tab c0). Bundle provisioned by scripts/phone_throughput/provision.",
+    "corpus": "/mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/owner_msgs.jsonl",
+    "bundle": "/data/local/tmp/z0tp",
+    "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+    "shard": 400,
+    "max_chars": 2000,
+    "ctx": 1024,
+    "timeout": 5400,
+    "nodes": {
+      "omarchy-phone": {"mask": "3f", "threads": 6},
+      "galaxy-s22plus": {"mask": "0f", "threads": 4},
+      "lenovo-tab": {"mask": "3f", "threads": 6}
+    }
+  }
 }

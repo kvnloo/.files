@@ -148,6 +148,31 @@ nodes:
       strikes: 2
       on_unhealthy: pause
     lane: {}
+  lenovo-tab:
+    # Owner's Lenovo tablet (TB350FU), native adb lane only: no PRoot guest exists, so
+    # ssh_user/ssh_port are unused placeholders. LAN adb; no tailnet node.
+    role: worker
+    kind: phone
+    aliases: [tab]
+    transport: adb
+    tailnet_ip: 192.168.1.65
+    ssh_user: root
+    ssh_port: 0
+    arch: arm64
+    classes: [phone]
+    capabilities: [android-native]
+    guest_capabilities: []
+    taints: []
+    model: TB350FU
+    android:
+      adb_host: 192.168.1.65
+      serial: HVA5TTYB
+      revive: false
+    health:
+      min_battery_pct_on_battery: 2
+      strikes: 2
+      on_unhealthy: pause
+    lane: {}
   groot:
     role: server
     tailnet_ip: 100.113.138.100

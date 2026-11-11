@@ -189,6 +189,18 @@ class NativeLaneTests(unittest.TestCase):
         self.assertTrue(facts["online"])
         self.assertEqual(facts["guest_recovery"], "owner_busy")
 
+    def test_native_only_tab_never_reports_or_restores_a_guest(self):
+        device = Device.__new__(Device)
+        device.serial, device.hardware = "lan", "HVA5TTYB"
+        device.shell = mock.Mock(side_effect=["level: 50\nscale: 100",
+                                              "Thermal Status: 0", "0.1 0.2 0.3", "0-7"])
+        device.guest_running = mock.Mock(side_effect=AssertionError("tab has no guest"))
+        device.restore_guest = mock.Mock(side_effect=AssertionError("never open UI on the tab"))
+        facts = device.probe()
+        self.assertEqual(facts["status"], "ok")
+        self.assertNotIn("error", facts)
+        self.assertEqual(facts["guest_recovery"], "no_guest")
+
     def test_native_source_push_uses_included_immutable_snapshot_and_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

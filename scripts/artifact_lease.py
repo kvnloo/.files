@@ -59,7 +59,10 @@ def shell_create(path, owner, node, kind, keep_receipts=()):
             'case "$p" in *\'"\'*|*\'\\\'*|*"\n"*) exit 1;; esac; '
             't=$(mktemp .artifact-lease-XXXXXX) && '
             f'printf \'%s, "path": "%s"}}\\n\' {shlex.quote(encoded)} "$p" > "$t" && '
-            '{ ln "$t" .artifact-lease.json 2>/dev/null || [ -e .artifact-lease.json ]; }; '
+            # Android 14+ SELinux denies hard links in /data/local/tmp to the shell
+            # user; a no-clobber rename still publishes the complete inode atomically.
+            '{ ln "$t" .artifact-lease.json 2>/dev/null || mv -n "$t" .artifact-lease.json 2>/dev/null; '
+            '[ -e .artifact-lease.json ]; }; '
             'rc=$?; rm -f "$t"; exit "$rc")')
 
 
