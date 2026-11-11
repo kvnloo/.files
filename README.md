@@ -40,6 +40,21 @@ Useful commands:
 ./scripts/onboard install --module core-links --module fonts --module agent-skills --yes
 ```
 
+## Android setup handoff
+
+To share the Detent launcher, live wallpapers, and phone-control setup, send
+[this guide](docs/phone-setup/README.md) and the tracked
+[handoff script](scripts/phone-setup-handoff).
+
+Review the script before running it. From an existing clone's root, run:
+
+```sh
+PHONE_SETUP_DIR="$PWD" bash scripts/phone-setup-handoff
+```
+
+The script runs the diagnostic and prints the guide's local path.
+It does not install apps or change phone settings.
+
 ## OMP executable ownership
 
 `scripts/apply-agent-oom --apply` installs one content-stamped wrapper at both

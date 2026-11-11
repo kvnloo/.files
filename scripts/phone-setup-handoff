@@ -12,16 +12,24 @@ DIR=${PHONE_SETUP_DIR:-$HOME/src/kvnloo-files}
 BRANCHES=(${PHONE_SETUP_BRANCH:-master dev})
 
 command -v git >/dev/null || { echo "install git first" >&2; exit 1; }
-if [[ ! -d $DIR/.git ]]; then
+if [[ -e $DIR || -L $DIR ]]; then
+  [[ -e $DIR/.git ]] || { echo "$DIR already exists without a Git checkout; choose a new PHONE_SETUP_DIR" >&2; exit 1; }
+  BRANCH=$(git -C "$DIR" symbolic-ref -q --short HEAD || git -C "$DIR" rev-parse --short HEAD)
+  echo "Keeping existing checkout unchanged: $DIR"
+else
+  mkdir -p -- "$(dirname -- "$DIR")"
   git clone -q --filter=blob:none "$REPO" "$DIR"
+  for b in "${BRANCHES[@]}"; do   # master first, dev as a fallback
+    if git -C "$DIR" rev-parse -q --verify "origin/$b:docs/phone-setup/README.md" >/dev/null; then
+      git -C "$DIR" checkout -q "$b"; BRANCH=$b; break
+    fi
+  done
+  [[ -n ${BRANCH:-} ]] || { echo "no branch of $REPO has docs/phone-setup yet" >&2; exit 1; }
 fi
-git -C "$DIR" fetch -q origin
-for b in "${BRANCHES[@]}"; do   # master first, dev as a fallback
-  if git -C "$DIR" rev-parse -q --verify "origin/$b:docs/phone-setup/README.md" >/dev/null; then
-    git -C "$DIR" checkout -q -B "$b" "origin/$b"; BRANCH=$b; break
-  fi
-done
-[[ -n ${BRANCH:-} ]] || { echo "no branch of $REPO has docs/phone-setup yet" >&2; exit 1; }
+[[ -f $DIR/docs/phone-setup/README.md && -x $DIR/scripts/phone-setup ]] || {
+  echo "$DIR is missing the phone setup guide or executable checker; choose a new PHONE_SETUP_DIR" >&2
+  exit 1
+}
 
 MAP=$DIR/docs/phone-setup/README.md
 cat <<EOF

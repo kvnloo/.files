@@ -34,6 +34,23 @@ git clone https://github.com/kvnloo/.files.git ~/src/kvnloo-files
 cd ~/src/kvnloo-files && scripts/phone-setup
 ```
 
+To use the handoff from an existing clone, inspect `scripts/phone-setup-handoff`,
+then run it from the repository root:
+
+```sh
+PHONE_SETUP_DIR="$PWD" bash scripts/phone-setup-handoff
+```
+
+The script runs the diagnostic and prints the guide's local path. Missing tools
+and an unconnected phone appear as `miss` entries. It does not install apps or
+change phone settings. Follow this guide to address the reported gaps.
+
+Rerunning preserves an existing clone, including local commits and unfinished
+edits. Review and update the clone yourself if you need newer instructions.
+For a separate destination, set `PHONE_SETUP_DIR` to a new path. If that path
+already exists without a usable guide and executable checker, the script stops
+rather than replacing it.
+
 Tools on the computer: `adb`, `git`, `jq`, `uv`, `curl`, `unzip`; for building Detent also
 JDK 17 or 21 and the Android SDK.
 
