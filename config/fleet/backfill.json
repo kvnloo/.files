@@ -10,7 +10,7 @@
       "ref": "main",
       "kind": "pytest-slices",
       "slices": 8,
-      "python": "3.12",
+      "python": "3.14",
       "sync_variants": [
         ["--group", "dev", "--group", "test", "--extra", "messaging"],
         ["--extra", "dev", "--extra", "messaging", "--extra", "anthropic", "--extra", "acp"],
