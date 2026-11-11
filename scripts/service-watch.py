@@ -30,6 +30,11 @@ spec.loader.exec_module(dash)
 DEFAULT = Path('/mnt/zer0models/workspace/zer0/data/operations/service-watch')
 INVENTORY = Path('/mnt/zer0models/workspace/zer0/data/operations/host-hygiene/units.json')
 REAPER_STATUS = DEFAULT.parent / 'worktree-reaper/latest.json'
+# A self-restarting service is stopped (failed, so its OnFailure hook reports it) after 15
+# starts in an hour: below the 20 failures per hour the fix tape allows, above the 5 manual
+# restarts per hour seen in practice. RESTART_CAP is how `systemctl show` prints the pair.
+RESTART_CAP = ('1h', '15')
+RESTART_CAP_BODY = '[Unit]\nStartLimitIntervalSec=1h\nStartLimitBurst=15\n'
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
          'receipt_error_share', 'error_file_growth', 'timer_stale', 'timer_failed',
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',
@@ -99,10 +104,10 @@ def systemctl(scope, *args):
     return command(['systemctl'] + (['--user'] if scope == 'user' else ['--system']) + list(args))
 
 
-def properties(scope, units):
+def properties(scope, units, fields='Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec'):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec')
+    result = systemctl(scope, 'show', *units, '--property=' + fields)
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -259,6 +264,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS notifications(fingerprint TEXT,ts REAL,delivered INTEGER);
             CREATE TABLE IF NOT EXISTS pending(id TEXT PRIMARY KEY,data TEXT);
             CREATE INDEX IF NOT EXISTS incident_fingerprint ON incidents(fingerprint,ts);
+            CREATE INDEX IF NOT EXISTS incident_ts ON incidents(ts);
         ''')
 
     def get(self, key, default=None):
@@ -445,20 +451,44 @@ class Watch:
                 removed += 1
         return removed
 
+    def restart_capped(self, units):
+        """Services systemd restarts by itself and that keep the stock start limit: they get
+        RESTART_CAP. Never set a start limit for every service: it counts timer, socket and
+        path starts too, and 5 per 600 s refused every healthy timer faster than 2 min
+        (836 start-limit-hit per hour, 2026-11-10). None means systemd could not be read."""
+        try:
+            rows = properties('user', units, 'Id,Restart,TriggeredBy,StartLimitIntervalUSec,StartLimitBurst')
+        except (RuntimeError, subprocess.SubprocessError):
+            return None
+        return {unit for unit, row in rows.items()
+                if row.get('Restart', 'no') != 'no' and not row.get('TriggeredBy')
+                and (row.get('StartLimitIntervalUSec'), row.get('StartLimitBurst')) in (('10s', '5'), RESTART_CAP)}
+
     def install_hooks(self):
         changed = False
         base = Path.home() / '.config/systemd/user'
         if base.exists() and self.prune_hooks(base):
             changed = True
-        for scope, unit in self.units:
-            if scope != 'user' or unit.startswith('service-watch-failure@') or self.per_connection(unit):
-                continue
+        hooked = [unit for scope, unit in self.units if scope == 'user'
+                  and not unit.startswith('service-watch-failure@') and not self.per_connection(unit)]
+        capped = self.restart_capped([unit for unit in hooked if unit.endswith('.service')])
+        for unit in hooked:
             escaped = command(['systemd-escape', unit]).stdout.strip()
-            target = Path.home() / '.config/systemd/user' / (unit + '.d') / '90-service-watch.conf'
+            target = base / (unit + '.d') / '90-service-watch.conf'
             body = '[Unit]\nOnFailure=service-watch-failure@' + escaped + '.service\n'
             if not target.exists() or target.read_text() != body:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(body)
+                changed = True
+            cap = target.with_name('91-restart-cap.conf')
+            if capped is None:
+                continue
+            if unit not in capped:
+                if cap.exists():
+                    cap.unlink()
+                    changed = True
+            elif not cap.exists() or cap.read_text() != RESTART_CAP_BODY:
+                cap.write_text(RESTART_CAP_BODY)
                 changed = True
         if changed:
             systemctl('user', 'daemon-reload')
