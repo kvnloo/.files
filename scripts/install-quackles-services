@@ -4,6 +4,7 @@ import argparse
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 
 FILES = {
     'config/systemd/user/quackles-hitl.service': '.config/systemd/user/quackles-hitl.service',
@@ -26,6 +27,9 @@ def main():
     parser.add_argument('--activate', action='store_true', help='enable and restart the services')
     args = parser.parse_args()
     home = Path.home()
+    if (home / '.local/lib/files-live/current').is_symlink():
+        print('superseded: run scripts/release-live --apply', file=sys.stderr)
+        raise SystemExit(6)
     repo = Path(__file__).resolve().parent.parent
     for name in ENVS:
         env = home / '.config/quackles-services' / name

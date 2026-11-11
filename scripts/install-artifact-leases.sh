@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in --activate) ;; *) echo 'Usage: install-artifact-leases.sh --activate (parent deployment permission required)' >&2; exit 2;; esac
+if [[ -L "$HOME/.local/lib/files-live/current" ]]; then
+  echo 'superseded: run scripts/release-live --apply' >&2
+  exit 6
+fi
 [[ $(hostname) == groot && $(id -un) == kvn ]] || { echo 'controller identity mismatch' >&2; exit 1; }
 repo=$(dirname "$(dirname "$(readlink -f "$0")")")
 sha=$(git -C "$repo" rev-parse HEAD)

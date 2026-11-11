@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 
 OWNED = ('.local/lib/files-tern-omp/current', '.local/share/tern/omp/state.json',
@@ -175,6 +176,9 @@ def main() -> None:
     parser.add_argument('--rollback', action='store_true', help='restore the exact entries saved by the last apply')
     args = parser.parse_args()
     home = args.home.resolve()
+    if (args.apply or args.rollback) and (home / '.local/lib/files-live/current').is_symlink():
+        print('superseded: run scripts/release-live --apply', file=sys.stderr)
+        raise SystemExit(6)
     lock = home / '.local/state/agent-oom/tern-omp.lock'
     lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open('a') as stream:

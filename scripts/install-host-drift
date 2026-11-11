@@ -25,6 +25,9 @@ CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-w
 
 
 def install(source, home, apply):
+    if apply and (home / '.local/lib/files-live/current').is_symlink():
+        print('superseded: run scripts/release-live --apply', file=sys.stderr)
+        return 6
     tracked = set(subprocess.check_output(['git', '-C', str(source), 'ls-files'], text=True).splitlines())
     layout = host_layout.resolve(source, home=home)
     manifest = tomllib.loads((source / layout.manifest).read_text())

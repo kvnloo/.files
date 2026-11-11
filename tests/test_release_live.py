@@ -78,6 +78,56 @@ class ReleaseLiveTests(unittest.TestCase):
                 ('dir',) if path.is_dir() else ('file', path.read_bytes())
                 for path in self.home.rglob('*')}
 
+    def assert_installer_superseded(self, script, *modes):
+        self.run_cli('--apply')
+        # Prevent legacy code from reaching host releases or the service manager.
+        for command in ('hostname', 'git'):
+            stub = self.bin / command
+            stub.write_text('#!/bin/sh\nexit 99\n')
+            stub.chmod(0o755)
+        env = {**os.environ, 'HOME': str(self.home), 'PYTHONDONTWRITEBYTECODE': '1',
+               'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
+               'Z0INT_BACKEND_REPO': str(self.repo)}
+        current = self.library / 'current'
+        for dangling in (False, True):
+            if dangling:
+                current.unlink()
+                current.symlink_to('missing-release')
+            for args in modes:
+                with self.subTest(script=script, args=args, dangling=dangling):
+                    before = self.snapshot()
+                    result = subprocess.run([str(ROOT / 'scripts' / script), *args],
+                                            env=env, capture_output=True, text=True)
+                    self.assertEqual(self.snapshot(), before)
+                    self.assertEqual(result.returncode, 6, result.stdout + result.stderr)
+                    self.assertEqual(result.stderr, 'superseded: run scripts/release-live --apply\n')
+
+    def test_host_storage_superseded(self):
+        self.assert_installer_superseded('install-host-storage.sh', ('--activate',))
+
+    def test_host_drift_superseded(self):
+        self.assert_installer_superseded('install-host-drift', ('--apply', '--source', str(self.repo)))
+
+    def test_bws_secrets_superseded(self):
+        self.assert_installer_superseded('install-bws-secrets', ('--apply', '--source', str(self.repo)))
+
+    def test_artifact_leases_superseded(self):
+        self.assert_installer_superseded('install-artifact-leases.sh', ('--activate',))
+
+    def test_z0_guard_superseded(self):
+        self.assert_installer_superseded('install-z0-guard.sh', (), ('--activate',))
+
+    def test_quackles_services_superseded(self):
+        self.assert_installer_superseded('install-quackles-services', (), ('--activate',))
+
+    def test_tern_omp_superseded(self):
+        self.assert_installer_superseded('install-tern-omp', ('--apply',), ('--rollback',))
+
+    def test_agent_oom_superseded(self):
+        self.assert_installer_superseded('apply-agent-oom',
+                                        ('--apply', '--source', str(self.repo)),
+                                        ('--apply', '--user-layer', '--source', str(self.repo)))
+
     def advance(self):
         (self.repo / 'config/unit.service').write_bytes(b'second release\n')
         sha = self.commit()

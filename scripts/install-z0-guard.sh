@@ -7,6 +7,10 @@ case "${1:-}" in
   --activate) activate=true ;;
   *) echo "Usage: $0 [--activate]" >&2; exit 2 ;;
 esac
+if [[ -L "$HOME/.local/lib/files-live/current" ]]; then
+  echo 'superseded: run scripts/release-live --apply' >&2
+  exit 6
+fi
 repo=$(dirname "$(dirname "$(readlink -f "$0")")")
 backend=${Z0INT_BACKEND_REPO:-/mnt/zer0models/z0-wt/bend-policy-laws}
 backend_head=$(git -C "$backend" rev-parse HEAD)

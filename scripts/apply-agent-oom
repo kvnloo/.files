@@ -359,6 +359,9 @@ def main() -> int:
     parser.add_argument('--user-layer', action='store_true',
                         help='install manifest-owned user configuration, not agent policy')
     args = parser.parse_args()
+    if args.apply and (Path.home() / '.local/lib/files-live/current').is_symlink():
+        print('superseded: run scripts/release-live --apply', file=sys.stderr)
+        return 6
     installer = install_user_layer if args.user_layer else install
     return installer(args.source, Path.home(), args.apply)
 

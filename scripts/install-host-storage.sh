@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ ${1:-} == --activate && $# == 1 ]] || { echo 'Usage: install-host-storage.sh --activate' >&2; exit 2; }
+if [[ -L "$HOME/.local/lib/files-live/current" ]]; then
+  echo 'superseded: run scripts/release-live --apply' >&2
+  exit 6
+fi
 [[ $(hostname) == groot && $(id -un) == kvn && -d /mnt/zer0models/releases ]] || { echo 'host/release-root mismatch' >&2; exit 1; }
 mountpoint -q /mnt/zer0models || { echo 'bulk disk is not mounted' >&2; exit 1; }
 repo=$(dirname "$(dirname "$(readlink -f "$0")")")
