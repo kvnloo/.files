@@ -154,6 +154,32 @@ class MemoryDriftLaw(unittest.TestCase):
                     rows = law.audit({'unit': [declaration]}, host)
                     self.assertEqual(rows[0]['ok'], expected, rows)
 
+    def test_hermes_web_bounds_are_declared_and_configured(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        service = (ROOT / 'config/systemd/user/hermes-web.service').read_text()
+        for prop, value in [('MemoryMax', '4G'), ('MemorySwapMax', '1G')]:
+            with self.subTest(property=prop):
+                self.assertEqual(law.assigns(service, prop), [value])
+                declarations = [r for r in intent['unit']
+                                if r['unit'] == 'hermes-web.service' and r['property'] == prop]
+                self.assertEqual(len(declarations), 1)
+                self.assertEqual(declarations[0]['group'], 'app')
+                self.assertEqual(declarations[0]['equals'], value)
+                with tempfile.TemporaryDirectory() as tmp:
+                    for live, expected in [(value, True), ('infinity', False)]:
+                        host = FakeHost(tmp, {('hermes-web.service', prop): live}, {}, {})
+                        rows = law.audit({'unit': declarations}, host, {'app'})
+                        self.assertEqual(rows[0]['ok'], expected, rows)
+
+    def test_app_slice_has_no_memory_high_or_max(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        self.assertFalse(any(r['unit'] == 'app.slice'
+                             and r['property'] in {'MemoryHigh', 'MemoryMax'}
+                             for r in intent['unit']))
+        self.assertFalse(any(r['path'].endswith('/app.slice')
+                             and r['file'] in {'memory.high', 'memory.max'}
+                             for r in intent['cgroup']))
+
     def test_desktop_no_swap_does_not_blanket_unswap_background_apps(self):
         intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
         self.assertFalse(any(r['unit'] in {'app.slice', 'agent.slice'}

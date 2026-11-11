@@ -8,6 +8,8 @@ Type=simple
 ExecStart=/home/kvn/.hermes/hermes-agent/venv/bin/hermes dashboard --port 9119 --host 127.0.0.1 --skip-build --no-open
 Restart=on-failure
 RestartSec=3
+MemoryMax=4G
+MemorySwapMax=1G
 Environment=HERMES_HOME=/home/kvn/.hermes
 
 [Install]
