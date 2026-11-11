@@ -24,7 +24,9 @@ RESOURCE = "z0.dev/boat"
 MAX_SLOTS = 4             # concurrent sandboxes; provider allows 100, our relays stay small
 SLOT_SECONDS = 3600       # included VM time reserved per admitted sandbox
 BOAT = os.path.expanduser("~/.local/bin/boat")
-IMAGE = "python:3.13.13-slim-trixie"  # already on groot (phone lease pods); has CA certs
+# `boat run --push` shells out to ssh-keygen/ssh: the image needs an OpenSSH client,
+# a passwd entry for the uid (host /etc/passwd, read-only) and a writable $HOME/.ssh.
+IMAGE = "docker.io/alpine/git:v2.49.1"
 
 
 def slots(limits):
@@ -68,9 +70,12 @@ def job(cmd, src=None, timeout=1800, machine="small"):
     argv += ["--", "bash", "-lc", shlex.join(cmd)]
     home = os.path.expanduser("~")
     # The CLI's login lives in ~/.config/ascii/boat (it may refresh it); state holds its create lock.
-    mounts = [(BOAT, True), (home + "/.config/ascii", False), (home + "/.local/state/boat", False)]
+    mounts = [(BOAT, True), (home + "/.config/ascii", False), (home + "/.local/state/boat", False),
+              ("/etc/passwd", True)]
     if src:
         mounts.append((src, True))
+    volumes = [{"name": "home", "emptyDir": {}}] + [
+        {"name": f"m{i}", "hostPath": {"path": path}} for i, (path, _) in enumerate(mounts)]
     return name, {
         "apiVersion": "batch/v1", "kind": "Job",
         "metadata": {"name": name, "namespace": NAMESPACE,
@@ -90,10 +95,10 @@ def job(cmd, src=None, timeout=1800, machine="small"):
                                   "limits": {RESOURCE: "1", "memory": "256Mi"}},
                     "securityContext": {"allowPrivilegeEscalation": False,
                                         "capabilities": {"drop": ["ALL"]}},
-                    "volumeMounts": [{"name": f"m{i}", "mountPath": path, "readOnly": ro}
-                                     for i, (path, ro) in enumerate(mounts)]}],
-                "volumes": [{"name": f"m{i}", "hostPath": {"path": path}}
-                            for i, (path, _) in enumerate(mounts)]}}}}
+                    "volumeMounts": [{"name": "home", "mountPath": home}] + [
+                        {"name": f"m{i}", "mountPath": path, "readOnly": ro}
+                        for i, (path, ro) in enumerate(mounts)]}],
+                "volumes": volumes}}}}
 
 
 def submit(manifest, run=kubectl):

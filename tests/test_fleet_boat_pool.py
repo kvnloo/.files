@@ -70,6 +70,20 @@ class JobTests(unittest.TestCase):
         self.assertEqual(container["resources"]["requests"][pool.RESOURCE], "1")
         self.assertNotIn("--keep", container["command"])  # sandbox is always deleted
 
+    def test_push_relay_has_ssh_a_passwd_entry_and_a_writable_home(self):
+        # Regression: python:slim had no ssh-keygen and $HOME was root-owned, so every
+        # `--push` job died with "Permission denied (os error 13)" after the sandbox started.
+        _, job = pool.job(["true"], src="/tmp/repo")
+        spec = job["spec"]["template"]["spec"]
+        container = spec["containers"][0]
+        self.assertIn("alpine/git", container["image"])
+        volumes = {v["name"]: v for v in spec["volumes"]}
+        mounts = {m["mountPath"]: m for m in container["volumeMounts"]}
+        home = next(e["value"] for e in container["env"] if e["name"] == "HOME")
+        self.assertIn("emptyDir", volumes[mounts[home]["name"]])
+        self.assertTrue(mounts["/etc/passwd"]["readOnly"])
+        self.assertEqual(volumes[mounts["/etc/passwd"]["name"]]["hostPath"]["path"], "/etc/passwd")
+
 
 if __name__ == "__main__":
     unittest.main()
