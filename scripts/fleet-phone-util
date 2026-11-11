@@ -34,13 +34,7 @@ def busy(a, b):
     return round(100 * (1 - idle / total), 1) if total > 0 else None
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--seconds", type=float, default=10)
-    p.add_argument("--json", action="store_true")
-    p.add_argument("phones", nargs="+", help="NAME=SERIAL")
-    args = p.parse_args()
-    phones = dict(x.split("=", 1) for x in args.phones)
+def sample(phones, args):
     first = {n: safe(stat, s) for n, s in phones.items()}
     time.sleep(args.seconds)
     rows = {}
@@ -49,8 +43,22 @@ def main():
         rows[n] = (second if "error" in second  # one offline phone must not void the others' sample
                    else {"busy_pct": busy(first[n], second), "cores": first[n][2]})
     rows = {"at": time.time(), "seconds": args.seconds, "phones": rows}
-    print(json.dumps(rows) if args.json else "\n".join(
-        (f"{n}: {r['error']}" if "error" in r else f"{n}: {r['busy_pct']}% of {r['cores']} cores") for n, r in rows["phones"].items()))
+    text = json.dumps(rows) if args.json else "\n".join(
+        (f"{n}: {r['error']}" if "error" in r else f"{n}: {r['busy_pct']}% of {r['cores']} cores")
+        for n, r in rows["phones"].items())
+    print(text, flush=True)
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--seconds", type=float, default=10)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--samples", type=int, default=1, help="consecutive windows, one line each")
+    p.add_argument("phones", nargs="+", help="NAME=SERIAL")
+    args = p.parse_args()
+    phones = dict(x.split("=", 1) for x in args.phones)
+    for _ in range(args.samples):  # back-to-back windows: --samples 60 --seconds 60 = a 1 h receipt
+        sample(phones, args)
     return 0
 
 
