@@ -2,6 +2,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -80,6 +81,33 @@ class ControllerTests(unittest.TestCase):
             report = c.execute('s22', node, False, False, 'core')
         self.assertFalse(report['complete'])
         self.assertEqual(report['native']['would_reap_bytes'], 0)
+
+    def run_main(self, tmp, **patches):
+        config = {'nodes': {'groot': {'transport': 'local'}, 's22': {'transport': 'ssh'}}, 'hourly_seconds': 3600,
+                  'pressure_free_percent': 10, 'pressure_threshold_basis': 'test'}
+        (Path(tmp) / 'config.json').write_text(json.dumps(config))
+        with patch.object(c.sys, 'argv', ['controller', '--monitor', '--config', tmp + '/config.json', '--output', tmp + '/out']), \
+             patch.object(c, 'pressure', return_value=50.0), patch.multiple(c, **patches):
+            return c.main()
+
+    def test_unreachable_node_is_a_report_row_not_a_unit_failure(self):
+        reports = {'groot': {'complete': True}, 's22': {'complete': False}}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self.run_main(tmp, execute=lambda name, *rest: dict(reports[name])), c.INCOMPLETE)
+            self.assertFalse(json.loads((Path(tmp) / 'out/s22.json').read_text())['complete'])
+        unit = (Path(__file__).resolve().parents[1] / 'config/systemd/user/artifact-leases.service').read_text()
+        self.assertIn(f'SuccessExitStatus={c.INCOMPLETE}', unit)
+
+    def test_healthy_run_is_zero_and_controller_error_is_one(self):
+        def broken(name, *rest):
+            if name == 'groot':
+                raise RuntimeError('lease core failed')
+            return {'complete': False}
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self.run_main(tmp, execute=lambda *rest: {'complete': True}), 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self.run_main(tmp, execute=broken), 1)
+            self.assertIn('lease core failed', (Path(tmp) / 'out/groot.error.json').read_text())
 
 
 if __name__ == '__main__':

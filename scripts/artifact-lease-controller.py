@@ -154,6 +154,11 @@ def pressure(node):
     return int(fields[3]) * 100 / int(fields[1])
 
 
+# Exit code for a finished report in which part of a node could not be reached (a phone
+# asleep). artifact-leases.service counts it as success; a controller error (1) still fails.
+INCOMPLETE = 3
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', type=Path, default=ROOT / 'config/fleet/artifact-leases.json')
@@ -171,7 +176,7 @@ def main():
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: return 0
         source = (ROOT / 'scripts/artifact-leases.py').read_text()
-        failed = False
+        code = 0
         for name, node in config['nodes'].items():
             if a.node and name not in a.node:
                 continue
@@ -192,7 +197,7 @@ def main():
                     continue
                 result = execute(name, node, a.apply, a.enroll, source)
                 if result.get('complete') is False:
-                    failed = True
+                    code = code or INCOMPLETE
                 result['controller'] = {'node': name, 'free_percent': free, 'pressure': pressured,
                                         'threshold_basis': config['pressure_threshold_basis']}
                 target = a.output / (name + '.json')
@@ -201,9 +206,9 @@ def main():
                 temp.replace(target)
                 state.touch()
             except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as e:
-                failed = True
+                code = 1
                 (a.output / (name + '.error.json')).write_text(json.dumps({'node': name, 'error': str(e), 'time': time.time()}))
-        return int(failed)
+        return code
 
 
 if __name__ == '__main__':
