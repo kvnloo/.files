@@ -106,8 +106,7 @@
     "z0live-hermes.service": "hermes-clean",
     "hermes-gateway-chiefstaff.service": "hermes-chiefstaff",
     "hermes-gateway-intake.service": "hermes-intake",
-    "z0intelligence.service": "z0intelligence",
-    "boat-reaper.service": "boat"
+    "z0intelligence.service": "z0intelligence"
   },
   "retired_dotenv": {
     ".hermes/profiles/chiefstaff/.env": {
