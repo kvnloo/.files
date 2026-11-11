@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""fix-replay: replay every recorded fix as a tape and track whether it holds under real use.
+A tape is a read-only shell command that exits 0 while the fix holds. An optional `use` command prints
+how many times the real path was exercised since the previous run, because a fix that is never used
+proves nothing. State: streak start, passes, uses and the last failure, per tape.
+  fix-replay            # run all tapes, append results, rewrite BOARD.md
+  fix-replay --board    # print the board only
+Status ladder: open (failing now) -> fresh (<3 d) -> holding (3-14 d) -> hardened (>=14 d and >=20 uses,
+or >=14 d with no use command: 'hardened?' = time-only, unproven under load).
+A tape that fails after being holding/hardened is a REGRESSION and pages Kevin once per streak.
+"""
+import json, os, subprocess, sys, time
+from pathlib import Path
+
+OPS = Path(os.environ.get("FIX_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+TAPES, STATE, LOG, BOARD = OPS / "fix-tapes.json", OPS / "fix-state.json", OPS / "fix-replay.jsonl", OPS / "BOARD.md"
+GOAL_LAWS = OPS.parent / "intent-analyzer-20261104/goal-laws.json"
+DAY = 86400
+
+
+def tapes():
+    t = json.loads(TAPES.read_text())["tapes"]
+    try:  # owner-canon incident tapes are fixes too; reuse them instead of copying
+        for k, v in json.loads(GOAL_LAWS.read_text())["rules"].items():
+            if v.get("tape"):
+                t.append({"id": f"canon-{k}", "class": "owner canon", "what": v["law"], "tape": v["tape"],
+                          "env": {"LEDGER_DIR": str(GOAL_LAWS.parent)}})
+    except (OSError, ValueError, KeyError):
+        pass
+    return t
+
+
+def sh(cmd, env=None, timeout=120):
+    try:
+        r = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=timeout,
+                           env={**os.environ, **(env or {})})
+        return r.returncode, (r.stdout + r.stderr).strip()[-300:]
+    except subprocess.TimeoutExpired:
+        return 124, "timeout"
+
+
+def status(s, now):
+    if not s.get("ok"):
+        return "open"
+    days = (now - s["since"]) / DAY
+    if days < 3:
+        return "fresh"
+    if days < 14:
+        return "holding"
+    if s.get("has_use"):
+        return "hardened" if s.get("uses", 0) >= 20 else "holding"
+    return "hardened?"
+
+
+def run():
+    now = time.time()
+    st = json.loads(STATE.read_text()) if STATE.exists() else {}
+    regressions = []
+    with LOG.open("a") as log:
+        for t in tapes():
+            rc, out = sh(t["tape"], t.get("env"))
+            ok = rc == 0
+            s = st.setdefault(t["id"], {"since": now, "ok": ok, "uses": 0, "passes": 0, "fails": 0})
+            before = status(s, now)
+            uses = 0
+            if t.get("use"):
+                urc, uout = sh(t["use"], t.get("env"))
+                uses = int(uout.split()[-1]) if urc == 0 and uout.split() and uout.split()[-1].isdigit() else 0
+                s["has_use"] = True
+            if ok and not s["ok"]:
+                s.update(since=now, uses=0)
+            if not ok:
+                s.update(last_fail=out or f"rc={rc}", last_fail_at=time.strftime("%F %H:%M"))
+            if not ok and s["ok"]:
+                s["since"] = now
+                if before in ("holding", "hardened", "hardened?"):
+                    regressions.append((t, before, out))
+            s["ok"] = ok
+            s["passes" if ok else "fails"] += 1
+            if ok:
+                s["uses"] += uses
+            s.update(cls=t.get("class", ""), what=t.get("what", ""), checked=now)
+            log.write(json.dumps({"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses,
+                                  "out": "" if ok else out}) + "\n")
+    STATE.write_text(json.dumps(st, indent=1))
+    for t, before, out in regressions:
+        subprocess.run(["/home/kvn/.local/bin/z0-phone-notify", "fix-replay", f"REGRESSION {t['id']}",
+                        f"was {before}: {t.get('what','')} | {out[:160]}"], timeout=60)
+    BOARD.write_text(board(st, now))
+
+
+def board(st, now):
+    rank = {"open": 0, "fresh": 1, "holding": 2, "hardened?": 3, "hardened": 4}
+    rows = sorted(st.items(), key=lambda kv: (rank[status(kv[1], now)], kv[1].get("cls", "")))
+    out = [f"# Fix replay board ({time.strftime('%F %H:%M')})", "",
+           "| status | id | class | what | streak d | uses | pass/fail | last fail |", "|---|---|---|---|---|---|---|---|"]
+    for k, s in rows:
+        days = round((now - s["since"]) / DAY, 1)
+        out.append(f"| {status(s, now)} | {k} | {s.get('cls','')} | {s.get('what','')[:70]} | {days} | "
+                   f"{s.get('uses','-') if s.get('has_use') else '-'} | {s['passes']}/{s['fails']} | "
+                   f"{(s.get('last_fail_at','') + ' ' + s.get('last_fail','')[:60]).strip()} |")
+    return "\n".join(out) + "\n"
+
+
+if __name__ == "__main__":
+    if "--board" in sys.argv:
+        print(BOARD.read_text() if BOARD.exists() else "no board yet")
+    else:
+        run()
+        print(BOARD.read_text())

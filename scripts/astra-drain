@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""astra-drain (ayo 2026-11-09): run the next pending Astra contract from
+token-allocation-20261109/astra-queue.json through fx (GPT only via fx; fx's PRIV2 guard refuses
+owner-data briefs). One contract per run (flock), gated by `burn-gate codex` as a bulk caller.
+Each contract {title, files, change, test} runs in its own git worktree on branch astra/<slug>;
+the drainer runs the test itself, commits on pass (Kevin's identity), never pushes.
+status: pending -> ready-review | failed | needs-repo | refused
+  astra-drain [--dry-run]
+"""
+import fcntl, json, os, re, subprocess, sys, time
+from pathlib import Path
+
+OPS = Path(os.environ.get("ASTRA_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+Q, LOG = OPS / "astra-queue.json", OPS / "astra-drain.jsonl"
+BIN = Path("/home/kvn/.local/bin")
+WT_ROOT = Path(os.environ.get("ASTRA_WT_ROOT", "/mnt/zer0models/worktrees"))
+MODEL, EFFORT = os.environ.get("ASTRA_MODEL", "gpt-6-astra"), os.environ.get("ASTRA_EFFORT", "high")
+AUTHOR = ["-c", "user.name=Kevin Rajan", "-c", "user.email=7121943+kvnloo@users.noreply.github.com"]
+
+
+def log(**kw):
+    with LOG.open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%FT%T"), **kw}) + "\n")
+
+
+def notify(title, text):
+    if os.environ.get("ASTRA_NOTIFY") != "0":
+        subprocess.run([str(BIN / "z0-phone-notify"), "astra-drain", title, text], timeout=60)
+
+
+def sh(cmd, cwd=None, timeout=600):
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                       shell=isinstance(cmd, str))
+    return r.returncode, (r.stdout + r.stderr)[-4000:]
+
+
+from importlib.machinery import SourceFileLoader
+QL = SourceFileLoader("fable_ingest", str(OPS / "bin" / "fable-ingest")).load_module()  # locked queue writes, test_problem
+
+
+def finish(job, status, **kw):
+    QL.set_job(Q, "title", job["title"], status=status, finished=time.strftime("%FT%T"), **kw)
+    log(title=job["title"], event=status, **{k: v for k, v in kw.items() if k != "out"})
+
+
+REPO_ROOTS = [Path(p) for p in os.environ.get("ASTRA_REPO_ROOTS", "/mnt/zer0models/workspace/zer0/oss:/mnt/zer0models/workspace/zer0/products:/home/kvn/.hermes/hermes-agent:/home/kvn/dotfiles").split(":")]
+
+
+def toplevel(p):
+    p = Path(p)
+    d = p if p.is_dir() else p.parent
+    while not d.exists() and d != d.parent:
+        d = d.parent
+    rc, out = sh(["git", "-C", str(d), "rev-parse", "--show-toplevel"])
+    return out.strip().splitlines()[-1] if rc == 0 and out.strip() else None
+
+
+def resolve(job):
+    """Repo + absolute files. Order: job['repo']; absolute file paths; relative paths found under REPO_ROOTS
+    (one level of repos per root, plus the root itself), preferring the repo that holds the most named files."""
+    files = job.get("files", [])
+    if job.get("repo") and toplevel(job["repo"]):
+        repo = toplevel(job["repo"])
+        return repo, [f if f.startswith("/") else os.path.join(repo, f) for f in files]
+    absf = [f for f in files if f.startswith("/")]
+    if absf:
+        repo = toplevel(absf[0])
+        if repo:
+            return repo, [f if f.startswith("/") else os.path.join(repo, f) for f in files]
+    rel = [f for f in files if not f.startswith("/")]
+    if not rel:
+        return None, files
+    cands = []
+    for root in REPO_ROOTS:
+        if not root.is_dir():
+            continue
+        for r in [root, *[c for c in root.iterdir() if c.is_dir() and (c / ".git").exists()]]:
+            hits = sum((r / f).exists() for f in rel)
+            if hits:
+                cands.append((hits, str(r)))
+    if not cands:
+        return None, files
+    hits, best = max(cands)
+    if sum(1 for h, _ in cands if h == hits) > 1:
+        return None, files  # ambiguous: several repos hold the same relative paths
+    repo = toplevel(best)
+    return repo, [f if f.startswith("/") else os.path.join(repo, f) for f in files] if repo else files
+
+
+OWNER_ONLY = re.compile(r"(?i)\bsudo\b|owner[- ]visible|owner decides|kevin decides|bcachefs|root[- ]disk|disk space|reset", re.I)
+
+
+# Live harness/credential config is never edited unattended by GPT: those contracts go to review.
+PROTECTED = re.compile(r"/\.hermes/(profiles/[^/]+/)?(config\.yaml|auth\.json|\.env|SOUL\.md|memories/)|/\.claude[^/]*/|/\.codex/|\.env$|/\.ssh/")
+
+
+def host_files(job):
+    """Existing host files named by the contract (paths outside git: ~/.local/bin, profile configs, deployed libs)."""
+    out = []
+    for f in job.get("files", []):
+        for cand in re.findall(r"(?:~|/)[\w./@+-]+", f):
+            p = Path(os.path.expanduser(re.sub(r":[\d,-]+$", "", cand)))
+            if p.is_file() and not PROTECTED.search(str(p)):
+                out.append(str(p))
+    return sorted(set(out))
+
+
+def host_run(job, files, dry):
+    """Host mode: Astra edits files in place after the drainer backs them up; the drainer runs the test and
+    restores every backup if it fails. Status: applied | failed."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    slug = re.sub(r"[^a-z0-9]+", "-", job["title"].lower()).strip("-")[:40]
+    if dry:
+        print(f"astra-drain: would run '{job['title']}' in HOST mode on {files} with {MODEL}"); return 0
+    baks = []
+    for f in files:
+        b = f"{f}.bak-astra-{stamp}"
+        sh(["cp", "-p", f, b]); baks.append((f, b))
+    prompt = (f"Contract: {job['title']}\nFiles (edit in place; backups already taken): {', '.join(files)}\n"
+              f"Change: {job.get('change', '')}\nDone when this command passes: {job['test']}\n"
+              "Make the smallest change that satisfies the contract, run the test, and stop. Touch no other file. "
+              "No sudo, no restarts of units you did not change, no deletions.")
+    log(title=job["title"], event="start", mode="host", files=files, model=MODEL)
+    try:
+        frc, fout = sh(["fx", "ask", "--auto", "--no-save", "--model", MODEL, "--effort", EFFORT, "--", prompt],
+                       cwd=str(Path.home()), timeout=3600)
+    except subprocess.TimeoutExpired:
+        frc, fout = 124, "fx timeout"
+    try:
+        trc, tout = sh(job["test"], cwd=str(Path.home()), timeout=1200)
+    except subprocess.TimeoutExpired:
+        trc, tout = 124, "test timeout"
+    changed = [f for f, b in baks if sh(["cmp", "-s", f, b])[0] != 0]
+    (OPS / "astra-runs").mkdir(exist_ok=True)
+    (OPS / "astra-runs" / f"{slug}.log").write_text(f"## host mode\n## fx rc={frc}\n{fout}\n\n## test rc={trc}\n{tout}\n## changed {changed}\n")
+    if trc == 0 and changed:
+        finish(job, "applied", mode="host", changed=changed, backups=[b for _, b in baks], fx_rc=frc)
+        notify("Astra applied", f"{job['title']}: test passes; changed {len(changed)} file(s), backups *.bak-astra-{stamp}")
+        return 0
+    for f, b in baks:
+        sh(["cp", "-p", b, f])
+    finish(job, "failed", mode="host", fx_rc=frc, test_rc=trc, note="restored backups; " + ("no change made" if not changed else "test failed"))
+    return 1
+
+
+def runnable(j):
+    if resolve(j)[0]:
+        return True
+    return bool(host_files(j) and j.get("test") and not OWNER_ONLY.search(j["title"] + " " + j.get("change", "")))
+
+
+def main(dry):
+    if not Q.exists():
+        print("astra-drain: no queue yet"); return 0
+    lock = open(OPS / ".astra-drain.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("astra-drain: already running"); return 0
+    def park(q):  # park contracts no lane can run (no repo/host files, owner-only, or a test that cannot run)
+        n = 0
+        for j in q.get("jobs", []):
+            if j.get("status") != "pending":
+                continue
+            why = QL.test_problem(j.get("test"))
+            if why:
+                j.update(status="bad-test", note=why); n += 1
+            elif not runnable(j):
+                j.update(status="needs-repo", note="no repo, no existing host files, or owner-only"); n += 1
+        return n
+    parked = QL.update(Q, park) if not dry else 0
+    if parked:
+        log(event="parked", n=parked)
+    q = json.loads(Q.read_text())
+    job = next((j for j in q.get("jobs", []) if j.get("status") == "pending" and (not dry or runnable(j))), None)
+    if not job:
+        print("astra-drain: queue empty"); return 0
+    rc, out = sh([str(BIN / "burn-gate"), "codex"], timeout=200) if not os.environ.get("ASTRA_SKIP_GATE") else (0, "")
+    if rc != 0:
+        print(f"astra-drain: codex not admitted: {out.strip()[-200:]}"); return 0
+    repo, files = resolve(job)
+    if not repo:
+        hf = host_files(job)
+        if hf and job.get("test") and not OWNER_ONLY.search(job["title"] + " " + job.get("change", "")):
+            return host_run(job, hf, dry)
+        if dry:
+            print(f"astra-drain: '{job['title']}' has no repo and no host files"); return 0
+        finish(job, "needs-repo", note="no git repo holds these files and they are not existing host files"); return 0
+    slug = re.sub(r"[^a-z0-9]+", "-", job["title"].lower()).strip("-")[:40]
+    branch, wt = f"astra/{slug}-{time.strftime('%Y%m%d')}", WT_ROOT / f"astra-{slug}"
+    if dry:
+        print(f"astra-drain: would run '{job['title']}' in {repo} on {branch} ({wt}) with {MODEL}"); return 0
+    rc, out = sh(["git", "-C", repo, "worktree", "add", "-b", branch, str(wt), "HEAD"])
+    if rc != 0:
+        finish(job, "failed", note="worktree add failed", out=out); return 1
+    rel = [os.path.relpath(f, repo) for f in files]
+    prompt = (f"Contract: {job['title']}\nFiles: {', '.join(rel)}\nChange: {job.get('change', '')}\n"
+              f"Done when this command passes from the repo root: {job['test']}\n"
+              "Make the smallest change that satisfies the contract, run the test, and stop. Do not commit or push.")
+    log(title=job["title"], event="start", repo=repo, branch=branch, model=MODEL)
+    try:
+        frc, fout = sh(["fx", "ask", "--auto", "--no-save", "--model", MODEL, "--effort", EFFORT, "--", prompt],
+                       cwd=str(wt), timeout=3600)
+    except subprocess.TimeoutExpired:
+        frc, fout = 124, "fx timeout"
+    if frc == 3 or "PRIV2" in fout:
+        finish(job, "refused", note="fx PRIV2 refused the brief", out=fout, worktree=str(wt)); return 1
+    try:
+        trc, tout = sh(job["test"], cwd=str(wt), timeout=1200)
+    except subprocess.TimeoutExpired:
+        trc, tout = 124, "test timeout"
+    (OPS / "astra-runs").mkdir(exist_ok=True)
+    (OPS / "astra-runs" / f"{slug}.log").write_text(f"## fx rc={frc}\n{fout}\n\n## test rc={trc}\n{tout}\n")
+    _, diff = sh(["git", "status", "--porcelain"], cwd=str(wt))
+    if trc == 0 and diff.strip():
+        sh(["git", "add", "-A"], cwd=str(wt))
+        _, base = sh(["git", "rev-parse", "--short", "HEAD"], cwd=str(wt))
+        msg = ["git", *AUTHOR, "commit", "-m", f"astra: {job['title']}\n\nContract from {job.get('src', '?')}; test: {job['test']}"]
+        crc, cout = sh(msg, cwd=str(wt), timeout=900)
+        if crc != 0 and "no bootstrap Python found" in cout:
+            # Fresh worktrees lack the repo's bootstrap venv, so the lint hook cannot start; run ruff ourselves instead.
+            _, py = sh(["git", "diff", "--cached", "--name-only", "--", "*.py"], cwd=str(wt))
+            rrc, rout = sh(["ruff", "check", *py.split()], cwd=str(wt)) if py.split() else (0, "")
+            if rrc != 0:
+                crc, cout = rrc, rout
+            else:
+                r = subprocess.run(msg, cwd=str(wt), capture_output=True, text=True, env={**os.environ, "LEFTHOOK": "0"})
+                crc, cout = r.returncode, r.stdout + r.stderr
+        _, sha = sh(["git", "rev-parse", "--short", "HEAD"], cwd=str(wt))
+        if crc != 0 or sha.strip() == base.strip():
+            finish(job, "commit-failed", branch=branch, worktree=str(wt), out=cout[-1500:], fx_rc=frc)
+            return 1
+        finish(job, "ready-review", branch=branch, worktree=str(wt), commit=sha.strip(), fx_rc=frc)
+        notify("Astra contract ready", f"{job['title']}: test passes on {branch} ({sha.strip()}), not pushed.")
+        return 0
+    finish(job, "failed", branch=branch, worktree=str(wt), fx_rc=frc, test_rc=trc,
+           note="no change made" if not diff.strip() else "test failed")
+    notify("Astra contract failed", f"{job['title']}: fx rc={frc}, test rc={trc}. Log in astra-runs/{slug}.log")
+    return 1
+
+
+if __name__ == "__main__":
+    # rc 1 = a job failed and is recorded in the queue: not a unit failure. Crashes raise and still exit 1.
+    sys.exit(0 if main("--dry-run" in sys.argv) in (0, 1, None) else 2)

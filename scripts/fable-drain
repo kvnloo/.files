@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""fable-drain (FBL1, ayo 2026-11-09): run the next pending job of the Fable queue on a Claude
+account in the Fable-first phase. One job at a time (flock). The account comes from
+`burn-gate --fable-pick`; no admitted account -> exit 0 and wait. The job is a headless, read-only
+Fable 5.2 session (`claude -p --model claude-fable-5-2`) that cannot write files; the drainer saves its final message as the report.
+Done = fable-runs/<id>/REPORT.md exists and is non-trivial. Notifies Kevin on done/fail.
+  fable-drain            # run one job if admitted
+  fable-drain --dry-run  # show what would run
+"""
+import fcntl, json, os, re, subprocess, sys, time
+from pathlib import Path
+
+OPS = Path(os.environ.get("FABLE_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+QUEUE, RUNS, LOG = OPS / "fable-queue.json", OPS / "fable-runs", OPS / "fable-drain.jsonl"
+BIN = Path("/home/kvn/.local/bin")
+MODEL = os.environ.get("FABLE_MODEL", "claude-fable-5-2")
+TIMEOUT_S = 3 * 3600
+
+
+PROFILES = {"claude2": "fablelab", "claude3": "fablelab3"}  # Hermes profile pinned to that account (plugin claude_config_dir)
+ARMS = json.loads(os.environ.get("FABLE_ARMS", "null") or "null")
+
+
+def meter(lane):
+    """Live 5h / 7d / Fable-7d percentages for the lane (fable-probe reads the rate-limit headers)."""
+    try:
+        r = subprocess.run([str(OPS / "bin/fable-probe"), "meter", lane], capture_output=True, text=True, timeout=200)
+        m = json.loads(r.stdout.strip().splitlines()[-1])
+        return {"5h": m.get("5h"), "7d": m.get("7d"), "fable": m.get("7d_oi")}
+    except Exception:
+        return {"5h": None, "7d": None, "fable": None}
+
+
+PACE_PCT_H = float(os.environ.get("FABLE_PACE_PCT_H", "1.2"))  # ~150% of one allowance per 7d (one reset pressed mid-week)
+PACE_BUFFER = float(os.environ.get("FABLE_PACE_BUFFER", "8"))
+RESET_ASK_AT = float(os.environ.get("FABLE_RESET_ASK_AT", "47"))
+
+
+def fable_pace(lane):
+    """Run only while Fable used% <= PACE_PCT_H * hours into the 7d window + buffer, and stop at RESET_ASK_AT
+    (pressing a reset is Kevin's call)."""
+    try:
+        L = json.loads(subprocess.run([str(BIN / "burn-pace"), "--json"], capture_output=True, text=True, timeout=120).stdout)["lanes"][lane]
+        used, left = float(L["fable_used_pct"]), float(L["hours_to_reset"])
+    except Exception as e:
+        return False, f"pace read failed: {e}"
+    if used >= RESET_ASK_AT:
+        return False, f"Fable {used}% >= {RESET_ASK_AT}%: reset decision is Kevin's"
+    allowed = PACE_PCT_H * max(0.0, 168 - left) + PACE_BUFFER
+    return (used <= allowed), f"Fable {used}% vs pace line {allowed:.1f}% ({left:.0f}h to reset)"
+
+
+def pick_arm(job):
+    """Hill climb: job may pin an arm; else hill-state.json holds the incumbent and challenger, alternated per run."""
+    if job.get("arm"):
+        return job["arm"]
+    st_path = OPS / "hill-state.json"
+    st = json.loads(st_path.read_text()) if st_path.exists() else {
+        "incumbent": {"mode": "diagnose", "effort": "high", "scouts": False},
+        "challenger": {"mode": "implement", "effort": "medium", "scouts": True}, "n": 0}
+    which = "challenger" if st["n"] % 2 == 0 else "incumbent"
+    st["n"] += 1
+    st_path.write_text(json.dumps(st, indent=1))
+    return {**st[which], "slot": which}
+
+
+def log(**kw):
+    with LOG.open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%FT%T"), **kw}) + "\n")
+
+
+def notify(title, text):
+    if os.environ.get("FABLE_NOTIFY") == "0":
+        return
+    subprocess.run([str(BIN / "z0-phone-notify"), "fable-drain", title, text], timeout=60)
+
+
+from importlib.machinery import SourceFileLoader
+QL = SourceFileLoader("fable_ingest", str(OPS / "bin" / "fable-ingest")).load_module()  # update()/set_job(): locked queue writes
+
+
+GRADER = [OPS / "bin" / n for n in ("fable-ingest", "fix-replay", "fable-hill")] + [Path(__file__).resolve()]
+
+
+def grader_hash():
+    import hashlib
+    return {str(p): hashlib.sha256(p.read_bytes()).hexdigest()[:16] for p in GRADER if p.exists()}
+
+
+def main(dry):
+    lock = open(OPS / ".fable-drain.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("fable-drain: a job is already running"); return 0
+    def arm_pending(q):
+        for j in q["jobs"]:  # we hold the lock, so a 'running' job was interrupted (reboot/kill): requeue it
+            if j["status"] == "running":
+                j["status"] = "pending"; log(job=j["id"], event="requeued-after-interrupt")
+        now = time.time()
+        for j in q["jobs"]:  # recurring jobs (the F0 steward) re-arm once their interval has passed since the last finish
+            if j.get("recurring_hours") and j["status"] in ("done", "failed") and j.get("finished"):
+                if now - time.mktime(time.strptime(j["finished"], "%Y-%m-%dT%H:%M:%S")) > j["recurring_hours"] * 3600:
+                    j["status"] = "pending"; log(job=j["id"], event="re-armed")
+        return q
+    q = QL.update(QUEUE, arm_pending)
+    job = next((j for j in q["jobs"] if j["status"] == "pending"), None)
+    if not job:
+        print("fable-drain: queue empty"); return 0
+    p = subprocess.run([str(BIN / "burn-gate"), "--fable-pick"], capture_output=True, text=True, timeout=200)
+    if p.returncode != 0:
+        print(f"fable-drain: no account admitted ({p.stderr.strip()})"); return 0
+    cfg_dir, lane = p.stdout.split()
+    ok_pace, why = fable_pace(lane)
+    if not ok_pace:
+        print(f"fable-drain: {why}"); log(event="pace-hold", lane=lane, why=why); return 0
+    if dry:
+        print(f"fable-drain: would run {job['id']} on {lane} ({cfg_dir}) with {MODEL}"); return 0
+    run = RUNS / job["id"]
+    run.mkdir(parents=True, exist_ok=True)
+    report = run / "REPORT.md"
+    pk = subprocess.run([str(BIN / "fable-packet"), job["id"], "--save"], capture_output=True, text=True, timeout=600)
+    body = pk.stdout if pk.returncode == 0 and len(pk.stdout) > 500 else job["brief"]  # packet = live context; brief is the fallback
+    arm = pick_arm(job)
+    scouts = ("Use delegate_task to send Haiku scouts for bulk context gathering (log greps, file reads, sqlite counts); "
+              "give each a narrow goal and ask for numbers + file:line. Spend your own tokens on reasoning, not on reading. ") if arm["scouts"] else ""
+    if arm["mode"] == "implement":
+        rules = (f"{scouts}You have full tool access. Never edit the scoring pipeline ({OPS}/bin/fable-ingest, fix-replay, fable-hill, "
+                 f"fix-tapes.json, fix-state.json, ~/.local/bin/fable-drain); propose such changes under ## Owner items.  Investigate, then IMPLEMENT the smallest fix that makes the problem's tapes pass, "
+                 "and verify it with the exact tape commands. Safety: back up any file outside git before editing (cp f f.bak-fable-<date>); "
+                 "code inside a git repo goes on a new branch in a worktree under /mnt/zer0models/worktrees and is committed (Kevin's identity), never pushed; "
+                 "no sudo, no deleting data, no resets, no edits to another profile's memory; disk space/bcachefs/root-disk work belongs to another session, skip it. "
+                 "If a fix needs sudo or Kevin's decision, write it as an astra/owner item instead. ")
+    else:
+        rules = f"{scouts}Read-only investigation. Do not edit, restart, delete or push anything. Do not write files. "
+    prompt = (f"{body}\n\nRules: {rules}Your final message IS the report (markdown) with sections: ## Findings (ranked, with numbers), "
+              f"## Evidence (file:line or exact command + output excerpt), ## Changes made (implement mode: files, branch/commit, backup paths) "
+              f"or ## Recommended changes (smallest first; astra files as ABSOLUTE paths plus a \"repo\" field), "
+              f"## Verify (exact commands that prove each claim, with their output). Keep it under 300 lines.")
+    job.update(status="running", lane=lane, started=time.strftime("%FT%T"), arm=arm)
+    QL.set_job(QUEUE, "id", job["id"], status="running", lane=lane, started=job["started"], arm=arm)
+    log(job=job["id"], lane=lane, event="start", model=MODEL, arm=arm)
+    t0 = time.time()
+    g0 = grader_hash()
+    m0 = meter(lane)
+    profile = PROFILES.get(lane)
+    if profile:
+        qf = run / "PROMPT.md"; qf.write_text(prompt)
+        cmd = ["hermes", "-p", profile, "chat", "--query-file", str(qf), "--oneshot", "-Q", "-m", MODEL,
+               "--provider", "claude-subscription-directsdk-experimental", "--reasoning", arm["effort"]]
+        env = {**os.environ}
+    else:  # no Hermes profile pinned to this account yet: bare CLI, read-only
+        tools = ["Read", "Grep", "Glob", "Bash(rg:*)", "Bash(sqlite3:*)", "Bash(jq:*)", "Bash(journalctl:*)",
+                 "Bash(systemctl --user show:*)", "Bash(systemctl --user status:*)", "Bash(git log:*)", "Bash(git show:*)",
+                 "Bash(wc:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)"]
+        cmd = [str(Path.home() / ".local/bin/claude"), "-p", prompt, "--model", MODEL, "--output-format", "json", "--allowedTools", *tools]
+        env = {**os.environ, "CLAUDE_CONFIG_DIR": cfg_dir}
+    try:
+        r = subprocess.run(cmd, env=env, cwd=str(run), capture_output=True, text=True, timeout=TIMEOUT_S)
+        rc, out, err = r.returncode, r.stdout, r.stderr
+    except subprocess.TimeoutExpired:
+        rc, out, err = 124, "", "timeout"
+    for _ in range(2):  # a gateway restart mid-turn kills the turn but keeps the session: resume it instead of losing the work
+        sid = re.search(r"session_id: (\S+)", err + out)
+        if not (profile and rc != 0 and sid and "Gateway disconnected" in err):
+            break
+        log(job=job["id"], lane=lane, event="resume-after-disconnect", session=sid.group(1))
+        rq = run / "RESUME.md"
+        rq.write_text("The gateway disconnected mid-turn. Check what you already changed (backups, worktrees, git status), "
+                      "finish the job under the same rules, then send the final report in the required format.")
+        rcmd = [*cmd[:cmd.index("--query-file")], "--resume", sid.group(1), "--query-file", str(rq), *cmd[cmd.index("--query-file") + 2:]]
+        try:
+            r = subprocess.run(rcmd, env=env, cwd=str(run), capture_output=True, text=True, timeout=TIMEOUT_S)
+            rc, out, err = r.returncode, r.stdout, err[-5000:] + "\n--- resume ---\n" + r.stderr
+        except subprocess.TimeoutExpired:
+            rc, out, err = 124, "", err + "\nresume timeout"
+    (run / "claude-out.json").write_text(out)
+    (run / "claude-err.txt").write_text(err[-20000:])
+    used_model, cost = MODEL, None
+    if profile:
+        text = re.sub(r"\n*session_id: \S+\s*$", "", out).strip()
+        if rc == 0 and text:
+            report.write_text(text)
+    else:
+        try:
+            res = json.loads(out)
+            used_model = ",".join((res.get("modelUsage") or {}).keys())
+            if not res.get("is_error") and res.get("result"):
+                report.write_text(res["result"])
+            cost = res.get("total_cost_usd")
+        except ValueError:
+            used_model = ""
+    m1 = meter(lane)
+    touched = [p for p, h in grader_hash().items() if g0.get(p) != h]
+    if touched:  # the job edited the scripts that score it: its tapes cannot count until a human reviews the change
+        arm = {**arm, "grader_touched": touched}
+        log(job=job["id"], event="grader-touched", files=touched)
+        notify(f"Fable {job['id']} edited its own grader", ", ".join(touched))
+    delta = {k: (round(m1[k] - m0[k], 2) if m0.get(k) is not None and m1.get(k) is not None else None) for k in m0}
+    with (OPS / "hill.jsonl").open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%FT%T"), "job": job["id"], "class": job.get("class", ""), "lane": lane,
+                            "harness": "hermes" if profile else "claude-cli", "arm": arm, "rc": rc,
+                            "minutes": round((time.time() - t0) / 60, 1), "meter_delta": delta,
+                            "report_chars": report.stat().st_size if report.exists() else 0}) + "\n")
+    ok = rc == 0 and report.exists() and report.stat().st_size > 1500
+    mins = (time.time() - t0) / 60
+    if not ok and mins < 3 and "--fable-retried" not in job.get("note", ""):
+        # A run that dies in under 3 minutes never reached the model (gateway update pause, auth, cold start): retry once.
+        QL.set_job(QUEUE, "id", job["id"], status="pending", note=f"--fable-retried after rc={rc} in {mins:.1f} min")
+        log(job=job["id"], lane=lane, event="transient-requeue", rc=rc, err=err[-300:])
+        return 1
+    QL.set_job(QUEUE, "id", job["id"], status="done" if ok else "failed", finished=time.strftime("%FT%T"), rc=rc,
+               minutes=round((time.time() - t0) / 60, 1), models=used_model)
+    log(job=job["id"], lane=lane, event="done" if ok else "failed", rc=rc, models=used_model,
+        api_equiv_usd=cost, minutes=round((time.time() - t0) / 60, 1))
+    if ok:
+        ing = subprocess.run([str(BIN / "fable-ingest"), job["id"]], capture_output=True, text=True, timeout=120)
+        log(job=job["id"], event="ingested", out=(ing.stdout or ing.stderr).strip()[-300:])
+    notify(f"Fable {job['id']} {'done' if ok else 'FAILED'}",
+           f"{job['title']} on {lane}: {'report ' + str(report) if ok else 'rc=' + str(rc) + ', see ' + str(run)}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    # rc 1 = a job failed and is recorded in the queue: not a unit failure. Crashes raise and still exit 1.
+    sys.exit(0 if main("--dry-run" in sys.argv) in (0, 1, None) else 2)

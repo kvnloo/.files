@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""fable-packet <job-id>: build the context packet a Fable session gets, fresh at run time.
+Same template for every job, so reports are comparable and fable-ingest can parse them:
+mission -> problem -> live state -> history (re-asks, prior attempts, Kevin's own words, fix tapes in this
+class) -> constraints -> deliverable contract (report sections + machine-readable blocks).
+Job fields used (fable-queue.json): id, title, brief, class (REOPENED class), keywords [..], units [..], kind ('steward' = factory review).
+  fable-packet F1            # print packet
+  fable-packet F1 --save     # also write fable-runs/F1/PACKET.md
+"""
+import json, os, re, sqlite3, subprocess, sys, time
+from pathlib import Path
+
+OPS = Path(os.environ.get("FABLE_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+ROOT = OPS.parent
+AV = "file:/mnt/zer0models/sft-svlm/data/agentsview/sessions.db?mode=ro"
+
+
+def sh(cmd, timeout=60):
+    try:
+        return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=timeout).stdout.strip()
+    except subprocess.TimeoutExpired:
+        return "(timeout)"
+
+
+def cap(s, n):
+    return s if len(s) <= n else s[:n] + f"\n...(truncated {len(s) - n} chars; read the file for more)"
+
+
+def burn():
+    try:
+        d = json.loads(sh("burn-pace --json", 120))
+        rows = [f"- {k}: week {v.get('weekly_used_pct')}%, reset in {v.get('hours_to_reset')} h, pace {v.get('pace_ratio')}, "
+                f"fable {v.get('fable_used_pct')}% ({v.get('fable_phase')})"
+                for k, v in d["lanes"].items() if k.startswith("claude")]
+        errs = [f"- probe error {e['provider']}: {e['error'].get('message', '')[:120]}" for e in d.get("probe_errors", [])]
+        return "\n".join(rows + errs)
+    except Exception as e:  # noqa: BLE001 - packet must still build
+        return f"(burn-pace unreadable: {e})"
+
+
+def reopened(cls):
+    p = ROOT / "memory-replay-eval/REOPENED.md"
+    if not p.exists():
+        return ""
+    lines = [l for l in p.read_text().splitlines() if l.startswith("|") and (not cls or cls.lower() in l.lower())]
+    return "\n".join(lines[:8])
+
+
+def owner_quotes(keywords, n=8):
+    if not keywords:
+        return ""
+    q = " OR ".join(f'"{k}"' for k in keywords)
+    try:
+        con = sqlite3.connect(AV, uri=True, timeout=10)
+        rows = con.execute(
+            "select m.timestamp, substr(m.content,1,260) from messages_fts f join messages m on m.id=f.rowid "
+            "where messages_fts match ? and m.role='user' and m.is_system=0 and m.content_length<1500 "
+            "and m.content not like '%Message from%' and m.content not like '[%' and m.timestamp >= date('now','-60 days') order by m.timestamp desc limit ?",
+            (q, n * 2)).fetchall()
+    except sqlite3.Error as e:
+        return f"(agentsview query failed: {e})"
+    seen, out = set(), []
+    for t, c in rows:  # drop relays written in third person and duplicate sends
+        c = re.sub(r'\s+', ' ', c)
+        if c[:80] in seen or re.match(r'(Kevin|The owner|Owner)\b', c) or AGENT_BRIEF.search(c[:200]):
+            continue
+        seen.add(c[:80]); out.append(f"- {(t or '')[:16]}: {c}")
+    return "\n".join(out)
+
+
+AGENT_BRIEF = re.compile(r'^(LANE \d|Bounded |Hook this|You are |Task:|# )|\*\*')
+
+
+def prior_dirs(keywords):
+    if not keywords:
+        return ""
+    pat = "|".join(re.escape(k.lower().replace(" ", "-")) for k in keywords)
+    hits = [d for d in sorted(ROOT.iterdir(), key=lambda d: -d.stat().st_mtime)
+            if d.is_dir() and re.search(pat, d.name.lower())][:8]
+    out = []
+    for d in hits:
+        docs = [f.name for f in sorted(d.glob("*.md"), key=lambda f: -f.stat().st_mtime)[:4]]
+        out.append(f"- {d} ({time.strftime('%m-%d', time.localtime(d.stat().st_mtime))}): {', '.join(docs)}")
+    return "\n".join(out)
+
+
+def prior_attempts(paths):
+    """Explicit prior-attempt sources per job: each doc's ## headings (status lines) so Fable sees what was tried."""
+    out = []
+    for p in paths or []:
+        p = Path(p) if p.startswith("/") else ROOT / p
+        docs = [p] if p.is_file() else sorted(p.glob("*.md"), key=lambda f: -f.stat().st_mtime)[:3] if p.is_dir() else []
+        for f in docs:
+            heads = [l.strip()[:160] for l in f.read_text(errors="ignore").splitlines() if l.startswith(("## ", "### "))][:14]
+            out.append(f"- {f} ({time.strftime('%m-%d', time.localtime(f.stat().st_mtime))})" +
+                       "".join(f"\n    {h}" for h in heads))
+        if p.is_dir() and not docs:
+            out.append(f"- {p}/ (no .md; files: {', '.join(sorted(x.name for x in p.iterdir())[:10])})")
+    return cap("\n".join(out), 6000)
+
+
+def tapes(cls):
+    st = OPS / "fix-state.json"
+    if not st.exists():
+        return ""
+    s = json.loads(st.read_text())
+    rows = [f"- {k}: {'PASS' if v['ok'] else 'FAIL'} since {time.strftime('%m-%d %H:%M', time.localtime(v['since']))}, "
+            f"{v['passes']}/{v['fails']} pass/fail, uses {v.get('uses', '-')}: {v.get('what', '')}"
+            for k, v in s.items() if not cls or cls.lower() in v.get("cls", "").lower()]
+    return "\n".join(rows[:20])
+
+
+def units(us):
+    out = []
+    for u in us or []:
+        f = sh(f"journalctl --user -u {u} --since -12h -o cat | grep -c 'Failed with result'")
+        last = sh(f"journalctl --user -u {u} --since -12h -o cat | grep -v '^$' | tail -4")
+        out.append(f"- {u}: {f} failures/12h. Last lines:\n```\n{cap(last, 600)}\n```")
+    return "\n".join(out)
+
+
+def steward_state():
+    parts = []
+    b = OPS / "BOARD.md"
+    if b.exists():
+        parts.append("### Fix replay board\n" + cap(b.read_text(), 5000))
+    led = ROOT / "intent-analyzer-20261104/AYO-LEDGER.md"
+    if led.exists():
+        rows = [l for l in led.read_text().splitlines() if l.startswith("| ") and "| done" not in l.lower()]
+        parts.append("### Open ledger rows (not done)\n" + cap("\n".join(rows), 6000))
+    rep = sorted(Path("/mnt/zer0models/sft-svlm/data/limitless/us-hc").glob("week-*-report.json"))
+    if rep:
+        d = json.loads(rep[-1].read_text())
+        parts.append(f"### Us-score {rep[-1].name}\nus={d.get('us_score')} bio={d.get('bio_component')} sys={d.get('sys_component')}\n"
+                     f"bio={json.dumps(d.get('bio_metrics'))}\nsys={json.dumps(d.get('sys_metrics'))}")
+    q = json.loads((OPS / "fable-queue.json").read_text())
+    parts.append("### Fable queue\n" + "\n".join(f"- {j['id']} [{j['status']}] {j['title']}" for j in q["jobs"]))
+    for name in ("PLAN.md",):
+        p = OPS / name
+        if p.exists():
+            parts.append(f"### {name}\n" + cap(p.read_text(), 5000))
+    runs = sorted((OPS / "fable-runs").glob("*/REPORT.md"), key=lambda p: -p.stat().st_mtime)[:6]
+    if runs:
+        parts.append("### Recent Fable reports (read them)\n" + "\n".join(f"- {r}" for r in runs))
+    parts.append("### Failing units now (12h)\n```\n" + sh(
+        "journalctl --user --since -12h -o cat | grep -oE '[a-z0-9@.-]+\\.service: Failed with result' | sort | uniq -c | sort -rn | head -15") + "\n```")
+    return "\n\n".join(parts)
+
+
+MISSION = """You are the deep-reasoning seat in Kevin Rajan's agent factory (owner: Kevin; orchestrator: Opus 5.5 in Hermes).
+Kevin's aim: the system heals itself and handles the basics, so his time goes to ideas, experiment design, taste and
+learning. Every recurring failure he has to re-explain costs that time. Your job is to end a problem class for good, not
+patch one instance. Fixes count only when a replayable tape keeps passing under real use (see fix tapes below)."""
+
+CONSTRAINTS = """- Read-only session: investigate, do not edit, restart, delete or push. Opus/Astra apply your plan.
+- Fix the class and its amplifier, not the item (trigger + amplifier, then a guard that stops the class).
+- Smallest clean change wins; reuse existing tools (burn-pace, memory-heal, service-watch, fix-replay, goal-laws).
+- Enforcement must be code on the request path, never a markdown rule.
+- Never propose GPU/boot/kernel changes without an owner-visible plan; never spend money; owner text stays private.
+- Numbers need provenance (command + output). Say plainly what you could not verify."""
+
+CONTRACT = """End your report with these fenced blocks, exactly this shape (fable-ingest parses them):
+
+```json tapes
+[{"id": "short-kebab-id", "class": "<problem class>", "what": "invariant in one line",
+  "tape": "read-only bash; exits 0 while the fix holds",
+  "use": "optional read-only bash printing an integer: real exercises of the path in the last hour"}]
+```
+```json astra
+[{"title": "bounded contract", "repo": "/abs/path/to/git/toplevel", "files": ["/abs/path/inside/that/repo"], "change": "what to change", "test": "command that must pass, run from the repo root"}]
+```
+```json next
+[{"title": "next Fable-worthy problem (only if clearly bigger than what is queued)", "why": "lever in numbers",
+  "class": "...", "keywords": ["..."], "brief": "<=800 chars"}]
+```
+Tape commands may only use: systemctl --user (is-active/show/status), journalctl --user, grep, rg, jq, test/[, wc, awk,
+sqlite3 with mode=ro, burn-pace --json, cat, head, tail. Anything else is rejected at ingest."""
+
+
+def build(job):
+    kw, cls = job.get("keywords", []), job.get("class", "")
+    sec = [f"# Fable packet {job['id']}: {job['title']}  ({time.strftime('%F %H:%M %Z')})", "## Mission", MISSION]
+    if job.get("kind") == "steward":
+        sec += ["## Problem", job["brief"], "## Factory state", steward_state()]
+    else:
+        sec += ["## Problem", job["brief"]]
+        for title, body in (("Live failing units", units(job.get("units"))),
+                            ("Re-ask history for this class (memory-replay-eval/REOPENED.md)", reopened(cls)),
+                            ("Fix tapes in this class (fix-replay)", tapes(cls)),
+                            ("Prior attempts (already tried: do not re-propose without saying what is different)", prior_attempts(job.get("prior"))),
+                            ("Prior work dirs (read these before theorising)", prior_dirs(kw)),
+                            ("Kevin's own words (AgentsView, newest first)", owner_quotes(kw))):
+            if body:
+                sec += [f"## {title}", body]
+    sec += ["## Quota right now", burn(), "## Constraints", CONSTRAINTS, "## Deliverable", CONTRACT]
+    return "\n\n".join(sec)
+
+
+if __name__ == "__main__":
+    jid = sys.argv[1]
+    job = next(j for j in json.loads((OPS / "fable-queue.json").read_text())["jobs"] if j["id"] == jid)
+    pkt = build(job)
+    if "--save" in sys.argv:
+        (OPS / "fable-runs" / jid).mkdir(parents=True, exist_ok=True)
+        (OPS / "fable-runs" / jid / "PACKET.md").write_text(pkt)
+    print(pkt)
