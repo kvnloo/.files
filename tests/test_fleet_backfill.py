@@ -121,10 +121,14 @@ class PhoneFeeder(unittest.TestCase):
 
     def test_feeder_masks_avoid_the_bench_cores(self):
         bench = {"omarchy-phone": 0xc0, "galaxy-s22plus": 0xf0, "lenovo-tab": 0xc0}  # turbo/mobile.py BENCH_PIN
-        for node, n in CFG["phones"]["nodes"].items():
+        for slot, n in CFG["phones"]["nodes"].items():
+            node = n.get("node", slot)
             mask = int(n["mask"], 16)
-            self.assertEqual(mask & bench[node], 0, node)
-            self.assertLessEqual(n["threads"], bin(mask).count("1"), node)
+            if not n.get("idle"):  # only SCHED_IDLE slots may share the bench cores
+                self.assertEqual(mask & bench[node], 0, slot)
+            self.assertLessEqual(n["threads"], bin(mask).count("1"), slot)
+        ports = [(n.get("node", s), n.get("port", 18431)) for s, n in CFG["phones"]["nodes"].items()]
+        self.assertEqual(len(ports), len(set(ports)))
 
     def test_argv_uses_native_fleet_lane_with_taskset(self):
         argv = bf.phone_argv(CFG, "lenovo-tab", "/x/0000.jsonl")
@@ -132,3 +136,10 @@ class PhoneFeeder(unittest.TestCase):
         self.assertIn("/x/0000.jsonl:shard.jsonl", argv)
         i = argv.index("--")
         self.assertEqual(argv[i + 1:i + 3], ["taskset", "3f"])
+
+    def test_idle_slot_runs_sched_idle_on_its_device(self):
+        argv = bf.phone_argv(CFG, "galaxy-s22plus-idle", "/x/0003.jsonl")
+        self.assertEqual(argv[1:4], ["run", "--node", "galaxy-s22plus"])
+        i = argv.index("--")
+        self.assertEqual(argv[i + 1:i + 6], ["chrt", "-i", "0", "taskset", "f0"])
+        self.assertIn("18432", argv)

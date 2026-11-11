@@ -29,7 +29,7 @@
     }
   ],
   "phones": {
-    "_doc": "Untimed phone throughput. mask = cores hc-turbo's bench does not own (turbo/mobile.py BENCH_PIN: s25 c0, s22 f0, tab c0). Bundle provisioned by scripts/phone_throughput/provision.",
+    "_doc": "Untimed phone throughput. A slot with idle=true runs SCHED_IDLE on the bench cores (only cycles the bench leaves). mask = cores hc-turbo's bench does not own (turbo/mobile.py BENCH_PIN: s25 c0, s22 f0, tab c0). Bundle provisioned by scripts/phone_throughput/provision.",
     "corpus": "/mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/owner_msgs.jsonl",
     "bundle": "/data/local/tmp/z0tp",
     "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
@@ -40,6 +40,7 @@
     "nodes": {
       "omarchy-phone": {"mask": "3f", "threads": 6},
       "galaxy-s22plus": {"mask": "0f", "threads": 4},
+      "galaxy-s22plus-idle": {"node": "galaxy-s22plus", "idle": true, "mask": "f0", "threads": 4, "port": 18432},
       "lenovo-tab": {"mask": "3f", "threads": 6}
     }
   }
