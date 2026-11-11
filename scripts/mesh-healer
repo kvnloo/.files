@@ -5,7 +5,9 @@ Design (BRIEF-self-healing-mesh-20261111, .files#147 NS4):
   1. measure()  SLOs from z0.capacity.snapshot.v1 (z0intelligence#133), Kueue, hc-turbo ledger,
                 systemd. Unknown is None, never 0.
   2. plan()     deterministic allowlist only: reset-failed, start a failed .path/.timer, a
-                RUNTIME drop-in (lost on reboot) for IO-starved timeouts. No deletes, no spend.
+                RUNTIME drop-in (lost on reboot) for IO-starved timeouts, and evict_idle_model_server
+                (stop one idle model-servers.slice unit; a wake listener on its port restarts it on
+                the first connection). No deletes, no spend.
   3. diagnose() gaps with no playbook go to HolmesGPT (read-only, bash denied) on a local model.
                 Its text is advice in the receipt; it never picks an action.
   4. receipt    every action re-measures and records before/after.
@@ -18,6 +20,7 @@ import calendar
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -35,6 +38,12 @@ HOLMES_MODEL = os.environ.get("MESH_HEALER_LLM_MODEL", "hosted_vllm/qwen3.5-4b")
 MAX_ACTIONS = 10
 DIAG_COOLDOWN_S = 6 * 3600
 PHONES = {"s25", "s22", "tab"}
+EVICT_SLICE = "model-servers.slice"   # allowlist: only units in this slice can be evicted
+EVICT_IDLE_TICKS = 2                  # GPU util 0 with VRAM >50% held for this many ticks in a row
+EVICT_MIN_UP_S = 600                  # never evict a server that started in the last 10 min
+EVICT_MAX_CPU_S = 2.0                 # unit CPU seconds since the last tick; more means it is serving
+CRASHLOOP_RESTARTS = 5                # a pod restarting this often ...
+CRASHLOOP_WINDOW_S = 1800             # ... with its last crash this recent counts as crash-looping
 
 
 def sh(*cmd: str, timeout: int = 20) -> tuple[int, str]:
@@ -152,7 +161,65 @@ def measure(now: float | None = None, now_mono: float | None = None) -> dict:
     old = [u for u in units if (u["age_s"] or 0) > 3600]
     slos.append(slo("failed_user_units_over_1h", len(old), "==0", not old,
                     {"units": [u["unit"] for u in old][:50]}))
-    return {"at": now, "slos": slos, "failed_units": units, "io_full_avg300": io_full_avg300()}
+    loops = crashloop_pods(kube_json("get", "pods", "-A"), now)
+    slos.append(slo("k8s_crashloop_pods", None if loops is None else len(loops), "==0",
+                    None if loops is None else not loops, {"pods": (loops or [])[:20]}))
+    return {"at": now, "slos": slos, "failed_units": units, "io_full_avg300": io_full_avg300(),
+            "gpu_holders": gpu_holders()}
+
+
+def _ts(s: str | None) -> float | None:
+    try:
+        return calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")) if s else None
+    except ValueError:
+        return None
+
+
+def crashloop_pods(pods: dict | None, now: float) -> list[dict] | None:
+    """Pods with a container in CrashLoopBackOff now, or >=CRASHLOOP_RESTARTS restarts whose last
+    crash ended inside CRASHLOOP_WINDOW_S (Running between crashes still counts). None = unknown."""
+    if pods is None:
+        return None
+    out = []
+    for p in pods.get("items", []):
+        for c in p.get("status", {}).get("containerStatuses") or []:
+            waiting = (c.get("state", {}).get("waiting") or {}).get("reason")
+            last = c.get("lastState", {}).get("terminated") or {}
+            ended = _ts(last.get("finishedAt"))
+            recent = ended is not None and now - ended < CRASHLOOP_WINDOW_S
+            if waiting == "CrashLoopBackOff" or (c.get("restartCount", 0) >= CRASHLOOP_RESTARTS and recent):
+                code, reason = last.get("exitCode"), last.get("reason")
+                cause = ("container memory limit" if reason == "OOMKilled" else
+                         "SIGKILL from outside the pod (host OOM/earlyoom or liveness)" if code == 137 else
+                         "exited non-zero" if code else None)
+                out.append({"pod": f"{p['metadata']['namespace']}/{p['metadata']['name']}",
+                            "container": c.get("name"), "restarts": c.get("restartCount"),
+                            "waiting": waiting, "last_exit": code, "last_reason": reason,
+                            "last_ended_s_ago": None if ended is None else round(now - ended), "cause": cause})
+                break
+    return out
+
+
+def gpu_holders() -> list[dict]:
+    """Per-process VRAM with the owning user unit and slice (from /proc/<pid>/cgroup)."""
+    rc, out = sh("nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits")
+    holders = []
+    for line in out.splitlines() if rc == 0 else []:
+        try:
+            pid, mib = (int(x.strip()) for x in line.split(","))
+        except ValueError:
+            continue
+        try:
+            cg = Path(f"/proc/{pid}/cgroup").read_text().strip().split(":", 2)[-1]
+        except OSError:
+            cg = ""
+        parts = cg.split("/")
+        unit = next((x for x in reversed(parts) if x.endswith(".service")), None)
+        user_unit = "user@" in cg and unit is not None
+        holders.append({"pid": pid, "vram_mib": mib, "unit": unit if user_unit else None,
+                        "slice": next((x for x in reversed(parts) if x.endswith(".slice")), None),
+                        "cgroup": cg[-160:]})
+    return holders
 
 
 # ---------- plan (allowlist only) ----------
@@ -182,6 +249,105 @@ def plan(m: dict) -> list[dict]:
     return acts[:MAX_ACTIONS]
 
 
+def unit_props(name: str, *props: str) -> dict:
+    _, out = sh("systemctl", "--user", "show", name, *(x for p in props for x in ("-p", p)))
+    return dict(kv.split("=", 1) for kv in out.splitlines() if "=" in kv)
+
+
+def listen_addr(execstart: str) -> tuple[str, int] | None:
+    port = re.search(r"--port[ =](\d+)", execstart)
+    host = re.search(r"--host[ =]([^\s;]+)", execstart)
+    return (host.group(1) if host else "127.0.0.1", int(port.group(1))) if port else None
+
+
+def gpu_idle_ticks(m: dict, state: dict) -> int:
+    """Consecutive ticks with VRAM >50% held and GPU util 0 (the gpu_busy_when_vram_held gap)."""
+    g = next((s for s in m["slos"] if s["name"] == "gpu_busy_when_vram_held"), None)
+    n = state.get("gpu_idle_ticks", 0) + 1 if g and g["met"] is False else 0
+    state["gpu_idle_ticks"] = n
+    return n
+
+
+def plan_evict(m: dict, state: dict, now_mono: float | None = None) -> list[dict]:
+    """At most one eviction per tick: the largest VRAM holder among active model-servers.slice
+    user units that served nothing since the last tick, after EVICT_IDLE_TICKS idle-GPU ticks."""
+    now_mono = now_mono if now_mono is not None else time.monotonic()
+    prev_cpu, cpu_now = state.get("unit_cpu", {}), {}
+    cands = []
+    for h in m.get("gpu_holders") or []:
+        if h.get("slice") != EVICT_SLICE or not h.get("unit"):
+            continue
+        p = unit_props(h["unit"], "ActiveState", "CPUUsageNSec", "ActiveEnterTimestampMonotonic", "ExecStart")
+        cpu = int(p["CPUUsageNSec"]) if p.get("CPUUsageNSec", "").isdigit() else None
+        cpu_now[h["unit"]] = cpu
+        up = now_mono - int(p.get("ActiveEnterTimestampMonotonic") or 0) / 1e6
+        addr = listen_addr(p.get("ExecStart", ""))
+        prev = prev_cpu.get(h["unit"])
+        if p.get("ActiveState") != "active" or addr is None or up < EVICT_MIN_UP_S \
+                or cpu is None or prev is None or (cpu - prev) / 1e9 > EVICT_MAX_CPU_S:
+            continue
+        cands.append({**h, "addr": addr, "cpu_s_since_tick": round((cpu - prev) / 1e9, 2), "up_s": round(up)})
+    state["unit_cpu"] = cpu_now
+    if state.get("gpu_idle_ticks", 0) < EVICT_IDLE_TICKS or not cands:
+        return []
+    c = max(cands, key=lambda x: x["vram_mib"])
+    return [{"kind": "evict_idle_model_server", "unit": c["unit"], "vram_mib": c["vram_mib"],
+             "wake": {"host": c["addr"][0], "port": c["addr"][1]},
+             "why": f"GPU util 0 with VRAM >50% held for {state['gpu_idle_ticks']} ticks; "
+                    f"{c['unit']} holds {c['vram_mib']} MiB, used {c['cpu_s_since_tick']} s CPU since last tick",
+             "undo": f"systemctl --user start {c['unit']} (or connect to {c['addr'][0]}:{c['addr'][1]})",
+             "cmds": [["stop", c["unit"]]]}]
+
+
+def wake_unit_name(unit: str) -> str:
+    return "mesh-wake-" + re.sub(r"[^A-Za-z0-9_-]", "-", unit.removesuffix(".service")) + ".service"
+
+
+def spawn_wake(unit: str, host: str, port: int) -> int:
+    rc, _ = sh("systemd-run", "--user", "--quiet", "--collect", f"--unit={wake_unit_name(unit)}",
+               "-p", "MemoryMax=64M", "-p", "Nice=10", "-p", "UMask=0077",
+               sys.executable, str(Path(__file__).resolve()), "wake-listen", unit, host, str(port))
+    return rc
+
+
+def wake_listen(unit: str, host: str, port: int, poll_s: float = 5.0) -> int:
+    """Hold the evicted server's port. On the first connection: close, start the unit, receipt.
+    Exit quietly if something else starts the unit first."""
+    srv = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind((host, port))
+    srv.listen(8)
+    srv.settimeout(poll_s)
+    while True:
+        try:
+            conn, peer = srv.accept()
+        except socket.timeout:
+            if sh("systemctl", "--user", "is-active", unit)[1].strip() in ("active", "activating"):
+                return 0
+            continue
+        conn.close()
+        srv.close()
+        rc, _ = sh("systemctl", "--user", "--no-block", "start", unit)
+        (OUT / "receipts").mkdir(parents=True, exist_ok=True)
+        (OUT / "receipts" / time.strftime(f"%Y%m%dT%H%M%S-wake.json")).write_text(json.dumps(
+            {"schema": "mesh-healer.wake.v1", "at": time.time(), "unit": unit, "addr": f"{host}:{port}",
+             "peer": str(peer[0]), "start_rc": rc}, indent=1))
+        print(f"MESH_HEALER wake unit={unit} rc={rc}", flush=True)
+        return 0
+
+
+def keep_wake_listeners(state: dict) -> list[str]:
+    """Evicted units stay restartable: re-arm a dead listener; forget units that are running again."""
+    rearmed = []
+    for unit, w in list(state.get("evicted", {}).items()):
+        if sh("systemctl", "--user", "is-active", unit)[1].strip() in ("active", "activating"):
+            state["evicted"].pop(unit)
+        elif sh("systemctl", "--user", "is-active", wake_unit_name(unit))[1].strip() != "active":
+            spawn_wake(unit, w["host"], w["port"])
+            rearmed.append(unit)
+    return rearmed
+
+
 def apply(act: dict) -> dict:
     if act["kind"] == "runtime_timeout_dropin":
         d = RUNTIME_DROPIN / f"{act['unit']}.d"
@@ -191,6 +357,9 @@ def apply(act: dict) -> dict:
     for c in act["cmds"]:
         rc, out = sh("systemctl", "--user", "--no-block", *c) if c[0] == "start" else sh("systemctl", "--user", *c)
         results.append({"cmd": c, "rc": rc})
+    if act["kind"] == "evict_idle_model_server" and results[0]["rc"] == 0:
+        results.append({"cmd": ["systemd-run", wake_unit_name(act["unit"])],
+                        "rc": spawn_wake(act["unit"], act["wake"]["host"], act["wake"]["port"])})
     return {**act, "results": results, "ok": all(r["rc"] == 0 for r in results)}
 
 
@@ -238,8 +407,15 @@ def tick(dry_run: bool = False, llm: bool = True) -> dict:
     state_f = OUT / ".state.json"
     state = json.loads(state_f.read_text()) if state_f.exists() else {}
     before = measure()
-    acts = plan(before)
+    rearmed = [] if dry_run else keep_wake_listeners(state)
+    gpu_idle_ticks(before, state)
+    acts = plan(before) + plan_evict(before, state)
     done = [a if dry_run else apply(a) for a in acts]
+    for a in done:
+        if a["kind"] == "evict_idle_model_server" and a.get("ok"):
+            state.setdefault("evicted", {})[a["unit"]] = {**a["wake"], "at": time.time()}
+    if done and not dry_run:
+        time.sleep(5)   # let a stopped server release VRAM before re-measuring
     after = measure() if done and not dry_run else before
     repaired = {a["unit"] for a in done}
     gaps = [s for s in after["slos"] if s["met"] is False and s["name"] != "failed_user_units_over_1h"]
@@ -248,7 +424,7 @@ def tick(dry_run: bool = False, llm: bool = True) -> dict:
     summary = {s["name"]: s["value"] for s in after["slos"]}
     rec = {"schema": "mesh-healer.receipt.v1", "at": before["at"], "dry_run": dry_run,
            "before": {s["name"]: s["value"] for s in before["slos"]}, "after": summary,
-           "actions": done, "diagnoses": diag}
+           "actions": done, "diagnoses": diag, "wake_rearmed": rearmed}
     with (OUT / "slo-history.jsonl").open("a") as f:
         f.write(json.dumps({"at": after["at"], "slos": summary, "actions": len(done)}) + "\n")
     (OUT / "slo.json").write_text(json.dumps(after, indent=1))
@@ -265,11 +441,15 @@ def tick(dry_run: bool = False, llm: bool = True) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=["tick", "run", "measure"])
+    ap.add_argument("cmd", choices=["tick", "run", "measure", "wake-listen"])
+    ap.add_argument("args", nargs="*", help="wake-listen: UNIT HOST PORT")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--interval", type=int, default=300)
     a = ap.parse_args()
+    if a.cmd == "wake-listen":
+        unit, host, port = a.args
+        return wake_listen(unit, host, int(port))
     if a.cmd == "measure":
         print(json.dumps(measure()["slos"], indent=1))
         return 0
