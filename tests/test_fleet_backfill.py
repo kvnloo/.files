@@ -107,3 +107,28 @@ class JobRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PhoneFeeder(unittest.TestCase):
+    def test_shards_cover_corpus_once(self):
+        shards = bf.phone_shards(1001, 400)
+        self.assertEqual(shards, [(0, 0, 400), (1, 400, 800), (2, 800, 1001)])
+
+    def test_pick_skips_done_and_held(self):
+        shards = bf.phone_shards(1200, 400)
+        self.assertEqual(bf.phone_pick(shards, {0}, {1})[0], 2)
+        self.assertIsNone(bf.phone_pick(shards, {0, 1}, {2}))
+
+    def test_feeder_masks_avoid_the_bench_cores(self):
+        bench = {"omarchy-phone": 0xc0, "galaxy-s22plus": 0xf0, "lenovo-tab": 0xc0}  # turbo/mobile.py BENCH_PIN
+        for node, n in CFG["phones"]["nodes"].items():
+            mask = int(n["mask"], 16)
+            self.assertEqual(mask & bench[node], 0, node)
+            self.assertLessEqual(n["threads"], bin(mask).count("1"), node)
+
+    def test_argv_uses_native_fleet_lane_with_taskset(self):
+        argv = bf.phone_argv(CFG, "lenovo-tab", "/x/0000.jsonl")
+        self.assertEqual(argv[1:4], ["run", "--node", "lenovo-tab"])
+        self.assertIn("/x/0000.jsonl:shard.jsonl", argv)
+        i = argv.index("--")
+        self.assertEqual(argv[i + 1:i + 3], ["taskset", "3f"])

@@ -7,7 +7,13 @@ One tick (fleet-backfill.timer, every 2 min) submits at most one unit per node k
   priority and borrows into bench-lanes, so any agent's test/build job reclaims it.
 - Boat: the bare-CLI k3s pool (`fleet-build --node boat`), while included VM time is
   left and last24hUsageSeconds stays under creditBalanceSeconds / days to periodEnd.
-No new work when groot MemAvailable < 2 GiB (owner rule), even though the client is tiny.
+- Phones: one untimed throughput job per phone through the native lane
+  (`fleet run --node PHONE`, i.e. scripts/fleet-adb), taskset to the cores the
+  hc-turbo bench does NOT own (turbo/mobile.py BENCH_PIN). Today's unit is a shard of
+  the owner-message corpus embedded by Qwen3-Embedding-0.6B (scripts/phone_throughput).
+  The job runs detached on the phone; later ticks collect it, so groot holds nothing.
+No new MBP/Boat work when groot MemAvailable < 2 GiB (owner rule), even though the client
+is tiny. Phone launches leave no groot process behind, so they hold only below 512 MiB.
 
 A unit is (suite, commit[, slice]); it runs once per node kind, newest commits first,
 and its receipt (log + result.json) lands in RUNS/<suite>/<unit>-<node>/.
@@ -31,9 +37,14 @@ RUNS = Path(os.environ.get("FLEET_BACKFILL_RUNS",
                            "/mnt/zer0models/workspace/zer0/data/operations/fleet-backfill/runs"))
 CACHE = Path(os.environ.get("FLEET_BACKFILL_CACHE", "/mnt/zer0models/cache/fleet-backfill"))
 GROOT_FLOOR = 2 << 30
+# Phone jobs are not groot work: launch is one short adb call and nothing stays resident
+# on groot while the phone computes, so they only need groot not to be thrashing.
+PHONE_GROOT_FLOOR = 512 << 20
 UNIT = "fleet-backfill-job-"
 MAX_ATTEMPTS = 3  # infra failures (no runner result) retry; test failures are results
 FLEET_BUILD = os.path.expanduser("~/.local/bin/fleet-build")
+FLEET = str(HERE / "fleet")
+FLEET_ADB = str(HERE / "fleet-adb")
 KUBECONFIG = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/k3s.yaml"))
 
 
@@ -104,6 +115,26 @@ def plan(cfg, *, mem_available, mbp_free, mbp_pending, boat_ok, active, recent):
     if boat_ok and mine["boat"] < cfg["boat"]["max"]:
         want.append("boat")
     return want
+
+
+def phone_shards(n_items, size):
+    return [(k, k * size, min(n_items, (k + 1) * size)) for k in range((n_items + size - 1) // size)]
+
+
+def phone_pick(shards, done, busy):
+    """First shard no phone finished or holds (pure; tested)."""
+    return next((s for s in shards if s[0] not in done and s[0] not in busy), None)
+
+
+def phone_argv(cfg, node, shard):
+    phones = cfg["phones"]
+    n = phones["nodes"][node]
+    b = phones["bundle"]
+    return [FLEET, "run", "--node", node, "--no-src", "--timeout", str(phones["timeout"]),
+            "--input", f"{shard}:shard.jsonl", "--",
+            "taskset", n["mask"], f"{b}/phone-embed", "-server", f"{b}/cpu/llama-server",
+            "-model", f"{b}/{phones['model']}", "-in", "shard.jsonl", "-out", "embeddings.jsonl",
+            "-threads", str(n["threads"]), "-max-chars", str(phones["max_chars"]), "-ctx", str(phones["ctx"])]
 
 
 # ---- side effects -------------------------------------------------------------
@@ -223,8 +254,92 @@ def job(cfg, node, name, commit, piece):
     return 0 if rc == 0 else 1
 
 
+def phone_tick(cfg, now, dry_run=False):
+    """Collect finished phone jobs, then give each idle phone the next shard."""
+    phones = cfg.get("phones")
+    if not phones:
+        return {}
+    corpus = Path(phones["corpus"])
+    lines = corpus.read_text().splitlines()
+    tag = f"{corpus.stem}-{len(lines)}"
+    root = RUNS / "phone-embed" / tag
+    state_dir = CACHE / "phones"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    report, held = {}, {}
+    for node in phones["nodes"]:
+        path = state_dir / f"{node}.json"
+        st = json.loads(path.read_text()) if path.exists() else None
+        if not st:
+            continue
+        try:
+            status = json.loads(sh(sys.executable, FLEET_ADB, "status", node, st["job"], timeout=90))
+        except (subprocess.SubprocessError, ValueError) as exc:
+            report[node] = f"status unavailable: {type(exc).__name__}"
+            held[node] = st["shard"]
+            continue
+        if status["state"] == "running" and now - st["started"] < phones["timeout"] + 600:
+            report[node] = f"running shard {st['shard']} job {st['job']}"
+            held[node] = st["shard"]
+            continue
+        receipt = root / f"shard-{st['shard']:04d}-{node}"
+        receipt.mkdir(parents=True, exist_ok=True)
+        for names in (["stdout", "stderr"], ["embeddings.jsonl"]):  # a crash leaves no embeddings
+            subprocess.run([sys.executable, FLEET_ADB, "fetch", node, st["job"], "--dest", str(receipt),
+                            *[a for n in names for a in ("--fetch", n)]], capture_output=True, timeout=600)
+        out = (receipt / "stdout").read_text(errors="replace") if (receipt / "stdout").exists() else ""
+        line = next((l for l in out.splitlines() if l.startswith("PHONE_EMBED_RESULT ")), None)
+        result = {**st, **status, "node": node, "finished": now,
+                  "result": json.loads(line.split(" ", 1)[1]) if line else None}
+        prior = json.loads((receipt / "result.json").read_text()) if (receipt / "result.json").exists() else {}
+        result["attempts"] = prior.get("attempts", 0) + 1
+        (receipt / "result.json").write_text(json.dumps(result, indent=1))
+        path.unlink()
+        report[node] = f"collected shard {st['shard']} exit {status['exit_code']}"
+    done = set()
+    for res in root.glob("shard-*/result.json"):
+        r = json.loads(res.read_text())
+        if r.get("exit_code") == 0 or r.get("attempts", 0) >= MAX_ATTEMPTS:
+            done.add(r["shard"])
+    shards = phone_shards(len(lines), phones["shard"])
+    if mem_available() < PHONE_GROOT_FLOOR:
+        report["launch"] = "held: groot MemAvailable < 512 MiB"
+        return report
+    busy = set(held.values())
+    for node in phones["nodes"]:
+        if node in held:
+            continue
+        choice = phone_pick(shards, done, busy)
+        if not choice:
+            report[node] = f"corpus {tag} fully embedded"
+            continue
+        k, lo, hi = choice
+        shard = state_dir / "shards" / tag / f"{k:04d}.jsonl"
+        if not shard.exists():
+            shard.parent.mkdir(parents=True, exist_ok=True)
+            items = (json.loads(l) for l in lines[lo:hi])
+            shard.write_text("".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
+        argv = phone_argv(cfg, node, shard)
+        if dry_run:
+            report[node] = "would launch " + " ".join(argv)
+            busy.add(k)
+            continue
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+        job = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else None
+        if not job:
+            report[node] = f"launch failed rc={r.returncode}: {(r.stderr.strip().splitlines() or [''])[-1][:200]}"
+            continue
+        (state_dir / f"{node}.json").write_text(json.dumps({"job": job, "shard": k, "started": now, "tag": tag}))
+        busy.add(k)
+        report[node] = f"launched shard {k} job {job}"
+    return report
+
+
 def tick(cfg, dry_run=False):
     now = time.time()
+    try:
+        print(json.dumps({"phones": phone_tick(cfg, now, dry_run)}))
+    except Exception as exc:  # phones must never stall the MBP/Boat half of the tick
+        print(json.dumps({"phones": f"error {type(exc).__name__}: {exc}"[:300]}))
     env = {**os.environ, "KUBECONFIG": KUBECONFIG}
     queues = json.loads(sh("kubectl", "get", "clusterqueue", "lanes", "bench-lanes", "-o", "json", env=env))["items"]
     free, pending = cohort_free(queues)
@@ -266,6 +381,8 @@ def main():
     sub = parser.add_subparsers(dest="cmd")
     t = sub.add_parser("tick")
     t.add_argument("--dry-run", action="store_true")
+    pt = sub.add_parser("phone-tick", help="phones only (no Kueue/Boat calls)")
+    pt.add_argument("--dry-run", action="store_true")
     j = sub.add_parser("job")
     j.add_argument("node")
     j.add_argument("suite")
@@ -273,6 +390,9 @@ def main():
     j.add_argument("piece")
     args = parser.parse_args()
     cfg = json.loads(CONFIG.read_text())
+    if args.cmd == "phone-tick":
+        print(json.dumps(phone_tick(cfg, time.time(), args.dry_run)))
+        return 0
     if args.cmd == "job":
         return job(cfg, args.node, args.suite, args.commit, args.piece)
     return tick(cfg, dry_run=getattr(args, "dry_run", False))
