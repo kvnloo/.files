@@ -384,6 +384,9 @@ def diagnose(gap: dict, state: dict) -> dict | None:
         p = subprocess.run(["holmes", "ask", q, "--model", HOLMES_MODEL, "-n", "--max-steps", "10",
                             "--bash-always-deny", "--json-output-file", str(jf)],
                            capture_output=True, text=True, timeout=300, env=env)
+        if not jf.exists():
+            return {"slo": gap["name"], "error": f"holmes rc={p.returncode} wrote no JSON",
+                    "stderr_tail": (p.stderr or "")[-400:]}
         out = json.loads(jf.read_text())
         return {"slo": gap["name"], "model": HOLMES_MODEL, "advice": re.sub(r"<tool_call>.*", "", str(out.get("result") or ""), flags=re.S).strip()[:2000] or None,
                 "tools": [t.get("tool_name") for t in out.get("tool_calls", [])], "rc": p.returncode}
