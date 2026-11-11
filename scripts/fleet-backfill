@@ -126,15 +126,19 @@ def phone_pick(shards, done, busy):
     return next((s for s in shards if s[0] not in done and s[0] not in busy), None)
 
 
-def phone_argv(cfg, node, shard):
+def phone_argv(cfg, slot, shard):
+    """A slot is one feeder process. `node` defaults to the slot name; an `idle` slot runs
+    SCHED_IDLE on the bench cores, so it only gets cycles the bench leaves unused."""
     phones = cfg["phones"]
-    n = phones["nodes"][node]
+    n = phones["nodes"][slot]
     b = phones["bundle"]
-    return [FLEET, "run", "--node", node, "--no-src", "--timeout", str(phones["timeout"]),
+    return [FLEET, "run", "--node", n.get("node", slot), "--no-src", "--timeout", str(phones["timeout"]),
             "--input", f"{shard}:shard.jsonl", "--",
+            *(["chrt", "-i", "0"] if n.get("idle") else []),
             "taskset", n["mask"], f"{b}/phone-embed", "-server", f"{b}/cpu/llama-server",
             "-model", f"{b}/{phones['model']}", "-in", "shard.jsonl", "-out", "embeddings.jsonl",
-            "-threads", str(n["threads"]), "-max-chars", str(phones["max_chars"]), "-ctx", str(phones["ctx"])]
+            "-threads", str(n["threads"]), "-port", str(n.get("port", 18431)),
+            "-max-chars", str(phones["max_chars"]), "-ctx", str(phones["ctx"])]
 
 
 # ---- side effects -------------------------------------------------------------
@@ -272,7 +276,8 @@ def phone_tick(cfg, now, dry_run=False):
         if not st:
             continue
         try:
-            status = json.loads(sh(sys.executable, FLEET_ADB, "status", node, st["job"], timeout=90))
+            device = phones["nodes"][node].get("node", node)
+            status = json.loads(sh(sys.executable, FLEET_ADB, "status", device, st["job"], timeout=90))
         except (subprocess.SubprocessError, ValueError) as exc:
             report[node] = f"status unavailable: {type(exc).__name__}"
             held[node], held_tag[node] = st["shard"], st.get("tag")
@@ -284,7 +289,7 @@ def phone_tick(cfg, now, dry_run=False):
         receipt = RUNS / "phone-embed" / st.get("tag", tag) / f"shard-{st['shard']:04d}-{node}"
         receipt.mkdir(parents=True, exist_ok=True)
         for names in (["stdout", "stderr"], ["embeddings.jsonl"]):  # a crash leaves no embeddings
-            subprocess.run([sys.executable, FLEET_ADB, "fetch", node, st["job"], "--dest", str(receipt),
+            subprocess.run([sys.executable, FLEET_ADB, "fetch", device, st["job"], "--dest", str(receipt),
                             *[a for n in names for a in ("--fetch", n)]], capture_output=True, timeout=600)
         out = (receipt / "stdout").read_text(errors="replace") if (receipt / "stdout").exists() else ""
         line = next((l for l in out.splitlines() if l.startswith("PHONE_EMBED_RESULT ")), None)
