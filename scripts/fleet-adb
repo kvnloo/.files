@@ -163,7 +163,9 @@ class Device:
                 "hardware_serial": self.hardware, "online": True, "ncpu": ncpu,
                 "status": "ok" if running else "guest_down",
                 "android": {"omalauncher_fgs": running}, "guest_recovery": recovery,
-                **({} if running else {"error": "guest_down: Omalauncher LinuxService missing"}),
+                # guest_error, not error: native adb jobs never use the guest, so a down guest
+                # must not block native admission (fleet judge reports it as a warning).
+                **({} if running else {"guest_error": "guest_down: Omalauncher LinuxService missing"}),
                 "load1": float(load[0]), "load5": float(load[1]),
                 "power": {"source": "adb dumpsys battery", "on_ac": charging,
                           "batteries": [{"pct": pct, "status": "Charging" if charging else "Discharging"}],

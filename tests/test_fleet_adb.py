@@ -79,6 +79,14 @@ class NativeLaneTests(unittest.TestCase):
         bad, _ = FLEET["judge"]({"kind": "phone", "health": {}}, facts, {}, {}, {})
         self.assertEqual(bad, [])
 
+    def test_guest_down_warns_but_admits_native_jobs(self):
+        facts = {"transport": "adb", "online": True, "status": "guest_down",
+                 "guest_error": "guest_down: Omalauncher LinuxService missing",
+                 "power": {"on_ac": True, "batteries": [{"pct": 80}]}}
+        bad, warn = FLEET["judge"]({"kind": "phone", "health": {}}, facts, {}, {}, {})
+        self.assertEqual(bad, [])
+        self.assertEqual(warn, ["guest_down: Omalauncher LinuxService missing"])
+
     def test_native_submit_refuses_low_battery_before_staging(self):
         device = mock.Mock()
         device.probe.return_value = {"power": {"on_ac": False, "batteries": [{"pct": 1}]}}
@@ -187,6 +195,9 @@ class NativeLaneTests(unittest.TestCase):
         facts = device.probe()
         self.assertEqual(facts["status"], "guest_down")
         self.assertTrue(facts["online"])
+        # Native jobs never run in the guest: admission reads "error", so it must stay absent.
+        self.assertNotIn("error", facts)
+        self.assertIn("guest_down", facts["guest_error"])
         self.assertEqual(facts["guest_recovery"], "owner_busy")
 
     def test_native_only_tab_never_reports_or_restores_a_guest(self):

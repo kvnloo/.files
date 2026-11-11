@@ -217,6 +217,8 @@ def judge(n, p, k8s, online, overrides):
     if n["kind"] == "phone" and p.get("transport") == "adb":
         if p.get("error"):
             return [p["error"]], []
+        if p.get("guest_error"):
+            warn.append(p["guest_error"])
         power = p["power"]
         pct = power["batteries"][0]["pct"]
         if pct < 2 and not power["on_ac"]:
@@ -410,6 +412,8 @@ def probe_python_guest(n, staging=False):
         android = probe(n)
         if "error" in android:
             return android
+        if android.get("guest_error"):
+            return {"error": android["guest_error"]}
         bad, _ = judge(n, android, {}, {}, {})
         if bad:
             return {"error": "; ".join(bad)}
