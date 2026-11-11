@@ -455,13 +455,16 @@ class Watch:
         """Services systemd restarts by itself and that keep the stock start limit: they get
         RESTART_CAP. Never set a start limit for every service: it counts timer, socket and
         path starts too, and 5 per 600 s refused every healthy timer faster than 2 min
-        (836 start-limit-hit per hour, 2026-11-10). None means systemd could not be read."""
+        (836 start-limit-hit per hour, 2026-11-10). The watcher itself stays uncapped: a hit
+        start limit ends restarts for good, and nothing else would start the watcher again.
+        None means systemd could not be read."""
         try:
             rows = properties('user', units, 'Id,Restart,TriggeredBy,StartLimitIntervalUSec,StartLimitBurst')
         except (RuntimeError, subprocess.SubprocessError):
             return None
         return {unit for unit, row in rows.items()
-                if row.get('Restart', 'no') != 'no' and not row.get('TriggeredBy')
+                if unit != 'service-watch.service'
+                and row.get('Restart', 'no') != 'no' and not row.get('TriggeredBy')
                 and (row.get('StartLimitIntervalUSec'), row.get('StartLimitBurst')) in (('10s', '5'), RESTART_CAP)}
 
     def install_hooks(self):

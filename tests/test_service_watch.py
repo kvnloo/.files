@@ -609,7 +609,8 @@ class Contracts(unittest.TestCase):
 
     def test_restart_cap_only_on_self_restarting_services_nothing_else_starts(self):
         shown = {'loop.service': ('on-failure', '', '10s', '5'), 'tick.service': ('no', 'tick.timer', '10s', '5'),
-                 'sock.service': ('always', 'sock.socket', '10s', '5'), 'own.service': ('always', '', '5min', '5')}
+                 'sock.service': ('always', 'sock.socket', '10s', '5'), 'own.service': ('always', '', '5min', '5'),
+                 'service-watch.service': ('on-failure', '', '10s', '5')}
         calls = []
         def fake(argv, timeout=15):
             calls.append(argv)
