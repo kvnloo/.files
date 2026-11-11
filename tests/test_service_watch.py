@@ -602,6 +602,50 @@ class Contracts(unittest.TestCase):
         self.assertIn('fixture.service', digest)
         self.assertIn('severe', digest)
 
+    def test_digest_query_reads_the_ts_index(self):
+        plan = self.watch.store.db.execute(
+            'EXPLAIN QUERY PLAN SELECT id,ts,unit,scope,data FROM incidents WHERE ts>=? ORDER BY ts', (0,)).fetchall()
+        self.assertIn('incident_ts', ' '.join(row[-1] for row in plan))
+
+    def test_restart_cap_only_on_self_restarting_services_nothing_else_starts(self):
+        shown = {'loop.service': ('on-failure', '', '10s', '5'), 'tick.service': ('no', 'tick.timer', '10s', '5'),
+                 'sock.service': ('always', 'sock.socket', '10s', '5'), 'own.service': ('always', '', '5min', '5'),
+                 'service-watch.service': ('on-failure', '', '10s', '5')}
+        calls = []
+        def fake(argv, timeout=15):
+            calls.append(argv)
+            if argv[0] == 'systemd-escape':
+                return subprocess.CompletedProcess(argv, 0, argv[1] + '\n', '')
+            if 'show' in argv:
+                if shown is None:
+                    return subprocess.CompletedProcess(argv, 1, '', '')
+                text = '\n\n'.join(f'Id={unit}\nRestart={r}\nTriggeredBy={t}\nStartLimitIntervalUSec={i}\nStartLimitBurst={b}'
+                                   for unit, (r, t, i, b) in shown.items() if unit in argv)
+                return subprocess.CompletedProcess(argv, 0, text + '\n', '')
+            return subprocess.CompletedProcess(argv, 0, '', '')
+        base = self.root / '.config/systemd/user'
+        cap = lambda unit: base / (unit + '.d') / '91-restart-cap.conf'
+        self.watch.units = {('user', unit): {} for unit in [*shown, 'tick.timer']}
+        with patch.object(sw.Path, 'home', return_value=self.root), patch.object(sw, 'command', fake):
+            self.watch.install_hooks()
+            self.assertEqual([unit for unit in [*shown, 'tick.timer'] if cap(unit).exists()], ['loop.service'])
+            self.assertEqual(cap('loop.service').read_text(), sw.RESTART_CAP_BODY)
+            self.assertTrue((base / 'tick.timer.d/90-service-watch.conf').exists())
+            self.assertTrue(any('daemon-reload' in argv for argv in calls))
+            # Once applied, systemd shows the cap itself: the unit stays capped and nothing is rewritten.
+            shown['loop.service'] = ('on-failure', '', *sw.RESTART_CAP)
+            calls.clear()
+            self.watch.install_hooks()
+            self.assertTrue(cap('loop.service').exists())
+            self.assertFalse(any('daemon-reload' in argv for argv in calls))
+            saved, shown = shown, None  # systemd unreadable: leave caps alone
+            self.watch.install_hooks()
+            self.assertTrue(cap('loop.service').exists())
+            shown = saved
+            shown['loop.service'] = ('on-failure', 'loop.timer', *sw.RESTART_CAP)  # gained a timer
+            self.watch.install_hooks()
+            self.assertFalse(cap('loop.service').exists())
+
     def test_unattributed_legacy_notifications_share_conservative_routine_budget(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             results = [self.watch.store.notify(str(i), 'fixture.service', 'failed', str(i), now=100000) for i in range(6)]
