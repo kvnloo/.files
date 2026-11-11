@@ -133,6 +133,27 @@ fi
 case $1 in ./gradlew|gradlew|gradle) [ "$mode" = build ] && mode=android ;; esac
 [ -n "$jdk" ] && [ "$mode" = build ] && mode=android
 if [ "$prefer_boat" = 1 ] && [ -z "$node" ] && [ "$local_data" = 0 ]; then node=boat; fi
+# Measured routing (fleet_runtimes.py): reviewed public jobs try Boat MIN_OK times per
+# task, then go wherever this task's measured end-to-end time is lowest. Private and
+# --local-data jobs never become eligible for Boat; explicit --node always wins.
+runtimes="$(dirname "$FLEET")/fleet_runtimes.py"
+[ -f "$runtimes" ] || runtimes=""
+boat_first=0; boat_explore=0
+# The clone's name (worktrees share their main clone's), matching fleet_runtimes' receipt lookup.
+repo_name=$(cd "${src:-.}" && { common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && basename "$(dirname "$common")" || basename "$(pwd)"; })
+if [ -n "$runtimes" ] && [ -z "$node" ] && [ "$public" = 1 ] && [ "$local_data" = 0 ] && [ "$mode" != android ] && [ -z "$attach" ]; then
+  if choice=$(python3 "$runtimes" pick --nodes mbp,boat --explore boat --repo "$repo_name" -- "$@" 2>/dev/null); then
+    case $choice in
+      boat*) boat_first=1; case $choice in *explore) boat_explore=1 ;; esac
+             echo "fleet-build: measured routing -> $choice (fleet_runtimes.py show)" >&2 ;;
+    esac
+  fi
+fi
+record_runtime() {  # node seconds rc
+  [ -n "$runtimes" ] && [ -n "$1" ] || return 0
+  python3 "$runtimes" record --node "$1" --seconds "$2" --rc "$3" --repo "$repo_name" --job "${4:-}" -- "${user_cmd[@]}" 2>/dev/null || true
+}
+user_cmd=("$@")
 if [ "$node" = boat ] && [ "$local_data" = 1 ]; then
   echo "fleet-build: --local-data cannot use Boat" >&2; exit 2
 fi
@@ -233,8 +254,25 @@ if [ "$node" = mbp ] || [ "$node" = k3s-mbp ] || [ "$node" = mbp-host ] || { [ -
 fi
 
 err=$(mktemp)
+if [ "$boat_first" = 1 ]; then
+  t0=$(date +%s)
+  set +e
+  "$FLEET" run --node boat "${args[@]:1}" 2> >(tee "$err" >&2)
+  rc=$?
+  set -e
+  wait 2>/dev/null || true
+  record_runtime boat $(( $(date +%s) - t0 )) $rc "$(sed -n 's/^fleet: job \([A-Za-z0-9_-]*\) -> .*/\1/p' "$err" | head -1)"
+  if [ $rc -eq 0 ] || [ "$boat_explore" = 0 ]; then
+    boat_first=done
+  else
+    # An exploration miss must not fail the caller: run once more on the default lane.
+    echo "fleet-build: Boat exploration exited $rc; running on the default lane" >&2
+    : > "$err"
+  fi
+fi
+t0=$(date +%s)
 deadline=$(( $(date +%s) + wait_s ))
-while :; do
+while [ "$boat_first" != done ]; do
   set +e
   "${runner[@]}" "${run_args[@]}" 2> >(tee "$err" >&2)
   rc=$?
@@ -255,6 +293,9 @@ while :; do
   sleep 60
 done
 jid=$(sed -n 's/^fleet: job \([0-9a-f-]*\) -> .*/\1/p' "$err" | head -1)
+used=$(sed -n 's/^fleet: job [A-Za-z0-9_-]* -> \([A-Za-z0-9_.-]*\).*/\1/p' "$err" | tail -1)
+[ "$boat_first" = done ] || [ -z "$used" ] || [ $rc -eq 75 ] || record_runtime "$used" $(( $(date +%s) - t0 )) $rc \
+  "$(sed -n 's/^fleet: job \([A-Za-z0-9_-]*\) -> .*/\1/p' "$err" | tail -1)"
 if [ $rc -eq 75 ]; then
   echo "fleet-build: no worker has room now (exit 75). Retry later or lower --mem; do not queue it on groot." >&2
 fi
