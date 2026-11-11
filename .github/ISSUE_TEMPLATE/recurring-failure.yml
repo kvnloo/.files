@@ -1,0 +1,31 @@
+name: Recurring failure
+description: The same failure seen more than once. Counts and sessions.
+labels: [bug, recurring]
+body:
+  - type: input
+    id: failure
+    attributes:
+      label: Failure
+      description: One line, e.g. the error signature.
+    validations:
+      required: true
+  - type: textarea
+    id: counts
+    attributes:
+      label: Counts
+      description: How often, over what window, on which hosts/versions.
+      placeholder: "14 times in 3 days on one host (v0.23.1); first seen ..."
+    validations:
+      required: true
+  - type: textarea
+    id: sessions
+    attributes:
+      label: Sessions / evidence
+      description: Session ids and log excerpts. Private links off in public repos (no local paths, no tailnet URLs).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: fixes
+    attributes:
+      label: Earlier fixes that did not hold
