@@ -165,5 +165,18 @@ class VaultScopes(unittest.TestCase):
             self.assertFalse(marker.exists())
 
 
+class HarnessOnlyProviders(unittest.TestCase):
+    # Owner rule: Gemini is used only through agy and OpenCode Zen only through the
+    # opencode harness. Hermes scopes must never receive their keys, so no Hermes
+    # provider, fallback or MoA preset can reach them (Google account ban risk).
+    HARNESS_ONLY = {'GOOGLE_API_KEY', 'GEMINI_API_KEY', 'OPENCODE_ZEN_API_KEY', 'OPENCODE_GO_API_KEY'}
+
+    def test_hermes_scopes_exclude_harness_only_keys(self):
+        scopes = json.loads((ROOT / 'config' / 'bws-consumers.json').read_text())['scopes']
+        for name, keys in scopes.items():
+            if name.startswith('hermes'):
+                self.assertFalse(self.HARNESS_ONLY & set(keys), f'{name} must not get {sorted(self.HARNESS_ONLY & set(keys))}')
+
+
 if __name__ == '__main__':
     unittest.main()
