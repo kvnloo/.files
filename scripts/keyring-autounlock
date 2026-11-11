@@ -1,0 +1,34 @@
+#!/usr/bin/python3
+"""Unlock the GNOME login keyring from a TPM-sealed copy of its password.
+
+groot autologins (and often runs with no graphical session), so PAM never sees a password and
+pam_gnome_keyring cannot unlock the keyring. Any client that then asks for a secret opens a
+prompt that cannot display. Run by keyring-autounlock.service every time the daemon starts.
+Seal: printf %s PASSWORD | systemd-creds --user encrypt --name=keyring-login - ~/.config/hermes/keyring-login.cred
+"""
+import os, subprocess, sys
+
+os.environ.setdefault('DBUS_SESSION_BUS_ADDRESS', f"unix:path=/run/user/{os.getuid()}/bus")
+CRED = os.environ.get('KEYRING_UNLOCK_CRED', os.path.expanduser('~/.config/hermes/keyring-login.cred'))
+LOGIN = '/org/freedesktop/secrets/collection/login'
+
+
+def locked():
+    r = subprocess.run(['busctl', '--user', 'get-property', 'org.freedesktop.secrets', LOGIN,
+                        'org.freedesktop.Secret.Collection', 'Locked'], capture_output=True, text=True, timeout=10)
+    return r.stdout.strip() != 'b false'
+
+
+if not locked():
+    sys.exit(0)
+pw = subprocess.run(['systemd-creds', '--user', 'decrypt', '--name=keyring-login', CRED, '-'],
+                    capture_output=True, check=True, timeout=30).stdout
+import dbus  # noqa: E402
+svc = dbus.SessionBus().get_object('org.freedesktop.secrets', '/org/freedesktop/secrets')
+_, session = dbus.Interface(svc, 'org.freedesktop.Secret.Service').OpenSession('plain', dbus.String('', variant_level=1))
+secret = dbus.Struct((session, dbus.ByteArray(b''), dbus.ByteArray(pw), 'text/plain'), signature='oayays')
+dbus.Interface(svc, 'org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface').UnlockWithMasterPassword(
+    dbus.ObjectPath(LOGIN), secret)
+if locked():
+    sys.exit('keyring-autounlock: still locked (sealed password wrong? reseal it)')
+print('keyring-autounlock: unlocked')

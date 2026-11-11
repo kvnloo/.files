@@ -1,0 +1,15 @@
+[Unit]
+Description=Unlock the GNOME login keyring from its TPM-sealed password (autologin/headless)
+# Runs whenever the keyring daemon (re)starts, so a restart never leaves it locked.
+After=gnome-keyring-daemon.service
+BindsTo=gnome-keyring-daemon.service
+ConditionPathExists=%h/.config/hermes/keyring-login.cred
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/keyring-autounlock
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=gnome-keyring-daemon.service default.target
