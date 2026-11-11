@@ -204,7 +204,8 @@ run_core_links() {
              performance-mode.sh performance-pressure.py taildrop-phone.sh \
              taildrop-portal.py tmux-agent-launcher.sh tmux-fleet-switcher.sh \
              tmux-task-menu.sh tmux-widget-grid.sh theme-switcher.sh theme \
-             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py tern-hosts-sync; do
+             reload-desktop.sh keybind-cheatsheet.py dash-log-watch.py service-watch.py tern-hosts-sync \
+             pr-media; do
     if [[ -e "$repo/scripts/$bin" ]]; then
       command_name="${bin%.sh}"
       command_name="${command_name%.py}"

@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""pr-media - put screenshots/video at the top of a GitHub PR body in one command.
+
+    pr-media <owner/repo> <pr> [file ...] [--caption TEXT] [--append] [--dry-run]
+             [--grab OUTPUT] [--record OUTPUT:SECS] [--adb SECS]
+
+Capture (optional, adds to the file list):
+  --grab OUT          grim -o OUT                  -> png
+  --record OUT:SECS   wf-recorder -o OUT for SECS  -> mp4 (<=30 s)
+  --adb SECS          adb shell screenrecord       -> mp4 (<=30 s)
+
+Each file is normalised (png: metadata stripped, max 1600 px; video: h264 mp4
+<=30 s/1280 px plus a gif preview), privacy-scanned with OCR on public repos
+(home paths, /mnt paths, tailnet IPs/hostnames, ~/.config/pr-media/deny.txt
+lines -> refuse), uploaded to the repo's orphan branch `pr-media` at
+pr-<N>/<name> (GitHub has no attachment API), and embedded between
+<!-- pr-media:start --> and <!-- pr-media:end --> at the top of the PR body
+via `gh pr edit`. Re-running replaces the block (or adds to it with --append).
+Prints the embedded URLs after reading the body back.
+
+Hosting decision: orphan branch `pr-media`, raw.githubusercontent.com URLs
+(public repos). Private repos get github.com/<repo>/raw/... links, which only
+render for signed-in viewers with access.
+"""
+from __future__ import annotations
+
+import argparse, base64, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.request
+from pathlib import Path
+
+BRANCH = "pr-media"  # not "pr-assets": older per-topic pr-assets/<topic> branches block that ref name
+START, END = "<!-- pr-media:start -->", "<!-- pr-media:end -->"
+IMG = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+VID = {".mp4", ".webm", ".mov", ".mkv"}
+MAX_S = 30
+PRIVATE = [
+    r"/home/[a-z_][\w-]*", r"/mnt/zer0models", r"/workspace/hermes-home",
+    r"\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b",
+    r"\b[\w.-]+\.ts\.net\b", r"\b192\.168\.\d{1,3}\.\d{1,3}\b",
+]
+
+
+def sh(*cmd: str, inp: bytes | None = None, check: bool = True) -> str:
+    r = subprocess.run(cmd, input=inp, capture_output=True)
+    if check and r.returncode:
+        sys.exit(f"pr-media: {' '.join(cmd[:4])} failed: {r.stderr.decode()[-400:]}")
+    return r.stdout.decode()
+
+
+def gh_api(path: str, method: str = "GET", body: dict | None = None, ok404: bool = False):
+    cmd = ["gh", "api", "-X", method, path]
+    if body is not None:
+        cmd += ["--input", "-"]
+    r = subprocess.run(cmd, input=json.dumps(body).encode() if body is not None else None, capture_output=True)
+    if r.returncode:
+        if ok404 and b"404" in (r.stdout + r.stderr):
+            return None
+        sys.exit(f"pr-media: gh api {method} {path}: {(r.stdout + r.stderr).decode()[-400:]}")
+    return json.loads(r.stdout or b"null")
+
+
+def deny_patterns() -> list[str]:
+    pats = list(PRIVATE)
+    f = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pr-media" / "deny.txt"
+    if f.exists():
+        pats += [re.escape(l.strip()) for l in f.read_text().splitlines() if l.strip() and not l.startswith("#")]
+    return pats
+
+
+def privacy_hits(text: str, pats: list[str]) -> list[str]:
+    return sorted({m.group(0) for p in pats for m in re.finditer(p, text, re.I)})
+
+
+def ocr(img: Path) -> str:
+    if not shutil.which("tesseract"):
+        sys.exit("pr-media: tesseract missing; cannot privacy-scan frames for a public repo")
+    return sh("tesseract", str(img), "-", "--psm", "11", check=False)
+
+
+def capture(args, tmp: Path) -> list[Path]:
+    out = []
+    env = {**os.environ, "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY", "wayland-1")}
+    for o in args.grab or []:
+        p = tmp / f"grab-{o}-{int(time.time())}.png"
+        subprocess.run(["grim", "-o", o, str(p)], env=env, check=True)
+        out.append(p)
+    for spec in args.record or []:
+        o, _, secs = spec.rpartition(":")
+        p = tmp / f"rec-{o}-{int(time.time())}.mp4"
+        rec = subprocess.Popen(["wf-recorder", "-y", "-o", o, "-f", str(p)], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(min(float(secs), MAX_S))
+        rec.send_signal(2); rec.wait(10)
+        out.append(p)
+    if args.adb:
+        p = tmp / f"adb-{int(time.time())}.mp4"
+        sh("adb", "shell", "screenrecord", "--time-limit", str(min(int(args.adb), MAX_S)), "/sdcard/pr-media.mp4")
+        sh("adb", "pull", "/sdcard/pr-media.mp4", str(p))
+        sh("adb", "shell", "rm", "/sdcard/pr-media.mp4", check=False)
+        out.append(p)
+    return out
+
+
+def normalise(src: Path, tmp: Path) -> list[tuple[Path, str]]:
+    """Return [(file, kind)] with kind in image|video|preview."""
+    ext, stem = src.suffix.lower(), re.sub(r"[^\w.-]+", "-", src.stem)
+    if ext in IMG and ext != ".gif":
+        dst = tmp / f"{stem}.png"
+        sh("magick", str(src), "-strip", "-depth", "8", "-resize", "1600x1600>", str(dst))
+        return [(dst, "image")]
+    if ext == ".gif":
+        dst = tmp / f"{stem}.gif"; shutil.copy(src, dst)
+        return [(dst, "image")]
+    if ext in VID:
+        mp4, gif = tmp / f"{stem}.mp4", tmp / f"{stem}.gif"
+        sh("ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-t", str(MAX_S), "-map_metadata", "-1",
+           "-vf", "scale='min(1280,iw)':-2", "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+           "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(mp4))
+        sh("ffmpeg", "-y", "-loglevel", "error", "-i", str(mp4), "-t", "12", "-vf",
+           "fps=8,scale='min(640,iw)':-2:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse", str(gif))
+        return [(mp4, "video"), (gif, "preview")]
+    sys.exit(f"pr-media: unsupported file type {src}")
+
+
+def scan(files: list[tuple[Path, str]], tmp: Path) -> None:
+    pats = deny_patterns()
+    for f, kind in files:
+        frames = [f]
+        if kind == "video":
+            d = tmp / f"frames-{f.stem}"; d.mkdir()
+            sh("ffmpeg", "-loglevel", "error", "-i", str(f), "-vf", "fps=1", str(d / "%03d.png"))
+            frames = sorted(d.glob("*.png"))
+        elif kind == "preview":
+            continue  # cut from the mp4 scanned above
+        elif f.suffix == ".gif":
+            frames = [tmp / f"{f.stem}-f0.png"]
+            sh("magick", f"{f}[0]", str(frames[0]))
+        for fr in frames:
+            hits = privacy_hits(ocr(fr), pats)
+            if hits:
+                sys.exit(f"pr-media: {f.name}: private text visible ({', '.join(hits)}); crop or blur and retry")
+
+
+def ensure_branch(repo: str) -> None:
+    # matching-refs, not git/ref/heads/X: the latter kept answering a cached 404 for minutes after creation
+    refs = gh_api(f"repos/{repo}/git/matching-refs/heads/{BRANCH}") or []
+    if any(r["ref"] == f"refs/heads/{BRANCH}" for r in refs):
+        return
+    blob = gh_api(f"repos/{repo}/git/blobs", "POST", {"encoding": "utf-8", "content":
+        "Media embedded in PR bodies by `pr-media`. Orphan branch; never merge.\n"})
+    tree = gh_api(f"repos/{repo}/git/trees", "POST",
+                  {"tree": [{"path": "README.md", "mode": "100644", "type": "blob", "sha": blob["sha"]}]})
+    commit = gh_api(f"repos/{repo}/git/commits", "POST", {"message": "pr-media: init", "tree": tree["sha"], "parents": []})
+    gh_api(f"repos/{repo}/git/refs", "POST", {"ref": f"refs/heads/{BRANCH}", "sha": commit["sha"]})
+
+
+def upload(repo: str, pr: int, f: Path, private: bool) -> str:
+    path = f"pr-{pr}/{f.name}"
+    old = gh_api(f"repos/{repo}/contents/{path}?ref={BRANCH}", ok404=True)
+    body = {"message": f"pr-media: #{pr} {f.name}", "branch": BRANCH,
+            "content": base64.b64encode(f.read_bytes()).decode()}
+    if old:
+        body["sha"] = old["sha"]
+    res = gh_api(f"repos/{repo}/contents/{path}", "PUT", body)
+    sha = res["commit"]["sha"][:12]  # pin to the commit so a re-upload never shows a cached old frame
+    if private:
+        return f"https://github.com/{repo}/raw/{sha}/{path}"
+    return f"https://raw.githubusercontent.com/{repo}/{sha}/{path}"
+
+
+def block(caption: str | None, items: list[str]) -> str:
+    lines = [START]
+    if caption:
+        lines.append(caption)
+        lines.append("")
+    lines += items
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def splice(body: str, new_block: str, append: bool) -> str:
+    m = re.search(re.escape(START) + r"(.*?)" + re.escape(END), body, re.S)
+    if m and append:
+        inner = m.group(1).rstrip("\n")
+        new_inner = new_block[len(START):-len(END)]
+        return body[:m.start()] + START + inner + "\n" + new_inner.lstrip("\n") + END + body[m.end():]
+    if m:
+        return body[:m.start()] + new_block + body[m.end():]
+    return new_block + "\n\n" + body
+
+
+def embed_lines(uploaded: list[tuple[str, str, str]]) -> list[str]:
+    out, preview = [], {}
+    for name, kind, url in uploaded:
+        if kind == "preview":
+            preview[Path(name).stem] = url
+    for name, kind, url in uploaded:
+        stem = Path(name).stem
+        if kind == "image":
+            out.append(f'<img src="{url}" alt="{stem}" width="800">')
+        elif kind == "video":
+            g = preview.get(stem)
+            out.append(f'<a href="{url}"><img src="{g}" alt="{stem} (click for mp4)" width="640"></a>' if g
+                       else f"[{stem}.mp4]({url})")
+            out.append(f"<sub>▶ [{stem}.mp4]({url})</sub>")
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    ap.add_argument("repo"); ap.add_argument("pr", type=int); ap.add_argument("files", nargs="*", type=Path)
+    ap.add_argument("--caption"); ap.add_argument("--append", action="store_true")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--grab", action="append"); ap.add_argument("--record", action="append")
+    ap.add_argument("--adb", type=int)
+    a = ap.parse_args(argv)
+    tmp = Path(tempfile.mkdtemp(prefix="pr-media-"))
+    srcs = list(a.files) + capture(a, tmp)
+    if not srcs:
+        ap.error("no files and no capture flags")
+    files = [x for s in srcs for x in normalise(s, tmp)]
+    meta = gh_api(f"repos/{a.repo}")
+    private = bool(meta["private"])
+    if not private:
+        scan(files, tmp)
+    for f, _ in files:
+        if f.stat().st_size > 20 * 1024 * 1024:
+            sys.exit(f"pr-media: {f.name} is {f.stat().st_size >> 20} MB after conversion; trim it")
+    if a.dry_run:
+        for f, k in files:
+            print(f"dry-run: {k:7} {f} {f.stat().st_size // 1024} KB")
+        return 0
+    ensure_branch(a.repo)
+    uploaded = [(f.name, k, upload(a.repo, a.pr, f, private)) for f, k in files]
+    body = json.loads(sh("gh", "pr", "view", str(a.pr), "-R", a.repo, "--json", "body"))["body"] or ""
+    new = splice(body, block(a.caption, embed_lines(uploaded)), a.append)
+    sh("gh", "pr", "edit", str(a.pr), "-R", a.repo, "--body-file", "-", inp=new.encode())
+    back = json.loads(sh("gh", "pr", "view", str(a.pr), "-R", a.repo, "--json", "body,url"))
+    for _, _, url in uploaded:
+        if url not in back["body"]:
+            sys.exit(f"pr-media: readback missing {url}")
+        status = "private" if private else urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=20).status
+        print(f"{status} {url}")
+    print(back["url"])
+    shutil.rmtree(tmp, ignore_errors=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
