@@ -4787,3 +4787,36 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
 migration_sha256 = "dbb003e0bb2499f4834901077a1b913b4c2a3317526e2393cd788ce3902a7841"
+
+# Repositories that serve this host. host-drift reports every link in ~/.local/bin, every user
+# unit link and every unit Exec path that leaves the registered repository's current release
+# (release_not_current), a release that is not the head of the ref (release_behind_live,
+# release_no_live), and anything served from a release family or checkout that no row names
+# (release_unregistered). mode "archive": scripts/release-live --family cuts <family>/<sha> and
+# moves ~/.local/lib/<family>/current. mode "checkout": the clone is served in place and must
+# sit clean on the ref. absorbs: older per-installer families cut from the same repository.
+[[release]]
+family = "files-live"
+repo = "/workspace/.files"
+absorbs = ["files-bws", "files-master", "files-host-drift", "files-tern-omp", "files-units", "files-hooks",
+           "host-storage", "mesh-healer", "artifact-leases", "phone-adb-keeper", "z0-guard", "z0int-units",
+           "z0int-model-identity-units", "dash-services", "quackles-services"]
+
+[[release]]
+family = "z0int"
+repo = "/mnt/zer0models/workspace/zer0/oss/.work/z0intelligence"
+absorbs = ["z0int-policy", "z0int-shadow", "z0int-capacity", "z0int-runtime", "z0-state-packet", "circadian"]
+
+[[release]]
+family = "dash"
+repo = "/mnt/zer0models/workspace/zer0/products/dash"
+
+[[release]]
+family = "hermes-agent"
+repo = "/workspace/hermes-home/hermes-agent"
+mode = "checkout"
+
+[[release]]
+family = "z0live"
+repo = "/mnt/zer0models/workspace/zer0/products/z0live"
+mode = "checkout"

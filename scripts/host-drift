@@ -53,7 +53,7 @@ def normalized(value):
 
 def deployment_stamped(path, entry, releases=None):
     """Accept only a declared installer's exact Git-stamped source path."""
-    name = entry.get('stamp_name')
+    name = entry.get('stamp_name', 'files-live')
     releases = DEPLOYMENT_RELEASE_ROOT or releases
     if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name) or releases is None:
         return False
@@ -94,6 +94,150 @@ def checkout_root(path):
         if (parent / '.git').exists():
             return parent
     return None
+
+
+LIVE_REF = 'refs/heads/live'
+EXEC_KEYS = {'ExecStart', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecReload', 'WorkingDirectory'}
+
+
+def git_text(repo, *args):
+    """Read-only git output, or None when the repository or ref cannot be read."""
+    try:
+        return command(['git', '-C', str(repo), *args]).strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def main_repo(checkout):
+    """The repository a checkout belongs to: a linked worktree counts as its main clone."""
+    marker = checkout / '.git'
+    try:
+        text = marker.read_text().strip() if marker.is_file() else ''
+    except OSError:
+        text = ''
+    if text.startswith('gitdir:'):
+        target = Path(os.path.normpath(checkout / text[7:].strip()))  # may be relative to the worktree
+        if target.parent.name == 'worktrees' and target.parent.parent.name == '.git':
+            return target.parent.parent.parent.resolve()
+    return checkout
+
+
+def served_paths(home):
+    """(origin, path): every link in ~/.local/bin and the user unit tree, plus what each unit file runs."""
+    count = 0
+    for root in (home / '.local/bin', home / '.config/systemd/user'):
+        for directory, names, files in os.walk(root):
+            for name in sorted((*names, *files)):
+                path = Path(directory) / name
+                count += 1
+                if count > 20000:
+                    raise ValueError('bounded served-path inventory exceeded 20000 entries')
+                if path.is_symlink():
+                    yield path, path
+                if root.name != 'user' or not name.endswith(('.service', '.conf')) or not path.is_file():
+                    continue
+                for line in path.read_text(errors='replace').splitlines():
+                    key, _, value = line.partition('=')
+                    if key.strip() in EXEC_KEYS:
+                        for token in value.replace('%h', str(home)).split():
+                            token = token.lstrip('-@+!:').strip('\'"')
+                            if token.startswith('/'):
+                                yield path, Path(token)
+
+
+def release_owner(resolved, home, releases):
+    """('family', name, None) inside a release tree, ('checkout', repo, worktree) inside a git checkout, else None."""
+    for base in (releases, home / '.local/lib'):
+        if base is None or not resolved.is_relative_to(base):
+            continue
+        parts = resolved.relative_to(base).parts
+        if len(parts) >= 2 and (base == releases or (base / parts[0] / 'current').is_symlink()
+                                or re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', parts[1])):
+            return 'family', parts[0], None
+    checkout = checkout_root(resolved)
+    return ('checkout', str(main_repo(checkout)), checkout) if checkout else None
+
+
+def release_audit(manifest, home, releases, problem):
+    """Every served path must sit in the current release of a repository the manifest registers.
+
+    [[release]] rows name a family and its repository. mode "archive": release-live cuts
+    <family>/<sha> and ~/.local/lib/<family>/current points at it. mode "checkout": the clone is
+    served in place and must sit clean on the ref. Anything else that serves the host is drift.
+    """
+    families, repos, block = {}, {}, {}
+    for row in manifest.get('release', []):
+        family, repo, mode = row['family'], Path(row['repo']), row.get('mode', 'archive')
+        ref = row.get('ref', LIVE_REF)
+        if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', family) or not repo.is_absolute() or mode not in ('archive', 'checkout'):
+            raise ValueError(f'invalid release row: {family}')
+        info = dict(mode=mode, repo=str(repo), ref=ref, live_sha=git_text(repo, 'rev-parse', '--verify', '--quiet', ref + '^{commit}'),
+                    current_sha=None, links_checked=0, off_current=0)
+        if mode == 'archive':
+            current = home / '.local/lib' / family / 'current'
+            serving = current.resolve() if current.is_symlink() else None
+            try:
+                stamp = json.loads((current / '.deployment-stamp.json').read_text())
+                if stamp.get('name') == family and stamp.get('source_ref') == ref:
+                    info['current_sha'] = stamp.get('source_sha')
+            except (OSError, ValueError):
+                pass
+        else:
+            serving = repo.resolve()
+            info['current_sha'] = git_text(repo, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}')
+            dirty = git_text(repo, 'status', '--porcelain', '--untracked-files=no')
+            if dirty is None or dirty:
+                problem('release_dirty_checkout', repo, f'{len((dirty or "").splitlines())} tracked files differ from HEAD')
+        if info['live_sha'] is None:
+            problem('release_no_live', repo, f'{family}: {ref} does not exist')
+        elif info['current_sha'] != info['live_sha']:
+            problem('release_behind_live', family, dict(current=info['current_sha'], live=info['live_sha']))
+        for name in (family, *row.get('absorbs', [])):
+            families[name] = (family, serving)
+        repos[str(repo.resolve())] = (family, serving)
+        block[family] = info
+    if not block:
+        return block  # A host opts in by registering its first repository.
+    unregistered = {}
+    for origin, path in served_paths(home):
+        try:
+            resolved = path.resolve()
+        except (OSError, RuntimeError):
+            continue
+        owner = release_owner(resolved, home, releases)
+        if owner is None:
+            continue
+        known = (families if owner[0] == 'family' else repos).get(owner[1])
+        if known is None:
+            unregistered.setdefault(owner[:2], []).append(str(origin))
+            continue
+        family, serving = known
+        block[family]['links_checked'] += 1
+        # A linked worktree nested inside the served clone is still another tree.
+        if serving is None or not resolved.is_relative_to(serving) or (owner[2] and owner[2] != serving
+                                                                       and block[family]['mode'] == 'checkout'):
+            block[family]['off_current'] += 1
+            problem('release_not_current', origin, str(resolved))
+    for (kind, source), origins in sorted(unregistered.items()):
+        problem('release_unregistered', source, dict(source=kind, served=len(set(origins)), example=sorted(origins)[0]))
+    return block
+
+
+def unmanaged_executables(home):
+    """Hand-written scripts placed in ~/.local/bin as regular files; package entry points are not ours."""
+    directory = home / '.local/bin'
+    for path in sorted(directory.iterdir()) if directory.is_dir() else ():
+        if path.is_symlink() or not path.is_file():
+            continue
+        with path.open('rb') as handle:
+            data = handle.read(500)
+        first = data.split(b'\n', 1)[0]
+        if not first.startswith(b'#!'):
+            continue
+        entry_point = (any(mark in first for mark in (b'/uv/tools/', b'/pipx/', b'/venv/', b'/.venv/', b'/site-packages/'))
+                       or (path.stat().st_size < 500 and b'sys.exit(' in data))
+        if not entry_point:
+            yield path
 
 
 def package_backups(db):
@@ -443,6 +587,13 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
             walk(base, 16)
         except (OSError, ValueError) as exc:
             add(unknown, 'pacnew_unavailable', base, str(exc))
+    release_block = {}
+    try:
+        release_block = release_audit(manifest, home, releases, problem)
+        for path in unmanaged_executables(home):
+            problem('unmanaged_executable', path, 'regular script in ~/.local/bin; serve it from a release')
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        add(unknown, 'release_unavailable', 'release', str(exc))
     # The same package file may be observed through its managed path and /etc walk.
     drift = list({(row['kind'], row['path']): row for row in drift}.values())
     for action in manifest.get('pending_action', []):
@@ -467,6 +618,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
     # Unknown takes precedence: drift is still retained and alertable.
     status = host_admission.status(bool(unknown), bool(drift))
     return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown, budget=budget_observation,
+                releases=release_block, release=release_block.get('files-live', {}),
                 not_applicable=not_applicable,
                 host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 summary=f'host drift: {len(drift)} drift, {len(unknown)} unknown', executed=False)
