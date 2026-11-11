@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""mesh-healer: measure fleet SLOs, apply only allowlisted reversible repairs, receipt every action.
+
+Design (BRIEF-self-healing-mesh-20261111, .files#147 NS4):
+  1. measure()  SLOs from z0.capacity.snapshot.v1 (z0intelligence#133), Kueue, hc-turbo ledger,
+                systemd. Unknown is None, never 0.
+  2. plan()     deterministic allowlist only: reset-failed, start a failed .path/.timer, a
+                RUNTIME drop-in (lost on reboot) for IO-starved timeouts. No deletes, no spend.
+  3. diagnose() gaps with no playbook go to HolmesGPT (read-only, bash denied) on a local model.
+                Its text is advice in the receipt; it never picks an action.
+  4. receipt    every action re-measures and records before/after.
+It schedules nothing: Kueue, Kerdoios and hc-turbo keep placement.
+"""
+from __future__ import annotations
+
+import argparse
+import calendar
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+HOME = Path.home()
+OUT = Path(os.environ.get("MESH_HEALER_DIR", "/mnt/zer0models/workspace/zer0/data/operations/self-healing-mesh"))
+SNAPSHOT = Path(os.environ.get("Z0INT_CAPACITY_SNAPSHOT", HOME / ".z0int/state/capacity_snapshot.json"))
+LEDGER = Path(os.environ.get("HC_TURBO_LEDGER",
+                             "/mnt/zer0models/workspace/zer0/data/operations/hc-turbo-20261106/state/ledger.jsonl"))
+RUNTIME_DROPIN = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "systemd/user"
+HOLMES_BASE = os.environ.get("MESH_HEALER_LLM_BASE", "http://127.0.0.1:11540/v1")
+HOLMES_MODEL = os.environ.get("MESH_HEALER_LLM_MODEL", "hosted_vllm/qwen3.5-4b")
+MAX_ACTIONS = 10
+DIAG_COOLDOWN_S = 6 * 3600
+PHONES = {"s25", "s22", "tab"}
+
+
+def sh(*cmd: str, timeout: int = 20) -> tuple[int, str]:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return -1, str(e)
+
+
+def slo(name: str, value, target: str, met, evidence=None) -> dict:
+    return {"name": name, "value": value, "target": target, "met": met, "evidence": evidence or {}}
+
+
+# ---------- measure ----------
+
+def failed_units(now_mono: float) -> list[dict]:
+    rc, out = sh("systemctl", "--user", "list-units", "--state=failed", "--no-legend", "--plain")
+    units = []
+    for line in out.splitlines() if rc == 0 else []:
+        name = line.split()[0] if line.split() else ""
+        if not name:
+            continue
+        _, props = sh("systemctl", "--user", "show", name, "-p", "Result", "-p", "TriggeredBy",
+                      "-p", "StateChangeTimestampMonotonic", "-p", "ExecMainStartTimestampMonotonic",
+                      "-p", "CPUUsageNSec", "-p", "IOSchedulingClass", "-p", "TimeoutStartUSec")
+        p = dict(kv.split("=", 1) for kv in props.splitlines() if "=" in kv)
+        changed = int(p.get("StateChangeTimestampMonotonic") or 0) / 1e6
+        units.append({"unit": name, "result": p.get("Result"), "triggered_by": p.get("TriggeredBy", "").split(),
+                      "age_s": round(now_mono - changed) if changed else None,
+                      "cpu_ns": int(p["CPUUsageNSec"]) if p.get("CPUUsageNSec", "").isdigit() else None,
+                      "io_class": p.get("IOSchedulingClass"), "timeout": p.get("TimeoutStartUSec")})
+    return units
+
+
+def io_full_avg300() -> float | None:
+    try:
+        m = re.search(r"full .*avg300=([\d.]+)", Path("/proc/pressure/io").read_text())
+        return float(m.group(1)) if m else None
+    except OSError:
+        return None
+
+
+def kube_json(*args: str):
+    rc, out = sh("kubectl", *args, "-o", "json", timeout=25)
+    try:
+        return json.loads(out) if rc == 0 else None
+    except ValueError:
+        return None
+
+
+def node_cpu_pct(node: str) -> float | None:
+    rc, out = sh("kubectl", "top", "node", node, "--no-headers", timeout=25)
+    m = re.search(r"\s(\d+)%", out) if rc == 0 else None
+    return float(m.group(1)) if m else None
+
+
+def measure(now: float | None = None, now_mono: float | None = None) -> dict:
+    now = now or time.time()
+    now_mono = now_mono if now_mono is not None else time.monotonic()
+    slos: list[dict] = []
+    snap = None
+    try:
+        snap = json.loads(SNAPSHOT.read_text())
+    except (OSError, ValueError):
+        pass
+    fresh = bool(snap) and now - float(snap.get("generated_at") or 0) < 600
+    slos.append(slo("capacity_snapshot_fresh", round(now - float(snap["generated_at"])) if snap else None,
+                    "<600 s old", fresh))
+    groot = next((h for h in (snap or {}).get("hosts", []) if h.get("label") == "groot"), None) if fresh else None
+    res = (groot or {}).get("resources") or {}
+    mem = res.get("ram_available_bytes")
+    slos.append(slo("groot_mem_available_gb", round(mem / 2**30, 2) if mem is not None else None, ">=2",
+                    None if mem is None else mem >= 2 * 2**30))
+    for g in res.get("gpus") or []:
+        tot, free, util = g.get("memory_total_bytes"), g.get("memory_free_bytes"), g.get("utilization_pct")
+        held = None if not tot or free is None else round(1 - free / tot, 3)
+        met = None if held is None or util is None else not (held > 0.5 and util <= 0)
+        slos.append(slo("gpu_busy_when_vram_held", {"vram_held": held, "util_pct": util},
+                        "util>0 whenever VRAM>50% held", met, {"gpu": g.get("name")}))
+
+    wl = kube_json("get", "workloads", "-A")
+    pending_old, mbp_queued = [], 0
+    for w in (wl or {}).get("items", []):
+        cond = {c["type"]: c["status"] for c in w.get("status", {}).get("conditions", [])}
+        if cond.get("Finished") == "True" or cond.get("Admitted") == "True":
+            continue
+        created = calendar.timegm(time.strptime(w["metadata"]["creationTimestamp"], "%Y-%m-%dT%H:%M:%SZ"))
+        ns = w["metadata"]["namespace"]
+        mbp_queued += ns == "fleet-mbp"
+        if now - created > 1800:
+            pending_old.append(f"{ns}/{w['metadata']['name']}")
+    slos.append(slo("kueue_pending_over_30m", None if wl is None else len(pending_old), "==0",
+                    None if wl is None else not pending_old, {"workloads": pending_old[:10]}))
+    mbp = node_cpu_pct("mbp")
+    slos.append(slo("mbp_cpu_pct_while_queued", mbp, ">=80 while fleet-mbp has queued work",
+                    None if wl is None or mbp is None else (mbp >= 80 or mbp_queued == 0),
+                    {"queued": mbp_queued}))
+
+    share, n = None, 0
+    try:
+        rows = [json.loads(l) for l in LEDGER.read_text().splitlines()[-400:] if l.strip()]
+        ph = [r for r in rows if r.get("device") in PHONES]
+        n = len(ph)
+        if n:
+            share = round(sum(r.get("decision") in ("KEEP", "REVERT") for r in ph) / n, 3)
+    except (OSError, ValueError):
+        pass
+    slos.append(slo("phone_keep_revert_share", share, ">=0.30 of last phone hc-turbo runs",
+                    None if share is None else share >= 0.30, {"runs": n}))
+    slos.append(slo("boat_usage_when_backlog", None, ">0 s/24h when backlog", None,
+                    {"reason": "no Boat usage source wired yet"}))
+
+    units = failed_units(now_mono)
+    old = [u for u in units if (u["age_s"] or 0) > 3600]
+    slos.append(slo("failed_user_units_over_1h", len(old), "==0", not old,
+                    {"units": [u["unit"] for u in old][:50]}))
+    return {"at": now, "slos": slos, "failed_units": units, "io_full_avg300": io_full_avg300()}
+
+
+# ---------- plan (allowlist only) ----------
+
+def plan(m: dict) -> list[dict]:
+    acts = []
+    io = m.get("io_full_avg300") or 0
+    for u in m["failed_units"]:
+        name, age = u["unit"], u["age_s"] or 0
+        if name.endswith((".path", ".timer")) and age > 300:
+            acts.append({"kind": "restart_trigger", "unit": name,
+                         "cmds": [["reset-failed", name], ["start", name]]})
+        elif not name.endswith(".service") or age <= 300:
+            continue
+        elif u["result"] == "timeout" and io > 10 and (u["cpu_ns"] or 0) < 5e9 \
+                and not name.startswith("service-watch-failure@") \
+                and not (RUNTIME_DROPIN / f"{name}.d/60-mesh-healer.conf").exists():
+            acts.append({"kind": "runtime_timeout_dropin", "unit": name, "why":
+                         f"timed out with {round((u['cpu_ns'] or 0) / 1e9, 1)} s CPU under IO full avg300={io}",
+                         "dropin": "[Service]\nTimeoutStartSec=300\n" +
+                         ("IOSchedulingClass=best-effort\nIOSchedulingPriority=7\n" if u["io_class"] in ("idle", "3") else ""),
+                         "cmds": [["daemon-reload"], ["reset-failed", name]]})
+        elif age > 3600 and (u["triggered_by"] or name.startswith("service-watch-failure@")):
+            acts.append({"kind": "reset_failed", "unit": name, "cmds": [["reset-failed", name]],
+                         "why": "re-runs from its trigger" if u["triggered_by"] else "failure reporter; original stays in journal"})
+    acts.sort(key=lambda a: {"restart_trigger": 0, "runtime_timeout_dropin": 1}.get(a["kind"], 2))
+    return acts[:MAX_ACTIONS]
+
+
+def apply(act: dict) -> dict:
+    if act["kind"] == "runtime_timeout_dropin":
+        d = RUNTIME_DROPIN / f"{act['unit']}.d"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "60-mesh-healer.conf").write_text("# mesh-healer runtime drop-in; cleared on reboot\n" + act["dropin"])
+    results = []
+    for c in act["cmds"]:
+        rc, out = sh("systemctl", "--user", "--no-block", *c) if c[0] == "start" else sh("systemctl", "--user", *c)
+        results.append({"cmd": c, "rc": rc})
+    return {**act, "results": results, "ok": all(r["rc"] == 0 for r in results)}
+
+
+# ---------- diagnose (advice only) ----------
+
+def diagnose(gap: dict, state: dict) -> dict | None:
+    last = state.setdefault("diagnosed", {}).get(gap["name"], 0)
+    if time.time() - last < DIAG_COOLDOWN_S:
+        return None
+    try:
+        urllib.request.urlopen(HOLMES_BASE + "/models", timeout=3).read(64)
+    except OSError as e:
+        return {"slo": gap["name"], "skipped": f"local model unreachable: {e}"}
+    state["diagnosed"][gap["name"]] = time.time()
+    OUT.mkdir(parents=True, exist_ok=True)
+    q = (f"Fleet SLO '{gap['name']}' is violated: value={json.dumps(gap['value'])}, target {gap['target']}, "
+         f"evidence={json.dumps(gap['evidence'])[:800]}. Kueue owns placement. Investigate with the kubernetes tools only (bash is denied) and answer in "
+         "at most 3 sentences: likely cause, and the smallest reversible config change that would fix it.")
+    jf = OUT / f".holmes-{gap['name']}.json"
+    env = {**os.environ, "HOSTED_VLLM_API_BASE": HOLMES_BASE, "HOSTED_VLLM_API_KEY": "none"}
+    try:
+        p = subprocess.run(["holmes", "ask", q, "--model", HOLMES_MODEL, "-n", "--max-steps", "10",
+                            "--bash-always-deny", "--json-output-file", str(jf)],
+                           capture_output=True, text=True, timeout=300, env=env)
+        out = json.loads(jf.read_text())
+        return {"slo": gap["name"], "model": HOLMES_MODEL, "advice": re.sub(r"<tool_call>.*", "", str(out.get("result") or ""), flags=re.S).strip()[:2000] or None,
+                "tools": [t.get("tool_name") for t in out.get("tool_calls", [])], "rc": p.returncode}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        return {"slo": gap["name"], "error": str(e)[:300]}
+
+
+# ---------- loop ----------
+
+def write_page(m: dict) -> None:
+    rows = [f"| {s['name']} | {json.dumps(s['value'])} | {s['target']} | "
+            f"{'ok' if s['met'] else 'unknown' if s['met'] is None else '**GAP**'} |" for s in m["slos"]]
+    (OUT / "SLO.md").write_text(
+        f"# Fleet SLOs ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(m['at']))})\n\n"
+        "Generated by .files `scripts/mesh-healer`. Receipts: `receipts/`.\n\n"
+        "| SLO | value | target | state |\n|---|---|---|---|\n" + "\n".join(rows) + "\n")
+
+
+def tick(dry_run: bool = False, llm: bool = True) -> dict:
+    OUT.mkdir(parents=True, exist_ok=True)
+    state_f = OUT / ".state.json"
+    state = json.loads(state_f.read_text()) if state_f.exists() else {}
+    before = measure()
+    acts = plan(before)
+    done = [a if dry_run else apply(a) for a in acts]
+    after = measure() if done and not dry_run else before
+    repaired = {a["unit"] for a in done}
+    gaps = [s for s in after["slos"] if s["met"] is False and s["name"] != "failed_user_units_over_1h"]
+    due = [g for g in gaps if time.time() - state.get("diagnosed", {}).get(g["name"], 0) >= DIAG_COOLDOWN_S]
+    diag = [d for d in (diagnose(g, state) for g in due[:1]) if d] if llm and not dry_run else []
+    summary = {s["name"]: s["value"] for s in after["slos"]}
+    rec = {"schema": "mesh-healer.receipt.v1", "at": before["at"], "dry_run": dry_run,
+           "before": {s["name"]: s["value"] for s in before["slos"]}, "after": summary,
+           "actions": done, "diagnoses": diag}
+    with (OUT / "slo-history.jsonl").open("a") as f:
+        f.write(json.dumps({"at": after["at"], "slos": summary, "actions": len(done)}) + "\n")
+    (OUT / "slo.json").write_text(json.dumps(after, indent=1))
+    write_page(after)
+    if (done or diag) and not dry_run:
+        (OUT / "receipts").mkdir(exist_ok=True)
+        (OUT / "receipts" / time.strftime("%Y%m%dT%H%M%S.json")).write_text(json.dumps(rec, indent=1))
+    if not dry_run:
+        state_f.write_text(json.dumps(state))
+    print(f"MESH_HEALER gaps={sum(s['met'] is False for s in after['slos'])} actions={len(done)} "
+          f"repaired={sorted(repaired)[:5]} diagnoses={len(diag)}", flush=True)
+    return rec
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("cmd", choices=["tick", "run", "measure"])
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument("--interval", type=int, default=300)
+    a = ap.parse_args()
+    if a.cmd == "measure":
+        print(json.dumps(measure()["slos"], indent=1))
+        return 0
+    while True:
+        try:
+            tick(a.dry_run, not a.no_llm)
+        except Exception as e:  # stay alive: one bad tick must not stop the healer
+            print(f"MESH_HEALER tick_error={e!r}", file=sys.stderr, flush=True)
+        if a.cmd == "tick":
+            return 0
+        time.sleep(a.interval)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
