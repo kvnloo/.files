@@ -152,6 +152,16 @@ class Admission(unittest.TestCase):
         with patch.object(fleet.subprocess,'run',return_value=types.SimpleNamespace(stdout='{"Self":{"TailscaleIPs":[]},"Peer":{}}')):
             self.assertEqual(fleet.tailnet_online(),{})
 
+class GrootAdmitHold(unittest.TestCase):
+    def test_hold_line_names_tmp_tmpfs_use(self):
+        # tmpfs scratch lives in RAM and is invisible to the job; every hold line must name it (fable F22).
+        import subprocess
+        p = subprocess.run([sys.executable, str(ROOT / 'scripts/groot-admit'), '--need-mb', '99999999', '--', 'true'],
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 75)
+        self.assertRegex(p.stderr, r'held: .*; /tmp tmpfs \d+ MiB')
+
+
 class PhonePlacement(unittest.TestCase):
     def test_s25_gates_before_transfer_and_never_falls_back_to_groot(self):
         nodes = fleet.registry()[1]
