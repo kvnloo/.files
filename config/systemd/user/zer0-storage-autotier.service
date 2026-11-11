@@ -5,6 +5,12 @@ ConditionPathIsMountPoint=/mnt/zer0models
 [Service]
 Type=oneshot
 Environment=ZER0_STORAGE_POLICY=%h/.config/zer0/storage.toml
+# Regenerable dependency stores grow without bound unless collected: Hermes keeps
+# every env generation (33 = 36 GiB on 11-11) until `pm gc`, and uv keeps every
+# wheel it ever fetched. Both collectors skip in-use entries; "-" = never fail the unit.
+ExecStartPre=-/usr/bin/env -C %h/.hermes/hermes-agent %h/.local/bin/hermes pm gc
+ExecStartPre=-%h/.local/bin/uv cache prune --cache-dir /workspace/cache/uv
+ExecStartPre=-%h/.local/bin/uv cache prune
 ExecStart=/usr/bin/python %h/.local/lib/host-storage/current/scripts/zer0_storage_autotier.py --apply
 Nice=19
 IOSchedulingClass=idle
