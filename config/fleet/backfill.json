@@ -33,7 +33,7 @@
     "corpus": "/mnt/zer0models/workspace/zer0/data/operations/memory-replay-eval/owner_msgs.jsonl",
     "bundle": "/data/local/tmp/z0tp",
     "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
-    "shard": 400,
+    "shard": 100,
     "max_chars": 2000,
     "ctx": 1024,
     "timeout": 5400,

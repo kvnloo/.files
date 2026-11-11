@@ -261,11 +261,11 @@ def phone_tick(cfg, now, dry_run=False):
         return {}
     corpus = Path(phones["corpus"])
     lines = corpus.read_text().splitlines()
-    tag = f"{corpus.stem}-{len(lines)}"
+    tag = f"{corpus.stem}-{len(lines)}-s{phones['shard']}"  # shard k means a different range per size
     root = RUNS / "phone-embed" / tag
     state_dir = CACHE / "phones"
     state_dir.mkdir(parents=True, exist_ok=True)
-    report, held = {}, {}
+    report, held, held_tag = {}, {}, {}
     for node in phones["nodes"]:
         path = state_dir / f"{node}.json"
         st = json.loads(path.read_text()) if path.exists() else None
@@ -275,13 +275,13 @@ def phone_tick(cfg, now, dry_run=False):
             status = json.loads(sh(sys.executable, FLEET_ADB, "status", node, st["job"], timeout=90))
         except (subprocess.SubprocessError, ValueError) as exc:
             report[node] = f"status unavailable: {type(exc).__name__}"
-            held[node] = st["shard"]
+            held[node], held_tag[node] = st["shard"], st.get("tag")
             continue
         if status["state"] == "running" and now - st["started"] < phones["timeout"] + 600:
             report[node] = f"running shard {st['shard']} job {st['job']}"
-            held[node] = st["shard"]
+            held[node], held_tag[node] = st["shard"], st.get("tag")
             continue
-        receipt = root / f"shard-{st['shard']:04d}-{node}"
+        receipt = RUNS / "phone-embed" / st.get("tag", tag) / f"shard-{st['shard']:04d}-{node}"
         receipt.mkdir(parents=True, exist_ok=True)
         for names in (["stdout", "stderr"], ["embeddings.jsonl"]):  # a crash leaves no embeddings
             subprocess.run([sys.executable, FLEET_ADB, "fetch", node, st["job"], "--dest", str(receipt),
@@ -304,7 +304,7 @@ def phone_tick(cfg, now, dry_run=False):
     if mem_available() < PHONE_GROOT_FLOOR:
         report["launch"] = "held: groot MemAvailable < 512 MiB"
         return report
-    busy = set(held.values())
+    busy = {k for node, k in held.items() if held_tag.get(node) == tag}
     for node in phones["nodes"]:
         if node in held:
             continue
