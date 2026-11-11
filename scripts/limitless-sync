@@ -179,6 +179,19 @@ def sync_aw(cfg: dict, st: Path) -> str:
     return f"copied {len(data)}"
 
 
+def has_tables(db: Path) -> bool:
+    """False for a missing file and for the table-less file an empty pull folds into."""
+    if not db.exists():
+        return False
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        return con.execute("select count(*) from sqlite_master where type='table'").fetchone()[0] > 0
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        con.close()
+
+
 def sync_noop(cfg: dict, st: Path) -> str:
     pkg = cfg["noopPackage"]
     d = private_dir(st / "noop")
@@ -187,7 +200,8 @@ def sync_noop(cfg: dict, st: Path) -> str:
         return "unreachable"
     sig = "|".join(m or "" for m in mts)
     stamp = d / "stamp"
-    if stamp.exists() and stamp.read_text() == sig:
+    out = d / "noop_whoop.db"
+    if stamp.exists() and stamp.read_text() == sig and has_tables(out):
         return "unchanged"
     tmp = private_dir(d / "incoming")
     for suf in ("", "-wal"):  # never copy -shm: a stale index can misread the WAL; SQLite rebuilds it
@@ -197,19 +211,23 @@ def sync_noop(cfg: dict, st: Path) -> str:
             data = b""
         write_private(tmp / f"noop_whoop.db{suf}", data)
     # Fold the WAL into one consistent private file so readers can open it mode=ro.
+    new = tmp / "folded.db"
+    new.unlink(missing_ok=True)
     con = sqlite3.connect(tmp / "noop_whoop.db")
     try:
         con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        out = d / "noop_whoop.db"
-        if out.exists():
-            out.unlink()
-        con.execute(f"VACUUM INTO '{out}'")
+        con.execute(f"VACUUM INTO '{new}'")
     finally:
         con.close()
-    os.chmod(d / "noop_whoop.db", 0o600)
+    # The phone can answer stat and then fail the cat. Such a pull has no tables: keep the
+    # last good copy and no stamp, so readers never see an empty file and the next run retries.
+    good = has_tables(new)
+    if good:
+        os.chmod(new, 0o600)
+        os.replace(new, out)
+        write_private(stamp, sig)
     shutil.rmtree(tmp)
-    write_private(stamp, sig)
-    return "copied"
+    return "copied" if good else "unreachable"
 
 
 # ------------------------------------------------------------------ digest
@@ -279,7 +297,7 @@ def night_screen(win, evening: datetime) -> dict:
 
 def noop_facts(st: Path, evening: datetime, tz: ZoneInfo) -> dict:
     db = st / "noop" / "noop_whoop.db"
-    if not db.exists():
+    if not has_tables(db):
         return {"available": False}
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
