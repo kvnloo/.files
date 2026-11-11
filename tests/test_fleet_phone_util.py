@@ -27,6 +27,15 @@ class PhoneUtilTest(unittest.TestCase):
         self.assertEqual(row["ok"], {"busy_pct": 90.0, "cores": 8})
         self.assertEqual(row["off"], {"error": "RuntimeError: adb: device offline"})
 
+    def test_samples_emits_one_line_per_window(self):
+        result = subprocess.CompletedProcess([], 0, "cpu 90 0 0 10 0\n8\n", "")
+        with mock.patch("subprocess.run", return_value=result), mock.patch("time.sleep") as sleep, \
+                mock.patch("sys.argv", ["x", "--json", "--samples", "3", "ok=a"]), \
+                mock.patch("builtins.print") as out:
+            self.assertEqual(util.main(), 0)
+        self.assertEqual(out.call_count, 3)
+        self.assertEqual(sleep.call_count, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
