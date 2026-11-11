@@ -38,10 +38,10 @@ def test_plan_is_allowlisted_and_bounded(tmp_path, monkeypatch):
     assert kinds["host-optimizer.service"] == "runtime_timeout_dropin"
     assert "IOSchedulingClass=best-effort" in next(a for a in acts if a["unit"] == "host-optimizer.service")["dropin"]
     assert "orphan.service" not in kinds and "young.service" not in kinds
-    allowed = {("reset-failed",), ("start",), ("daemon-reload",)}
+    assert all(a["kind"] != "restart_service" for a in acts)
     for a in acts:
         for c in a["cmds"]:
-            assert (c[0],) in allowed
+            assert c[0] in ("reset-failed", "start", "daemon-reload")
             if c[0] == "start":
                 assert c[1].endswith((".path", ".timer"))
 
@@ -165,3 +165,76 @@ def test_wake_listener_starts_unit_on_first_connection(tmp_path, monkeypatch):
     assert ("systemctl", "--user", "--no-block", "start", "x.service") in calls
     rec = json.loads(next((tmp_path / "out/receipts").glob("*-wake.json")).read_text())
     assert rec["unit"] == "x.service" and rec["start_rc"] == 0
+
+
+def test_untriggered_units_reset_when_nothing_reruns_them_and_restart_once(tmp_path, monkeypatch):
+    m = load(tmp_path, monkeypatch)
+    units = [{**unit("glide-sprint-entry.service"), "transient": True},
+             {**unit("d1-decision-server.service", "timeout"), "file_state": "disabled", "type": "simple"},
+             {**unit("api.service"), "file_state": "enabled", "type": "simple"},
+             {**unit("batch.service"), "file_state": "enabled", "type": "oneshot"},     # report only
+             {**unit("young-transient.service", age=900), "transient": True}]
+    kinds = {a["unit"]: a for a in m.plan({"failed_units": units, "io_full_avg300": 0.0}, {})}
+    assert kinds["glide-sprint-entry.service"]["kind"] == "reset_failed"
+    assert kinds["d1-decision-server.service"]["cmds"] == [["reset-failed", "d1-decision-server.service"]]
+    assert kinds["api.service"]["cmds"] == [["reset-failed", "api.service"], ["start", "api.service"]]
+    assert "batch.service" not in kinds and "young-transient.service" not in kinds
+    again = m.plan({"failed_units": units, "io_full_avg300": 0.0}, {"restarted": {"api.service": time.time()}})
+    assert "api.service" not in {a["unit"] for a in again}
+
+
+def _cq(name, cpu, mem="0", cohort="mbp-lanes"):
+    return {"metadata": {"name": name}, "spec": {"cohortName": cohort, "resourceGroups": [{"flavors": [
+        {"name": "node-mbp", "resources": [{"name": "cpu", "nominalQuota": cpu}, {"name": "memory", "nominalQuota": mem}]}]}]}}
+
+
+def test_kueue_quota_clamp_only_when_pending_and_overcommitted(tmp_path, monkeypatch):
+    m = load(tmp_path, monkeypatch)
+    pending = {"slos": [{"name": "kueue_pending_over_30m", "met": False}]}
+    node = {"status": {"allocatable": {"cpu": "6500m", "memory": "12046060Ki"}}}
+    pods = {"items": [
+        {"metadata": {"labels": {}}, "status": {"phase": "Running"},
+         "spec": {"containers": [{"resources": {"requests": {"cpu": "600m", "memory": "582Mi"}}}]}},
+        {"metadata": {"labels": {"kueue.x-k8s.io/queue-name": "lanes"}}, "status": {"phase": "Running"},
+         "spec": {"containers": [{"resources": {"requests": {"cpu": "4", "memory": "6Gi"}}}]}}]}
+    cqs = {"items": [_cq("lanes", "5900m", "10441814016"), _cq("bench-lanes", "2"), _cq("z0", "8", cohort=None)]}
+    acts = m.plan_kueue(pending, cqs, node, pods)
+    assert [(a["unit"], a["resource"]) for a in acts] == [("clusterqueue/bench-lanes", "cpu")]
+    patch = json.loads(acts[0]["run"][0][-1])
+    assert patch == [{"op": "replace", "path": "/spec/resourceGroups/0/flavors/0/resources/0/nominalQuota", "value": "0m"}]
+    assert '"value": "2000m"' in acts[0]["undo"]
+    fitting = {"items": [_cq("lanes", "5900m", "10441814016"), _cq("bench-lanes", "0")]}
+    assert m.plan_kueue(pending, fitting, node, pods) == []
+    assert m.plan_kueue({"slos": [{"name": "kueue_pending_over_30m", "met": True}]}, cqs, node, pods) == []
+
+
+def test_gateway_crash_retry_once_when_gateway_answers(tmp_path, monkeypatch):
+    import sqlite3
+    m = load(tmp_path, monkeypatch)
+    board = tmp_path / "boards/zer0"; board.mkdir(parents=True)
+    con = sqlite3.connect(board / "kanban.db")
+    con.executescript("""CREATE TABLE tasks (id TEXT, status TEXT);
+        CREATE TABLE task_events (id INTEGER PRIMARY KEY, task_id TEXT, kind TEXT, payload TEXT, created_at INTEGER);""")
+    con.executemany("INSERT INTO tasks VALUES (?, ?)", [("t_gw", "blocked"), ("t_other", "blocked"),
+                                                        ("t_fixed", "blocked"), ("t_run", "running")])
+    ev = [("t_gw", "gave_up", "Kanban owner refused: Gateway connection failed; no local fallback"),
+          ("t_other", "gave_up", "pytest failed"),
+          ("t_fixed", "gave_up", "Gateway connection failed"), ("t_fixed", "unblocked", ""),
+          ("t_fixed", "blocked", "needs owner decision"),
+          ("t_run", "gave_up", "Gateway connection failed"),
+          ("t_unknown", "gave_up", "Kanban owner refused: Gateway disconnected; turn outcome is unknown")]
+    con.execute("INSERT INTO tasks VALUES ('t_unknown', 'blocked'), ('t_old', 'blocked')")
+    now = time.time()
+    con.executemany("INSERT INTO task_events (task_id, kind, payload, created_at) VALUES (?, ?, ?, ?)",
+                    [(*e, now - 60) for e in ev] + [("t_old", "gave_up", "Gateway connection failed", now - 3 * 86400)])
+    con.commit(); con.close()
+    monkeypatch.setattr(m, "KANBAN_HOME", tmp_path / "boards")
+    got = m.gateway_crash_blocked()
+    assert [t["task"] for t in got] == ["t_gw"]
+    meas = {"slos": [{"name": "kanban_gateway_crash_blocked", "met": False, "evidence": {"tasks": got}}]}
+    assert m.plan_gateway_retry(meas, {}, answers=lambda: False) == []
+    acts = m.plan_gateway_retry(meas, {}, answers=lambda: True)
+    assert acts[0]["run"][0][:6] == ["hermes", "kanban", "--board", "zer0", "unblock", "t_gw"]
+    assert m.plan_gateway_retry(meas, {"gateway_retried": {"t_gw": got[0]["event"]}}, answers=lambda: True) == []
+    monkeypatch.setattr(m, "KANBAN_HOME", tmp_path / "none")
+    assert m.gateway_crash_blocked() is None

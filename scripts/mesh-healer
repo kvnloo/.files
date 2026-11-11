@@ -7,7 +7,11 @@ Design (BRIEF-self-healing-mesh-20261111, .files#147 NS4):
   2. plan()     deterministic allowlist only: reset-failed, start a failed .path/.timer, a
                 RUNTIME drop-in (lost on reboot) for IO-starved timeouts, and evict_idle_model_server
                 (stop one idle model-servers.slice unit; a wake listener on its port restarts it on
-                the first connection). No deletes, no spend.
+                the first connection), reset-failed or one restart for failed units nothing re-runs
+                (journal tail kept in the receipt), kueue_quota_clamp (cohort nominal quota above what
+                the node can schedule) and retry_gateway_crash (unblock a Kanban task once when its
+                worker died only because the gateway was down and the gateway answers again).
+                No deletes, no spend.
   3. diagnose() gaps with no playbook go to HolmesGPT (read-only, bash denied) on a local model.
                 Its text is advice in the receipt; it never picks an action.
   4. receipt    every action re-measures and records before/after.
@@ -45,6 +49,17 @@ EVICT_MAX_CPU_S = 2.0                 # unit CPU seconds since the last tick; mo
 EVICT_WOKEN_HOLD_S = 6 * 3600         # a unit that woke on demand is not evicted again for 6 h
 CRASHLOOP_RESTARTS = 5                # a pod restarting this often ...
 CRASHLOOP_WINDOW_S = 1800             # ... with its last crash this recent counts as crash-looping
+RESTART_COOLDOWN_S = 6 * 3600         # restart_service: at most once per unit per 6 h
+KUEUE_COHORT, KUEUE_FLAVOR, KUEUE_NODE = "mbp-lanes", "node-mbp", "mbp"
+KUEUE_SHRINK_FIRST = ("bench-lanes",)  # borrow-side queue (nominal 0 in IaC) gives back first
+KANBAN_HOME = Path(os.environ.get("MESH_HEALER_KANBAN_HOME", HOME / ".hermes/kanban/boards"))
+GATEWAY_UNIT = "hermes-gateway.service"
+GATEWAY_FRESH_S = 1800
+GATEWAY_RETRY_WINDOW_S = 24 * 3600   # older gateway deaths stay with a human
+# Only errors where the turn never started. "Gateway disconnected" means the outcome is unknown
+# (the worker says: resume, do not resend), so it is never auto-retried.
+GATEWAY_CRASH_PATTERNS = ("Gateway connection failed", "Gateway connection timed out",
+                          "systemd-run --user --scope is unavailable")
 
 
 def sh(*cmd: str, timeout: int = 20) -> tuple[int, str]:
@@ -70,13 +85,16 @@ def failed_units(now_mono: float) -> list[dict]:
             continue
         _, props = sh("systemctl", "--user", "show", name, "-p", "Result", "-p", "TriggeredBy",
                       "-p", "StateChangeTimestampMonotonic", "-p", "ExecMainStartTimestampMonotonic",
-                      "-p", "CPUUsageNSec", "-p", "IOSchedulingClass", "-p", "TimeoutStartUSec")
+                      "-p", "CPUUsageNSec", "-p", "IOSchedulingClass", "-p", "TimeoutStartUSec",
+                      "-p", "UnitFileState", "-p", "FragmentPath", "-p", "Type")
         p = dict(kv.split("=", 1) for kv in props.splitlines() if "=" in kv)
         changed = int(p.get("StateChangeTimestampMonotonic") or 0) / 1e6
         units.append({"unit": name, "result": p.get("Result"), "triggered_by": p.get("TriggeredBy", "").split(),
                       "age_s": round(now_mono - changed) if changed else None,
                       "cpu_ns": int(p["CPUUsageNSec"]) if p.get("CPUUsageNSec", "").isdigit() else None,
-                      "io_class": p.get("IOSchedulingClass"), "timeout": p.get("TimeoutStartUSec")})
+                      "io_class": p.get("IOSchedulingClass"), "timeout": p.get("TimeoutStartUSec"),
+                      "file_state": p.get("UnitFileState") or None, "type": p.get("Type") or None,
+                      "transient": "/systemd/transient/" in p.get("FragmentPath", "")})
     return units
 
 
@@ -165,6 +183,9 @@ def measure(now: float | None = None, now_mono: float | None = None) -> dict:
     loops = crashloop_pods(kube_json("get", "pods", "-A"), now)
     slos.append(slo("k8s_crashloop_pods", None if loops is None else len(loops), "==0",
                     None if loops is None else not loops, {"pods": (loops or [])[:20]}))
+    crashed = gateway_crash_blocked(now)
+    slos.append(slo("kanban_gateway_crash_blocked", None if crashed is None else len(crashed), "==0",
+                    None if crashed is None else not crashed, {"tasks": (crashed or [])[:20]}))
     return {"at": now, "slos": slos, "failed_units": units, "io_full_avg300": io_full_avg300(),
             "gpu_holders": gpu_holders()}
 
@@ -225,7 +246,8 @@ def gpu_holders() -> list[dict]:
 
 # ---------- plan (allowlist only) ----------
 
-def plan(m: dict) -> list[dict]:
+def plan(m: dict, state: dict | None = None) -> list[dict]:
+    restarted = (state or {}).get("restarted", {})
     acts = []
     io = m.get("io_full_avg300") or 0
     for u in m["failed_units"]:
@@ -246,7 +268,145 @@ def plan(m: dict) -> list[dict]:
         elif age > 3600 and (u["triggered_by"] or name.startswith("service-watch-failure@")):
             acts.append({"kind": "reset_failed", "unit": name, "cmds": [["reset-failed", name]],
                          "why": "re-runs from its trigger" if u["triggered_by"] else "failure reporter; original stays in journal"})
+        elif age > 3600 and (u.get("transient") or u.get("file_state") == "disabled"):
+            # Nothing will ever run it again, so the failed state is stale. The failure stays in the
+            # journal and its tail is copied into the receipt (apply), so resetting hides nothing.
+            acts.append({"kind": "reset_failed", "unit": name, "cmds": [["reset-failed", name]],
+                         "why": "one-off systemd-run job" if u.get("transient") else "disabled and untriggered; nothing re-runs it"})
+        elif age > 3600 and u.get("file_state") == "enabled" and u.get("type") in ("simple", "exec", "notify") \
+                and time.time() - restarted.get(name, 0) >= RESTART_COOLDOWN_S:
+            acts.append({"kind": "restart_service", "unit": name, "cmds": [["reset-failed", name], ["start", name]],
+                         "why": "enabled long-running service down >1 h; one restart per 6 h",
+                         "undo": f"systemctl --user stop {name}"})
     acts.sort(key=lambda a: {"restart_trigger": 0, "runtime_timeout_dropin": 1}.get(a["kind"], 2))
+    return acts[:MAX_ACTIONS]
+
+
+# ---------- Kueue quota: the cohort may not promise more than the node can schedule ----------
+
+def quantity(v) -> float:
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)([KMGT]i|[kMGT]|m)?", str(v))
+    if not m:
+        raise ValueError(f"unsupported quantity {v!r}")
+    return float(m[1]) * {"": 1, "m": .001, "k": 1e3, "M": 1e6, "G": 1e9, "T": 1e12,
+                          "Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40}[m[2] or ""]
+
+
+def fmt_quantity(res: str, v: float) -> str:
+    return f"{int(v * 1000)}m" if res == "cpu" else str(int(v))
+
+
+def plan_kueue(m: dict, cqs: dict | None = None, node: dict | None = None, pods: dict | None = None) -> list[dict]:
+    """While Kueue work is pending >30 min: if the cohort's nominal quota for a node flavor exceeds
+    what that node can schedule (allocatable minus non-Kueue pod requests), Kueue admits pods that
+    then sit Pending until the PodsReady timeout requeues them. Lower the borrow-side queues'
+    nominalQuota by the excess (floor 0). One kubectl patch per queue; undo = the old value."""
+    k = next((s for s in m["slos"] if s["name"] == "kueue_pending_over_30m"), None)
+    if not k or k["met"] is not False:
+        return []
+    cqs = cqs if cqs is not None else kube_json("get", "clusterqueues")
+    node = node if node is not None else kube_json("get", "node", KUEUE_NODE)
+    pods = pods if pods is not None else kube_json("get", "pods", "-A", "--field-selector", f"spec.nodeName={KUEUE_NODE}")
+    if not (cqs and node and pods):
+        return []
+    acts = []
+    for res in ("cpu", "memory"):
+        alloc = quantity(node["status"]["allocatable"][res])
+        other = sum(quantity((c.get("resources", {}).get("requests") or {}).get(res, 0))
+                    for p in pods["items"] if p.get("status", {}).get("phase") in ("Running", "Pending")
+                    and "kueue.x-k8s.io/queue-name" not in (p["metadata"].get("labels") or {})
+                    for c in p["spec"]["containers"])
+        cap = alloc - other
+        slots = []   # (queue, rg, flavor, resource index, nominal)
+        for q in cqs["items"]:
+            if q["spec"].get("cohortName") != KUEUE_COHORT:
+                continue
+            for gi, g in enumerate(q["spec"]["resourceGroups"]):
+                for fi, f in enumerate(g["flavors"]):
+                    for ri, r in enumerate(f["resources"]) if f["name"] == KUEUE_FLAVOR else ():
+                        if r["name"] == res:
+                            slots.append((q["metadata"]["name"], gi, fi, ri, quantity(r["nominalQuota"])))
+        excess = sum(s[4] for s in slots) - cap
+        for name, gi, fi, ri, nominal in sorted(slots, key=lambda s: s[0] not in KUEUE_SHRINK_FIRST):
+            if excess <= 1e-9 or nominal <= 0:
+                continue
+            new = max(0.0, nominal - excess)
+            excess -= nominal - new
+            path = f"/spec/resourceGroups/{gi}/flavors/{fi}/resources/{ri}/nominalQuota"
+            patch = lambda v: json.dumps([{"op": "replace", "path": path, "value": fmt_quantity(res, v)}])
+            acts.append({"kind": "kueue_quota_clamp", "unit": f"clusterqueue/{name}", "resource": res,
+                         "why": f"cohort {KUEUE_COHORT} promises {round(sum(s[4] for s in slots), 3)} {res} on "
+                                f"{KUEUE_NODE}, which can schedule {round(cap, 3)} (allocatable {round(alloc, 3)} - "
+                                f"{round(other, 3)} non-Kueue requests); nominal {round(nominal, 3)} -> {round(new, 3)}",
+                         "undo": f"kubectl patch clusterqueue {name} --type=json -p '{patch(nominal)}'",
+                         "run": [["kubectl", "patch", "clusterqueue", name, "--type=json", "-p", patch(new)]]})
+    return acts
+
+
+# ---------- Kanban: retry workers that died only because the gateway was down ----------
+
+def kanban_boards() -> list[Path]:
+    return sorted(KANBAN_HOME.glob("*/kanban.db"))
+
+
+def gateway_crash_blocked(now: float | None = None) -> list[dict] | None:
+    """Blocked tasks whose latest failure (gave_up) was a gateway transport error and that nobody
+    unblocked since. None = no board readable."""
+    import sqlite3
+    out, seen = [], False
+    for db in kanban_boards():
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+            rows = con.execute(
+                "SELECT t.id, e.id, e.payload FROM tasks t JOIN task_events e ON e.task_id = t.id "
+                "WHERE t.status = 'blocked' AND e.created_at >= ? AND e.id = (SELECT MAX(id) FROM task_events x WHERE x.task_id = t.id "
+                "AND x.kind IN ('gave_up', 'blocked', 'unblocked')) AND e.kind = 'gave_up'",
+                ((now or time.time()) - GATEWAY_RETRY_WINDOW_S,)).fetchall()
+            con.close()
+            seen = True
+        except Exception:   # sqlite3.Error or a locked/missing DB: this board is unknown
+            continue
+        for tid, eid, payload in rows:
+            hit = next((p for p in GATEWAY_CRASH_PATTERNS if p in (payload or "")), None)
+            if hit:
+                out.append({"board": db.parent.name, "task": tid, "event": eid, "error": hit})
+    return out if seen else None
+
+
+def gateway_answers(now: float | None = None) -> bool:
+    """The gateway is up and its owner admitted a worker recently (proof it answers, not just runs)."""
+    import sqlite3
+    if sh("systemctl", "--user", "is-active", GATEWAY_UNIT)[1].strip() != "active":
+        return False
+    since = (now or time.time()) - GATEWAY_FRESH_S
+    for db in kanban_boards():
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+            n = con.execute("SELECT COUNT(*) FROM task_events WHERE kind = 'owner_admitted' AND created_at >= ?",
+                            (since,)).fetchone()[0]
+            con.close()
+        except Exception:
+            continue
+        if n:
+            return True
+    return False
+
+
+def plan_gateway_retry(m: dict, state: dict, answers=None) -> list[dict]:
+    g = next((s for s in m["slos"] if s["name"] == "kanban_gateway_crash_blocked"), None)
+    if not g or g["met"] is not False or not (answers or gateway_answers)():
+        return []
+    done = state.setdefault("gateway_retried", {})
+    acts = []
+    for t in g["evidence"]["tasks"]:
+        if done.get(t["task"]) == t["event"]:
+            continue   # retried once for this failure already; a second gateway death needs a human
+        acts.append({"kind": "retry_gateway_crash", "unit": f"kanban/{t['board']}/{t['task']}", "task": t["task"],
+                     "event": t["event"], "why": f"worker died on '{t['error']}'; {GATEWAY_UNIT} is active and "
+                     f"admitted a worker in the last {GATEWAY_FRESH_S // 60} min",
+                     "undo": f"hermes kanban --board {t['board']} block {t['task']}",
+                     "run": [["hermes", "kanban", "--board", t["board"], "unblock", t["task"], "--reason",
+                              f"mesh-healer: auto-retry once; worker died on '{t['error']}' and the gateway answers again"]]})
     return acts[:MAX_ACTIONS]
 
 
@@ -356,10 +516,17 @@ def apply(act: dict) -> dict:
         d = RUNTIME_DROPIN / f"{act['unit']}.d"
         d.mkdir(parents=True, exist_ok=True)
         (d / "60-mesh-healer.conf").write_text("# mesh-healer runtime drop-in; cleared on reboot\n" + act["dropin"])
-    results = []
-    for c in act["cmds"]:
+    results, evidence = [], None
+    if act["kind"] in ("reset_failed", "restart_service"):   # keep the failure visible after the reset
+        evidence = sh("journalctl", "--user", "-u", act["unit"], "-n", "8", "--no-pager", "-o", "cat")[1][-1500:]
+    for c in act.get("cmds", []):
         rc, out = sh("systemctl", "--user", "--no-block", *c) if c[0] == "start" else sh("systemctl", "--user", *c)
         results.append({"cmd": c, "rc": rc})
+    for c in act.get("run", []):           # kubectl patch / hermes kanban unblock, argv as planned
+        rc, out = sh(*c, timeout=60)
+        results.append({"cmd": c[:4], "rc": rc, "out": out[-300:]})
+    if evidence is not None:
+        act = {**act, "journal_tail": evidence}
     if act["kind"] == "evict_idle_model_server" and results[0]["rc"] == 0:
         results.append({"cmd": ["systemd-run", wake_unit_name(act["unit"])],
                         "rc": spawn_wake(act["unit"], act["wake"]["host"], act["wake"]["port"])})
@@ -415,16 +582,20 @@ def tick(dry_run: bool = False, llm: bool = True) -> dict:
     before = measure()
     rearmed = [] if dry_run else keep_wake_listeners(state)
     gpu_idle_ticks(before, state)
-    acts = plan(before) + plan_evict(before, state)
+    acts = plan(before, state) + plan_evict(before, state) + plan_kueue(before) + plan_gateway_retry(before, state)
     done = [a if dry_run else apply(a) for a in acts]
     for a in done:
         if a["kind"] == "evict_idle_model_server" and a.get("ok"):
             state.setdefault("evicted", {})[a["unit"]] = {**a["wake"], "at": time.time()}
+        if a["kind"] == "restart_service" and not dry_run:
+            state.setdefault("restarted", {})[a["unit"]] = time.time()
+        if a["kind"] == "retry_gateway_crash" and not dry_run:
+            state.setdefault("gateway_retried", {})[a["task"]] = a["event"]
     if done and not dry_run:
         time.sleep(5)   # let a stopped server release VRAM before re-measuring
     after = measure() if done and not dry_run else before
     repaired = {a["unit"] for a in done}
-    gaps = [s for s in after["slos"] if s["met"] is False and s["name"] != "failed_user_units_over_1h"]
+    gaps = [s for s in after["slos"] if s["met"] is False and s["name"] not in ("failed_user_units_over_1h", "kanban_gateway_crash_blocked")]
     due = [g for g in gaps if time.time() - state.get("diagnosed", {}).get(g["name"], 0) >= DIAG_COOLDOWN_S]
     diag = [d for d in (diagnose(g, state) for g in due[:1]) if d] if llm and not dry_run else []
     summary = {s["name"]: s["value"] for s in after["slos"]}
