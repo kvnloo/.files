@@ -130,24 +130,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "feabed2a65cf72a10a25c0927b0a35353a174edbc4f8b84ab4cbbe64bc4d1514"
 
 [[user]]
-live = "~/.config/systemd/user/boat-reaper.service"
-source = "config/systemd/user/boat-reaper.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "dc39a2557438ee01150615a8702896e50730ec01c8364081afcf01821a41682b"
-
-[[user]]
-live = "~/.config/systemd/user/boat-reaper.timer"
-source = "config/systemd/user/boat-reaper.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "19317ae9a02f2093692d1eeb16d0f85d1db6d06e175f47f6cd0c3ac674df8735"
-
-[[user]]
 live = "~/.config/systemd/user/browser-bypass-dsp.service"
 source = "config/systemd/user/browser-bypass-dsp.service"
 scope = "user"
@@ -1448,24 +1430,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "2239479053c8b5f18c5e32f5daf07f7f3f7f6b39f44bdf78cd0e020efda450f0"
 
 [[user]]
-live = "~/.config/systemd/user/boat-reaper.service.d/90-service-watch.conf"
-source = "config/systemd/user/boat-reaper.service.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "d9f39133795b08d98006a190acf7396f19d4ee0258b951e30b7d66c935ea322a"
-
-[[user]]
-live = "~/.config/systemd/user/boat-reaper.timer.d/90-service-watch.conf"
-source = "config/systemd/user/boat-reaper.timer.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "f1795d478757010a233b19543d5aa3557eae9ddd26a46341d92245cb7ba18e62"
-
-[[user]]
 live = "~/.config/systemd/user/browser-bypass-dsp.service.d/90-service-watch.conf"
 source = "config/systemd/user/browser-bypass-dsp.service.d/90-service-watch.conf"
 scope = "user"
@@ -2717,15 +2681,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "3ef71fdcffb53fa414688a483dbe0f41cd3f4f73583ccc2e75c7a415b3ea9bfc"
 
 [[user]]
-live = "~/.config/systemd/user/timers.target.wants/boat-reaper.timer"
-source = "config/systemd/user/boat-reaper.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "19317ae9a02f2093692d1eeb16d0f85d1db6d06e175f47f6cd0c3ac674df8735"
-
-[[user]]
 live = "~/.config/systemd/user/timers.target.wants/bws-secrets-sync.timer"
 source = "config/systemd/user/bws-secrets-sync.timer"
 scope = "user"
@@ -3753,15 +3708,6 @@ reason = "Replace mutable helper link with content-stamped dependency closure; D
 migration_sha256 = "35031d54d9930f28dc38020ba24be64b76a591464cc3cfe2a0f2cbf891bee954"
 
 [[user]]
-live = "~/.local/bin/omp-boat"
-source = "scripts/boat"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/install-bws-secrets"
-reason = "Read the protected Boat runtime scope instead of plaintext agent dotenv files."
-migration_sha256 = "179b313bd784cf8dc2d40aaeef327373d8e05af79cd3aa2e4db48cddd8f142c8"
-
-[[user]]
 live = "~/.local/bin/tern-hosts-sync"
 source = "scripts/tern-hosts-sync"
 scope = "user"
@@ -4061,16 +4007,6 @@ install = "generated"
 generator = "scripts/install-bws-secrets --render z0intelligence.service"
 owner = "scripts/install-bws-secrets"
 reason = "Only the Jev consumer receives the TypeSafe runtime credential."
-
-[[user]]
-live = "~/.config/systemd/user/boat-reaper.service.d/60-bws-secrets.conf"
-source = "config/bws-consumers.json"
-scope = "user"
-install = "generated"
-generator = "scripts/install-bws-secrets --render boat-reaper.service"
-owner = "scripts/install-bws-secrets"
-reason = "Only the Boat consumer receives the Boat runtime credential."
-# Managed groot host paths. Optional stage selects separately approved oomd operation.
 
 [[system]]
 live = "/etc/fstab"
@@ -4511,15 +4447,6 @@ install = "symlink-stamped"
 stamp_name = "host-storage"
 owner = "scripts/install-host-storage.sh"
 reason = "Admitted MBP result spool belongs on bulk storage."
-
-[[user]]
-live = "~/.local/bin/fleet-boat"
-source = "scripts/fleet-boat"
-scope = "user"
-install = "symlink-stamped"
-stamp_name = "host-storage"
-owner = "scripts/install-host-storage.sh"
-reason = "Boat result spool belongs on bulk storage."
 
 [[user]]
 live = "~/.local/bin/fleet-adb"

@@ -127,7 +127,7 @@ def probe(n, guest=False):
     try:
         if n["kind"] == "boat":
             transport = "boat"
-            argv, deadline = [sys.executable, str(REPO / "scripts/boat"), "limits"], 90
+            argv, deadline = ["boat", "--no-update", "--json", "limits"], 90
         elif n["kind"] == "phone" and not guest:
             transport = "adb"
             argv = [sys.executable, str(REPO / "scripts/fleet-adb"), "probe", n["name"]]
@@ -452,19 +452,20 @@ def cmd_run(args):
     if args.node == "boat":
         if (args.arch and args.arch != "amd64") or (args.cls and args.cls not in nodes["boat"]["classes"] + nodes["boat"]["capabilities"]):
             die("boat: incompatible architecture or job capability", 75)
-        argv = [sys.executable, str(REPO / "scripts/fleet-boat"),
-                "--mem-mb", str(mb(args.mem or "512M")),
+        # Bare official CLI: `boat run` creates, runs, reports cost and deletes.
+        # Budget = plan-included VM hours (`boat limits`); never spend wallet dollars.
+        limits = json.loads(subprocess.run(["boat", "--no-update", "--json", "limits"],
+                                           capture_output=True, text=True, timeout=90).stdout or "{}")
+        if not limits.get("canStart") or limits.get("creditBalanceSeconds", 0) < min(args.timeout, 450):
+            die("boat: no included VM minutes left or cannot start", 75)
+        for option in ("fetch", "input", "src_include", "keep"):
+            if getattr(args, option, None):
+                die(f"boat: --{option.replace('_', '-')} is not supported by `boat run`", 2)
+        argv = ["boat", "--no-update", "run", "--type", "small",
                 "--timeout", str(min(args.timeout, 450))]
-        for option, value in (("--src", args.src), ("--cpus", args.cpus)):
-            if value:
-                argv += [option, value]
-        for option in ("no_src", "keep"):
-            if getattr(args, option):
-                argv += ["--" + option.replace("_", "-")]
-        for option in ("fetch", "input", "src_include"):
-            for value in getattr(args, option, []) or []:
-                argv += ["--" + option.replace("_", "-"), value]
-        return subprocess.run(argv + ["--", *args.cmd]).returncode
+        if not args.no_src:
+            argv += ["--push", args.src or os.getcwd()]
+        return subprocess.run(argv + ["--", "bash", "-lc", shlex.join(args.cmd)]).returncode
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
