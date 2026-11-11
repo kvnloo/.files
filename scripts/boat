@@ -79,13 +79,28 @@ def limits():
     return {k: data.get(k) for k in (
         "accessTier", "billingStatus", "canStart", "activeSandboxes", "maxActiveSandboxes",
         "trialComputeCapSeconds", "trialLine", "creditUsedSeconds", "liveUsageSeconds",
-        "last24hUsageSeconds", "subscriptionTrialEndsAt", "machineTypes", "starts")}
+        "last24hUsageSeconds", "subscriptionTrialEndsAt", "machineTypes", "starts",
+        "wallet", "planIncluded", "keepGoing", "nextStartDollars")}
+
+
+def included_seconds_left(data):
+    """Seconds this account may still use without any chance of a charge, or raise."""
+    if data["accessTier"] == "trial" and data["billingStatus"] == "trialing":
+        return (data["trialComputeCapSeconds"] or 0) - (data["creditUsedSeconds"] or 0)
+    if data["accessTier"] == "standard" and data["billingStatus"] == "active":
+        # Paid plan: spend only included hours. Any path to overage billing fails closed.
+        wallet = (data.get("wallet") or {}).get("balanceDollars")
+        keep_going = (data.get("keepGoing") or {}).get("enabled")
+        hours = (data.get("planIncluded") or {}).get("vmHoursRemaining")
+        if wallet != 0 or keep_going is not False or data.get("nextStartDollars") != 0 or hours is None:
+            raise BoatError("Paid account can bill overage (wallet/keepGoing/start price); refusing")
+        return hours * 3600
+    raise BoatError("Unknown Boat account state; requires an explicit policy change")
 
 
 def check_capacity():
     data = limits()
-    if data["accessTier"] != "trial" or data["billingStatus"] != "trialing":
-        raise BoatError("Trial-only wrapper: paid/expired account requires an explicit policy change")
+    remaining = included_seconds_left(data)
     if not data["canStart"]:
         raise AdmissionError("Boat cannot start; inspect limits (never change billing)")
     if data["activeSandboxes"] >= data["maxActiveSandboxes"]:
@@ -94,8 +109,9 @@ def check_capacity():
     live = data["liveUsageSeconds"] or 0
     if (data["last24hUsageSeconds"] or 0) + live + reserved > DAILY_SECONDS:
         raise AdmissionError("Three-hour rolling-24h budget/reservation exhausted")
-    if (data["creditUsedSeconds"] or 0) + live + reserved > (data["trialComputeCapSeconds"] or 0):
-        raise AdmissionError("Total trial compute budget/reservation exhausted")
+    if live + reserved > remaining:
+        raise AdmissionError(("Total trial" if data["accessTier"] == "trial" else "Included")
+                             + " compute budget/reservation exhausted")
 
 
 def wait_ready(sid, deadline):

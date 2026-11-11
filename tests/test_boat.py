@@ -48,10 +48,32 @@ class BoatPolicyTest(unittest.TestCase):
                 activeSandboxes=3, maxActiveSandboxes=4)):
             boat.check_capacity()
 
-    def test_paid_account_is_not_implicit_authorization(self):
-        with patch.object(boat, "limits", return_value=self.limits(accessTier="standard")):
-            with self.assertRaisesRegex(boat.BoatError, "Trial-only"):
+    def paid(self, **overrides):
+        return self.limits(**dict(dict(
+            accessTier="standard", billingStatus="active", wallet={"balanceDollars": 0},
+            keepGoing={"enabled": False}, nextStartDollars=0,
+            planIncluded={"vmHoursRemaining": 384.83}), **overrides))
+
+    def test_paid_plan_spends_included_hours(self):
+        with patch.object(boat, "limits", return_value=self.paid(creditUsedSeconds=10**7)):
+            boat.check_capacity()
+        with patch.object(boat, "limits", return_value=self.paid(planIncluded={"vmHoursRemaining": 0.1})):
+            with self.assertRaisesRegex(boat.AdmissionError, "Included"):
                 boat.check_capacity()
+
+    def test_paid_plan_fails_closed_on_any_overage_path(self):
+        for overrides in (dict(wallet={"balanceDollars": 5}), dict(keepGoing={"enabled": True}),
+                          dict(keepGoing=None), dict(nextStartDollars=0.03), dict(planIncluded=None)):
+            with self.subTest(**{k: str(v) for k, v in overrides.items()}), \
+                    patch.object(boat, "limits", return_value=self.paid(**overrides)):
+                with self.assertRaisesRegex(boat.BoatError, "overage"):
+                    boat.check_capacity()
+
+    def test_unknown_account_state_fails_closed(self):
+        for overrides in (dict(accessTier="standard"), dict(billingStatus="past_due")):
+            with self.subTest(**overrides), patch.object(boat, "limits", return_value=self.limits(**overrides)):
+                with self.assertRaisesRegex(boat.BoatError, "Unknown"):
+                    boat.check_capacity()
 
     def test_account_keys_cannot_be_requested(self):
         for name in ("BOAT_API_KEY", "BWS_ACCESS_TOKEN", "UNAPPROVED_KEY"):
