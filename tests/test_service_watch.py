@@ -607,6 +607,84 @@ class Contracts(unittest.TestCase):
             'EXPLAIN QUERY PLAN SELECT id,ts,unit,scope,data FROM incidents WHERE ts>=? ORDER BY ts', (0,)).fetchall()
         self.assertIn('incident_ts', ' '.join(row[-1] for row in plan))
 
+    def test_failure_hook_stops_slow_loop_once_and_can_be_reset(self):
+        unit = 'slow.service'
+        state = self.root / 'state'
+        calls = []
+        now = 100000
+        result = 'exit-code'
+        duration = 1
+
+        def fake(argv, timeout=15):
+            calls.append(argv)
+            if 'show' in argv:
+                return subprocess.CompletedProcess(argv, 0,
+                    f'Id={argv[3]}\nResult={result}\n'
+                    f'ExecMainStartTimestampMonotonic={int((now - duration) * 1000000)}\n'
+                    f'ExecMainExitTimestampMonotonic={int(now * 1000000)}\n', '')
+            return subprocess.CompletedProcess(argv, 0, '', '')
+
+        def hook(action='failure', target=unit, scope='user'):
+            with patch.object(sys, 'argv', ['service-watch', '--state', str(state),
+                                           action, target, '--scope', scope]):
+                self.assertEqual(sw.main(), 0)
+
+        with patch.object(sw, 'command', side_effect=fake), \
+             patch.object(sw.time, 'time', side_effect=lambda: now):
+            for index in range(10):
+                now += 300
+                hook()
+                if index == 8:
+                    hook(target='other.service')
+                self.assertEqual(sum('stop' in call for call in calls), int(index == 9))
+            hook()  # Duplicate delivery must not count or notify again.
+            stops = [call for call in calls if 'stop' in call]
+            self.assertEqual(stops, [['systemctl', '--user', 'stop', unit]])
+            notices = [call for call in calls if call[0] == 'notify-send' and 'reset' in call[-1]]
+            self.assertEqual(len(notices), 1)
+            self.assertIn(unit, notices[0][-2])
+            self.assertIn(f'service-watch reset {unit}', notices[0][-1])
+            hook('reset')
+            self.assertIn(['systemctl', '--user', 'reset-failed', unit], calls)
+            for index in range(9):
+                now += 300
+                hook()
+            self.assertEqual(sum('stop' in call for call in calls), 1)
+            now += 300
+            hook()
+            self.assertEqual(sum('stop' in call for call in calls), 2)
+
+    def test_failure_streak_resets_after_success_or_long_run(self):
+        unit = 'recovering.service'
+        props = {'Result': 'exit-code'}
+        now = 100000
+
+        def hook(duration=1):
+            nonlocal now
+            now += 3000  # Downtime alone must not reset the streak.
+            props.update(ExecMainStartTimestampMonotonic=str((now - duration) * 1000000),
+                         ExecMainExitTimestampMonotonic=str(now * 1000000))
+            with patch.object(sys, 'argv', ['service-watch', 'failure', unit]):
+                sw.main()
+
+        with patch.object(sw, 'Watch', return_value=self.watch), \
+             patch.object(sw, 'properties', return_value={unit: props}), \
+             patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as commands:
+            for _ in range(9):
+                hook()
+            props['Result'] = 'success'
+            hook()
+            props['Result'] = 'exit-code'
+            for _ in range(9):
+                hook()
+            hook(duration=601)
+            for _ in range(8):
+                hook()
+            self.assertFalse(any('stop' in call.args[0] for call in commands.call_args_list))
+            hook(duration=600)
+            self.assertEqual([call.args[0] for call in commands.call_args_list if 'stop' in call.args[0]],
+                             [['systemctl', '--user', 'stop', unit]])
+
     def test_restart_cap_only_on_self_restarting_services_nothing_else_starts(self):
         shown = {'loop.service': ('on-failure', '', '10s', '5'), 'tick.service': ('no', 'tick.timer', '10s', '5'),
                  'sock.service': ('always', 'sock.socket', '10s', '5'), 'own.service': ('always', '', '5min', '5'),
@@ -630,6 +708,9 @@ class Contracts(unittest.TestCase):
             self.watch.install_hooks()
             self.assertEqual([unit for unit in [*shown, 'tick.timer'] if cap(unit).exists()], ['loop.service'])
             self.assertEqual(cap('loop.service').read_text(), sw.RESTART_CAP_BODY)
+            self.assertIn('OnSuccess=service-watch-failure@loop.service.service',
+                          (base / 'loop.service.d/90-service-watch.conf').read_text())
+            self.assertNotIn('OnSuccess=', (base / 'service-watch.service.d/90-service-watch.conf').read_text())
             self.assertTrue((base / 'tick.timer.d/90-service-watch.conf').exists())
             self.assertTrue(any('daemon-reload' in argv for argv in calls))
             # Once applied, systemd shows the cap itself: the unit stays capped and nothing is rewritten.
