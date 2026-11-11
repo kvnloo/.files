@@ -118,6 +118,18 @@ class ShardDoneTests(unittest.TestCase):
             self.assertTrue(bf.shard_done({"exit_code": 143, "attempts": bf.MAX_ATTEMPTS}, pathlib.Path(d)))
 
 
+class MultiShardTests(unittest.TestCase):
+    def test_picks_take_consecutive_free_shards(self):
+        shards = bf.phone_shards(1000, 100)
+        self.assertEqual([k for k, _, _ in bf.phone_picks(shards, {0}, {1}, 3)], [2, 3, 4])
+        self.assertEqual(bf.phone_picks(shards, set(range(10)), set(), 3), [])
+
+    def test_split_routes_rows_to_their_shard_and_drops_strays(self):
+        rows = [json.dumps({"id": i}) for i in ("a", "b", "c", "z")]
+        parts = bf.split_embeddings(rows, {0: {"a", "b"}, 1: {"c"}})
+        self.assertEqual(parts, {0: rows[:2], 1: [rows[2]]})
+
+
 if __name__ == "__main__":
     unittest.main()
 
