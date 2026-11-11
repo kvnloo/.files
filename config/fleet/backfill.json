@@ -1,0 +1,31 @@
+{
+  "_doc": "fleet-backfill work list: public upstream suites at real heads. Each unit (commit, slice) runs once per node kind; results land in operations/fleet-backfill/runs. Only public repos: Boat may run them.",
+  "mbp": {"cpus": 2, "mem": "3G", "jobs": 3, "max": 3, "timeout": 5400},
+  "boat": {"max": 1, "timeout": 3300},
+  "history": 30,
+  "suites": [
+    {
+      "name": "hermes-agent",
+      "url": "https://github.com/NousResearch/hermes-agent.git",
+      "ref": "main",
+      "kind": "pytest-slices",
+      "slices": 8,
+      "python": "3.12",
+      "sync_variants": [
+        ["--group", "dev", "--group", "test", "--extra", "messaging"],
+        ["--extra", "dev", "--extra", "messaging", "--extra", "anthropic", "--extra", "acp"],
+        ["--extra", "dev"]
+      ],
+      "nodes": ["mbp", "boat"]
+    },
+    {
+      "name": "llama.cpp",
+      "url": "https://github.com/ggml-org/llama.cpp.git",
+      "ref": "master",
+      "kind": "cmake-ctest",
+      "configure": ["-DCMAKE_BUILD_TYPE=Release", "-DLLAMA_CURL=OFF", "-DLLAMA_BUILD_SERVER=OFF"],
+      "ctest": ["-L", "main", "--timeout", "900"],
+      "nodes": ["mbp"]
+    }
+  ]
+}

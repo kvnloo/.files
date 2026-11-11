@@ -26,18 +26,18 @@ stage host-storage "$repo" "$sha"
 dest="/mnt/zer0models/releases/host-storage/$sha"
 backup="$HOME/.local/state/host-storage/unit-backups/$(date -u +%Y%m%dT%H%M%S%NZ)"
 mkdir -p "$backup" "$HOME/.config/zer0" "$HOME/.config/systemd/user"
-for unit in fleet-source-retention.service fleet-source-retention.timer fleet-stage-retention.service fleet-stage-retention.timer release-retention.service release-retention.timer zer0-storage-autotier.service zer0-storage-autotier.timer; do
+for unit in fleet-source-retention.service fleet-source-retention.timer fleet-stage-retention.service fleet-stage-retention.timer release-retention.service release-retention.timer zer0-storage-autotier.service zer0-storage-autotier.timer fleet-backfill.service fleet-backfill.timer; do
   live="$HOME/.config/systemd/user/$unit"
   if [[ -e $live || -L $live ]]; then cp -a "$live" "$backup/$unit"; fi
   ln -sfn "$dest/config/systemd/user/$unit" "$live"
 done
 ln -sfn "$dest/config/zer0/storage.toml" "$HOME/.config/zer0/storage.toml"
 mkdir -p "$HOME/.local/bin"
-for command in fleet fleet-build fleet-kueue fleet-adb; do
+for command in fleet fleet-build fleet-kueue fleet-adb fleet-backfill fleet-phone-util; do
   live="$HOME/.local/bin/$command"
   if [[ -e $live || -L $live ]]; then cp -a "$live" "$backup/$command"; fi
   ln -sfn "$dest/scripts/$command" "$live"
 done
 systemctl --user daemon-reload
-systemctl --user enable --now fleet-source-retention.timer fleet-stage-retention.timer release-retention.timer zer0-storage-autotier.timer
+systemctl --user enable --now fleet-source-retention.timer fleet-stage-retention.timer release-retention.timer zer0-storage-autotier.timer fleet-backfill.timer
 printf 'host-storage=%s backup=%s\n' "$sha" "$backup"

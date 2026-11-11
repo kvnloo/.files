@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Measure real CPU busy % per phone from two /proc/stat samples over adb (not loadavg).
+
+  fleet-phone-util [--seconds 10] [--json] NAME=SERIAL...
+Load average on Android counts uninterruptible waits and reads ~10 while the CPUs idle,
+so busy % = 1 - idle_delta / total_delta, aggregated across all cores.
+"""
+import argparse
+import json
+import subprocess
+import sys
+import time
+
+
+def stat(serial):
+    out = subprocess.run(["adb", "-P", "5037", "-s", serial, "shell", "head -1 /proc/stat; nproc"],
+                         capture_output=True, text=True, timeout=20).stdout.split("\n")
+    fields = [int(x) for x in out[0].split()[1:]]
+    return sum(fields), fields[3] + fields[4], int(out[1])
+
+
+def busy(a, b):
+    total, idle = b[0] - a[0], b[1] - a[1]
+    return round(100 * (1 - idle / total), 1) if total > 0 else None
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--seconds", type=float, default=10)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("phones", nargs="+", help="NAME=SERIAL")
+    args = p.parse_args()
+    phones = dict(x.split("=", 1) for x in args.phones)
+    first = {n: stat(s) for n, s in phones.items()}
+    time.sleep(args.seconds)
+    rows = {n: {"busy_pct": busy(first[n], stat(s)), "cores": first[n][2]} for n, s in phones.items()}
+    rows = {"at": time.time(), "seconds": args.seconds, "phones": rows}
+    print(json.dumps(rows) if args.json else "\n".join(
+        f"{n}: {r['busy_pct']}% of {r['cores']} cores" for n, r in rows["phones"].items()))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

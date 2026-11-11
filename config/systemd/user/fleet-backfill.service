@@ -1,0 +1,12 @@
+[Unit]
+Description=fleet: backfill idle MBP/Boat capacity with public upstream CI at bench priority (scripts/fleet-backfill)
+OnFailure=service-watch-failure@fleet\x2dbackfill.service.service
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=FLEET_BACKFILL_CACHE=/mnt/zer0models/cache/fleet-backfill
+Environment=PATH=/home/kvn/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/python3 %h/.local/bin/fleet-backfill tick
+TimeoutStartSec=300
+MemoryMax=256M
