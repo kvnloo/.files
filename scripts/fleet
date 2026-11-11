@@ -42,6 +42,7 @@ import yaml
 from fleet_phone import host_health, kubernetes_view
 import fleet_phone_controller as phone_controller
 import fleet_phone_python as phone_python
+import fleet_boat_pool as boat_pool
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 from fleet_source import source_snapshot
 from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready
@@ -371,6 +372,12 @@ def cmd_health(args):
               + (f"  [warn: {'; '.join(warn)}]" if warn else ""))
         rc |= bool(bad)
     state_f.write_text(json.dumps(state, indent=1) + "\n")
+    if "boat_limits" in probes.get("boat", {}):
+        try:  # Boat pool quota follows the included VM time on every health tick.
+            print(f"boat pool: {boat_pool.sync(probes['boat']['boat_limits'])} slot(s)")
+        except Exception as exc:
+            print(f"BAD boat pool sync failed: {type(exc).__name__}: {exc}")
+            rc |= 1
     for hist in (hdir / "history.jsonl", hdir / "phone-keepalive.jsonl"):
         lines = hist.read_text().splitlines() if hist.exists() else []
         if len(lines) > 20000:
@@ -453,20 +460,22 @@ def cmd_run(args):
     if args.node == "boat":
         if (args.arch and args.arch != "amd64") or (args.cls and args.cls not in nodes["boat"]["classes"] + nodes["boat"]["capabilities"]):
             die("boat: incompatible architecture or job capability", 75)
-        # Bare official CLI: `boat run` creates, runs, reports cost and deletes.
-        # Budget = plan-included VM hours (`boat limits`); never spend wallet dollars.
+        # Kueue pool on the bare official CLI: one Job = one `boat run` sandbox
+        # (create, run, delete); quota = plan-included VM time, never wallet dollars.
         limits = json.loads(subprocess.run([BOAT, "--no-update", "--json", "limits"],
                                            capture_output=True, text=True, timeout=90).stdout or "{}")
-        if not limits.get("canStart") or limits.get("creditBalanceSeconds", 0) < min(args.timeout, 450):
-            die("boat: no included VM minutes left or cannot start", 75)
+        if not boat_pool.slots(limits):
+            die("boat: no included VM time left, cannot start, or a start could bill", 75)
         for option in ("fetch", "input", "src_include", "keep"):
             if getattr(args, option, None):
                 die(f"boat: --{option.replace('_', '-')} is not supported by `boat run`", 2)
-        argv = [BOAT, "--no-update", "run", "--type", "small",
-                "--timeout", str(min(args.timeout, 450))]
-        if not args.no_src:
-            argv += ["--push", args.src or os.getcwd()]
-        return subprocess.run(argv + ["--", "bash", "-lc", shlex.join(args.cmd)]).returncode
+        boat_pool.sync(limits)
+        src = None if args.no_src else os.path.abspath(args.src or os.getcwd())
+        name, manifest = boat_pool.job(args.cmd, src, min(args.timeout, boat_pool.SLOT_SECONDS))
+        boat_pool.submit(manifest)
+        print(f"fleet: job {name} -> boat (Kueue {boat_pool.QUEUE})", file=sys.stderr)
+        return boat_pool.wait(name)
+
     st_f = STATE / "health/state.json"
     state = json.loads(st_f.read_text()) if st_f.exists() else {}
     if args.node and args.node != "auto":
