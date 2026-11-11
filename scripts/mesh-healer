@@ -42,6 +42,7 @@ EVICT_SLICE = "model-servers.slice"   # allowlist: only units in this slice can 
 EVICT_IDLE_TICKS = 2                  # GPU util 0 with VRAM >50% held for this many ticks in a row
 EVICT_MIN_UP_S = 600                  # never evict a server that started in the last 10 min
 EVICT_MAX_CPU_S = 2.0                 # unit CPU seconds since the last tick; more means it is serving
+EVICT_WOKEN_HOLD_S = 6 * 3600         # a unit that woke on demand is not evicted again for 6 h
 CRASHLOOP_RESTARTS = 5                # a pod restarting this often ...
 CRASHLOOP_WINDOW_S = 1800             # ... with its last crash this recent counts as crash-looping
 
@@ -275,7 +276,8 @@ def plan_evict(m: dict, state: dict, now_mono: float | None = None) -> list[dict
     prev_cpu, cpu_now = state.get("unit_cpu", {}), {}
     cands = []
     for h in m.get("gpu_holders") or []:
-        if h.get("slice") != EVICT_SLICE or not h.get("unit"):
+        if h.get("slice") != EVICT_SLICE or not h.get("unit") \
+                or time.time() - state.get("woken", {}).get(h["unit"], 0) < EVICT_WOKEN_HOLD_S:
             continue
         p = unit_props(h["unit"], "ActiveState", "CPUUsageNSec", "ActiveEnterTimestampMonotonic", "ExecStart")
         cpu = int(p["CPUUsageNSec"]) if p.get("CPUUsageNSec", "").isdigit() else None
@@ -342,6 +344,7 @@ def keep_wake_listeners(state: dict) -> list[str]:
     for unit, w in list(state.get("evicted", {}).items()):
         if sh("systemctl", "--user", "is-active", unit)[1].strip() in ("active", "activating"):
             state["evicted"].pop(unit)
+            state.setdefault("woken", {})[unit] = time.time()   # demand proven: hold off re-eviction
         elif sh("systemctl", "--user", "is-active", wake_unit_name(unit))[1].strip() != "active":
             spawn_wake(unit, w["host"], w["port"])
             rearmed.append(unit)

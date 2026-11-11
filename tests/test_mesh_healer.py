@@ -140,6 +140,9 @@ def test_evict_only_idle_model_servers_after_two_ticks(tmp_path, monkeypatch):
     assert [a["unit"] for a in acts] == ["z0-farm-llama.service"]
     assert acts[0]["cmds"] == [["stop", "z0-farm-llama.service"]]
     assert acts[0]["wake"] == {"host": "127.0.0.1", "port": 11530}
+    woken = {**state, "woken": {"z0-farm-llama.service": time.time() - 60}}
+    assert all(a["unit"] != "z0-farm-llama.service"                 # woke on demand 1 min ago: hold
+               for a in m.plan_evict(gap, woken, now_mono=10_300))
     ok = {"slos": [{"name": "gpu_busy_when_vram_held", "met": True}], "gpu_holders": gap["gpu_holders"]}
     m.gpu_idle_ticks(ok, state)
     assert state["gpu_idle_ticks"] == 0 and m.plan_evict(ok, state, now_mono=10_600) == []

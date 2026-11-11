@@ -12,6 +12,9 @@
 #    earlyoom nor the kernel picks it ahead of best-effort work.
 #  - Smaller host footprint so the guarantee is cheap: --load-mode none (no mmap: weights live in VRAM, not in
 #    mapped page cache), --cache-ram 0 (no host prompt cache), -t 2.
+#  - 4Gi, not 2Gi: a 2Gi limit was OOMKilled twice in 3 min under HolmesGPT load (cgroup
+#    peak 1.94 GiB: ~0.6 GiB CUDA shmem + read() page cache + per-slot context checkpoints,
+#    which Qwen3.5's recurrent layers keep in host RAM; capped at 4 per slot here).
 #  - Liveness tolerates a slow host: 5 s timeout, 6 failures (2 min) before a kill.
 # Apply: KUBECONFIG=$HOME/.kube/k3s.yaml kubectl apply -f config/k3s/manifests/60-local-llm.yaml
 apiVersion: v1
@@ -65,15 +68,15 @@ spec:
                  "--host", "127.0.0.1", "--port", "11540", "--device", "CUDA0", "-ngl", "99",
                  "-c", "65536", "--parallel", "2", "-kvu", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0",
                  "--no-webui", "--jinja", "--reasoning", "off", "-t", "2", "--load-mode", "none",
-                 "--cache-ram", "0", "--sleep-idle-seconds", "600"]
+                 "--cache-ram", "0", "--ctx-checkpoints", "4", "--sleep-idle-seconds", "600"]
           env:
             - name: NVIDIA_VISIBLE_DEVICES
               value: all
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: compute,utility
           resources:
-            requests: {cpu: "2", memory: 2Gi}
-            limits: {cpu: "2", memory: 2Gi}
+            requests: {cpu: "2", memory: 4Gi}
+            limits: {cpu: "2", memory: 4Gi}
           startupProbe:
             httpGet: {host: 127.0.0.1, path: /health, port: 11540}
             periodSeconds: 2
