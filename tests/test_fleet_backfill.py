@@ -34,6 +34,13 @@ class CohortTests(unittest.TestCase):
     def test_free_cpu_is_cohort_quota_minus_both_queues_usage(self):
         self.assertEqual(bf.cohort_free([queue("6", "2"), queue("0", "1500m", 1)]), (2.5, 1))
 
+    def test_own_preempted_bench_unit_is_not_agent_pending_work(self):
+        lanes, bench = queue("6", "6"), queue("2", "0", 1)
+        lanes["metadata"], bench["metadata"] = {"name": "lanes"}, {"name": "bench-lanes"}
+        self.assertEqual(bf.cohort_free([lanes, bench]), (2.0, 0))
+        lanes["status"]["pendingWorkloads"] = 1
+        self.assertEqual(bf.cohort_free([lanes, bench])[1], 1)
+
 
 class BoatPacingTests(unittest.TestCase):
     def test_paced_to_credit_over_days_left(self):
@@ -57,9 +64,10 @@ class PlanTests(unittest.TestCase):
 
     def test_agent_work_pending_or_full_cohort_yields_mbp(self):
         self.assertEqual(bf.plan(CFG, **dict(FREE, mbp_pending=1)), ["boat"])
-        self.assertEqual(bf.plan(CFG, **dict(FREE, mbp_free=1.5)), ["boat"])
+        self.assertEqual(bf.plan(CFG, **dict(FREE, mbp_free=CFG["mbp"]["cpus"] / 2)), ["boat"])
         self.assertEqual(bf.plan(CFG, **dict(FREE, recent={"mbp"})), ["boat"])
-        full = [("s", f"u{i}", "mbp") for i in range(CFG["mbp"]["max"])] + [("s", "b", "boat")]
+        full = [("s", f"u{i}", "mbp") for i in range(CFG["mbp"]["max"])] + [
+            ("s", f"b{i}", "boat") for i in range(CFG["boat"]["max"])]
         self.assertEqual(bf.plan(CFG, **dict(FREE, active=full)), [])
 
 

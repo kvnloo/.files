@@ -43,10 +43,14 @@ def cpu(value):
 
 
 def cohort_free(queues):
-    """(free cpu, pending workloads) of the MBP cohort from `kubectl get clusterqueue -o json`."""
+    """(free cpu, pending agent workloads) of the MBP cohort from `kubectl get clusterqueue -o json`.
+
+    Pending counts only agent queues: a backfill unit Kueue preempted back into bench-lanes
+    is our own lowest-priority work and must not hold off the next unit (it left MBP idle)."""
     quota = used = pending = 0
     for q in queues:
-        pending += q.get("status", {}).get("pendingWorkloads", 0)
+        if q.get("metadata", {}).get("name") != "bench-lanes":
+            pending += q.get("status", {}).get("pendingWorkloads", 0)
         for flavor in q["spec"]["resourceGroups"][0]["flavors"]:
             quota += sum(cpu(r["nominalQuota"]) for r in flavor["resources"] if r["name"] == "cpu")
         for flavor in q.get("status", {}).get("flavorsUsage", []):

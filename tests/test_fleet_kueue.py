@@ -406,7 +406,10 @@ class ProtectedCohortPolicyTests(unittest.TestCase):
         self.assertEqual(queues['bench-lanes']['preemption']['reclaimWithinCohort'], 'Never')
         resources = queues['bench-lanes']['resourceGroups'][0]['flavors'][0]['resources']
         self.assertEqual({r['name']: (r['nominalQuota'], r['borrowingLimit']) for r in resources},
-                         {'cpu': ('0', '6'), 'memory': ('0', '10441814016')})
+                         {'cpu': ('2', '6'), 'memory': ('0', '10441814016')})
+        lanes_cpu = next(r for r in queues['lanes']['resourceGroups'][0]['flavors'][0]['resources']
+                         if r['name'] == 'cpu')['nominalQuota']
+        self.assertLessEqual(int(lanes_cpu) + 2, 8)  # cohort CPU never exceeds MBP's 8 threads
 
 
 class AttachWrapperTests(unittest.TestCase):
