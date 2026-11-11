@@ -32,6 +32,15 @@ class WorkloadClassTests(unittest.TestCase):
         self.assertEqual(self.classify(None, ['cat', 'pytest-results.json'], '2', 4), 'build')
 
 
+class PodLimitTests(unittest.TestCase):
+    def test_bench_drops_only_cpu_limit(self):
+        limits = runpy.run_path(str(pathlib.Path(__file__).parents[1] / 'scripts/fleet-kueue'))['pod_limits']
+        res = {'cpu': '1', 'memory': '3G'}
+        self.assertEqual(limits('bench', res), {'memory': '3G'})
+        for cls in ('test', 'build', 'exclusive'):
+            self.assertEqual(limits(cls, res), res)
+
+
 class PreemptionLifecycleTests(unittest.TestCase):
     def exercise(self, jobs, *, checkpoint=True, interrupt_after=None, clock=(0,),
                  job_class='bench', workloads=(), pods=(), detach_signal=None, attach=False, host=False,
