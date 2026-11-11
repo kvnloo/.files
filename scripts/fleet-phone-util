@@ -13,10 +13,20 @@ import time
 
 
 def stat(serial):
-    out = subprocess.run(["adb", "-P", "5037", "-s", serial, "shell", "head -1 /proc/stat; nproc"],
-                         capture_output=True, text=True, timeout=20).stdout.split("\n")
+    res = subprocess.run(["adb", "-P", "5037", "-s", serial, "shell", "head -1 /proc/stat; nproc"],
+                         capture_output=True, text=True, timeout=20)
+    if res.returncode:
+        raise RuntimeError((res.stderr or res.stdout).strip() or f"adb exit {res.returncode}")
+    out = res.stdout.split("\n")
     fields = [int(x) for x in out[0].split()[1:]]
     return sum(fields), fields[3] + fields[4], int(out[1])
+
+
+def safe(fn, serial):
+    try:
+        return fn(serial)
+    except (OSError, ValueError, IndexError, RuntimeError, subprocess.SubprocessError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
 
 
 def busy(a, b):
@@ -31,12 +41,16 @@ def main():
     p.add_argument("phones", nargs="+", help="NAME=SERIAL")
     args = p.parse_args()
     phones = dict(x.split("=", 1) for x in args.phones)
-    first = {n: stat(s) for n, s in phones.items()}
+    first = {n: safe(stat, s) for n, s in phones.items()}
     time.sleep(args.seconds)
-    rows = {n: {"busy_pct": busy(first[n], stat(s)), "cores": first[n][2]} for n, s in phones.items()}
+    rows = {}
+    for n, s in phones.items():
+        second = safe(stat, s) if "error" not in first[n] else first[n]
+        rows[n] = (second if "error" in second  # one offline phone must not void the others' sample
+                   else {"busy_pct": busy(first[n], second), "cores": first[n][2]})
     rows = {"at": time.time(), "seconds": args.seconds, "phones": rows}
     print(json.dumps(rows) if args.json else "\n".join(
-        f"{n}: {r['busy_pct']}% of {r['cores']} cores" for n, r in rows["phones"].items()))
+        (f"{n}: {r['error']}" if "error" in r else f"{n}: {r['busy_pct']}% of {r['cores']} cores") for n, r in rows["phones"].items()))
     return 0
 
 
