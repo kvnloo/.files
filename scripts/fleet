@@ -46,6 +46,7 @@ from artifact_lease import create as create_artifact_lease, shell_create as arti
 from fleet_source import source_snapshot
 from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready
 
+BOAT = shutil.which("boat") or str(Path.home() / ".local/bin/boat")  # systemd PATH lacks ~/.local/bin
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "config/fleet/nodes.yaml"
 STATE = Path(os.environ.get("FLEET_STATE", Path.home() / ".local/state/fleet"))
@@ -127,7 +128,7 @@ def probe(n, guest=False):
     try:
         if n["kind"] == "boat":
             transport = "boat"
-            argv, deadline = ["boat", "--no-update", "--json", "limits"], 90
+            argv, deadline = [BOAT, "--no-update", "--json", "limits"], 90
         elif n["kind"] == "phone" and not guest:
             transport = "adb"
             argv = [sys.executable, str(REPO / "scripts/fleet-adb"), "probe", n["name"]]
@@ -454,14 +455,14 @@ def cmd_run(args):
             die("boat: incompatible architecture or job capability", 75)
         # Bare official CLI: `boat run` creates, runs, reports cost and deletes.
         # Budget = plan-included VM hours (`boat limits`); never spend wallet dollars.
-        limits = json.loads(subprocess.run(["boat", "--no-update", "--json", "limits"],
+        limits = json.loads(subprocess.run([BOAT, "--no-update", "--json", "limits"],
                                            capture_output=True, text=True, timeout=90).stdout or "{}")
         if not limits.get("canStart") or limits.get("creditBalanceSeconds", 0) < min(args.timeout, 450):
             die("boat: no included VM minutes left or cannot start", 75)
         for option in ("fetch", "input", "src_include", "keep"):
             if getattr(args, option, None):
                 die(f"boat: --{option.replace('_', '-')} is not supported by `boat run`", 2)
-        argv = ["boat", "--no-update", "run", "--type", "small",
+        argv = [BOAT, "--no-update", "run", "--type", "small",
                 "--timeout", str(min(args.timeout, 450))]
         if not args.no_src:
             argv += ["--push", args.src or os.getcwd()]
