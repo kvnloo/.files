@@ -33,7 +33,7 @@ for unit in fleet-source-retention.service fleet-source-retention.timer fleet-st
 done
 ln -sfn "$dest/config/zer0/storage.toml" "$HOME/.config/zer0/storage.toml"
 mkdir -p "$HOME/.local/bin"
-for command in fleet fleet-build fleet-kueue fleet-boat fleet-adb; do
+for command in fleet fleet-build fleet-kueue fleet-adb; do
   live="$HOME/.local/bin/$command"
   if [[ -e $live || -L $live ]]; then cp -a "$live" "$backup/$command"; fi
   ln -sfn "$dest/scripts/$command" "$live"

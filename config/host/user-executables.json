@@ -59,14 +59,6 @@
       "size": 31381
     },
     {
-      "path": "/home/kvn/.local/bin/omp-boat",
-      "target": "/mnt/zer0models/worktrees/files-live/scripts/boat",
-      "symlink": true,
-      "provenance": "mutable-checkout",
-      "sha256": "179b313bd784cf8dc2d40aaeef327373d8e05af79cd3aa2e4db48cddd8f142c8",
-      "size": 18266
-    },
-    {
       "path": "/home/kvn/.local/bin/paperclipai",
       "target": "/home/kvn/.local/bin/paperclipai",
       "symlink": false,
