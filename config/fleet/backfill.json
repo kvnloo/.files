@@ -1,7 +1,7 @@
 {
   "_doc": "fleet-backfill work list: public upstream suites at real heads. Each unit (commit, slice) runs once per node kind; results land in operations/fleet-backfill/runs. Only public repos: Boat may run them.",
-  "mbp": {"cpus": 2, "mem": "3G", "jobs": 3, "max": 3, "timeout": 5400},
-  "boat": {"max": 1, "timeout": 3300},
+  "mbp": {"cpus": 0.25, "mem": "1300M", "jobs": 4, "max": 3, "timeout": 5400},
+  "boat": {"max": 3, "timeout": 3300},
   "history": 30,
   "suites": [
     {

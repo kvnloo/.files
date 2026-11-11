@@ -142,7 +142,11 @@ spec:
       flavors:
         - name: node-mbp
           resources:
-            - {name: cpu, nominalQuota: "0", borrowingLimit: "6"}
+            # CPU slack only: MBP has 8 threads, lanes holds 6 by *request* and agent builds
+            # often idle (network waits) while holding them. bench pods request ~0.25 CPU and
+            # no CPU limit, so they soak idle cycles via CFS shares. Memory stays nominal 0,
+            # so every byte bench holds is borrowed and agent lanes can reclaim it.
+            - {name: cpu, nominalQuota: "2", borrowingLimit: "6"}
             - {name: memory, nominalQuota: "0", borrowingLimit: "10441814016"}
 ---
 # z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it
