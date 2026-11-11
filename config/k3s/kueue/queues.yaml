@@ -117,7 +117,10 @@ spec:
       flavors:
         - name: node-mbp
           resources:
-            - {name: cpu, nominalQuota: "6"}
+            # Schedulable, not raw: mbp allocatable 6500m minus coredns 100m and
+            # kueue-controller 500m. At "6" Kueue admitted a 2-CPU job the node could not
+            # place; it then held quota while Pending and starved the queue behind it.
+            - {name: cpu, nominalQuota: "5900m"}
             - {name: memory, nominalQuota: "10441814016"}
 ---
 # Benchmarks have no owned quota. They borrow only the idle lanes budget;
