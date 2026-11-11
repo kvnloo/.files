@@ -1,5 +1,6 @@
 # Native low-overhead performance archive for local and LLM-assisted diagnosis.
+# 30 days of 10 s raw (~1.5 GiB/day, ~45 GiB cap); long-term trends live in hw_monitor/rollups.
 LOGOPTS=""
 LOGINTERVAL=10
-LOGGENERATIONS=365
+LOGGENERATIONS=30
 LOGPATH=/mnt/zer0models/hw_monitor/atop
