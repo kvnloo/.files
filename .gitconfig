@@ -38,11 +38,12 @@
 	sort = -version:refname
 [init]
 	defaultBranch = main
+# generic helper must precede the per-host resets, or libsecret is re-added for GitHub and its store hangs on a locked keyring
+[credential]
+	helper = /usr/lib/git-core/git-credential-libsecret
 [credential "https://github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
 [credential "https://gist.github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
-[credential]
-	helper = /usr/lib/git-core/git-credential-libsecret
