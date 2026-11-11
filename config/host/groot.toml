@@ -4787,3 +4787,12 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Keep Hermes backends on the code on disk after the live checkout moves (hermes update skips hermes-web)."
 migration_sha256 = "dbb003e0bb2499f4834901077a1b913b4c2a3317526e2393cd788ce3902a7841"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway.service.d/60-skew-restart.conf"
+source = "config/systemd/user/hermes-gateway.service.d/60-skew-restart.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep hermes-skew-restart.timer running even after a blanket timer stop."
+migration_sha256 = "66b04ff7e43f668026b04510b82fbdfd48dcac81864edc17e404d06b8290411c"
