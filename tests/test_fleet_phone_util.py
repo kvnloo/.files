@@ -17,7 +17,7 @@ class PhoneUtilTest(unittest.TestCase):
             if "dead" in cmd:
                 return subprocess.CompletedProcess(cmd, 1, "", "adb: device offline")
             run.n += 1
-            return subprocess.CompletedProcess(cmd, 0, f"cpu {run.n * 100} 0 0 {run.n * 10} 0\n8\n", "")
+            return subprocess.CompletedProcess(cmd, 0, f"cpu {run.n * 90} 0 0 {run.n * 10} 0\n8\n", "")
         run.n = 0
         with mock.patch("subprocess.run", side_effect=run), mock.patch("time.sleep"), \
                 mock.patch("sys.argv", ["x", "--json", "ok=a", "off=dead"]), \
