@@ -1,0 +1,45 @@
+# Boat autoscaling pool (scripts/fleet_boat_pool.py). One admitted Job = one Boat
+# sandbox, relayed by a small pod on groot running the bare `boat run`.
+# z0.dev/boat nominalQuota is owned by `fleet health` (fleet_boat_pool.sync): it is
+# the number of sandboxes the plan-included VM time pays for, 0 on any billing path.
+# The "0" here is the fail-closed value until the first sync.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet-boat
+  labels:
+    # hostPath mounts (boat CLI + its login dir) need privileged; pods still run as uid 1000, no caps.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: boat
+spec:
+  nodeLabels:
+    kubernetes.io/hostname: groot
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: boat
+spec:
+  namespaceSelector: {}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+    - coveredResources: [z0.dev/boat, cpu, memory]
+      flavors:
+        - name: boat
+          resources:
+            - {name: z0.dev/boat, nominalQuota: "0"}  # index 0: patched by sync()
+            - {name: cpu, nominalQuota: "1"}
+            - {name: memory, nominalQuota: 2Gi}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: boat
+  namespace: fleet-boat
+spec:
+  clusterQueue: boat
