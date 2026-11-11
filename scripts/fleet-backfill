@@ -126,6 +126,29 @@ def phone_pick(shards, done, busy):
     return next((s for s in shards if s[0] not in done and s[0] not in busy), None)
 
 
+def phone_picks(shards, done, busy, n):
+    """Up to n free shards for one job, so a fast phone is not idle between 2-minute ticks (pure; tested)."""
+    picks, taken = [], set(busy)
+    while len(picks) < n:
+        choice = phone_pick(shards, done, taken)
+        if not choice:
+            break
+        picks.append(choice)
+        taken.add(choice[0])
+    return picks
+
+
+def split_embeddings(lines, shard_ids):
+    """Route each embeddings row to the shard that owns its id: {shard: [line]} (pure; tested)."""
+    owner = {i: k for k, ids in shard_ids.items() for i in ids}
+    out = {k: [] for k in shard_ids}
+    for line in lines:
+        k = owner.get(json.loads(line)["id"])
+        if k is not None:
+            out[k].append(line)
+    return out
+
+
 def shard_done(result, receipt):
     """Done = embeddings collected, or out of retries. exit 0 alone is not done (pure; tested)."""
     return ((result.get("exit_code") == 0 and (receipt / "embeddings.jsonl").exists())
@@ -286,29 +309,46 @@ def phone_tick(cfg, now, dry_run=False):
             status = json.loads(sh(sys.executable, FLEET_ADB, "status", device, st["job"], timeout=90))
         except (subprocess.SubprocessError, ValueError) as exc:
             report[node] = f"status unavailable: {type(exc).__name__}"
-            held[node], held_tag[node] = st["shard"], st.get("tag")
+            held[node], held_tag[node] = st.get("shards") or [st["shard"]], st.get("tag")
             continue
         if status["state"] == "running" and now - st["started"] < phones["timeout"] + 600:
-            report[node] = f"running shard {st['shard']} job {st['job']}"
-            held[node], held_tag[node] = st["shard"], st.get("tag")
+            report[node] = f"running shards {st.get('shards') or [st['shard']]} job {st['job']}"
+            held[node], held_tag[node] = st.get("shards") or [st["shard"]], st.get("tag")
             continue
-        receipt = RUNS / "phone-embed" / st.get("tag", tag) / f"shard-{st['shard']:04d}-{node}"
-        receipt.mkdir(parents=True, exist_ok=True)
+        base = RUNS / "phone-embed" / st.get("tag", tag)
+        spool = base / f"job-{st['job']}"
+        spool.mkdir(parents=True, exist_ok=True)
         # The job runs in src/, so -out embeddings.jsonl lands at src/embeddings.jsonl.
         for names in (["stdout", "stderr"], ["src/embeddings.jsonl"]):  # a crash leaves no embeddings
-            subprocess.run([sys.executable, FLEET_ADB, "fetch", device, st["job"], "--dest", str(receipt),
+            subprocess.run([sys.executable, FLEET_ADB, "fetch", device, st["job"], "--dest", str(spool),
                             *[a for n in names for a in ("--fetch", n)]], capture_output=True, timeout=600)
-        if (receipt / "src" / "embeddings.jsonl").exists():
-            (receipt / "src" / "embeddings.jsonl").replace(receipt / "embeddings.jsonl")
-        out = (receipt / "stdout").read_text(errors="replace") if (receipt / "stdout").exists() else ""
+        out = (spool / "stdout").read_text(errors="replace") if (spool / "stdout").exists() else ""
         line = next((l for l in out.splitlines() if l.startswith("PHONE_EMBED_RESULT ")), None)
-        result = {**st, **status, "node": node, "finished": now,
-                  "result": json.loads(line.split(" ", 1)[1]) if line else None}
-        prior = json.loads((receipt / "result.json").read_text()) if (receipt / "result.json").exists() else {}
-        result["attempts"] = prior.get("attempts", 0) + 1
-        (receipt / "result.json").write_text(json.dumps(result, indent=1))
+        owned = st.get("shards") or [st["shard"]]
+        emb = spool / "src" / "embeddings.jsonl"
+        rows = emb.read_text().splitlines() if emb.exists() else []
+        try:
+            ids = {k: {json.loads(l)["id"] for l in (state_dir / "shards" / st.get("tag", tag) / f"{k:04d}.jsonl")
+                       .read_text().splitlines()} for k in owned}
+            parts = split_embeddings(rows, ids)
+        except FileNotFoundError:  # a job from before multi-shard: its one shard owns every row
+            parts, ids = {owned[0]: rows}, {owned[0]: set(range(len(rows)))}
+        for k in owned:
+            receipt = base / f"shard-{k:04d}-{node}"
+            receipt.mkdir(parents=True, exist_ok=True)
+            for name in ("stdout", "stderr"):
+                if (spool / name).exists():
+                    shutil.copyfile(spool / name, receipt / name)
+            if parts[k] and len(parts[k]) == len(ids[k]):  # a partial shard is recomputed
+                (receipt / "embeddings.jsonl").write_text("\n".join(parts[k]) + "\n")
+            result = {**st, **status, "shard": k, "node": node, "finished": now,
+                      "result": json.loads(line.split(" ", 1)[1]) if line else None}
+            prior = json.loads((receipt / "result.json").read_text()) if (receipt / "result.json").exists() else {}
+            result["attempts"] = prior.get("attempts", 0) + 1
+            (receipt / "result.json").write_text(json.dumps(result, indent=1))
+        shutil.rmtree(spool, ignore_errors=True)
         path.unlink()
-        report[node] = f"collected shard {st['shard']} exit {status['exit_code']}"
+        report[node] = f"collected shards {owned} exit {status['exit_code']}"
     done = set()
     for res in root.glob("shard-*/result.json"):
         r = json.loads(res.read_text())
@@ -318,33 +358,39 @@ def phone_tick(cfg, now, dry_run=False):
     if mem_available() < PHONE_GROOT_FLOOR:
         report["launch"] = "held: groot MemAvailable < 512 MiB"
         return report
-    busy = {k for node, k in held.items() if held_tag.get(node) == tag}
+    busy = {k for node, ks in held.items() if held_tag.get(node) == tag for k in ks}
     for node in phones["nodes"]:
         if node in held:
             continue
-        choice = phone_pick(shards, done, busy)
-        if not choice:
+        picks = phone_picks(shards, done, busy, int(phones["nodes"][node].get("shards_per_job", 1)))
+        if not picks:
             report[node] = f"corpus {tag} fully embedded"
             continue
-        k, lo, hi = choice
-        shard = state_dir / "shards" / tag / f"{k:04d}.jsonl"
-        if not shard.exists():
-            shard.parent.mkdir(parents=True, exist_ok=True)
-            items = (json.loads(l) for l in lines[lo:hi])
-            shard.write_text("".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
+        sdir = state_dir / "shards" / tag
+        sdir.mkdir(parents=True, exist_ok=True)
+        for k, lo, hi in picks:
+            if not (sdir / f"{k:04d}.jsonl").exists():
+                items = (json.loads(l) for l in lines[lo:hi])
+                (sdir / f"{k:04d}.jsonl").write_text(
+                    "".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
+        ks = [k for k, _, _ in picks]
+        shard = sdir / f"{ks[0]:04d}.jsonl" if len(ks) == 1 else sdir / f"job-{ks[0]:04d}x{len(ks)}.jsonl"
+        if len(ks) > 1:
+            shard.write_text("".join((sdir / f"{k:04d}.jsonl").read_text() for k in ks))
         argv = phone_argv(cfg, node, shard)
         if dry_run:
             report[node] = "would launch " + " ".join(argv)
-            busy.add(k)
+            busy.update(ks)
             continue
         r = subprocess.run(argv, capture_output=True, text=True, timeout=600)
         job = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else None
         if not job:
             report[node] = f"launch failed rc={r.returncode}: {(r.stderr.strip().splitlines() or [''])[-1][:200]}"
             continue
-        (state_dir / f"{node}.json").write_text(json.dumps({"job": job, "shard": k, "started": now, "tag": tag}))
-        busy.add(k)
-        report[node] = f"launched shard {k} job {job}"
+        (state_dir / f"{node}.json").write_text(json.dumps(
+            {"job": job, "shard": ks[0], "shards": ks, "started": now, "tag": tag}))
+        busy.update(ks)
+        report[node] = f"launched shards {ks} job {job}"
     return report
 
 
