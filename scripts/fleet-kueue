@@ -80,6 +80,13 @@ def terminal_events(kube, name, pods):
     return {'job': events, 'pods': pod_events}
 
 
+def pod_limits(priority, resources):
+    """Bench soaks idle cycles: no CPU limit, so CFS shares (set by requests) let
+    reserved lanes win under contention while bench fills what they leave idle.
+    Memory stays capped for every class."""
+    return {k: v for k, v in resources.items() if not (priority == 'bench' and k == 'cpu')}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--src')
@@ -281,7 +288,7 @@ def main():
                              'env': [{'name': k, 'value': v} for k, v in {'HOME': home, 'USER': node['ssh_user'], 'LOGNAME': node['ssh_user'], 'TMPDIR': '/work/tmp', 'PATH': '/usr/local/bin:/usr/bin:/bin', 'FLEET_JOB_ID': name}.items()] +
                                     [{'name': 'FLEET_NODE_NAME', 'valueFrom': {'fieldRef': {'fieldPath': 'spec.nodeName'}}}],
                              'securityContext': {'allowPrivilegeEscalation': False, 'capabilities': {'drop': ['ALL']}},
-                             'resources': {'requests': resources, 'limits': resources}, 'volumeMounts': mounts}],
+                             'resources': {'requests': resources, 'limits': pod_limits(priority, resources)}, 'volumeMounts': mounts}],
                          'volumes': volumes}}}}
         (runs / f'{name}.json').write_text(json.dumps({
             'job_id': name, 'class': priority, 'checkpoint_safe': args.checkpoint_safe,

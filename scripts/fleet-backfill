@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""fleet-backfill: fill idle fleet capacity with public upstream CI at real commits.
+
+One tick (fleet-backfill.timer, every 2 min) submits at most one unit per node kind:
+- MBP: when the Kueue mbp-lanes cohort has no pending workload and >= cpus free,
+  a `fleet-build --class bench --checkpoint-safe` job. bench is the lowest Kueue
+  priority and borrows into bench-lanes, so any agent's test/build job reclaims it.
+- Boat: the bare-CLI k3s pool (`fleet-build --node boat`), while included VM time is
+  left and last24hUsageSeconds stays under creditBalanceSeconds / days to periodEnd.
+No new work when groot MemAvailable < 2 GiB (owner rule), even though the client is tiny.
+
+A unit is (suite, commit[, slice]); it runs once per node kind, newest commits first,
+and its receipt (log + result.json) lands in RUNS/<suite>/<unit>-<node>/.
+"""
+import argparse
+import datetime
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import fleet_boat_pool as boat_pool  # noqa: E402
+
+CONFIG = HERE.parent / "config/fleet/backfill.json"
+RUNS = Path(os.environ.get("FLEET_BACKFILL_RUNS",
+                           "/mnt/zer0models/workspace/zer0/data/operations/fleet-backfill/runs"))
+CACHE = Path(os.environ.get("FLEET_BACKFILL_CACHE", "/mnt/zer0models/cache/fleet-backfill"))
+GROOT_FLOOR = 2 << 30
+UNIT = "fleet-backfill-job-"
+MAX_ATTEMPTS = 3  # infra failures (no runner result) retry; test failures are results
+FLEET_BUILD = os.path.expanduser("~/.local/bin/fleet-build")
+KUBECONFIG = os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/k3s.yaml"))
+
+
+def cpu(value):
+    value = str(value)
+    return int(value[:-1]) / 1000 if value.endswith("m") else float(value)
+
+
+def cohort_free(queues):
+    """(free cpu, pending workloads) of the MBP cohort from `kubectl get clusterqueue -o json`."""
+    quota = used = pending = 0
+    for q in queues:
+        pending += q.get("status", {}).get("pendingWorkloads", 0)
+        for flavor in q["spec"]["resourceGroups"][0]["flavors"]:
+            quota += sum(cpu(r["nominalQuota"]) for r in flavor["resources"] if r["name"] == "cpu")
+        for flavor in q.get("status", {}).get("flavorsUsage", []):
+            used += sum(cpu(r["total"]) for r in flavor["resources"] if r["name"] == "cpu")
+    return quota - used, pending
+
+
+def boat_allowed(limits, now):
+    """Included VM time only, paced evenly to the period end; never a billable start."""
+    if not boat_pool.slots(limits):
+        return False
+    try:
+        end = datetime.datetime.fromisoformat(limits["planIncluded"]["periodEnd"].replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    days = max(1.0, (end.timestamp() - now) / 86400)
+    return limits.get("last24hUsageSeconds", 0) < limits["creditBalanceSeconds"] / days
+
+
+def units(suite, commits):
+    if suite["kind"] == "pytest-slices":
+        return [(c, i) for c in commits for i in range(1, suite.get("slices", 8) + 1)]
+    return [(c, None) for c in commits]
+
+
+def unit_key(commit, piece):
+    return commit[:12] + (f"-s{piece}" if piece else "")
+
+
+def pick(cfg, node, commits_by_suite, taken, active=()):
+    """Next (suite, commit, slice) for node: suite with fewest active units, newest commit."""
+    suites = [s for s in cfg["suites"] if node in s.get("nodes", [])]
+    load = {s["name"]: sum(1 for a in active if a[0] == s["name"] and a[2] == node) for s in suites}
+    seen = {(t[0], t[1]) for t in taken}  # a unit runs once, on whichever node got it first
+    for suite in sorted(suites, key=lambda s: load[s["name"]]):
+        for commit, piece in units(suite, commits_by_suite.get(suite["name"], [])):
+            if (suite["name"], unit_key(commit, piece)) not in seen:
+                return suite, commit, piece
+    return None
+
+
+def plan(cfg, *, mem_available, mbp_free, mbp_pending, boat_ok, active, recent):
+    """Node kinds that get one new unit this tick (pure; tested)."""
+    if mem_available < GROOT_FLOOR:
+        return []
+    want = []
+    mine = {node: sum(1 for a in active if a[2] == node) for node in ("mbp", "boat")}
+    if (not mbp_pending and mbp_free >= cfg["mbp"]["cpus"] and mine["mbp"] < cfg["mbp"]["max"]
+            and "mbp" not in recent):
+        want.append("mbp")
+    if boat_ok and mine["boat"] < cfg["boat"]["max"]:
+        want.append("boat")
+    return want
+
+
+# ---- side effects -------------------------------------------------------------
+
+def sh(*cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, check=True, **kw).stdout
+
+
+def mem_available():
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) * 1024
+    return 0
+
+
+def mirror(suite):
+    repo = CACHE / "mirrors" / (suite["name"] + ".git")
+    if not repo.exists():
+        repo.parent.mkdir(parents=True, exist_ok=True)
+        sh("git", "clone", "-q", "--bare", "--filter=blob:none", suite["url"], str(repo))
+    sh("git", "-C", str(repo), "fetch", "-q", "--filter=blob:none", "origin",
+       f"+refs/heads/{suite['ref']}:refs/heads/{suite['ref']}")
+    return repo
+
+
+def commits(suite, depth):
+    repo = mirror(suite)
+    return sh("git", "-C", str(repo), "rev-list", "--first-parent", f"-n{depth}", suite["ref"]).split()
+
+
+def taken_units():
+    """(suite, unit, node) already receipted or running."""
+    taken = set()
+    for path in RUNS.glob("*/*"):
+        unit, _, node = path.name.rpartition("-")
+        try:
+            result = json.loads((path / "result.json").read_text())
+        except (OSError, ValueError):
+            continue  # launched but never finished: retry
+        if result.get("stages") or len(result.get("attempts", [])) >= MAX_ATTEMPTS:
+            taken.add((path.parent.name, unit, node))  # ran, or infra failed for good
+    return taken
+
+
+def active_units():
+    out = sh("systemctl", "--user", "list-units", "--plain", "--no-legend", "--state=active", UNIT + "*")
+    names = [line.split()[0] for line in out.splitlines() if line.strip()]
+    active = []
+    for name in names:
+        try:  # fleet-backfill-job-<node>-<suite>-<unit>.service
+            node, suite, unit = json.loads(sh("systemctl", "--user", "show", "-P", "Description", name))
+            active.append((suite, unit, node))
+        except (ValueError, subprocess.CalledProcessError):
+            continue
+    return active
+
+
+def launch(node, suite, commit, piece):
+    key = unit_key(commit, piece)
+    receipt = RUNS / suite["name"] / f"{key}-{node}"
+    receipt.mkdir(parents=True, exist_ok=True)
+    unit = f"{UNIT}{node}-{suite['name'].replace('.', '_')}-{key}"
+    sh("systemd-run", "--user", "--collect", "--unit", unit, "-p", "MemoryMax=512M", "-p", "Nice=10",
+       f"--description={json.dumps([node, suite['name'], key])}",
+       f"--setenv=KUBECONFIG={KUBECONFIG}", "--setenv=PATH=" + os.environ.get("PATH", "/usr/bin:/bin"),
+       sys.executable, str(Path(__file__).resolve()), "job", node, suite["name"], commit, str(piece or 0))
+    return unit, receipt
+
+
+def job(cfg, node, name, commit, piece):
+    """Run one unit through fleet-build; write receipt/{log,result.json}."""
+    suite = next(s for s in cfg["suites"] if s["name"] == name)
+    piece = int(piece) or None
+    key = unit_key(commit, piece)
+    receipt = RUNS / name / f"{key}-{node}"
+    receipt.mkdir(parents=True, exist_ok=True)
+    wt = CACHE / "jobs" / f"{node}-{key}" / name
+    repo = mirror(suite)
+    if wt.exists():
+        shutil.rmtree(wt.parent)
+    if node == "boat":  # the relay pod has no git, and `boat run --push` refuses git checkouts without it
+        wt.mkdir(parents=True)
+        subprocess.run(f"git -C {repo} archive {commit} | tar -x -C {wt}", shell=True, check=True)
+    else:
+        sh("git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(wt), commit)
+    spec = {**suite, "head": commit}
+    if piece:
+        spec["only"] = [piece]
+    (wt / ".backfill-suite.json").write_text(json.dumps(spec))
+    shutil.copy(HERE / "fleet_backfill_job.py", wt / ".backfill-run.py")
+    payload = ["python3", ".backfill-run.py", ".backfill-suite.json"]
+    if node == "mbp":
+        n = cfg["mbp"]
+        argv = [FLEET_BUILD, "--src", str(wt), "--node", "mbp", "--class", "bench", "--checkpoint-safe",
+                "--cpus", str(n["cpus"]), "--mem", n["mem"], "--timeout", str(n["timeout"]),
+                "--wait", "3600", "--", "env", f"BACKFILL_JOBS={n['jobs']}", *payload]
+    else:
+        argv = [FLEET_BUILD, "--src", str(wt), "--node", "boat", "--public",
+                "--timeout", str(cfg["boat"]["timeout"]), "--", *payload]
+    t0 = time.time()
+    try:
+        attempts = json.loads((receipt / "result.json").read_text()).get("attempts", [])
+    except (OSError, ValueError):
+        attempts = []
+    with open(receipt / "log", "w") as log:
+        rc = subprocess.run(argv, cwd=wt, stdout=log, stderr=subprocess.STDOUT).returncode
+    text = (receipt / "log").read_text(errors="replace")
+    line = next((l for l in reversed(text.splitlines()) if l.startswith("BACKFILL_RESULT ")), None)
+    result = json.loads(line.split(" ", 1)[1]) if line else {"suite": name, "head": commit}
+    if not result.get("stages"):
+        attempts.append({"at": time.time(), "fleet_rc": rc, "tail": text.splitlines()[-5:]})
+    result.update(attempts=attempts, node=node, unit=key, fleet_rc=rc, seconds=round(time.time() - t0, 1), finished=time.time(),
+                  job=next((w.split()[2] for w in text.splitlines() if w.startswith("fleet: job ")), None))
+    (receipt / "result.json").write_text(json.dumps(result, indent=1))
+    subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], capture_output=True)
+    shutil.rmtree(wt.parent, ignore_errors=True)
+    return 0 if rc == 0 else 1
+
+
+def tick(cfg, dry_run=False):
+    now = time.time()
+    env = {**os.environ, "KUBECONFIG": KUBECONFIG}
+    queues = json.loads(sh("kubectl", "get", "clusterqueue", "lanes", "bench-lanes", "-o", "json", env=env))["items"]
+    free, pending = cohort_free(queues)
+    limits = json.loads(sh(boat_pool.BOAT, "--no-update", "--json", "limits", timeout=90) or "{}")
+    active = active_units()
+    state = CACHE / "last-launch.json"
+    last = json.loads(state.read_text()) if state.exists() else {}
+    recent = {node for node, at in last.items() if now - at < 240}  # let Kueue admit the last one first
+    want = plan(cfg, mem_available=mem_available(), mbp_free=free, mbp_pending=pending,
+                boat_ok=boat_allowed(limits, now), active=active, recent=recent)
+    print(json.dumps({"mbp_free_cpu": free, "pending": pending, "active": active, "want": want,
+                      "boat_last24h": limits.get("last24hUsageSeconds"),
+                      "boat_credit": limits.get("creditBalanceSeconds")}))
+    if not want:
+        return 0
+    by_suite = {s["name"]: commits(s, cfg.get("history", 30)) for s in cfg["suites"]}
+    taken = taken_units() | set(active)
+    for node in want:
+        choice = pick(cfg, node, by_suite, taken, active)
+        if not choice:
+            print(f"{node}: every unit in the last {cfg.get('history', 30)} commits is done")
+            continue
+        suite, commit, piece = choice
+        taken.add((suite["name"], unit_key(commit, piece), node))
+        active.append((suite["name"], unit_key(commit, piece), node))
+        if dry_run:
+            print(f"would launch {node} {suite['name']} {unit_key(commit, piece)}")
+            continue
+        unit, receipt = launch(node, suite, commit, piece)
+        last[node] = now
+        print(f"launched {unit} -> {receipt}")
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps(last))
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="cmd")
+    t = sub.add_parser("tick")
+    t.add_argument("--dry-run", action="store_true")
+    j = sub.add_parser("job")
+    j.add_argument("node")
+    j.add_argument("suite")
+    j.add_argument("commit")
+    j.add_argument("piece")
+    args = parser.parse_args()
+    cfg = json.loads(CONFIG.read_text())
+    if args.cmd == "job":
+        return job(cfg, args.node, args.suite, args.commit, args.piece)
+    return tick(cfg, dry_run=getattr(args, "dry_run", False))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
