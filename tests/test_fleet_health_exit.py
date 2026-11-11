@@ -2,13 +2,14 @@
 any node is BAD (phones' guest down, groot disk). A completed probe that found unhealthy nodes is
 the guard working, so it exits UNHEALTHY (3), which the unit counts as success; a crash still
 exits 1 and fails the unit, so a dead guard stays visible."""
-import importlib.machinery, importlib.util, os, tempfile, unittest
+import importlib.machinery, importlib.util, os, sys, tempfile, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = Path(os.environ.get("FLEET_SCRIPT", ROOT / "scripts/fleet"))
+sys.path.insert(0, str(PATH.parent))  # scripts/fleet imports its sibling modules
 loader = importlib.machinery.SourceFileLoader("fleet_exit_under_test", str(PATH))
 fleet = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(fleet)

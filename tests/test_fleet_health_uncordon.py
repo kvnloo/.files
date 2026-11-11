@@ -1,11 +1,12 @@
 """fleet health uncordons a node it cordoned itself once healthy for 2 probes, even when its
 local state forgot the cordon (2026-11-05: mbp stayed cordoned after DiskPressure cleared)."""
-import importlib.machinery, importlib.util, json, os, tempfile, unittest
+import importlib.machinery, importlib.util, json, os, sys, tempfile, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 PATH = Path(os.environ.get("FLEET_SCRIPT", Path(__file__).resolve().parents[1] / "scripts/fleet"))
+sys.path.insert(0, str(PATH.parent))  # scripts/fleet imports its sibling modules
 loader = importlib.machinery.SourceFileLoader("fleet_uncordon_under_test", str(PATH))
 fleet = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(fleet)
