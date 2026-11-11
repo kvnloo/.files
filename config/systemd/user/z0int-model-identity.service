@@ -3,9 +3,9 @@ Description=Cache canonical model identities without delaying policy compilation
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/.local/lib/z0int-policy/current
-Environment=PATH=%h/.local/lib/z0int-policy/current/.venv/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
-Environment=PYTHONPATH=%h/.local/lib/z0int-policy/current/src
+WorkingDirectory=%h/.local/lib/z0int/current
+Environment=PATH=%h/.local/lib/z0int/current/.venv/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=%h/.local/lib/z0int/current/src
 Environment=Z0INT_HOME=%h/.z0int
 ExecStart=python -m z0int.policy.autoeval identities
 UMask=0077

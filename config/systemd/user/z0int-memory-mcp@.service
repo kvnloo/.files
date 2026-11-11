@@ -4,13 +4,13 @@ CollectMode=inactive-or-failed
 
 [Service]
 Type=exec
-WorkingDirectory=%h/.local/share/z0int-memory-mcp
-Environment=PYTHONPATH=/mnt/zer0models/host-offload/memory-mcp-releases/b6fa5969a8d039efd9859ed389d6a3976acfb394/src
+WorkingDirectory=%h/.local/lib/z0int/current
+Environment=PYTHONPATH=%h/.local/lib/z0int/current/src
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=Z0INT_MEMORY_MCP_POLICY=%h/.config/z0int/memory-mcp-policy.json
 Environment=Z0INT_MEMORY_MCP_PRINCIPAL=operator
 Environment=Z0INT_MEMORY_MCP_STATE=%S/z0int-memory-mcp
-ExecStart=%h/.local/share/z0int-memory-mcp/.venv/bin/python -m z0int.memory_mcp
+ExecStart=%h/.local/lib/z0int/current/.venv/bin/python -m z0int.memory_mcp
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal

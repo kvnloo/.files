@@ -401,6 +401,15 @@ class ReleaseRegistryTests(unittest.TestCase):
         self.assertEqual((block['app']['links_checked'], block['app']['off_current']), (2, 0))
         self.assertEqual(block['app']['current_sha'], block['app']['live_sha'])
 
+    def test_unit_execstart_through_current_is_on_current_for_archive_family(self):
+        self.current(self.release(self.sha))
+        (self.units / 'app.service').write_text(
+            '[Service]\nExecStart=%h/.local/lib/app/current/tool --serve\n')
+        block, kinds = self.audit(mode='archive')
+        self.assertEqual(kinds, set())
+        self.assertEqual(block['app']['links_checked'], 1)
+        self.assertEqual(block['app']['off_current'], 0)
+
     def test_link_into_older_release_or_worktree_of_the_repo_is_not_current(self):
         old = self.release('0' * 40)
         self.current(self.release(self.sha))

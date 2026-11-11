@@ -4,9 +4,9 @@ OnFailure=service-watch-failure@z0int\x2dpolicy.service.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=%h/.local/lib/z0int-policy/current
-Environment=PATH=%h/.local/lib/z0int-policy/current/.venv/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
-Environment=PYTHONPATH=%h/.local/lib/z0int-policy/current/src
+WorkingDirectory=%h/.local/lib/z0int/current
+Environment=PATH=%h/.local/lib/z0int/current/.venv/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=%h/.local/lib/z0int/current/src
 ExecStart=/bin/sh -ec 'python -m z0int.policy.autoeval tick && python -m z0int.cli policy ingest && python -m z0int.cli policy compile'
 UMask=0077
 Nice=15

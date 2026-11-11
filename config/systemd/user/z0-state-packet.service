@@ -1,10 +1,10 @@
 [Unit]
 Description=Refresh source-linked agent state packet atomically
-ConditionFileIsExecutable=%h/.local/lib/z0-state-packet/current/bin/generate-packet
+ConditionFileIsExecutable=%h/.local/lib/z0int/current/bin/generate-packet
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/lib/z0-state-packet/current/bin/generate-packet
+ExecStart=%h/.local/lib/z0int/current/bin/generate-packet
 UMask=0077
 Nice=19
 IOSchedulingClass=idle
