@@ -39,6 +39,7 @@
     "timeout": 5400,
     "nodes": {
       "omarchy-phone": {"mask": "3f", "threads": 6, "shards_per_job": 8},
+      "omarchy-phone-idle": {"node": "omarchy-phone", "idle": true, "mask": "c0", "threads": 2, "port": 18432, "shards_per_job": 2},
       "galaxy-s22plus": {"mask": "0f", "threads": 4, "shards_per_job": 2},
       "galaxy-s22plus-idle": {"node": "galaxy-s22plus", "idle": true, "mask": "f0", "threads": 4, "port": 18432, "shards_per_job": 2},
       "lenovo-tab": {"mask": "3f", "threads": 6, "shards_per_job": 2}
