@@ -63,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         reason = why_not(a.need_mb)
         if reason is None:
             break
+        tmp = os.statvfs('/tmp')
+        reason += f"; /tmp tmpfs {(tmp.f_blocks - tmp.f_bfree) * tmp.f_frsize // (1024 * 1024)} MiB"
         if time.monotonic() >= deadline:
             print(f"groot-admit: held: {reason}", file=sys.stderr)
             return 75
