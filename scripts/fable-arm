@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""Sync Fable hill runs and verified fix flips into the autoresearch ledger."""
+
+import argparse
+from datetime import datetime
+import json
+import os
+from pathlib import Path
+import random
+import sys
+
+sys.path.insert(0, os.environ.get("Z0INT_SRC", "/home/kvn/.local/lib/z0int-shadow/current/src"))
+os.environ.setdefault("Z0INT_HOME", "/home/kvn/.z0int")
+from z0int.autoresearch import mutations, queue, store
+
+
+OPS = Path(os.environ.get(
+    "FIX_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+SLOTS = {"A": "incumbent", "B": "challenger"}
+KNOBS = {"effort": ["medium", "high", "xhigh"], "scouts": [False, True]}
+
+
+def read_json(path, default):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
+def treatment(arm):
+    return mutations.treatment_hash({key: arm[key] for key in ("mode", "effort", "scouts")})
+
+
+def definitions():
+    path = store.champions_dir() / "fable.json"
+    if not path.exists():
+        state = json.loads((OPS / "hill-state.json").read_text())
+        path.write_text(json.dumps({arm: state[slot] for arm, slot in SLOTS.items()}, indent=2) + "\n")
+    return json.loads(path.read_text())
+
+
+def run_id(run):
+    return f"{run['job']}@{run['ts']}"
+
+
+def finished(run):
+    return datetime.fromisoformat(run["ts"]).timestamp()
+
+
+def sync():
+    definitions()
+    path = OPS / "hill.jsonl"
+    runs = [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
+    for run in runs:
+        arm = {slot: name for name, slot in SLOTS.items()}[run["arm"]["slot"]]
+        queue.record_arm(run_id(run), arm, treatment(run["arm"]), status="done",
+                         result={"cost": run.get("meter_delta", {}).get("fable"),
+                                 "minutes": run.get("minutes")})
+    tapes = read_json(OPS / "fix-tapes.json", [])
+    if isinstance(tapes, dict):
+        tapes = tapes["tapes"]
+    metadata = {tape["id"]: tape for tape in tapes}
+    for tape_id, state in read_json(OPS / "fix-state.json", {}).items():
+        if state.get("ok") is not True or state.get("fails", 0) <= 0:
+            continue
+        tape = {**metadata.get(tape_id, {}), **state}
+        cls = tape.get("cls", tape.get("class"))
+        candidates = [run for run in runs
+                      if not run["arm"].get("grader_touched")
+                      and finished(run) - 60 * (run.get("minutes") or 0) <= state["since"]
+                      and ((cls and run.get("class") == cls)
+                           or tape.get("src") == f"fable {run['job']}")]
+        if not candidates:
+            continue
+        run = max(candidates, key=finished)
+        trace_id = f"flip:{run_id(run)}"
+        result = queue.enqueue_trace(trace_id, verified_success=True, verifier_id=tape_id,
+                                     payload={"kind": "fix_flip", "treatment_hash": treatment(run["arm"])})
+        job_id = result.get("job_id")
+        if not job_id:
+            # Recover a previous sync interrupted between enqueue and completion.
+            with queue._conn() as db:
+                row = db.execute("SELECT id FROM jobs WHERE trace_id=? AND credit_key=?",
+                                 (trace_id, f"enqueue:{trace_id}:{tape_id}")).fetchone()
+            job_id = row["id"] if row else None
+        if job_id:
+            queue.complete_job(job_id, status="credited")
+
+
+def totals(arms):
+    with queue._conn() as db:
+        runs = db.execute("SELECT * FROM arms WHERE arm IN ('A', 'B')").fetchall()
+        jobs = db.execute("SELECT trace_id, payload FROM jobs WHERE status='credited'").fetchall()
+    credits = {}
+    for job in jobs:
+        payload = json.loads(job["payload"])["payload"]
+        if payload.get("kind") == "fix_flip":
+            key = (job["trace_id"], payload["treatment_hash"])
+            credits[key] = credits.get(key, 0) + 1
+    out = {}
+    for arm, definition in arms.items():
+        rows = [row for row in runs if row["arm"] == arm and row["treatment_hash"] == treatment(definition)]
+        cost = max(0.5, sum(json.loads(row["result_json"])["cost"] or 0 for row in rows))
+        flips = sum(credits.get((f"flip:{row['job_id']}", row["treatment_hash"]), 0) for row in rows)
+        out[arm] = {"runs": len(rows), "cost": cost, "flips": flips, "value": flips / cost}
+    return out
+
+
+def next_arm():
+    sync()
+    with queue._conn() as db:
+        count = db.execute("SELECT COUNT(*) FROM arms WHERE arm IN ('A', 'B')").fetchone()[0]
+    arm = "B" if count % 2 == 0 else "A"
+    print(json.dumps({**definitions()[arm], "slot": SLOTS[arm]}))
+
+
+def score():
+    sync()
+    print("| arm | runs | cost | credited flips | value |")
+    print("|---|---|---|---|---|")
+    for arm, row in totals(definitions()).items():
+        print(f"| {arm} | {row['runs']} | {row['cost']:.2f} | {row['flips']} | {row['value']:.2f} |")
+
+
+def promote():
+    sync()
+    arms = definitions()
+    values = totals(arms)
+    if any(row["runs"] < 3 for row in values.values()):
+        print(f"need 3 runs each (A {values['A']['runs']}, B {values['B']['runs']})")
+        return
+    winner = "B" if values["B"]["value"] >= 1.2 * values["A"]["value"] else "A"
+    incumbent = dict(arms[winner])
+    challenger = dict(incumbent)
+    knob = random.choice(list(KNOBS))
+    challenger[knob] = random.choice([value for value in KNOBS[knob] if value != incumbent[knob]])
+    (store.champions_dir() / "fable.json").write_text(
+        json.dumps({"A": incumbent, "B": challenger}, indent=2) + "\n")
+    print(f"{winner} wins; new challenger mutates {knob}: {json.dumps(challenger)}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("sync", "next", "promote", "score"), nargs="?", default="score")
+    args = parser.parse_args()
+    {"sync": sync, "next": next_arm, "promote": promote, "score": score}[args.command]()
