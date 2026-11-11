@@ -40,9 +40,35 @@ class EntryPolicy(unittest.TestCase):
             self.assertEqual(refused.exception.code, 75)
             run.assert_not_called()
 
+    def test_tool_scope_has_memory_guard_but_no_cpu_ceiling(self):
+        with patch.object(sys, 'argv', ['agent-tool-run', '--', 'sh', '-c', 'true']), \
+             patch.object(entry.socket, 'gethostname', return_value='groot'), \
+             patch.object(entry.Path, 'read_text', return_value='0::/user.slice/app.slice/test.scope'), \
+             patch.object(entry.subprocess, 'run', return_value=types.SimpleNamespace(returncode=0)) as run:
+            with self.assertRaises(SystemExit) as result:
+                entry.main()
+            self.assertEqual(result.exception.code, 0)
+            argv = run.call_args.args[0]
+            self.assertIn('--property=Slice=agent.slice', argv)
+            self.assertIn('--property=MemoryMax=4G', argv)
+            self.assertIn('--property=MemorySwapMax=512M', argv)
+            self.assertFalse(any('CPUQuota' in arg for arg in argv))
+
+    def test_tracked_slice_and_future_scopes_reset_cpu_quota(self):
+        for relative in ('agent.slice.d/50-interactive-budget.conf',
+                         'hermes-worker-.scope.d/50-agent-envelope.conf'):
+            text = (ROOT / 'config/systemd/user' / relative).read_text()
+            quotas = [line for line in text.splitlines() if line.startswith('CPUQuota=')]
+            self.assertEqual(quotas, ['CPUQuota='])
+        scope = (ROOT / 'config/systemd/user/hermes-worker-.scope.d/50-agent-envelope.conf').read_text()
+        self.assertIn('MemoryHigh=4G', scope)   # X2b: throttle at 4G, hard stop at 6G
+        self.assertIn('MemoryMax=6G', scope)
+        self.assertIn('TasksMax=512', scope)
+
     def test_scope_failure_never_direct_exec_fallback(self):
         with patch.object(sys,'argv',['agent-tool-run','--','sh','-c','true']), \
              patch.object(entry.socket,'gethostname',return_value='groot'), \
+             patch.object(entry.Path, 'read_text', return_value='0::/user.slice/app.slice/test.scope'), \
              patch.object(entry.subprocess,'run',side_effect=FileNotFoundError('no systemd-run')), \
              patch.object(entry.os,'execvp',side_effect=AssertionError('unsafe direct fallback')):
             with self.assertRaises(SystemExit) as e:entry.main()

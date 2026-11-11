@@ -1,5 +1,5 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
-user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
+user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml", "scripts/fleet-steward", "scripts/fleet_steward_capacity.py", "scripts/host_experiments.py", "scripts/fleet_paths.py", "config/fleet/storage.toml"]
 user_retired_files = [
   { live = "~/.config/systemd/user/agent.slice.d/70-owner-speed-20261106.conf", sha256 = "bc827de897fcf649a9d6bfa88d91e2d8ed7f464366637f9552c50e2701d23ee7", reason = "X2b 2026-11-07: owner 2026-11-06 values folded into 60-oomd-desktop-guard.conf and 50-interactive-budget.conf." },
   { live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf", sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c", reason = "Use the stamped fleet command; retire the stale admission worktree override." },
@@ -24,6 +24,70 @@ user_retired_links = [
   { live = "~/.config/systemd/user/zer0-voice-maxine-full.service", target = "/workspace/zer0/products/pm/voice/systemd/zer0-voice-maxine-full.service", retired = "never-tracked, superseded by zer0-voice-direct (pm 8fe26d0)" },
   { live = "~/.config/systemd/user/default.target.wants/zer0-voice-maxine-full.service", target = "/workspace/zer0/products/pm/voice/systemd/zer0-voice-maxine-full.service", retired = "never-tracked, superseded by zer0-voice-direct (pm 8fe26d0)" },
 ]
+
+[[user]]
+live = "~/.local/bin/host-optimizer"
+source = "scripts/host_optimizer.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
+
+[[user]]
+live = "~/.config/systemd/user/host-optimizer.service"
+source = "config/systemd/user/host-optimizer.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
+
+[[user]]
+live = "~/.config/systemd/user/host-optimizer.path"
+source = "config/systemd/user/host-optimizer.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
+
+[[user]]
+live = "~/.local/bin/loc"
+source = "scripts/loc"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/loc-index.service"
+source = "config/systemd/user/loc-index.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/loc-index.timer"
+source = "config/systemd/user/loc-index.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "L0 locate lever for agents (AgentSys Track F): basename index of /mnt/zer0models, which the system plocate db prunes; find over those roots exceeded 120 s, loc answers in ~0.1 s."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/loc-index.timer"
+source = "config/systemd/user/loc-index.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Hourly idle-IO refresh of the loc index (AgentSys Track F)."
+
+[[user]]
+live = "~/.config/systemd/user/default.target.wants/host-optimizer.path"
+source = "config/systemd/user/host-optimizer.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
 
 [[user]]
 live = "~/.omp/agent/extensions/sqlite-tool-guard/index.ts"

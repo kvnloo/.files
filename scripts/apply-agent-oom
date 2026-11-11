@@ -342,14 +342,72 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
     return 0
 
 
+def install_host_optimizer(source: Path, home: Path, apply: bool) -> int:
+    """Narrow opt-in deployment; never reapply unrelated host/session policy."""
+    source = source.resolve(strict=True)
+    links = {
+        'scripts/host_optimizer.py': '.local/bin/host-optimizer',
+        'config/systemd/user/host-optimizer.service': '.config/systemd/user/host-optimizer.service',
+        'config/systemd/user/host-optimizer.path': '.config/systemd/user/host-optimizer.path',
+        # L0 locate lever: basename index of /mnt/zer0models, which the system plocate db prunes.
+        'scripts/loc': '.local/bin/loc',
+        'config/systemd/user/loc-index.service': '.config/systemd/user/loc-index.service',
+        'config/systemd/user/loc-index.timer': '.config/systemd/user/loc-index.timer',
+    }
+    closure = (*links, 'scripts/host_experiments.py', 'scripts/fleet-steward',
+               'scripts/fleet_steward_capacity.py', 'scripts/fleet_paths.py', 'config/fleet/storage.toml')
+    for relative in closure:
+        if not (source / relative).is_file():
+            raise ValueError(f'missing optimizer closure: {relative}')
+    for dest in links.values():
+        live = home / dest
+        if live.exists() or live.is_symlink():
+            if not live.is_symlink():
+                raise ValueError(f'refusing unrelated regular file: {live}')
+            target = str(live.resolve())
+            if '/releases/files-live/' not in target and '/.local/lib/files-live/' not in target:
+                raise ValueError(f'refusing non-stamped optimizer owner: {live}')
+    if not apply:
+        print('DRY RUN: install only host optimizer closure; enable event path; start one bounded tick')
+        return 0
+    if not os.path.ismount('/mnt/zer0models'):
+        raise ValueError('canonical private data mount is absent')
+    release = stamp_release(source, home, closure)
+    receipt_root = Path('/mnt/zer0models/workspace/zer0/data/operations/host-optimizer-20261103')
+    receipt_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup = Path(tempfile.mkdtemp(prefix='install-', dir=receipt_root))
+    previous = {}
+    for relative, dest in links.items():
+        live = home / dest
+        live.parent.mkdir(parents=True, exist_ok=True)
+        previous[dest] = os.readlink(live) if live.is_symlink() else None
+        if live.is_symlink():
+            saved = backup / dest
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(live, saved, follow_symlinks=False)
+        temporary = live.with_name('.' + live.name + '.optimizer-install')
+        temporary.symlink_to(release / relative)
+        os.replace(temporary, live)
+    import json
+    (backup / 'receipt.json').write_text(json.dumps({'release': str(release), 'previous': previous}, indent=2) + '\n')
+    subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
+    subprocess.run(['systemctl', '--user', 'enable', '--now', 'host-optimizer.path', 'loc-index.timer'], check=True)
+    subprocess.run(['systemctl', '--user', 'start', 'host-optimizer.service'], check=True)
+    print(f'APPLIED optimizer release={release}; recovery={backup}; no shared service restarted')
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--user-layer', action='store_true',
                         help='install manifest-owned user configuration, not agent policy')
+    parser.add_argument('--host-optimizer', action='store_true', help='install only the bounded host learner, with event-driven activation')
     args = parser.parse_args()
-    installer = install_user_layer if args.user_layer else install
+    if args.host_optimizer and args.user_layer:
+        parser.error('choose only one deployment scope')
+    installer = install_host_optimizer if args.host_optimizer else install_user_layer if args.user_layer else install
     return installer(args.source, Path.home(), args.apply)
 
 
