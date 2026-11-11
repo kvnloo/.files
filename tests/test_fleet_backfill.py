@@ -105,6 +105,19 @@ class JobRunnerTests(unittest.TestCase):
             self.assertEqual(result["head"], "abc")
 
 
+class ShardDoneTests(unittest.TestCase):
+    def test_exit_zero_without_embeddings_is_not_done(self):
+        with tempfile.TemporaryDirectory() as d:
+            receipt = pathlib.Path(d)
+            self.assertFalse(bf.shard_done({"exit_code": 0, "attempts": 1}, receipt))
+            (receipt / "embeddings.jsonl").write_text("{}\n")
+            self.assertTrue(bf.shard_done({"exit_code": 0, "attempts": 1}, receipt))
+
+    def test_out_of_retries_is_done(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertTrue(bf.shard_done({"exit_code": 143, "attempts": bf.MAX_ATTEMPTS}, pathlib.Path(d)))
+
+
 if __name__ == "__main__":
     unittest.main()
 
