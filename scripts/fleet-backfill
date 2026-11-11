@@ -126,6 +126,12 @@ def phone_pick(shards, done, busy):
     return next((s for s in shards if s[0] not in done and s[0] not in busy), None)
 
 
+def shard_done(result, receipt):
+    """Done = embeddings collected, or out of retries. exit 0 alone is not done (pure; tested)."""
+    return ((result.get("exit_code") == 0 and (receipt / "embeddings.jsonl").exists())
+            or result.get("attempts", 0) >= MAX_ATTEMPTS)
+
+
 def phone_argv(cfg, slot, shard):
     """A slot is one feeder process. `node` defaults to the slot name; an `idle` slot runs
     SCHED_IDLE on the bench cores, so it only gets cycles the bench leaves unused."""
@@ -288,9 +294,12 @@ def phone_tick(cfg, now, dry_run=False):
             continue
         receipt = RUNS / "phone-embed" / st.get("tag", tag) / f"shard-{st['shard']:04d}-{node}"
         receipt.mkdir(parents=True, exist_ok=True)
-        for names in (["stdout", "stderr"], ["embeddings.jsonl"]):  # a crash leaves no embeddings
+        # The job runs in src/, so -out embeddings.jsonl lands at src/embeddings.jsonl.
+        for names in (["stdout", "stderr"], ["src/embeddings.jsonl"]):  # a crash leaves no embeddings
             subprocess.run([sys.executable, FLEET_ADB, "fetch", device, st["job"], "--dest", str(receipt),
                             *[a for n in names for a in ("--fetch", n)]], capture_output=True, timeout=600)
+        if (receipt / "src" / "embeddings.jsonl").exists():
+            (receipt / "src" / "embeddings.jsonl").replace(receipt / "embeddings.jsonl")
         out = (receipt / "stdout").read_text(errors="replace") if (receipt / "stdout").exists() else ""
         line = next((l for l in out.splitlines() if l.startswith("PHONE_EMBED_RESULT ")), None)
         result = {**st, **status, "node": node, "finished": now,
@@ -303,7 +312,7 @@ def phone_tick(cfg, now, dry_run=False):
     done = set()
     for res in root.glob("shard-*/result.json"):
         r = json.loads(res.read_text())
-        if r.get("exit_code") == 0 or r.get("attempts", 0) >= MAX_ATTEMPTS:
+        if shard_done(r, res.parent):
             done.add(r["shard"])
     shards = phone_shards(len(lines), phones["shard"])
     if mem_available() < PHONE_GROOT_FLOOR:
