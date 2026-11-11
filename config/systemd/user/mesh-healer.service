@@ -1,0 +1,23 @@
+[Unit]
+Description=mesh-healer: fleet SLOs every 5 min, allowlisted reversible repairs, HolmesGPT advice (scripts/mesh-healer)
+After=default.target
+ConditionPathIsMountPoint=/mnt/zer0models
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/bin/mesh-healer run --interval 300
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=always
+RestartSec=60
+UMask=0077
+Nice=15
+CPUQuota=20%
+MemoryMax=768M
+MemorySwapMax=128M
+TasksMax=64
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

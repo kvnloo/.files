@@ -1,0 +1,103 @@
+# local-llm/qwen3-5-4b: the mesh-healer's $0 HolmesGPT model (127.0.0.1:11540, hostNetwork).
+#
+# Root cause of 135 restarts / exit 137 (2026-11-11, t_370ed03d): HOST memory pressure, not the
+# pod limit (lastState reason was Error, never OOMKilled). groot ran with swap full; earlyoom
+# (-m 5) and the kernel's global OOM killer each picked llama-server first, because a Burstable
+# pod with a 1Gi request gets oom_score_adj 958 (oom_score ~1340, the highest on the host).
+# 24 h before the fix: 44 earlyoom SIGTERM->SIGKILL of this server and 18 kernel OOM kills of
+# llama-server. Under the same pressure the 1 s TCP liveness probe timed out and also killed it.
+#
+# Fix:
+#  - Guaranteed QoS (requests == limits, cpu and memory) -> oom_score_adj -997, so neither
+#    earlyoom nor the kernel picks it ahead of best-effort work.
+#  - Smaller host footprint so the guarantee is cheap: --load-mode none (no mmap: weights live in VRAM, not in
+#    mapped page cache), --cache-ram 0 (no host prompt cache), -t 2.
+#  - 4Gi, not 2Gi: a 2Gi limit was OOMKilled twice in 3 min under HolmesGPT load (cgroup
+#    peak 1.94 GiB: ~0.6 GiB CUDA shmem + read() page cache + per-slot context checkpoints,
+#    which Qwen3.5's recurrent layers keep in host RAM; capped at 4 per slot here).
+#  - Liveness tolerates a slow host: 5 s timeout, 6 failures (2 min) before a kill.
+# Apply: KUBECONFIG=$HOME/.kube/k3s.yaml kubectl apply -f config/k3s/manifests/60-local-llm.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-llm
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen3-5-4b
+  namespace: local-llm
+  labels:
+    app: qwen3-5-4b
+    z0.dev/port: "11540"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qwen3-5-4b
+  template:
+    metadata:
+      labels:
+        app: qwen3-5-4b
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/hostname: groot
+      tolerations:
+        - key: z0.dev/host
+          operator: Equal
+          value: interactive
+          effect: PreferNoSchedule
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp@sha256:f9f7c9f689cf6dba993075b74697253c46c639f7c5956a3421fcabf7e8aef715
+          args: ["--model", "/models/toolcall/Qwen_Qwen3.5-4B-Q4_K_M.gguf", "--alias", "qwen3.5-4b",
+                 "--host", "127.0.0.1", "--port", "11540", "--device", "CUDA0", "-ngl", "99",
+                 "-c", "65536", "--parallel", "2", "-kvu", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0",
+                 "--no-webui", "--jinja", "--reasoning", "off", "-t", "2", "--load-mode", "none",
+                 "--cache-ram", "0", "--ctx-checkpoints", "4", "--sleep-idle-seconds", "600"]
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+          resources:
+            requests: {cpu: "2", memory: 4Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          startupProbe:
+            httpGet: {host: 127.0.0.1, path: /health, port: 11540}
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 90
+          livenessProbe:
+            tcpSocket: {host: 127.0.0.1, port: 11540}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: /models
+              readOnly: true
+      volumes:
+        - name: models
+          hostPath:
+            path: /mnt/zer0models/z0-farm/models
+            type: Directory
