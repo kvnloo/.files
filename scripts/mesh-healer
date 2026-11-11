@@ -207,16 +207,16 @@ def diagnose(gap: dict, state: dict) -> dict | None:
     state["diagnosed"][gap["name"]] = time.time()
     OUT.mkdir(parents=True, exist_ok=True)
     q = (f"Fleet SLO '{gap['name']}' is violated: value={json.dumps(gap['value'])}, target {gap['target']}, "
-         f"evidence={json.dumps(gap['evidence'])[:800]}. Kueue owns placement. Investigate read-only and answer in "
-         "3 sentences: likely cause, and the smallest reversible config change that would fix it.")
+         f"evidence={json.dumps(gap['evidence'])[:800]}. Kueue owns placement. Investigate with the kubernetes tools only (bash is denied) and answer in "
+         "at most 3 sentences: likely cause, and the smallest reversible config change that would fix it.")
     jf = OUT / f".holmes-{gap['name']}.json"
     env = {**os.environ, "HOSTED_VLLM_API_BASE": HOLMES_BASE, "HOSTED_VLLM_API_KEY": "none"}
     try:
-        p = subprocess.run(["holmes", "ask", q, "--model", HOLMES_MODEL, "-n", "--max-steps", "6",
+        p = subprocess.run(["holmes", "ask", q, "--model", HOLMES_MODEL, "-n", "--max-steps", "10",
                             "--bash-always-deny", "--json-output-file", str(jf)],
                            capture_output=True, text=True, timeout=300, env=env)
         out = json.loads(jf.read_text())
-        return {"slo": gap["name"], "model": HOLMES_MODEL, "advice": str(out.get("analysis"))[:2000],
+        return {"slo": gap["name"], "model": HOLMES_MODEL, "advice": re.sub(r"<tool_call>.*", "", str(out.get("result") or ""), flags=re.S).strip()[:2000] or None,
                 "tools": [t.get("tool_name") for t in out.get("tool_calls", [])], "rc": p.returncode}
     except (OSError, ValueError, subprocess.TimeoutExpired) as e:
         return {"slo": gap["name"], "error": str(e)[:300]}
