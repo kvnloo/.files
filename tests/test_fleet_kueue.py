@@ -409,7 +409,8 @@ class ProtectedCohortPolicyTests(unittest.TestCase):
                          {'cpu': ('2', '6'), 'memory': ('0', '10441814016')})
         lanes_cpu = next(r for r in queues['lanes']['resourceGroups'][0]['flavors'][0]['resources']
                          if r['name'] == 'cpu')['nominalQuota']
-        self.assertLessEqual(int(lanes_cpu) + 2, 8)  # cohort CPU never exceeds MBP's 8 threads
+        self.assertEqual(lanes_cpu, '5900m')  # mbp allocatable 6500m - coredns/kueue requests
+        self.assertLessEqual(5.9 + 2, 8)  # cohort CPU never exceeds MBP's 8 threads
 
 
 class AttachWrapperTests(unittest.TestCase):
