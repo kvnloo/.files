@@ -1,0 +1,72 @@
+# z0intelligence remote executor on groot (namespace hermes-lab).
+# Mirrors the live spec first applied from kvnloo/hermes-k8s-lab#1 (kind-only repo),
+# so the groot copy is owned here next to the other k3s manifests.
+#
+# QoS is Guaranteed (requests == limits). As Burstable with a 64Mi request, the
+# server and its runc:[2:INIT] ran at oom_score_adj 998, so under host memory
+# pressure earlyoom picked them first ("procReady not received", 817 restarts).
+# Killing them freed nothing. Guaranteed pods run at -997. Peak cgroup memory
+# measured 45 MiB, and the limits are unchanged, so this adds no new cap.
+#
+# Apply: KUBECONFIG=$HOME/.kube/k3s.yaml kubectl apply -f config/k3s/manifests/65-z0intelligence-executor.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: z0intelligence-executor
+  namespace: hermes-lab
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: z0intelligence-executor}
+  template:
+    metadata:
+      labels: {app: z0intelligence-executor}
+    spec:
+      automountServiceAccountToken: false
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector: {kubernetes.io/hostname: groot}
+      imagePullSecrets: [{name: ghcr-pull}]
+      terminationGracePeriodSeconds: 125
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: executor
+          image: ghcr.io/kvnloo/z0intelligence-executor@sha256:7820b178a7286c138889a6300dfeed8aeaf0fc0986089e17e7129ed413404fc8
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 11503}]
+          env:
+            - {name: Z0INT_AUTHORITY_URL, value: "http://127.0.0.1:11501"}
+            - {name: Z0INT_EXECUTOR_PROVIDERS, value: openrouter}
+            - name: OPENROUTER_API_KEY
+              valueFrom: {secretKeyRef: {name: openrouter-credentials, key: api_key}}
+            - name: POD_IP
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: '1', memory: 256Mi}
+            limits: {cpu: '1', memory: 256Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: z0intelligence-executor
+  namespace: hermes-lab
+spec:
+  selector: {app: z0intelligence-executor}
+  ports: [{name: http, port: 11503, targetPort: http}]
