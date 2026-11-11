@@ -1,0 +1,23 @@
+name: Feature
+description: One-line ask plus a mock or screenshot.
+labels: [enhancement]
+body:
+  - type: input
+    id: ask
+    attributes:
+      label: Ask
+      description: One line. What should Kevin be able to see or do?
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Mock or screenshot
+      description: Drag in a sketch, mock, screenshot or reference link.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: The check that proves it works for real (a real turn, a readback, a rendered screenshot).
+    validations:
+      required: true

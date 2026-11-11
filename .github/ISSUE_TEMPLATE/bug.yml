@@ -1,0 +1,32 @@
+name: Bug
+description: Something is broken. Repro plus a screenshot or log.
+labels: [bug]
+body:
+  - type: input
+    id: seen
+    attributes:
+      label: What you see
+      description: One line. What is wrong on screen or in output?
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or log
+      description: Drag in a screenshot/video or paste the log tail. Public repos - no tailnet IPs, home paths or location.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro
+      placeholder: |
+        1. command or click path
+        2. expected ...
+        3. got ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
