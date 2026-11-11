@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Admit recurring network-model actions through Fable's shared queue lock."""
+
+import argparse
+from collections import defaultdict
+from datetime import datetime, timezone
+import hashlib
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import time
+
+
+CLASSES = {"dead": "systemd dead unit", "stale": "stale lane",
+           "ask": "open ask without evidence"}
+
+
+def canonical(key):
+    return re.sub(r"(z0int-choice-)[0-9a-fA-F]{64}(?=\.|$)", r"\1*", key)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry", action="store_true", help="print changes without writing")
+    args = parser.parse_args()
+    work = Path(os.environ.get(
+        "NM_WORK", "/mnt/zer0models/workspace/zer0/data/operations/network-model/work"))
+    ops = Path(os.environ.get(
+        "FIX_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+    open_keys = {canonical(key) for key in json.loads((work / "actions-seen.json").read_text())}
+    now = time.time()
+    announcements = defaultdict(list)
+    with (work / "actions.jsonl").open() as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            key = canonical(row["key"])
+            if (key in open_keys and not row.get("cleared")
+                    and now - 7 * 86400 <= row["at"] <= now):
+                announcements[key].append(row)
+
+    def reconcile(queue):
+        jobs = queue["jobs"]
+        changed = []
+        active = set()
+        pending = 0
+        for job in jobs:
+            src = job.get("src", "")
+            if not src.startswith("network "):
+                continue
+            key = canonical(src[len("network "):])
+            if job["status"] == "pending" and key not in open_keys:
+                job.update(status="done", note="cleared upstream")
+                changed.append(job)
+            if job["status"] in ("pending", "running"):
+                active.add(key)
+            pending += job["status"] == "pending"
+
+        for key in sorted(announcements, key=lambda k: (-len(announcements[k]), k)):
+            if pending >= 2:
+                break
+            rows = announcements[key]
+            prefix = key.split(":", 1)[0]
+            if len(rows) < 3 or key in active or prefix not in CLASSES:
+                continue
+            latest = max(rows, key=lambda row: row["at"])
+            first = datetime.fromtimestamp(min(row["at"] for row in rows), timezone.utc)
+            job = {
+                "id": "N" + hashlib.sha1(key.encode()).hexdigest()[:6],
+                "title": latest["line"][:90], "class": CLASSES[prefix],
+                "owner": latest["owner"], "keywords": [key.rsplit(":", 1)[-1]],
+                "brief": latest["line"] + f"\nannounced {len(rows)} times since {first.date()}",
+                "status": "pending", "src": "network " + key,
+            }
+            jobs.append(job)
+            changed.append(job)
+            pending += 1
+        return changed
+
+    path = ops / "fable-queue.json"
+    if args.dry:
+        queue = json.loads(path.read_text()) if path.exists() else {"jobs": []}
+        changed = reconcile(queue)
+    else:
+        sys.dont_write_bytecode = True
+        loader = SourceFileLoader("fable_ingest", str(ops / "bin/fable-ingest"))
+        module = module_from_spec(spec_from_loader(loader.name, loader))
+        loader.exec_module(module)
+        changed = module.update(path, reconcile, {"jobs": []})
+    print(json.dumps(changed, indent=2))
+
+
+if __name__ == "__main__":
+    main()
