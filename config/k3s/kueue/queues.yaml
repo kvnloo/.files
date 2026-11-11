@@ -116,7 +116,7 @@ spec:
       flavors:
         - name: node-mbp
           resources:
-            - {name: cpu, nominalQuota: "4"}
+            - {name: cpu, nominalQuota: "6"}
             - {name: memory, nominalQuota: "10441814016"}
 ---
 # Benchmarks have no owned quota. They borrow only the idle lanes budget;
@@ -141,7 +141,7 @@ spec:
       flavors:
         - name: node-mbp
           resources:
-            - {name: cpu, nominalQuota: "0", borrowingLimit: "4"}
+            - {name: cpu, nominalQuota: "0", borrowingLimit: "6"}
             - {name: memory, nominalQuota: "0", borrowingLimit: "10441814016"}
 ---
 # z0: our own services and GPU jobs. One exclusive GPU; GPU Jobs queue for it

@@ -397,7 +397,7 @@ class ProtectedCohortPolicyTests(unittest.TestCase):
         self.assertEqual(queues['bench-lanes']['preemption']['reclaimWithinCohort'], 'Never')
         resources = queues['bench-lanes']['resourceGroups'][0]['flavors'][0]['resources']
         self.assertEqual({r['name']: (r['nominalQuota'], r['borrowingLimit']) for r in resources},
-                         {'cpu': ('0', '4'), 'memory': ('0', '10441814016')})
+                         {'cpu': ('0', '6'), 'memory': ('0', '10441814016')})
 
 
 class AttachWrapperTests(unittest.TestCase):
