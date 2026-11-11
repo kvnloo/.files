@@ -2,11 +2,13 @@
 import json
 import os
 from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "live-merge"
@@ -55,7 +57,10 @@ class LiveMergeTests(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         self.assertEqual(len(result.stdout.splitlines()), 1, result.stdout)
         data = json.loads(result.stdout)
-        self.assertEqual(set(data), {"status", "merge", "base"})
+        keys = {"status", "merge", "base"}
+        if "--release" in args:
+            keys.add("release")
+        self.assertEqual(set(data), keys)
         after = self.git("worktree", "list", "--porcelain")
         self.assertEqual(
             [line for line in after.splitlines() if line.startswith("worktree ")],
@@ -88,6 +93,69 @@ class LiveMergeTests(unittest.TestCase):
         self.assertEqual(self.git("show", "-s", "--format=%P", "live"), f"{base} {self.candidate}")
         self.assertEqual(self.git("show", "-s", "--format=%an <%ae>", "live"), IDENTITY)
         self.assertEqual(self.git("show", "-s", "--format=%cn <%ce>", "live"), IDENTITY)
+
+    def test_release_runs_merged_code_after_live_advances(self):
+        self.git("checkout", "candidate")
+        (self.repo / "release.py").write_text(
+            "import json, os, subprocess\n"
+            "from pathlib import Path\n"
+            "sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()\n"
+            "assert os.environ['LIVE_SHA'] == sha\n"
+            "assert subprocess.check_output(['git', '-C', os.environ['LIVE_REPO'], "
+            "'rev-parse', 'live'], text=True).strip() == sha\n"
+            "assert Path('value').read_text() == 'candidate\\n'\n"
+            "assert Path('live-only').read_text() == 'live\\n'\n"
+            "print(json.dumps({key: os.environ[key] for key in "
+            "['LIVE_REPO', 'LIVE_SHA', 'LIVE_BASE']}))\n"
+        )
+        self.git("add", ".")
+        self.git("commit", "-m", "release command")
+        self.git("checkout", "main")
+        (self.repo / "live-only").write_text("live\n")
+        self.git("add", ".")
+        self.git("commit", "-m", "live-only change")
+        self.git("branch", "-f", "live", "HEAD")
+        base = self.git("rev-parse", "live")
+        data = self.invoke(
+            self.repo, "candidate", "--test", self.command("pass"),
+            "--release", f"{shlex.quote(sys.executable)} release.py",
+        )
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["release"], {
+            "LIVE_REPO": str(self.repo), "LIVE_SHA": data["merge"], "LIVE_BASE": base,
+        })
+        self.assertEqual(self.git("rev-parse", "live"), data["merge"])
+
+    def test_failing_release_restores_live_and_serving_checkout(self):
+        for checked_out in (False, True):
+            with self.subTest(checked_out=checked_out):
+                serving = self.serving_checkout() if checked_out else None
+                data = self.invoke(
+                    self.repo, "candidate", "--test", self.command("pass"),
+                    "--release", "printf 'release output'; exit 1", expected=7,
+                )
+                self.assertEqual(data["status"], "release_failed")
+                self.assertEqual(data["release"], "release output")
+                self.assertEqual(self.git("rev-parse", "live"), self.base)
+                if serving:
+                    self.assertEqual(self.git("symbolic-ref", "HEAD", cwd=serving), "refs/heads/live")
+                    self.assertEqual((serving / "value").read_text(), "base\n")
+                    self.assertEqual(self.git("status", "--porcelain", cwd=serving), "")
+
+    def test_release_timeout(self):
+        release = runpy.run_path(str(SCRIPT))["release_command"]
+        communicate = subprocess.Popen.communicate
+
+        def short_timeout(process, *args, **kwargs):
+            if "timeout" in kwargs:
+                self.assertEqual(kwargs["timeout"], 600)
+                kwargs["timeout"] = 0.1
+            return communicate(process, *args, **kwargs)
+
+        with patch.object(subprocess.Popen, "communicate", short_timeout):
+            output, released = release("sleep 60", self.repo, self.env)
+        self.assertFalse(released)
+        self.assertEqual(output, "")
 
     def test_failing_test_leaves_live_unchanged(self):
         data = self.merge("raise SystemExit(1)", expected=5)

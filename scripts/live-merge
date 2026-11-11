@@ -34,6 +34,20 @@ def test_command(command, cwd):
             return False
 
 
+def release_command(command, cwd, env):
+    with subprocess.Popen(
+        command, shell=True, cwd=cwd, env=env, text=True,
+        stdout=subprocess.PIPE, stderr=sys.stderr, start_new_session=True,
+    ) as process:
+        try:
+            output, _ = process.communicate(timeout=600)
+            return output, process.returncode == 0
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            output, _ = process.communicate()
+            return output, False
+
+
 def advance(args, result):
     repo = Path(args.repo).resolve()
     base = git(repo, "rev-parse", "--verify", LIVE, check=False)
@@ -75,6 +89,25 @@ def advance(args, result):
                     git(checkout, "merge", "--ff-only", result["merge"])
             else:
                 git(repo, "update-ref", LIVE, result["merge"], result["base"])
+            if args.release is not None:
+                output, released = release_command(args.release, worktree, {
+                    **os.environ, "LIVE_REPO": str(repo),
+                    "LIVE_SHA": result["merge"], "LIVE_BASE": result["base"],
+                })
+                try:
+                    result["release"] = json.loads(output)
+                except json.JSONDecodeError:
+                    result["release"] = output
+                if not released:
+                    git(repo, "update-ref", LIVE, result["base"], result["merge"])
+                    for checkout in serving:
+                        git(checkout, "update-ref", "--no-deref", "HEAD", result["merge"])
+                        try:
+                            git(checkout, "reset", "--keep", result["base"])
+                        finally:
+                            git(checkout, "symbolic-ref", "HEAD", LIVE)
+                    result["status"] = "release_failed"
+                    return 7
             result["status"] = "ok"
             return 0
         finally:
@@ -88,6 +121,7 @@ def main():
     parser.add_argument("repo")
     parser.add_argument("target", help="branch to merge, or merge SHA to revert")
     parser.add_argument("--test", help="shell command run in the temporary worktree")
+    parser.add_argument("--release", help="shell command run after live advances")
     args = parser.parse_args()
     if not args.revert and args.test is None:
         parser.error("--test is required when merging")
