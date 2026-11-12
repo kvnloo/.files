@@ -20,6 +20,7 @@ CONFIGS = {
     '.pi/agent/settings.json': ['defaultProvider', 'defaultModel', 'defaultThinkingLevel', 'packages', 'extensions', 'skills'],
     '.pi/agent/sol-pi.json': ['version', 'actionFusion', 'observationPack', 'evidencePreservingReducer', 'onlineContextCompact', 'cacheWriteReadRatio'],
     '.claude/settings.json': ['model', 'effortLevel', 'modelSettings', 'enabledPlugins', 'hooks', 'statusLine', 'permissions', 'sandbox', 'autoMode', 'tui', 'skipDangerousModePermissionPrompt', 'skipWorkflowUsageWarning'],
+    '.config/opencode/opencode.json': ['model', 'small_model', 'instructions', 'plugin'],
     '.config/opencode/opencode.jsonc': ['model', 'small_model', 'instructions', 'plugin'],
 }
 HERMES_FIELDS = ['model.default', 'model.provider', 'model.reasoning_effort', 'model.max_tokens', 'model.aliases', 'context.engine', 'delegation.model', 'delegation.provider', 'delegation.fallback_providers', 'fallback_providers', 'system_prompt', 'system_prompt_file', 'agent.system_prompt_file', 'terminal.cwd']

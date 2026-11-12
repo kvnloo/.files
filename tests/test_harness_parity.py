@@ -54,6 +54,11 @@ class SnapshotTests(unittest.TestCase):
         value = {'model': 'fixture', 'api_key': 'not-a-real-key', 'nested': [{'token': 'fixture', 'provider': 'test'}]}
         self.assertEqual(parity.safe(value), {'model': 'fixture', 'nested': [{'provider': 'test'}]})
 
+    def test_opencode_json_and_jsonc_are_both_collected(self):
+        self.assertEqual(parity.CONFIGS['.config/opencode/opencode.json'],
+                         parity.CONFIGS['.config/opencode/opencode.jsonc'])
+        self.assertIn('model', parity.CONFIGS['.config/opencode/opencode.json'])
+
     def test_config_fields_are_allowlisted(self):
         self.assertNotIn('env', parity.CONFIGS['.claude/settings.json'])
         self.assertNotIn('credential_source', parity.CONFIGS['.fx/settings.json'])
