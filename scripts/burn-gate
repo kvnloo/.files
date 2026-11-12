@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""burn-gate: fail-closed launch gate over burn-pace for every paid subscription lane.
+
+Usage:
+  burn-gate <lane>                 # claude | claude2 | claude3 | codex
+  burn-gate --config-dir <dir>     # map a Claude CLI config dir to its lane (lanes.json)
+  burn-gate --exec <lane|dir> -- cmd args...   # gate, then exec cmd
+  burn-gate --pick                 # print the admitted Claude config dir with most headroom (sticky)
+  burn-gate --fable-pick           # print '<config dir> <lane>' of an account in the Fable-first phase (FBL1)
+
+Exit 0 = allow, 1 = deny (reason on stderr). The decision is Hermes agent/burn_pace_gate.verdict,
+the Python twin of the z0 Bend law bend/burn_pace (lib/z0/burn_pace.py; single source, no copy of the rules here).
+Owner override for one launch: BURN_GATE_OVERRIDE=1 (logged).
+"""
+import json, os, subprocess, sys, time
+from datetime import datetime, timezone
+from pathlib import Path
+
+STATE = Path.home() / ".z0int/state/posture"
+SAMPLES = STATE / "burn-pace.jsonl"
+LOG = STATE / "burn-gate.log"
+LANES_CFG = Path.home() / ".config/burn-gate/lanes.json"
+STALE_S = 20 * 60
+USED_STOP = 95.0
+RATIO_STOP = 1.5
+
+
+def last_row():
+    try:
+        with SAMPLES.open("rb") as f:
+            f.seek(0, 2)
+            f.seek(max(f.tell() - 65536, 0))
+            lines = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
+def age_s(row):
+    try:
+        return time.time() - datetime.fromisoformat(row["at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return float("inf")
+
+
+def reading():
+    row = last_row()
+    if row is None or age_s(row) > STALE_S:
+        bp = Path.home() / ".local/bin/burn-pace"
+        try:
+            subprocess.run([str(bp), "--json"], capture_output=True, timeout=150)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        row = last_row()
+    return row
+
+
+HERMES_SRC = Path.home() / ".hermes/hermes-agent"
+# The law lives with the other z0 Bend laws (bend/burn_pace); its Python twin is lib/z0/burn_pace.py.
+Z0_LIB_CANDIDATES = [os.environ.get("Z0_BURN_PACE_SRC", ""),
+                     str(Path.home() / ".local/lib/z0-burn-pace/current/lib"),
+                     "/mnt/zer0models/z0-wt/z0-burn-pace/lib"]
+
+
+def law_module():
+    import importlib.util
+    # Production must not depend on a mutable development worktree. Keep the
+    # explicit source override for tests; otherwise load the stamped deployment.
+    deployed = Path.home() / ".local/lib/z0/burn_pace/current/burn_pace.py"
+    if not os.environ.get("Z0_BURN_PACE_SRC") and deployed.is_file():
+        spec = importlib.util.spec_from_file_location("burn_gate_deployed_law", deployed)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    for root in filter(None, Z0_LIB_CANDIDATES):
+        if (Path(root) / "z0/burn_pace.py").exists():
+            sys.path.insert(0, root)
+            try:
+                return importlib.import_module("z0.burn_pace")
+            except Exception:
+                sys.path.remove(root)
+    if (HERMES_SRC / "agent/burn_pace_gate.py").exists():
+        sys.path.insert(0, str(HERMES_SRC))
+        try:
+            return importlib.import_module("agent.burn_pace_gate")
+        except Exception:
+            pass
+    return None
+
+
+def decide(lane, row):
+    """One law: delegate to Hermes agent/burn_pace_gate (proven in bend/burn_pace). Direct
+    launches (T3 chats, DirectSDK in owner profiles) are OWNER: over-pace still serves,
+    at-cap or stale never does. BURN_GATE_WHO=bulk for background callers."""
+    g = law_module()
+    if g is None:  # law module unavailable -> fail closed
+        return False, "burn_pace law twin not found (Z0_BURN_PACE_SRC, z0 lib, hermes agent); fail closed"
+    who = g.BULK if os.environ.get("BURN_GATE_WHO") == "bulk" else g.OWNER
+    if g._override_file_active():
+        return True, f"lane {lane}: owner override file active"
+    ok, _, why = g.verdict(lane, row, who)
+    return ok, why
+
+
+def lane_for(target):
+    if target in ("claude", "claude2", "claude3", "codex"):
+        return target
+    try:
+        cfg = json.loads(LANES_CFG.read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    key = str(Path(os.path.expanduser(target)).resolve()) if "/" in target or target.startswith("~") else target
+    return cfg.get(key) or cfg.get(target)
+
+
+def log(lane, ok, why, override=False):
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        with LOG.open("a") as f:
+            f.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "lane": lane,
+                                "decision": "allow" if ok else ("override" if override else "deny"),
+                                "reason": why, "ppid": os.getppid()}) + "\n")
+    except OSError:
+        pass
+
+
+def gate(target):
+    lane = lane_for(target)
+    if not lane:
+        why = f"no lane mapping for {target} in {LANES_CFG} (fail closed)"
+        ok = False
+    else:
+        ok, why = decide(lane, reading())
+    if not ok and os.environ.get("BURN_GATE_OVERRIDE") == "1":
+        log(lane or target, False, why, override=True)
+        print(f"burn-gate: OVERRIDE ({why})", file=sys.stderr)
+        return True
+    log(lane or target, ok, why)
+    if not ok:
+        print(f"burn-gate: DENY {why}. Override once with BURN_GATE_OVERRIDE=1.", file=sys.stderr)
+    return ok
+
+
+PICK_STATE = STATE / "burn-gate-pick.json"
+SWITCH_RATIO = 0.75  # stay on the current account while it has >=75% of the best headroom/h (cache stickiness)
+
+
+def pick():
+    """Choose the Claude CLI config dir to bill: admitted accounts only (same law verdict),
+    lowest projected weekly usage at reset (used + rate*hours) first. Sticky: keep the last pick
+    unless it is denied or another account projects SWITCH_MARGIN points lower (prompt caches are
+    per account, so needless switching costs cache writes). Prints the dir; exit 1 if none admitted."""
+    try:
+        cfg = {k: v for k, v in json.loads(LANES_CFG.read_text()).items() if not k.startswith("_")}
+    except (OSError, ValueError):
+        cfg = {}
+    row = reading()
+    lanes = (row or {}).get("lanes") or {}
+    cands = []
+    for d, lane in cfg.items():
+        ok, why = decide(lane, row)
+        l = lanes.get(lane) or {}
+        # Use-it-or-lose-it: bill the account with the most quota left per hour until its reset.
+        # (Old key, used + rate*hours, punished fresh accounts for their long time-to-reset.)
+        rate = (100 - (l.get("weekly_used_pct") or 100)) / max(l.get("hours_to_reset") or 0, 0.5)
+        log(lane, ok, f"pick candidate {d}: {why}, headroom {rate:.2f}%/h")
+        if ok:
+            cands.append((-rate, d, lane))
+    if not cands:
+        print("burn-gate: DENY no Claude account admitted for DirectSDK", file=sys.stderr)
+        return None
+    cands.sort()
+    best = cands[0]
+    try:
+        last = json.loads(PICK_STATE.read_text()).get("dir")
+    except (OSError, ValueError):
+        last = None
+    cur = next((c for c in cands if c[1] == last), None)
+    choice = cur if cur and -cur[0] >= -best[0] * SWITCH_RATIO else best
+    try:
+        PICK_STATE.write_text(json.dumps({"dir": choice[1], "lane": choice[2], "headroom_pct_per_h": round(-choice[0], 2),
+                                          "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}))
+    except OSError:
+        pass
+    return choice[1]
+
+
+def fable_pick():
+    """FBL1 fable lane. Admit only accounts burn-pace puts in fable_phase == 'fable-first'
+    (not held, resets left, room for Fable to reach ~47%). The weekly pace law is not applied:
+    Fable-first spend is refunded by the Fable reset Kevin presses at ~47%. Still fail closed on
+    a stale reading, weekly >= USED_STOP, or a Pro account (credits risk is handled by hold).
+    Lowest fable_used first. Prints '<config dir> <lane>'; exit 1 if none."""
+    try:
+        cfg = {k: v for k, v in json.loads(LANES_CFG.read_text()).items() if not k.startswith("_")}
+    except (OSError, ValueError):
+        cfg = {}
+    row = reading()
+    if row is None or age_s(row) > STALE_S:
+        log("fable", False, "fable-pick: burn-pace reading stale (fail closed)")
+        return None
+    lanes = row.get("lanes") or {}
+    cands = []
+    for d, lane in cfg.items():
+        l = lanes.get(lane) or {}
+        ph, used, fab = l.get("fable_phase"), l.get("weekly_used_pct") or 100, l.get("fable_used_pct")
+        ok = ph == "fable-first" and used < USED_STOP and not l.get("fable_hold")
+        log(lane, ok, f"fable-pick candidate {d}: phase={ph} fable={fab} weekly={used} hold={l.get('fable_hold')} {l.get('fable_hold_why','')}")
+        if ok:
+            cands.append((fab if fab is not None else 100, d, lane))
+    if not cands:
+        print("burn-gate: DENY no Claude account in fable-first phase", file=sys.stderr)
+        return None
+    cands.sort()
+    return f"{cands[0][1]} {cands[0][2]}"
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 2
+    if argv[0] == "--exec":
+        if len(argv) < 4 or argv[2] != "--":
+            print("usage: burn-gate --exec <lane|dir> -- cmd args...", file=sys.stderr)
+            return 2
+        if not gate(argv[1]):
+            return 1
+        os.execvp(argv[3], argv[3:])
+    if argv[0] == "--pick":
+        d = pick()
+        if not d:
+            return 1
+        print(d)
+        return 0
+    if argv[0] == "--fable-pick":
+        d = fable_pick()
+        if not d:
+            return 1
+        print(d)
+        return 0
+    if argv[0] == "--config-dir":
+        return 0 if gate(argv[1]) else 1
+    return 0 if gate(argv[0]) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
