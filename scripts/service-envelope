@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Give every running user service without a memory cap its own envelope, so a hog is
+# OOM-killed inside its own cgroup instead of earlyoom killing small neighbours
+# (2026-11-12: an idle transient llama-server parked 7.5G in zram; earlyoom then sent
+# 581 SIGTERMs in 3 days to adj-900 tools while the hog survived).
+# Runtime-only (set-property --runtime): nothing persists across reboot, units that set
+# their own MemoryMax are left alone, roots get a larger envelope and keep OOMPolicy=continue.
+set -euo pipefail
+DEFAULT_MAX=${DEFAULT_MAX:-4G} DEFAULT_SWAP=${DEFAULT_SWAP:-1G}
+ROOT_MAX=${ROOT_MAX:-10G} ROOT_SWAP=${ROOT_SWAP:-3G}
+ROOTS=${ROOTS:-'^(hermes-web|hermes-gateway|hermes-gateway-.*)\.service$'}
+SKIP=${SKIP:-'^(pipewire.*|wireplumber|dbus.*|xdg-.*|at-spi.*|gnome-keyring.*|earlyoom|agent-oom-guard)\.service$'}
+DRY=${DRY:-0}
+
+systemctl --user list-units --type=service --state=running --no-legend --plain \
+  | awk '{print $1}' | grep -E "${ONLY:-.}" | while read -r unit; do
+  [[ $unit =~ $SKIP ]] && continue
+  [[ $(systemctl --user show -P MemoryMax "$unit") == infinity ]] || continue
+  if [[ $unit =~ $ROOTS ]]; then max=$ROOT_MAX swap=$ROOT_SWAP; else max=$DEFAULT_MAX swap=$DEFAULT_SWAP; fi
+  echo "cap $unit MemoryMax=$max MemorySwapMax=$swap"
+  [[ $DRY == 1 ]] || systemctl --user set-property --runtime "$unit" MemoryMax="$max" MemorySwapMax="$swap"
+done
