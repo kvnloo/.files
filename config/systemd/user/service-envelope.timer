@@ -1,0 +1,11 @@
+[Unit]
+Description=Cap new uncapped user services (transient systemd-run units included)
+
+[Timer]
+OnStartupSec=15
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=service-envelope.service
+
+[Install]
+WantedBy=timers.target

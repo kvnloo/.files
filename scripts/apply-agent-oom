@@ -37,6 +37,9 @@ LINKS = {
     'config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf': '.config/systemd/user/agent.slice.d/60-oomd-desktop-guard.conf',
     'scripts/agent-oom-guard': '.local/bin/agent-oom-guard',
     'config/systemd/user/agent-oom-guard.service': '.config/systemd/user/agent-oom-guard.service',
+    'scripts/service-envelope': '.local/bin/service-envelope',
+    'config/systemd/user/service-envelope.service': '.config/systemd/user/service-envelope.service',
+    'config/systemd/user/service-envelope.timer': '.config/systemd/user/service-envelope.timer',
     'config/systemd/user/service.d/50-oom-continue.conf': '.config/systemd/user/service.d/50-oom-continue.conf',
     'config/systemd/user/scope.d/50-oom-continue.conf': '.config/systemd/user/scope.d/50-oom-continue.conf',
 }
