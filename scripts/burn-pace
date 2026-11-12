@@ -48,8 +48,155 @@ def fetch(provider):
     return [r for r in rows if "usage" in r]
 
 
-def knobs(ratio):
+CLAUDE_PROBE = STATE / "claude-headers.json"
+CLAUDE_PROBE_TTL_S = 600
+
+
+def _claude_token():
+    """The long-lived Claude OAuth token Hermes already runs on (inference scope only).
+    Order: explicit env, the clean profile's .env (what the live gateway uses), the BWS runtime scope."""
+    import os, re
+    for name in ("CODEXBAR_CLAUDE_OAUTH_TOKEN", "ANTHROPIC_TOKEN"):
+        if os.environ.get(name, "").startswith("sk-ant-oat"):
+            return os.environ[name]
+    for p in (Path.home() / ".hermes/profiles/clean/.env",
+              Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "bws-secrets/hermes-clean.env"):
+        try:
+            for line in p.read_text().splitlines():
+                m = re.match(r"^ANTHROPIC_TOKEN=(.+)$", line.strip())
+                if m and m.group(1).strip("\"'").startswith("sk-ant-oat"):
+                    return m.group(1).strip("\"'")
+        except OSError:
+            continue
+    return None
+
+
+def _pool_token(label):
+    """Read the native account's current token before its older Hermes pool copy.
+
+    Claude Code owns refresh grants. Never refresh or copy credentials here: the
+    picker launches its logged-in native directory, so meter that same identity.
+    """
+    import time
+    try:
+        native = json.loads((Path.home() / ("." + label) / ".credentials.json").read_text())["claudeAiOauth"]
+        token = native.get("accessToken") or ""
+        if token.startswith("sk-ant-oat") and float(native.get("expiresAt", 0)) > time.time() * 1000:
+            return token
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        rows = json.loads((Path.home() / ".hermes/auth.json").read_text())["credential_pool"]["anthropic"]
+    except (OSError, ValueError, KeyError):
+        return None
+    t = next((r.get("access_token") or "" for r in rows if r.get("label") == label), "")
+    return t if t.startswith("sk-ant-oat") else None
+
+
+def _probe_model(provider):
+    # A Fable request also returns the Fable-only weekly window (header tag 7d_oi). Accounts on
+    # Fable hold (Pro: Fable may bill usage credits) probe with Haiku instead.
+    env = __import__("os").environ.get("BURN_PACE_PROBE_MODEL")
+    if env:
+        return env
+    try:
+        cfg = json.loads((STATE / "fable-resets.json").read_text()).get(provider, {})
+    except (OSError, ValueError):
+        cfg = {}
+    try:
+        paths = json.loads((STATE / f"{provider}-headers.json").read_text())["row"]["usage"].get("upgradePaths")
+    except (OSError, ValueError, KeyError, TypeError):
+        paths = None
+    hold, _ = fable_hold(cfg, paths)
+    return "claude-haiku-4-5" if hold else "claude-fable-5-2"
+
+
+def fable_hold(cfg, upgrade_paths, now=None):
+    """FBL1 (2026-11-09). Returns (hold, why). Pro tokens advertise upgrade_plan in the
+    upgrade-paths header. Pro Fable is free only until cfg['pro_fable_expires'] (11-16 23:59 PT),
+    then bills credits: hard hold. A held Pro account is released on cfg['hold_until'] (spend the
+    Pro reset before it dies) or as soon as the headers stop offering upgrade_plan (Ultra arrived)."""
+    now = now or datetime.now(timezone.utc)
+    pro = upgrade_paths is not None and "upgrade_plan" in str(upgrade_paths)
+    exp = cfg.get("pro_fable_expires")
+    if pro and exp and now >= datetime.fromisoformat(exp):
+        return True, "pro-fable-expired (would bill credits)"
+    if not cfg.get("hold", False):
+        return False, ""
+    if upgrade_paths is not None and not pro:
+        return False, "released: upgrade_plan gone (upgraded)"
+    until = cfg.get("hold_until")
+    if until and now >= datetime.fromisoformat(until):
+        return False, "released: hold_until deadline (spend Pro reset before expiry)"
+    return True, "hold (Pro until upgrade)"
+
+
+def claude_from_headers(now, provider="claude", token_fn=None, probe=None):
+    """codexbar's OAuth source needs scope user:profile; setup-token tokens only carry user:inference.
+    Every inference response carries the subscription's unified rate-limit headers, so one 1-token
+    Haiku call (cached 10 min) gives the same weekly/5h utilization codexbar would."""
+    import time, urllib.request, urllib.error
+    probe = probe or CLAUDE_PROBE
+    try:
+        cached = json.loads(probe.read_text())
+        if time.time() - cached.get("probed_at", 0) < CLAUDE_PROBE_TTL_S:
+            return cached["row"]
+    except (OSError, ValueError, KeyError):
+        pass
+    token = (token_fn or _claude_token)()
+    if not token:
+        ERRORS.append({"provider": provider, "error": "header probe: no sk-ant-oat token found"})
+        return None
+    body = json.dumps({"model": _probe_model(provider), "max_tokens": 1,
+                       "system": "You are Claude Code, Anthropic's official CLI for Claude.",
+                       "messages": [{"role": "user", "content": "."}]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, method="POST", headers={
+        "Authorization": f"Bearer {token}", "anthropic-version": "2023-06-01",
+        "anthropic-beta": "oauth-2025-04-20", "content-type": "application/json", "user-agent": "burn-pace/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            h = resp.headers
+    except urllib.error.HTTPError as e:
+        h = e.headers  # 429 still carries the utilization headers
+        if not h or not h.get("anthropic-ratelimit-unified-status"):
+            ERRORS.append({"provider": provider, "error": f"header probe HTTP {e.code}"})
+            return None
+    except (urllib.error.URLError, TimeoutError) as e:
+        ERRORS.append({"provider": provider, "error": f"header probe: {e}"})
+        return None
+
+    def window(tag, minutes):
+        util, reset = h.get(f"anthropic-ratelimit-unified-{tag}-utilization"), h.get(f"anthropic-ratelimit-unified-{tag}-reset")
+        if util is None or reset is None:
+            return None
+        return {"usedPercent": round(float(util) * 100, 1), "windowMinutes": minutes,
+                "resetsAt": datetime.fromtimestamp(int(reset), timezone.utc).isoformat().replace("+00:00", "Z")}
+
+    usage = {"primary": window("5h", 300), "secondary": window("7d", 10080),
+             "updatedAt": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+             "source": "inference-headers", "status": h.get("anthropic-ratelimit-unified-status")}
+    usage["headersSeen"] = sorted(k.lower() for k in h.keys() if "ratelimit-unified" in k.lower())
+    usage["upgradePaths"] = h.get("anthropic-ratelimit-unified-upgrade-paths")
+    # Model-scoped weekly windows (e.g. the Fable-only cap) ride as extra unified-* headers.
+    usage["extraRateWindows"] = [
+        {"title": k[len("anthropic-ratelimit-unified-"):-len("-utilization")], "window": {
+            "usedPercent": round(float(v) * 100, 1), "windowMinutes": 10080}}
+        for k, v in h.items() if k.lower().startswith("anthropic-ratelimit-unified-")
+        and k.lower().endswith("-utilization") and ("fable" in k.lower() or "7d_oi" in k.lower())]
+    if not usage["secondary"]:
+        ERRORS.append({"provider": provider, "error": "header probe: no 7d utilization header"})
+        return None
+    row = {"provider": provider, "usage": usage}
+    STATE.mkdir(parents=True, exist_ok=True)
+    probe.write_text(json.dumps({"probed_at": time.time(), "row": row}))
+    return row
+
+
+def knobs(ratio, used=None):
     # Map pace ratio to how hard the agent may spend. Bands are deliberately coarse.
+    # Only actual exhaustion is a hard stop; remaining quota is spendable through reset.
+    if used is not None and used >= 100:
+        return {"band": "hard-stop-exhausted", "max_workflow_agents": 0, "effort": "low", "offload": "all"}
     if ratio is None:
         return {"band": "unknown", "max_workflow_agents": 4, "effort": "medium", "offload": "bulk"}
     if ratio >= 1.5:
@@ -61,9 +208,49 @@ def knobs(ratio):
     return {"band": "under-burn", "max_workflow_agents": 12, "effort": "high", "offload": "none-required"}
 
 
+FABLE_CFG = STATE / "fable-resets.json"  # {"claude": {"resets_left": 3, "hold": false}, ...}
+
+
+def fable_phase(row, weekly_used, hours_left):
+    """Kevin 2026-11-09: spend Fable first each week up to its 50% cap, press the Fable reset
+    (refunds only Fable usage), then Opus has the whole week. Accounts on hold (Pro until it
+    upgrades) or with no resets left stay on Opus."""
+    fable = next((w["window"].get("usedPercent") for w in row["usage"].get("extraRateWindows") or []
+                  if any(t in (w.get("title", "") + w.get("id", "")).lower() for t in ("fable", "7d_oi"))), None)
+    try:
+        cfg = json.loads(FABLE_CFG.read_text()).get(row["provider"], {})
+    except (OSError, ValueError):
+        cfg = {}
+    left = cfg.get("resets_left")
+    hold, hold_why = fable_hold(cfg, row["usage"].get("upgradePaths"))
+    if fable is None:
+        phase = "unknown"
+    elif hold or not left:
+        phase = "opus"
+    elif fable >= 47:
+        phase = "press-fable-reset"
+    elif (100 - weekly_used) < (47 - fable):
+        phase = "opus"  # not enough weekly room for Fable to reach its cap; a reset now refunds too little
+    else:
+        phase = "fable-first"
+    return {"fable_used_pct": fable, "fable_resets_left": left, "fable_hold": hold, "fable_hold_why": hold_why,
+            "fable_pro": "upgrade_plan" in str(row["usage"].get("upgradePaths")), "fable_phase": phase}
+
+
 def main():
     now = datetime.now(timezone.utc)
-    rows = fetch("claude") + fetch("codex")
+    claude = fetch("claude")
+    if not claude:
+        row = claude_from_headers(now)
+        if row:
+            # The header probe answered, so codexbar's scope failure is not an unknown budget.
+            ERRORS[:] = [e for e in ERRORS if e.get("provider") != "claude"]
+            claude = [row]
+    rows = claude + fetch("codex")
+    # Second Claude subscription: its own weekly pool, reported as its own lane (not part of the z0 posture).
+    # Extra Claude subscriptions: each its own weekly pool and lane (not part of the z0 posture).
+    extra = [r for lane, label in (("claude2", "claude-sub2"), ("claude3", "claude-ultra"))
+             if (r := claude_from_headers(now, lane, lambda l=label: _pool_token(l), STATE / f"{lane}-headers.json"))]
     STATE.mkdir(parents=True, exist_ok=True)
     FRESH.write_text(json.dumps(rows))
 
@@ -72,7 +259,7 @@ def main():
     result = evaluate(pools_from_codexbar(rows, now), now)
 
     out = {"at": now.isoformat(timespec="seconds"), "z0_factory": result.get("factory"), "lanes": {}}
-    for r in rows:
+    for r in rows + extra:
         sec = r["usage"].get("secondary") or {}
         if not sec.get("resetsAt"):
             continue
@@ -88,8 +275,36 @@ def main():
             "weekly_used_pct": used, "hours_to_reset": round(hours_left, 1),
             "sustainable_pct_per_h": round(sustainable, 3), "observed_pct_per_h": round(observed, 3),
             "pace_ratio": round(ratio, 2) if ratio else None,
-            "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio)}
+            "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio, used)}
+        out["lanes"][r["provider"]].update(fable_phase(r, used, hours_left))
     out["free_lane"] = FREE_LANE
+    # GitHub API lane: hourly per-user pool shared with the ChatGPT connector; sampled by gh-pace.timer.
+    gh = STATE / "gh-pace.json"
+    try:
+        g = json.loads(gh.read_text())
+        if now.timestamp() - gh.stat().st_mtime < 600:
+            out["lanes"]["github"] = {k: g.get(k) for k in (
+                "core", "observed_per_min", "sustainable_per_min", "pace_ratio", "exhausts_at",
+                "split", "band", "advice")}
+        else:
+            out["github_probe_error"] = "gh-pace.json stale; is gh-pace.timer running?"
+    except (OSError, ValueError):
+        out["github_probe_error"] = "no gh-pace.json; run gh-pace"
+    # Free lane: every free router backend's quota buckets, sampled from router traffic by free-pace.timer.
+    fp = STATE / "free-pace.json"
+    try:
+        f = json.loads(fp.read_text())
+        if now.timestamp() - fp.stat().st_mtime < 300:
+            t = now.timestamp()
+            out["lanes"]["free"] = {
+                "usage": f.get("usage", {}),
+                "blocked": {b: {"for_s": int(v["until"] - t), "why": v["why"][:120]}
+                            for b, v in f.get("blocked", {}).items() if v["until"] > t},
+                "excluded_from_router": f.get("excluded", [])}
+        else:
+            out["free_probe_error"] = "free-pace.json stale; is free-pace.timer running?"
+    except (OSError, ValueError):
+        out["free_probe_error"] = "no free-pace.json; run free-pace"
     if ERRORS:
         out["probe_errors"] = ERRORS
         out["status"] = "unknown"
@@ -102,6 +317,18 @@ def main():
     f = out["z0_factory"] or {}
     print(f"z0 posture: {f.get('posture')} - {f.get('action', '')}")
     for name, l in out["lanes"].items():
+        if name == "free":
+            print("free: " + ", ".join(f"{b} {' '.join(u.values())}" for b, u in l["usage"].items()) +
+                  " | blocked: " + (", ".join(f"{b} {v['for_s']}s" for b, v in l["blocked"].items()) or "none") +
+                  f" | out of router: {l['excluded_from_router'] or 'none'}")
+            continue
+        if name == "github":
+            c, sp = l["core"], l["split"]
+            print(f"github: core {c['remaining']}/{c['limit']}, resets {c['reset_local']} | burn "
+                  f"{l['observed_per_min']}/min vs sustainable {l['sustainable_per_min']}/min (ratio "
+                  f"{l['pace_ratio']}) -> {l['band']} | split ghcache {sp['ghcache']}, host gh "
+                  f"{sp['host_gh']}, external {sp['external']} | {l['advice']}")
+            continue
         print(f"{name}: {l['weekly_used_pct']}% used, {l['hours_to_reset']}h to reset | "
               f"burn {l['observed_pct_per_h']}%/h vs sustainable {l['sustainable_pct_per_h']}%/h "
               f"(ratio {l['pace_ratio']}) -> {l['band']}: workflows<={l['max_workflow_agents']} agents, "
