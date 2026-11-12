@@ -86,10 +86,16 @@ def main():
     os.execvpe(command[0], command, env)
 
 
-if __name__ == '__main__':
+def cli():
     try:
         main()
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as exc:
         # Subprocess errors can contain output/arguments. Never interpolate them.
-        print('bws-env-exec: credential setup failed (' + type(exc).__name__ + ')', file=sys.stderr)
+        # Exception: our own "missing vault secret: NAME" carries a key name only, never a value.
+        detail = str(exc) if isinstance(exc, RuntimeError) and str(exc).startswith('missing vault secret: ') else type(exc).__name__
+        print('bws-env-exec: credential setup failed (' + detail + ')', file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == '__main__':
+    cli()
