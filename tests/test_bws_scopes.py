@@ -47,6 +47,28 @@ class VaultScopes(unittest.TestCase):
                     exe.main()
                 execute.assert_not_called()
 
+    def test_missing_secret_error_names_the_source_not_the_value(self):
+        # A bare "(RuntimeError)" cost ~2 h of diagnosis on 2026-11-12 (kvnloo/.files#201).
+        exe = module('bws-env-exec')
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'map.json'
+            config.write_text(json.dumps({'scopes': {'omp': {'TYPESAFE_API_KEY': 'TYPE', 'OTHER': 'PRESENT'}}}))
+            argv = ['bws-env-exec', '--scope', 'omp', '--config', str(config), '--', 'consumer']
+            with mock.patch.object(exe, 'vault', return_value={'PRESENT': 'secret-value-xyz'}), \
+                 mock.patch('sys.argv', argv), mock.patch.object(os, 'execvpe'), \
+                 mock.patch('sys.stderr', new_callable=io.StringIO) as err:
+                with self.assertRaises(SystemExit):
+                    exe.cli()
+            self.assertIn('missing vault secret: TYPE', err.getvalue())
+            self.assertNotIn('secret-value-xyz', err.getvalue())
+
+    def test_google_api_key_is_not_mapped(self):
+        # Not in the vault and the Google account is disabled (2026-11-12); mapping it failed hermes-root,
+        # hermes-chiefstaff and codexbar closed for every caller (kvnloo/.files#201).
+        data = json.loads((ROOT / 'config/bws-consumers.json').read_text())
+        sources = {s for scope in data['scopes'].values() for s in scope.values()}
+        self.assertNotIn('GOOGLE_API_KEY', sources)
+
     def test_runtime_modes_and_escaping(self):
         exe = module('bws-env-exec')
         with tempfile.TemporaryDirectory() as directory:
