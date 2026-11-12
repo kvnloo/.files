@@ -14,6 +14,20 @@ if [[ $mode == check ]]; then
     exit 0
 fi
 
+# Reconcile the existing custom updater before enabling a second implementation.
+if [[ $mode == enable ]]; then
+    for timer in os-update.timer os-update-maintenance.timer; do
+        if ! load_state=$(systemctl show "$timer" -p LoadState --value); then
+            printf 'Refusing: cannot inspect %s; updater ownership is unknown.\n' "$timer" >&2
+            exit 1
+        fi
+        if [[ $load_state != not-found ]]; then
+            printf 'Refusing: %s is present or unknown; reconcile the custom updater first.\n' "$timer" >&2
+            exit 1
+        fi
+    done
+fi
+
 if (( EUID != 0 )); then
     printf 'Run with sudo: %s %s\n' "$0" "$mode" >&2
     exit 1

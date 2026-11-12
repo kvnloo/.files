@@ -1,6 +1,6 @@
 # Low-impact CachyOS updates
 
-Status, rechecked 2026-11-11 at 06:58 UTC: this native proposal is not enabled or acceptance-complete. A separate custom updater has active daily and maintenance timers. Do not enable a second updater. Its next maintenance deadline is November 15 at 04:00 CST, `America/Chicago`, with no workload-drain gate in the installed script. The November 8 maintenance receipt reports `upgrade-failed`, exit 1. Read [R09 activation blockers](native-updates-review.md) before any activation. Sources: execution `logs/20261111-revalidation.log:93-178,229-289`. The observations below are historical, not fresh repository or upstream checks.
+Status, rechecked 2026-11-12 at 14:01 UTC: this native proposal is not enabled or acceptance-complete. A separate custom updater has active daily and maintenance timers. Do not enable a second updater. Native setup now refuses enablement while either custom timer is installed or its absence cannot be verified. Its next maintenance deadline is November 15 at 04:00 CST, `America/Chicago`, with no workload-drain gate in the installed script. Root space remains below the native admission floor. Read [R09 activation blockers](native-updates-review.md) before any activation. Sources: execution `logs/20261112-revalidation.log:93-178,215-226,229-294`, `logs/20261112-live-admission.log`, and `scripts/setup-native-updates:17-29`. The observations below are historical, not fresh repository or upstream checks.
 
 Use the distribution's `pacman-offline-prepare.timer` and `paccache.timer`. Do not add a resident updater, cron job, LLM call, AUR build loop, or all-package-manager background updater.
 
@@ -33,7 +33,7 @@ No automatic clock time or idle-detection service is installed: release cadence 
 
 ## Enable
 
-Do not enable this proposal until Kevin approves a maintenance window, workload drain/defer handling, and privileged execution. Verify backup restoration and the recovery boot path first. The setup script does not enforce those approvals or test recovery.
+Do not enable this proposal until Kevin approves a maintenance window, workload drain/defer handling, and privileged execution. Verify backup restoration and the recovery boot path first. The setup script does not enforce those approvals or test recovery. It refuses if `os-update.timer` or `os-update-maintenance.timer` is installed, even when disabled, or if systemd cannot confirm absence. The host-setup owner must reconcile the existing implementation first. This guard prevents duplicate setup; it does not make either updater's transactions safe.
 
 The setup command refuses below 15 GiB available; this is a conservative admission floor, not a guarantee that any particular upgrade fits. Review root and cache space, pacman's proposed size, and Arch/CachyOS news before the initial full upgrade. These commands are for the approved drained window, not a background setup step:
 

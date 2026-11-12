@@ -2,7 +2,19 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-11 at 06:58 UTC
+## Latest observation, 2026-11-12 at 14:01 UTC
+
+Both custom timers remain enabled and active. Maintenance is still due November 15 at 04:00 CST, `America/Chicago`, and the installed unit still labels that time a placeholder. The next daily deadline is November 13 at 03:39:41 CST. No window approval was established. Source: execution `logs/20261112-revalidation.log:93-178,200-202`.
+
+The November 11 daily receipt reports `checkupdates-failed`, exit 1. November 12 reports `staged-for-maintenance`, exit 0, with 417 output lines; the staged file has 421 lines. These are output-line counts, not unique-package counts or proof of an installation. The installed updater hash is unchanged at `2c6646cee8eb36e3a23b62ae13a8fa54a73734f9cb117dd266f98f28e401934e`. It still classifies separate check output before a different live transaction and has no workload-drain gate. Sources: execution `logs/20261112-revalidation.log:225-294`.
+
+Root and package cache share XFS root, with 10,738,812 KiB available, below the proposal's 15 GiB floor. The native updater, Snapper, and Timeshift remain absent. Current systemd peak-memory and CPU counters are unset for both custom services. Earlier measurements below are historical staging measurements, not current installation-impact evidence. Sources: execution `logs/20261112-revalidation.log:180-223`.
+
+Native setup now rejects `enable` before privilege checks or mutations unless systemd reports both custom timers as `not-found`. Installed disabled timers, unknown states, and discovery failures also refuse. The actual host CLI refused with exit 1 while both custom timers remained active. This prevents duplicate setup, not unsafe transactions in the active custom updater. Sources: `scripts/setup-native-updates:17-29`; execution `logs/20261112-live-admission.log`.
+
+Four subprocess admission tests cover both conflicting timers, unknown/masked/error states, discovery failure, and the absent-timer path. They use temporary command stubs and never operate real packages or services. Fleet logs record failing-before and passing-after evidence from the MBP. This is admission coverage only; successful installation, reboot, restoration, and foreground impact remain unverified. Sources: `tests/test_native_updates.py`; execution `logs/20261112-guard-red.log`, `logs/20261112-guard-green.log`.
+
+## Earlier observation, 2026-11-11 at 06:58 UTC
 
 Both custom timers remain enabled and active. Maintenance next runs November 15 at 04:00 CST, `America/Chicago`. The daily timer next runs today at 03:58:52 CST. The maintenance unit still calls its schedule a placeholder requiring Kevin's choice. No approval was established from the allowed evidence. Sources: execution `logs/20261111-revalidation.log:93-178,200-202`.
 
@@ -65,7 +77,7 @@ The native proposal uses packaged offline preparation, not a new resident update
 | Safe non-reboot updates | Policy defers the complete Arch OS transaction. | No continuously installed safe subset is implemented or proven. |
 | Reboot class only at scheduled maintenance | Proposal disables the automatic reboot timer. | Preparation can arm the next user reboot, not specifically an approved window. There is no workload drain gate. |
 | Rollback | Disable calls the native abort command; cache cleanup retains packaged defaults. | No tested OS rollback, restored backup, or recovery boot. |
-| Resource impact | Latest retained staging counters show about 177 MiB peak RAM and 7.48 CPU-seconds, from `logs/20261111-revalidation.log:180-198,289`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
+| Resource impact | November 11 retained staging counters showed about 177 MiB peak RAM and 7.48 CPU-seconds. November 12 counters are unset. Sources: `logs/20261111-revalidation.log:180-198,289`, `logs/20261112-revalidation.log:180-198`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
 
 Sources: `docs/native-updates.md:5-12,28-32,45-60`, `scripts/setup-native-updates:22-28,48-56`, and execution `logs/native-readonly-rerun.log`. `check` exits zero despite missing dependencies because lines 9-11 suppress individual failures. Its success is diagnostic completion, not readiness.
 
