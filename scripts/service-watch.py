@@ -537,6 +537,14 @@ class Watch:
             fingerprint = hashlib.sha256(json.dumps([scope, unit, identity],
                                         sort_keys=True).encode()).hexdigest()
         now = time.time()
+        if identity is None and not force:
+            # Duplicate fast path: a WAL read is never blocked by a writer, so a
+            # crash-looping unit's per-restart hooks never queue on the write lock.
+            with self.store.lock:
+                previous = self.store.db.execute('SELECT id FROM incidents WHERE fingerprint=? AND ts>?',
+                                                 (fingerprint, now - 3600)).fetchone()
+            if previous:
+                return previous[0]
         with self.store.lock:
             self.store.db.execute('BEGIN IMMEDIATE')
             if identity is None:

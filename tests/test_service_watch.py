@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -601,6 +602,22 @@ class Contracts(unittest.TestCase):
         digest = self.watch.store.digest().read_text()
         self.assertIn('fixture.service', digest)
         self.assertIn('severe', digest)
+
+    def test_duplicate_failure_hook_needs_no_write_lock(self):
+        # Crash-looping units fire one OnFailure hook per restart (12k/day on groot).
+        # Duplicates must be answered from a WAL read, so a long writer cannot make
+        # them fail with 'database is locked' and they cannot contend with the daemon.
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')):
+            first = self.watch.record('user', 'loop.service', [sw.event('failed')])
+        holder = sqlite3.connect(self.root / 'state/state.sqlite', isolation_level=None)
+        holder.execute('BEGIN IMMEDIATE')
+        try:
+            hook = sw.Watch(self.root / 'state', self.root / 'inventory.json')
+            hook.store.db.execute('PRAGMA busy_timeout=50')
+            self.assertEqual(hook.record('user', 'loop.service', [sw.event('failed')]), first)
+        finally:
+            holder.execute('ROLLBACK'); holder.close()
+        self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
 
     def test_unattributed_legacy_notifications_share_conservative_routine_budget(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
