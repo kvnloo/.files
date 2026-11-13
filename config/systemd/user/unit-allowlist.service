@@ -1,0 +1,8 @@
+[Unit]
+Description=Report (or stop) user units not on groot's owner-approved allowlist
+
+[Service]
+Type=oneshot
+# Report-only until the owner approves config/host/groot-units.allow; then add --enforce.
+ExecStart=/mnt/zer0models/workspace/zer0/.files/scripts/unit-allowlist --output %h/.local/state/unit-allowlist/latest.json
+SuccessExitStatus=1
