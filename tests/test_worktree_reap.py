@@ -54,7 +54,8 @@ class Reap(unittest.TestCase):
 
     def run_reap(self, *extra):
         env = dict(os.environ, HOME=str(self.tmp),   # no T3 worktrees under the fake home
-                   WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"))
+                   WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"),
+                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"))
         return subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out), *extra],
                               capture_output=True, text=True, env=env)
 
@@ -216,6 +217,28 @@ class Reap(unittest.TestCase):
         self.run_reap()
         self.assertTrue((wt / "x.txt").exists())
         self.assertEqual(self.snapshots(), [])
+
+    def test_scanned_worktree_outside_network_model_is_reaped(self):
+        # agent worktrees (hermes-wt, z0-wt, ...) that no task record or T3 dir names must still be reaped
+        (self.tmp / "scan").mkdir()
+        wt = self.tmp / "scan/agent-wt"
+        stamp = f"@{int(time.time() - 5 * 86400)} +0000"
+        g(self.repo, "worktree", "add", "-q", "-b", "agent-wt", str(wt))
+        subprocess.run(["git", "-C", str(wt), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "--allow-empty", "-m", "agent"], check=True,
+                       env=dict(os.environ, GIT_AUTHOR_DATE=stamp, GIT_COMMITTER_DATE=stamp))
+        (wt / "notes.md").write_text("left behind")
+        self.age(wt)
+        fresh = self.tmp / "scan/fresh-wt"
+        g(self.repo, "worktree", "add", "-q", "-b", "fresh-wt", str(fresh))
+        r = self.run_reap("--apply")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(wt.exists())
+        self.assertTrue(fresh.exists())                                  # active today: kept
+        self.assertTrue(self.repo.exists())                              # main checkout never touched
+        ref = [x for x in self.snapshots() if "agent-wt" in x]
+        self.assertEqual(g(self.repo, "show", f"{ref[0]}:notes.md"), "left behind")
+        self.assertTrue(self.wts["done-dirty"].exists())                 # network rows still decide as before
 
     def test_in_use_idle_worktree_is_kept(self):
         wt = self.add_idle("idle-in-use", lambda wt: None)

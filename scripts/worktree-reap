@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """worktree-reap: daily, proof-gated removal of finished git worktrees and branches (Kevin's
-23:25 rule; ayo RP16). Sources: the network model's branch proofs (work/branches.json) plus a
-live scan of T3 Code worktrees (~/.t3/worktrees/<repo>/<name>).
+23:25 rule; ayo RP16). Sources: the network model's branch proofs (work/branches.json), a
+live scan of T3 Code worktrees (~/.t3/worktrees/<repo>/<name>), and every linked worktree of any
+repo with one under SCAN_ROOTS (agent worktree dirs; $WORKTREE_REAP_ROOTS overrides).
 
 Deletes only:
   tier 1  a branch with a merged-elsewhere proof (ancestor/tree/patch/pr) that no worktree has
@@ -23,6 +24,11 @@ from pathlib import Path
 NETWORK = Path("/mnt/zer0models/workspace/zer0/data/operations/network-model/work/branches.json")
 RUNS = Path("/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/runs")
 T3 = Path.home() / ".t3/worktrees"
+# Agent worktree roots no task record names (hermes-wt army, z0-wt, ...): found by scan, tier 3 only.
+SCAN_ROOTS = [Path(p) for p in os.environ.get("WORKTREE_REAP_ROOTS", ":".join([
+    "/mnt/zer0models/z0-wt", "/mnt/zer0models/hermes-wt", "/mnt/zer0models/worktrees",
+    "/mnt/zer0models/workspaces", "/workspace/worktrees", "/workspace/.worktrees",
+    str(Path.home() / ".dotfiles-worktrees")])).split(":") if p]
 MERGED = ("ancestor:", "tree:", "patch:", "pr:")
 IDLE_DAYS = 3.0
 BIG = 50 << 20
@@ -68,6 +74,32 @@ def t3_rows(root=T3):
         common = git(wt, "rev-parse", "--git-common-dir").stdout.strip()
         rows.append({"repo": wt.parent.name, "commondir": os.path.realpath(os.path.join(wt, common)), "branch": br,
                      "head": head[:12], "finished": proof, "worktree": str(wt), "task": None, "source": "t3"})
+    return rows
+
+
+def scan_rows(roots=None):
+    """Every linked worktree of every repo that has one under a scan root. No proof: tier 3 decides."""
+    commons = set()
+    for root in roots if roots is not None else SCAN_ROOTS:
+        if not root.is_dir():
+            continue
+        out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
+                              ")", "-prune", "-o", "-name", ".git", "-type", "f", "-print"],
+                             capture_output=True, text=True, timeout=600).stdout.split("\n")
+        for dotgit in filter(None, out):
+            common = git(Path(dotgit).parent, "rev-parse", "--path-format=absolute", "--git-common-dir", timeout=30)
+            if common.returncode == 0:
+                commons.add(os.path.realpath(common.stdout.strip()))
+    rows = []
+    for cd in sorted(commons):
+        blocks = git(cd, "worktree", "list", "--porcelain").stdout.split("\n\n")
+        for b in blocks[1:]:                       # first block is the main checkout
+            kv = dict((l.split(" ", 1) + [""])[:2] for l in b.splitlines() if l)
+            if "worktree" not in kv or "bare" in kv or "prunable" in kv:
+                continue
+            rows.append({"repo": Path(cd).parent.name, "commondir": cd,
+                         "branch": kv.get("branch", "").removeprefix("refs/heads/"), "head": kv.get("HEAD", "")[:12],
+                         "finished": [], "worktree": kv["worktree"], "task": None, "source": "scan"})
     return rows
 
 
@@ -239,7 +271,7 @@ def main():
     if time.time() - float(net.get("generated_at", 0)) > a.max_age_h * 3600:
         raise SystemExit(f"network proofs older than {a.max_age_h} h; refusing")
     rows, seen = [], set()
-    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows():
+    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows() + scan_rows():
         key = os.path.realpath(r["worktree"]) if r.get("worktree") else (r["commondir"], r["branch"])
         if key not in seen:
             seen.add(key)
