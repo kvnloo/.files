@@ -583,6 +583,102 @@ class Contracts(unittest.TestCase):
         self.watch.policy_invariants(home, now)
         self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 0)
 
+    def test_reliability_over_30_minutes_is_strict_and_unknowns_are_visible(self):
+        now_us = 4_000_000_000
+        props = {
+            'aged.mount': {'ActiveState': 'failed', 'Result': 'exit-code',
+                           'StateChangeTimestampMonotonic': str(now_us - 1801 * 1_000_000)},
+            'boundary.service': {'ActiveState': 'failed', 'Result': 'timeout',
+                                 'StateChangeTimestampMonotonic': str(now_us - 1800 * 1_000_000)},
+            'recent.timer': {'ActiveState': 'failed', 'Result': 'exit-code',
+                             'StateChangeTimestampMonotonic': str(now_us - 300 * 1_000_000)},
+            'unknown.socket': {'ActiveState': 'failed', 'Result': 'exit-code',
+                               'StateChangeTimestampMonotonic': '0'},
+            'changed.path': {'ActiveState': 'active', 'Result': 'success',
+                             'StateChangeTimestampMonotonic': str(now_us - 1900 * 1_000_000)},
+        }
+        path = self.watch.store.reliability(props, props, monotonic_usec=now_us)
+        report = path.read_text()
+        overdue = report.split('## Failed more than 30 minutes\n', 1)[1].split('\n## ', 1)[0]
+        recent = report.split('## Other currently failed units (30 minutes or less)\n', 1)[1].split('\n## ', 1)[0]
+        unknown = report.split('## Failed units with unverified age\n', 1)[1]
+        self.assertIn('aged.mount', overdue)
+        self.assertIn('failed for 1801s', overdue)
+        self.assertIn('systemd result ' + chr(96) + 'exit-code' + chr(96), overdue)
+        self.assertNotIn('boundary.service', overdue)
+        self.assertIn('boundary.service', recent)
+        self.assertIn('recent.timer', recent)
+        self.assertIn('unknown.socket', unknown)
+        self.assertIn('changed.path', unknown)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_reliability_recovered_unit_disappears_and_unreadable_is_not_clean(self):
+        now_us = 4_000_000_000
+        path = self.watch.store.reliability(
+            ['stale.service'],
+            {'stale.service': {'ActiveState': 'failed', 'Result': 'exit-code',
+                               'StateChangeTimestampMonotonic': str(now_us - 2000 * 1_000_000)}},
+            monotonic_usec=now_us)
+        self.assertIn('stale.service', path.read_text())
+        self.watch.store.reliability([], {}, monotonic_usec=now_us)
+        self.assertNotIn('stale.service', path.read_text())
+        self.assertIn('No failed user units returned in this snapshot.', path.read_text())
+        self.watch.store.reliability(coverage='inventory_unavailable')
+        unavailable = path.read_text()
+        self.assertIn('UNVERIFIED', unavailable)
+        self.assertNotIn('No failed user units returned', unavailable)
+
+    def test_user_failed_inventory_includes_non_service_units(self):
+        now_us = 4_000_000_000
+        listing = subprocess.CompletedProcess(
+            [], 0, json.dumps([{'unit': 'aged.mount', 'active': 'failed'},
+                               {'unit': 'recent.path', 'active': 'failed'}]), '')
+        state = {
+            'aged.mount': {'ActiveState': 'failed', 'Result': 'exit-code',
+                           'StateChangeTimestampMonotonic': str(now_us - 1900 * 1_000_000)},
+            'recent.path': {'ActiveState': 'failed', 'Result': 'timeout',
+                            'StateChangeTimestampMonotonic': str(now_us - 100 * 1_000_000)},
+        }
+        with patch.object(sw, 'systemctl', return_value=listing) as query, \
+             patch.object(sw, 'properties', return_value=state) as show, \
+             patch.object(sw.time, 'monotonic', return_value=now_us / 1_000_000):
+            self.watch.update_reliability()
+        query.assert_called_once_with('user', 'list-units', '--all', '--state=failed', '--output=json')
+        show.assert_called_once_with('user', ['aged.mount', 'recent.path'])
+        report = (self.watch.store.root / 'reliability.md').read_text()
+        self.assertIn('aged.mount', report.split('## Failed more than 30 minutes\n')[1].split('\n## ')[0])
+        self.assertIn('recent.path', report.split('## Other currently failed units')[1].split('\n## ')[0])
+
+    def test_user_failed_inventory_read_failures_keep_coverage_unknown(self):
+        denied = subprocess.CompletedProcess([], 1, '', 'manager unavailable')
+        with patch.object(sw, 'systemctl', return_value=denied):
+            self.watch.update_reliability()
+        report = (self.watch.store.root / 'reliability.md').read_text()
+        self.assertIn('inventory_unavailable', report)
+        self.assertIn('UNVERIFIED', report)
+        self.assertNotIn('No failed user units returned', report)
+        listed = subprocess.CompletedProcess([], 0, '[{"unit":"failed.service","active":"failed"}]', '')
+        with patch.object(sw, 'systemctl', return_value=listed), \
+             patch.object(sw, 'properties', side_effect=RuntimeError('systemd_read_failed')):
+            self.watch.update_reliability()
+        report = (self.watch.store.root / 'reliability.md').read_text()
+        self.assertIn('properties_unavailable', report)
+        self.assertIn('failed.service', report)
+        self.assertIn('age unavailable', report)
+        self.assertNotIn('No failed user units returned', report)
+
+    def test_reliability_update_is_part_of_scheduled_scan(self):
+        self.watch.last_scan = 0
+        with patch.object(self.watch, 'discover'), \
+             patch.object(self.watch, 'update_reliability') as update, \
+             patch.object(self.watch, 'policy_invariants'), \
+             patch.object(self.watch, 'journals'), \
+             patch.object(self.watch, 'loop_invariants'), \
+             patch.object(self.watch, 'checkout_invariants'), \
+             patch.object(self.watch, 'phone_caps_invariant'):
+            self.watch.scan()
+        update.assert_called_once_with()
+
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []
         def fake(argv, timeout=15):

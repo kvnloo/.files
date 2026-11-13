@@ -95,6 +95,12 @@ def unit_ok(unit):
     return isinstance(unit, str) and bool(re.fullmatch(r'[A-Za-z0-9_.:@\\-]+\.(service|timer|socket|scope)', unit))
 
 
+def failed_unit_name_ok(unit):
+    """Accept any systemd unit type without passing option-shaped names to show."""
+    return (isinstance(unit, str) and 0 < len(unit) <= 255 and not unit.startswith('-')
+            and bool(re.fullmatch(r'[A-Za-z0-9_.:@\\-]+\.[A-Za-z0-9-]+', unit)))
+
+
 def systemctl(scope, *args):
     return command(['systemctl'] + (['--user'] if scope == 'user' else ['--system']) + list(args))
 
@@ -102,7 +108,7 @@ def systemctl(scope, *args):
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,StateChangeTimestampMonotonic')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -274,6 +280,68 @@ class Store:
     def append(self, name, row):
         with self.lock, (self.root / name).open('a') as stream:
             stream.write(json.dumps(row, sort_keys=True, allow_nan=False) + '\n')
+
+    def reliability(self, failed_units=(), props=None, coverage='readable', monotonic_usec=None):
+        """Atomic, report-only user failure snapshot; never equate missing evidence with health."""
+        if coverage not in ('readable', 'properties_unavailable', 'inventory_unavailable'):
+            raise ValueError('invalid_failure_coverage')
+        if monotonic_usec is None:
+            monotonic_usec = int(time.monotonic() * 1_000_000)
+        props = props or {}
+        overdue, recent, unknown = [], [], []
+        for unit in sorted(set(failed_units)):
+            prop = props.get(unit, {})
+            result = prop.get('Result')
+            if not isinstance(result, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}', result):
+                result = 'unavailable'
+            entry = f'- `{unit}`; systemd result `{result}`'
+            try:
+                changed_usec = int(prop.get('StateChangeTimestampMonotonic', ''))
+            except (TypeError, ValueError):
+                changed_usec = 0
+            if coverage != 'readable':
+                unknown.append(entry + '; age unavailable (properties read failed)')
+            elif prop.get('ActiveState') != 'failed':
+                unknown.append(entry + '; state changed or missing during property read')
+            elif not 0 < changed_usec <= monotonic_usec:
+                unknown.append(entry + '; monotonic state-change timestamp unavailable')
+            else:
+                age_seconds = (monotonic_usec - changed_usec) / 1_000_000
+                entry += f'; failed for {int(age_seconds)}s'
+                (overdue if age_seconds > 1800 else recent).append(entry)
+
+        observed = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        lines = [
+            '# User-unit reliability', '',
+            f'- Observed (UTC): `{observed}`',
+            '- Source: `systemctl --user list-units --all --state=failed --output=json`',
+            '- Age: systemd monotonic state-change timestamp; threshold strictly >1800 seconds.',
+            '- Report-only: no service restart, reset, or state change.',
+            f'- Coverage: `{coverage}`', '',
+        ]
+        if coverage != 'readable':
+            lines += ['**UNVERIFIED**: systemd data unavailable; this is not a clean bill of health.', '']
+        elif not failed_units:
+            lines += ['No failed user units returned in this snapshot.', '']
+        for title, entries in (
+            ('Failed more than 30 minutes', overdue),
+            ('Other currently failed units (30 minutes or less)', recent),
+            ('Failed units with unverified age', unknown),
+        ):
+            lines.extend(['## ' + title, ''])
+            lines.extend(entries or ['No verified entries.'])
+            lines.append('')
+
+        with self.lock:
+            path = self.root / 'reliability.md'
+            temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.new')
+            try:
+                temporary.write_text('\n'.join(lines))
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return path
 
     def digest(self):
         day = datetime.datetime.now().astimezone().date().isoformat()
@@ -565,11 +633,38 @@ class Watch:
             pass  # Persistent pending table is drained by the worker after memory backlog.
         return ident
 
+    def update_reliability(self):
+        """Independently enumerate every failed user unit, including non-service types."""
+        try:
+            listed = systemctl('user', 'list-units', '--all', '--state=failed', '--output=json')
+            if listed.returncode:
+                raise RuntimeError('failed_unit_inventory_unavailable')
+            rows = json.loads(listed.stdout)
+            if not isinstance(rows, list):
+                raise ValueError('invalid_failed_unit_list')
+            units = []
+            for row in rows:
+                if not isinstance(row, dict) or not failed_unit_name_ok(row.get('unit')) or row.get('active') != 'failed':
+                    raise ValueError('invalid_or_inconsistent_failed_unit')
+                units.append(row['unit'])
+            units = sorted(set(units))
+        except (OSError, RuntimeError, ValueError, TypeError, subprocess.SubprocessError):
+            self.store.reliability(coverage='inventory_unavailable')
+            return
+
+        try:
+            props = properties('user', units)
+        except (OSError, RuntimeError, ValueError, TypeError, subprocess.SubprocessError):
+            self.store.reliability(units, coverage='properties_unavailable')
+            return
+        self.store.reliability(units, props)
+
     def scan(self):
         check_stop()
         now = time.time()
         if now - self.last_scan > 60:
             self.discover()
+            self.update_reliability()
             self.policy_invariants()
             self.last_scan = now
         for scope in ('user', 'system'):
