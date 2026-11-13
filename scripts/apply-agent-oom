@@ -8,12 +8,14 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import host_layout  # noqa: E402
+
 GIB = 1024 ** 3
-GROOT_HOME = Path('/home/kvn')
-BULK_RELEASES = Path('/mnt/zer0models/releases/files-live')
 # Stale `systemctl set-property` overrides for properties the tracked drop-ins own.
 # Left behind, they silently replace tracked values (2026-10-24: MemorySwapMax=2G
 # and ManagedOOMMemoryPressure=kill survived in user.control after the fix).
@@ -64,11 +66,10 @@ def stamp_release(source: Path, home: Path, files=None) -> Path:
     root = home / '.local/lib/files-live'
     root.mkdir(parents=True, exist_ok=True)
     alias = root / digest.hexdigest()
-    bulk = BULK_RELEASES
+    bulk = host_layout.physical_releases(source, 'files-live', home)
     # Existing root-backed stamps remain untouched until release retention.
-    if home == GROOT_HOME and not alias.exists():
-        if not os.path.ismount('/mnt/zer0models'):
-            raise ValueError('bulk release storage is not mounted')
+    if bulk and not alias.exists():
+        host_layout.require_release_mount(source, home, fresh=True)
         bulk.mkdir(parents=True, exist_ok=True)
         root = bulk
     release = root / digest.hexdigest()
@@ -98,6 +99,8 @@ def install(source: Path, home: Path, apply: bool) -> int:
     for rel in (*LINKS, *CLOSURE):
         if not (source / rel).is_file():
             raise ValueError(f'missing tracked source: {rel}')
+    for rel, dest in LINKS.items():
+        host_layout.admit_live(home / dest, host_layout.Live.ABSENT)
     result = subprocess.run(['systemctl', '--user', 'show', 'agent.slice',
                              '-p', 'MemoryCurrent', '-p', 'MemorySwapCurrent'],
                             text=True, capture_output=True, check=False)
@@ -182,14 +185,15 @@ def user_path(value: str, home: Path) -> Path:
     return home / relative
 
 
-def intact_installed_release(live: Path, home: Path, relative: Path, verified: dict) -> bool:
+def intact_installed_release(live: Path, home: Path, relative: Path, verified: dict,
+                             bulk: Path | None = None) -> bool:
     """Allow upgrades from verified prior stamps, never arbitrary operator edits."""
     if not live.is_symlink():
         return False
     target = live.resolve()
     libraries = [home / '.local/lib/files-live']
-    if home == GROOT_HOME:
-        libraries.append(BULK_RELEASES)
+    if bulk:
+        libraries.append(bulk)
     for library in libraries:
         try:
             parts = target.relative_to(library).parts
@@ -226,7 +230,8 @@ def intact_installed_release(live: Path, home: Path, relative: Path, verified: d
 def install_user_layer(source: Path, home: Path, apply: bool) -> int:
     """Migrate only manifest-owned paths; no service starts/stops or enable changes."""
     source = source.resolve(strict=True)
-    manifest = tomllib.loads((source / 'config/host/groot.toml').read_text())
+    manifest = tomllib.loads((source / host_layout.resolve(source, home=home).manifest).read_text())
+    bulk = host_layout.physical_releases(source, 'files-live', home)
     entries = [row for row in manifest.get('user', [])
                if row['owner'] == 'scripts/apply-agent-oom']
     links = {}
@@ -241,15 +246,20 @@ def install_user_layer(source: Path, home: Path, apply: bool) -> int:
         live = user_path(row['live'], home)
         if live in links:
             raise ValueError(f'duplicate live path: {live}')
+        kind = host_layout.Live.ABSENT
         if live.exists() or live.is_symlink():
             if live.is_dir():
                 raise ValueError(f'refusing directory replacement: {live}')
-            data = live.read_bytes()
-            observed = hashlib.sha256(data).hexdigest()
-            expected = row.get('migration_sha256')
-            if (data != original.read_bytes() and observed != expected and
-                    not intact_installed_release(live, home, relative, verified)):
-                raise ValueError(f'live file changed since inventory; preserve and investigate: {live}')
+            data = live.read_bytes() if live.exists() else None
+            if data == original.read_bytes():
+                kind = host_layout.Live.SAME_BYTES
+            elif data is not None and hashlib.sha256(data).hexdigest() == row.get('migration_sha256'):
+                kind = host_layout.Live.INVENTORIED
+            elif intact_installed_release(live, home, relative, verified, bulk):
+                kind = host_layout.Live.VERIFIED_STAMP
+            else:
+                kind = host_layout.Live.CHANGED
+        host_layout.admit_live(live, kind)
         links[live] = row
     cleanup = []
     for row in manifest.get('user_control_cleanup', []):
