@@ -1,0 +1,22 @@
+[Unit]
+Description=z0 network meta-optimizer (one observe-only cycle; placement policy)
+Documentation=https://github.com/kvnloo/.files/tree/main/network/optimizer
+# Do not pile onto a kill storm: if the agent-oom guard is actively killing,
+# this still only samples+logs (the loop enacts nothing), so no ordering needed.
+
+[Service]
+Type=oneshot
+# Thin policy/detector: first OOM victim, lowest priority, tightly bounded.
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=1
+MemoryMax=256M
+OOMScoreAdjust=900
+# Observe-only by default (WP1-A). Flip NETOPT_DRYRUN=0 only after WP1-B checks.
+Environment=NETOPT_DRYRUN=1
+Environment=NETOPT_SELF_HOST=groot
+Environment=NETOPT_PEER_HOST=mbp
+Environment=NETOPT_BASE=%h/tmp/network
+WorkingDirectory=%h/.local/share/network-optimizer
+ExecStart=/usr/bin/python3 %h/.local/share/network-optimizer/optimize.py
+# Never a bare reboot / no competing killer (D4): this unit only reads + logs.
