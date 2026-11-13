@@ -52,6 +52,93 @@ def fetch(provider):
     return [r for r in rows if "usage" in r]
 
 
+CLAUDE_PROBE = STATE / "claude-headers.json"
+CLAUDE_PROBE_TTL_S = 600
+
+
+def _claude_token():
+    """The long-lived Claude OAuth token Hermes already runs on (inference scope only).
+    Order: explicit env, the clean profile's .env (what the live gateway uses), the BWS runtime scope."""
+    import os, re
+    for name in ("CODEXBAR_CLAUDE_OAUTH_TOKEN", "ANTHROPIC_TOKEN"):
+        if os.environ.get(name, "").startswith("sk-ant-oat"):
+            return os.environ[name]
+    for p in (Path.home() / ".hermes/profiles/clean/.env",
+              Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "bws-secrets/hermes-clean.env"):
+        try:
+            for line in p.read_text().splitlines():
+                m = re.match(r"^ANTHROPIC_TOKEN=(.+)$", line.strip())
+                if m and m.group(1).strip("\"'").startswith("sk-ant-oat"):
+                    return m.group(1).strip("\"'")
+        except OSError:
+            continue
+    return None
+
+
+def _pool_token(label):
+    """An extra Claude subscription row in the Hermes root credential pool, by label
+    (Hermes owns and refreshes it; this only reads the current access token)."""
+    try:
+        rows = json.loads((Path.home() / ".hermes/auth.json").read_text())["credential_pool"]["anthropic"]
+    except (OSError, ValueError, KeyError):
+        return None
+    t = next((r.get("access_token") or "" for r in rows if r.get("label") == label), "")
+    return t if t.startswith("sk-ant-oat") else None
+
+
+def claude_from_headers(now, provider="claude", token_fn=None, probe=None):
+    """codexbar's OAuth source needs scope user:profile; setup-token tokens only carry user:inference.
+    Every inference response carries the subscription's unified rate-limit headers, so one 1-token
+    Haiku call (cached 10 min) gives the same weekly/5h utilization codexbar would."""
+    import time, urllib.request, urllib.error
+    probe = probe or CLAUDE_PROBE
+    try:
+        cached = json.loads(probe.read_text())
+        if time.time() - cached.get("probed_at", 0) < CLAUDE_PROBE_TTL_S:
+            return cached["row"]
+    except (OSError, ValueError, KeyError):
+        pass
+    token = (token_fn or _claude_token)()
+    if not token:
+        ERRORS.append({"provider": provider, "error": "header probe: no sk-ant-oat token found"})
+        return None
+    body = json.dumps({"model": "claude-haiku-4-5", "max_tokens": 1,
+                       "system": "You are Claude Code, Anthropic's official CLI for Claude.",
+                       "messages": [{"role": "user", "content": "."}]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, method="POST", headers={
+        "Authorization": f"Bearer {token}", "anthropic-version": "2023-06-01",
+        "anthropic-beta": "oauth-2025-04-20", "content-type": "application/json", "user-agent": "burn-pace/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            h = resp.headers
+    except urllib.error.HTTPError as e:
+        h = e.headers  # 429 still carries the utilization headers
+        if not h or not h.get("anthropic-ratelimit-unified-status"):
+            ERRORS.append({"provider": provider, "error": f"header probe HTTP {e.code}"})
+            return None
+    except (urllib.error.URLError, TimeoutError) as e:
+        ERRORS.append({"provider": provider, "error": f"header probe: {e}"})
+        return None
+
+    def window(tag, minutes):
+        util, reset = h.get(f"anthropic-ratelimit-unified-{tag}-utilization"), h.get(f"anthropic-ratelimit-unified-{tag}-reset")
+        if util is None or reset is None:
+            return None
+        return {"usedPercent": round(float(util) * 100, 1), "windowMinutes": minutes,
+                "resetsAt": datetime.fromtimestamp(int(reset), timezone.utc).isoformat().replace("+00:00", "Z")}
+
+    usage = {"primary": window("5h", 300), "secondary": window("7d", 10080),
+             "updatedAt": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+             "source": "inference-headers", "status": h.get("anthropic-ratelimit-unified-status")}
+    if not usage["secondary"]:
+        ERRORS.append({"provider": provider, "error": "header probe: no 7d utilization header"})
+        return None
+    row = {"provider": provider, "usage": usage}
+    STATE.mkdir(parents=True, exist_ok=True)
+    probe.write_text(json.dumps({"probed_at": time.time(), "row": row}))
+    return row
+
+
 def knobs(ratio):
     # Map pace ratio to how hard the agent may spend. Bands are deliberately coarse.
     if ratio is None:
@@ -249,7 +336,18 @@ def admission_cli(args):
 
 def main():
     now = datetime.now(timezone.utc)
-    rows = fetch("claude") + fetch("codex")
+    claude = fetch("claude")
+    if not claude:
+        row = claude_from_headers(now)
+        if row:
+            # The header probe answered, so codexbar's scope failure is not an unknown budget.
+            ERRORS[:] = [e for e in ERRORS if e.get("provider") != "claude"]
+            claude = [row]
+    rows = claude + fetch("codex")
+    # Second Claude subscription: its own weekly pool, reported as its own lane (not part of the z0 posture).
+    # Extra Claude subscriptions: each its own weekly pool and lane (not part of the z0 posture).
+    extra = [r for lane, label in (("claude2", "claude-sub2"), ("claude3", "claude-ultra"))
+             if (r := claude_from_headers(now, lane, lambda l=label: _pool_token(l), STATE / f"{lane}-headers.json"))]
     STATE.mkdir(parents=True, exist_ok=True)
     FRESH.write_text(json.dumps(rows))
 
@@ -258,7 +356,7 @@ def main():
     result = evaluate(pools_from_codexbar(rows, now), now)
 
     out = {"at": now.isoformat(timespec="seconds"), "z0_factory": result.get("factory"), "lanes": {}}
-    for r in rows:
+    for r in rows + extra:
         sec = r["usage"].get("secondary") or {}
         if not sec.get("resetsAt"):
             continue
@@ -276,6 +374,18 @@ def main():
             "pace_ratio": round(ratio, 2) if ratio else None,
             "pct_budget_next_hour": round(sustainable, 2), **knobs(ratio)}
     out["free_lane"] = FREE_LANE
+    # GitHub API lane: hourly per-user pool shared with the ChatGPT connector; sampled by gh-pace.timer.
+    gh = STATE / "gh-pace.json"
+    try:
+        g = json.loads(gh.read_text())
+        if now.timestamp() - gh.stat().st_mtime < 600:
+            out["lanes"]["github"] = {k: g.get(k) for k in (
+                "core", "observed_per_min", "sustainable_per_min", "pace_ratio", "exhausts_at",
+                "split", "band", "advice")}
+        else:
+            out["github_probe_error"] = "gh-pace.json stale; is gh-pace.timer running?"
+    except (OSError, ValueError):
+        out["github_probe_error"] = "no gh-pace.json; run gh-pace"
     if ERRORS:
         out["probe_errors"] = ERRORS
         out["status"] = "unknown"
@@ -288,6 +398,13 @@ def main():
     f = out["z0_factory"] or {}
     print(f"z0 posture: {f.get('posture')} - {f.get('action', '')}")
     for name, l in out["lanes"].items():
+        if name == "github":
+            c, sp = l["core"], l["split"]
+            print(f"github: core {c['remaining']}/{c['limit']}, resets {c['reset_local']} | burn "
+                  f"{l['observed_per_min']}/min vs sustainable {l['sustainable_per_min']}/min (ratio "
+                  f"{l['pace_ratio']}) -> {l['band']} | split ghcache {sp['ghcache']}, host gh "
+                  f"{sp['host_gh']}, external {sp['external']} | {l['advice']}")
+            continue
         print(f"{name}: {l['weekly_used_pct']}% used, {l['hours_to_reset']}h to reset | "
               f"burn {l['observed_pct_per_h']}%/h vs sustainable {l['sustainable_pct_per_h']}%/h "
               f"(ratio {l['pace_ratio']}) -> {l['band']}: workflows<={l['max_workflow_agents']} agents, "
