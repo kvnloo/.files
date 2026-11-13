@@ -28,6 +28,9 @@ T3 = Path.home() / ".t3/worktrees"
 SCAN_ROOTS = [Path(p) for p in os.environ.get("WORKTREE_REAP_ROOTS", ":".join([
     "/mnt/zer0models/z0-wt", "/mnt/zer0models/hermes-wt", "/mnt/zer0models/worktrees",
     "/mnt/zer0models/workspaces", "/workspace/worktrees", "/workspace/.worktrees",
+    # repo-local worktree dirs (products/<repo>/.worktrees/*, oss/<repo>-wt/*) and the workspace worktrees tree
+    "/mnt/zer0models/workspace/zer0/worktrees", "/mnt/zer0models/workspace/zer0/products",
+    "/mnt/zer0models/workspace/zer0/oss",
     str(Path.home() / ".dotfiles-worktrees")])).split(":") if p]
 MERGED = ("ancestor:", "tree:", "patch:", "pr:")
 IDLE_DAYS = 3.0
