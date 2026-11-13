@@ -240,6 +240,25 @@ class Reap(unittest.TestCase):
         self.assertEqual(g(self.repo, "show", f"{ref[0]}:notes.md"), "left behind")
         self.assertTrue(self.wts["done-dirty"].exists())                 # network rows still decide as before
 
+    def test_git_timeout_on_one_worktree_does_not_abort_the_run(self):
+        # one slow `git worktree remove` (busy disk) used to crash the whole nightly run: no summary, rest skipped
+        slow, other = self.add_idle("slow-wt", lambda wt: None), self.add_idle("other-wt", lambda wt: None)
+        real = subprocess.run(["sh", "-c", "command -v git"], capture_output=True, text=True).stdout.strip()
+        fake = self.tmp / "bin"; fake.mkdir()
+        (fake / "git").write_text(f'#!/bin/sh\ncase "$*" in *"worktree remove"*slow-wt*) sleep 5;; esac\nexec {real} "$@"\n')
+        (fake / "git").chmod(0o755)
+        env = dict(os.environ, HOME=str(self.tmp), WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"),
+                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"), WORKTREE_REAP_GIT_TIMEOUT="1",
+                   PATH=f"{fake}:{os.environ['PATH']}")
+        r = subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out), "--apply"],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(slow.exists())
+        self.assertFalse(other.exists())
+        recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
+        self.assertIn("timed out", next(x for x in recs if x["branch"] == "slow-wt")["error"])
+        self.assertTrue((self.out / "runs.jsonl").exists())
+
     def test_in_use_idle_worktree_is_kept(self):
         wt = self.add_idle("idle-in-use", lambda wt: None)
         p = subprocess.Popen(["sleep", "60"], cwd=wt)

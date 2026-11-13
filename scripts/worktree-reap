@@ -35,8 +35,12 @@ BIG = 50 << 20
 PRUNE = (".git", "node_modules", ".venv", "venv", "target", "dist", "build", ".next", "__pycache__")
 
 
-def git(cd, *a, timeout=120, env=None):
-    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True, timeout=timeout, env=env)
+GIT_TIMEOUT = float(os.environ.get("WORKTREE_REAP_GIT_TIMEOUT", 120))
+
+
+def git(cd, *a, timeout=None, env=None):
+    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True,
+                          timeout=timeout or GIT_TIMEOUT, env=env)
 
 
 def merged_proof(proofs):
@@ -290,7 +294,10 @@ def main():
                    "creator": row.get("creator") or row.get("source"), "task": row.get("task"),
                    "action": action, "why": why, "applied": False}
             if action != "keep" and a.apply:
-                rec.update(apply(row, action), applied=True)
+                try:   # one slow/failed git call (busy disk) must not abort the rest of the run
+                    rec.update(apply(row, action), applied=True)
+                except (subprocess.SubprocessError, OSError) as e:
+                    rec.update(error=str(e)[:300])
                 reclaimed += rec.get("size_kib") or 0
             counts[action] = counts.get(action, 0) + 1
             if action != "keep":
