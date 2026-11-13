@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""research: replay history before acting, then track the problem as an ABAB world.
+
+  research replay <slug> <term> [term...] [--days 60] [--ctx]
+      Deterministic, zero model tokens. Writes operations/research-engine/<slug>/REPLAY.md:
+      Kevin's own messages, past agent fix claims, operations folders, config changes, fact-ledger hits.
+  research new <slug> "<objective>"     create the ABAB world (<slug>/world.json)
+  research status <slug>                ranked hypotheses + the next A-stage question
+  research list
+
+ABAB engine: tracked pilot-program/engine/abab_state.py, independent of skill profiles.
+Owner rule: replay past attempts
+before proposing a fix; a fix that was already tried and reverted is evidence, not a new idea.
+"""
+import glob, importlib.util, json, os, re, sqlite3, subprocess, sys, time
+from pathlib import Path
+
+ROOT = Path("/mnt/zer0models/workspace/zer0/data/operations/research-engine")
+OPS = Path("/mnt/zer0models/workspace/zer0/data/operations")
+HOME = Path.home()
+ENGINE = Path("/mnt/zer0models/workspace/zer0/products/pilot-program/engine/abab_state.py")
+FACTS = HOME / ".local/state/z0int/FACTS.jsonl"
+NOT_HIS = ("Message from", "[", "<", "Recent voice", "ISOLATED BENCHMARK", "This is a synthetic")
+CLAIM = re.compile(r"\b(fixed|is fixed|now fixed|resolved|root cause|applied|disabled|capped|raised|stopped)\b", re.I)
+
+
+def dbs():
+    out = [("hermes", HOME / ".hermes/state.db")]
+    for p in sorted((HOME / ".hermes/profiles").iterdir()):
+        if (p / "state.db").exists():
+            out.append((p.name, p / "state.db"))
+    return out
+
+
+def rows(db, sql, args):
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        r = con.execute(sql, args).fetchall()
+        con.close()
+        return r
+    except sqlite3.Error:
+        return []
+
+
+def hit(text, terms):
+    t = (text or "").lower()
+    return any(re.search(r"(?<![a-z])" + re.escape(x) + r"(?![a-z])", t) for x in terms)
+
+
+def replay(slug, terms, days, use_ctx):
+    terms = [t.lower() for t in terms]
+    since = time.time() - days * 86400
+    like = " or ".join(["lower(content) like ?"] * len(terms))
+    args = [since] + [f"%{t}%" for t in terms]
+    his, claims = [], []
+    for prof, db in dbs():
+        for ts, role, sid, c in rows(db, f"select timestamp, role, session_id, content from messages "
+                                     f"where timestamp > ? and role in ('user','assistant') and ({like})", args):
+            c = c or ""
+            if not hit(c, terms):
+                continue  # SQL LIKE is a substring prefilter; 'oom' must not match 'room'
+            if role == "user":
+                if len(c) < 1500 and not c.startswith(NOT_HIS) and "HANDOFF" not in c[:200]:
+                    his.append((ts, prof, sid, " ".join(c.split())[:300]))
+            elif CLAIM.search(c):
+                for s in re.split(r"(?<=[.!?])\s+|\n", c):
+                    if hit(s, terms) and CLAIM.search(s) and 30 < len(s) < 400:
+                        claims.append((ts, prof, sid, " ".join(s.split())[:300]))
+                        break
+    seen, h2 = set(), []
+    for r in sorted(his):
+        if r[3] not in seen:
+            seen.add(r[3]); h2.append(r)
+    folders = sorted({str(p) for t in terms for p in OPS.glob(f"*{t}*") if p.is_dir()})
+    conf = []
+    for f in glob.glob(str(HOME / ".config/systemd/user/**/*.conf"), recursive=True) + \
+             glob.glob(str(HOME / ".config/systemd/user/*.service")) + ["/etc/fstab"] + \
+             glob.glob("/etc/systemd/system.conf.d/*.conf"):
+        try:
+            if os.path.getmtime(f) > since and hit(Path(f).read_text(errors="ignore") + f, terms):
+                conf.append((os.path.getmtime(f), f))
+        except OSError:
+            pass
+    facts = []
+    if FACTS.exists():
+        for line in FACTS.open():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not r.get("superseded_by") and hit(r.get("fact", ""), terms):
+                facts.append((r.get("ts", ""), r.get("class", ""), r.get("fact", "")[:250]))
+    ctxo = ""
+    if use_ctx:
+        env = dict(os.environ, CTX_DATA_ROOT="/mnt/zer0models/host-offload/home_kvn_.ctx")
+        try:
+            ctxo = subprocess.run(["ctx", "search", " ".join(terms)], capture_output=True, text=True,
+                                  timeout=120, env=env).stdout[:6000]
+        except (OSError, subprocess.SubprocessError) as e:
+            ctxo = f"ctx search failed: {e}"
+    d = lambda ts: time.strftime("%m-%d %H:%M", time.localtime(ts))
+    out = [f"# Replay: {slug}", f"terms: {', '.join(terms)} | last {days} days | built {time.strftime('%Y-%m-%d %H:%M')}", "",
+           f"## Kevin's own messages ({len(h2)})"]
+    out += [f"- {d(ts)} [{p}] {c}  ({sid})" for ts, p, sid, c in h2[-80:]]
+    out += ["", f"## Past agent fix claims ({len(claims)}): check each against live state"]
+    out += [f"- {d(ts)} [{p}] {c}" for ts, p, sid, c in sorted(claims)[-60:]]
+    out += ["", f"## Config changed in window ({len(conf)})"] + [f"- {d(m)} {f}" for m, f in sorted(conf)]
+    out += ["", f"## Operations folders ({len(folders)})"] + [f"- {f}" for f in folders]
+    out += ["", f"## Fact ledger hits ({len(facts)})"] + [f"- {ts[:10]} {c}: {t}" for ts, c, t in sorted(facts)[-40:]]
+    if ctxo:
+        out += ["", "## Other harnesses (ctx search)", "```", ctxo, "```"]
+    p = ROOT / slug / "REPLAY.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(out) + "\n")
+    print(f"{p}\nhis={len(h2)} claims={len(claims)} config={len(conf)} folders={len(folders)} facts={len(facts)}")
+
+
+def engine():
+    try:
+        source = ENGINE.resolve(strict=True)
+        if not source.is_file():
+            raise OSError("not a file")
+    except (OSError, RuntimeError) as e:
+        sys.exit(f"research: ABAB engine unavailable; expected {ENGINE}: {e}")
+    spec = importlib.util.spec_from_file_location("research_abab_state", source)
+    ab = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = ab
+    spec.loader.exec_module(ab)
+    return ab
+
+
+def main(a):
+    if not a or a[0] in ("-h", "--help"):
+        print(__doc__); return 0
+    cmd = a[0]
+    if cmd == "replay":
+        days = int(a[a.index("--days") + 1]) if "--days" in a else 60
+        rest = [x for i, x in enumerate(a[1:], 1) if x not in ("--days", "--ctx") and a[i - 1] != "--days"]
+        replay(rest[0], rest[1:], days, "--ctx" in a); return 0
+    if cmd == "new":
+        ab = engine(); p = ROOT / a[1] / "world.json"
+        if p.exists():
+            print(f"exists: {p}"); return 1
+        ab.save(ab.World(objective=a[2]), p); print(p); return 0
+    if cmd == "status":
+        ab = engine(); w = ab.load(ROOT / a[1] / "world.json")
+        print(f"objective: {w.objective}\nwave {w.wave} | evidence {len(w.evidence)} | experiments {len(w.experiments)}")
+        for h in ab.rank_open(w):
+            print(f"  {ab.priority(h):.2f} {h.id} [{h.status}] {h.claim}")
+        s = ab.next_a(w)
+        print(f"next ({s.mode}): {s.target_uncertainty}\n  falsifier: {s.falsifier}")
+        r = ab.stop_reason(w)
+        if r:
+            print(f"stop: {r}")
+        return 0
+    if cmd == "list":
+        for p in sorted(ROOT.glob("*/")):
+            print(p.name, *(f.name for f in p.iterdir()))
+        return 0
+    print(__doc__); return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
