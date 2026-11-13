@@ -107,6 +107,17 @@ refuses requests without a live per-job token, serves only GET reads of public
 repos, and meters model-relay calls per job. `smoke/gateway-job.yaml` proves it
 (`GATEWAY_OK`, run it pinned to each node).
 
+The forwarder runs Guaranteed QoS (requests == limits: 200m CPU, 64Mi). A host-wide
+OOM on groot then kills agents and Burstable work before it, instead of killing it
+first. `tests/test_k3s_critical_qos.py` keeps every critical service this repo owns
+Guaranteed, and checks the requests still fit groot's allocatable left by
+`server.yaml`. Its requests do not count against any Kueue ClusterQueue (it is a
+Deployment, not a queued Job). Other critical pods take their resources from
+their own sources, so they are not changed here: Kueue's controller comes from the
+pinned upstream release, the z0intelligence executor from the z0intelligence repo
+(`deploy/k8s/intelligence-executor.yaml`), the quackles GPU slot plugin from
+quackles, and CoreDNS is bundled with k3s.
+
 ## Adding a node
 
 New agents join with the taint `z0.dev/onboarding=true:NoSchedule` and take no work.

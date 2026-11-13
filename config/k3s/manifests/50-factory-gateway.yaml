@@ -76,8 +76,12 @@ spec:
           readinessProbe:
             tcpSocket: {port: 8080}
             periodSeconds: 10
+          # Guaranteed QoS (requests == limits): the kubelet gives Guaranteed pods
+          # oom_score_adj -997, so a host-wide OOM kills agents and burstable work
+          # first. As Burstable it was among the first victims (190 restarts by
+          # 2026-10-28). tests/test_k3s_critical_qos.py holds this.
           resources:
-            requests: {cpu: 10m, memory: 24Mi}
+            requests: {cpu: 200m, memory: 64Mi}
             limits: {cpu: 200m, memory: 64Mi}
           securityContext:
             allowPrivilegeEscalation: false
