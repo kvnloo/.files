@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report/notify-only host watcher, generalized from Dash's finite-fact sidecar."""
+"""Host watcher with a circuit breaker for repeated timer-triggered failures."""
 import argparse
 import collections
 import datetime
@@ -117,7 +117,7 @@ def systemctl(scope, *args):
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,TriggeredBy')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -295,7 +295,7 @@ class Store:
         cutoff = datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time.min).astimezone().timestamp()
         with self.lock:
             rows = self.db.execute('SELECT id,ts,unit,scope,data FROM incidents WHERE ts>=? ORDER BY ts', (cutoff,)).fetchall()
-            lines = [f'# Service watch — {day}', '', 'Report and notify only. No watched service is restarted or changed.',
+            lines = [f'# Service watch — {day}', '', 'Reports and notifies; stops user timers after five identical failed service exits.',
                      'Remote triage receives finite signatures and numeric evidence only. Raw journal text is withheld.', '']
             checkout = self.get('worktree-reaper')
             if checkout:
@@ -522,9 +522,59 @@ class Watch:
             events.append(event('invariant_unavailable'))
         return events
 
+    def circuit_breaker(self, scope, unit, prop):
+        if scope != 'user' or not unit.endswith('.service'):
+            return False
+        # The failure hook and scanner share counts and must not both stop a timer.
+        with self.store.lock, (self.store.root / 'circuit-breaker.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            return self._circuit_breaker(scope, unit, prop)
+
+    def _circuit_breaker(self, scope, unit, prop):
+        key = 'circuit:' + scope + ':' + unit
+        state = self.store.get(key, {})
+        timer = state.get('timer') or next((name for name in prop.get('TriggeredBy', '').split()
+                                          if name.endswith('.timer') and unit_ok(name)), None)
+        if not timer:
+            return False
+        if state.get('open'):
+            if properties(scope, [timer]).get(timer, {}).get('ActiveState') != 'active':
+                return True
+            state.update(open=False, count=0)
+            self.store.set(key, state)
+        exited = prop.get('ExecMainExitTimestampMonotonic')
+        if not exited or exited == '0' or exited == state.get('exit'):
+            return False
+        status = prop.get('ExecMainStatus')
+        failed = prop.get('Result') not in (None, '', 'success') and status is not None
+        count = (state.get('count', 0) + 1 if status == state.get('status') else 1) if failed else 0
+        state = {'timer': timer, 'exit': exited, 'status': status, 'count': count}
+        self.store.set(key, state)
+        if count < 5 or properties(scope, [timer]).get(timer, {}).get('ActiveState') != 'active':
+            return False
+        last_error = ''
+        try:
+            result = command(['journalctl', '--user', '--unit=' + unit, '-n', '50',
+                              '--output=json', '--output-fields=MESSAGE,PRIORITY', '--no-pager'], 10)
+            for line in result.stdout.splitlines():
+                row = json.loads(line)
+                message = row.get('MESSAGE', '')
+                if isinstance(message, str) and (int(row.get('PRIORITY', 6)) <= 3 or ERROR.search(message)):
+                    last_error = message.splitlines()[-1] if message else ''
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        result = systemctl(scope, 'stop', timer)
+        if result.returncode:
+            return False
+        state['open'] = True
+        self.store.set(key, state)
+        self.store.append('circuit-breaker.jsonl', {'ts': time.time(), 'unit': unit, 'timer': timer,
+                          'exit_status': status, 'last_error': last_error})
+        return True
+
     def record(self, scope, unit, events, raw=(), force=False, triage=True,
                identity=None, action=None):
-        if not events:
+        if not events or self.store.get('circuit:' + scope + ':' + unit, {}).get('open'):
             return None
         # Unknown producer codes remain visible and deliverable, never silently
         # dropped or mislabeled as a failure of an unrelated health invariant.
@@ -600,6 +650,8 @@ class Watch:
                 if unit.startswith('service-watch-failure@'):
                     continue
                 prop = props.get(unit, {})
+                if self.circuit_breaker(scope, unit, prop):
+                    continue
                 events = []
                 invariant = self.units[(scope, unit)].get('health_invariant', {})
                 if prop.get('ActiveState') == 'failed' and invariant.get('kind') != 'disabled':
@@ -630,7 +682,7 @@ class Watch:
         completed_at = time.time()
         dash.atomic(self.store.root / 'status.json', {'updated_at': completed_at,
                     'scan_completed_at': completed_at, 'pid': os.getpid(),
-                    'units': len(self.units), 'coverage': self.coverage, 'report_only': True,
+                    'units': len(self.units), 'coverage': self.coverage, 'report_only': False,
                     'worktrees': self.store.get('worktree-reaper'),
                     'pending': self.store.db.execute('SELECT count(*) FROM pending').fetchone()[0],
                     'phone_delivery': 'not_enabled_no_existing_verified_path'})
@@ -902,6 +954,11 @@ class Watch:
         if not row or not pending:
             return
         unit, scope, fingerprint, text, observed_at = row
+        if self.store.get('circuit:' + scope + ':' + unit, {}).get('open'):
+            with self.store.lock:
+                self.store.db.execute('DELETE FROM pending WHERE id=?', (ident,))
+                self.store.db.commit()
+            return
         data = json.loads(text)
         if not raw:
             # Cursor replay/seed stores no raw text. Recover only a bounded local
@@ -1173,7 +1230,9 @@ def main():
     if args.action == 'failure':
         if not unit_ok(args.target):
             raise SystemExit('Invalid unit')
-        watch.record(args.scope, args.target, [event('failed')])
+        prop = properties(args.scope, [args.target]).get(args.target, {})
+        if not watch.circuit_breaker(args.scope, args.target, prop):
+            watch.record(args.scope, args.target, [event('failed')])
     elif args.action == 'heartbeat':
         watch.record('user', 'service-watch.service', [event('heartbeat_stale')])
     elif args.action == 'seed':

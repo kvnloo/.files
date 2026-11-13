@@ -633,6 +633,87 @@ class Contracts(unittest.TestCase):
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 
+    def test_timer_circuit_breaker_stops_once_until_timer_restarted(self):
+        unit, timer = 'fixture.service', 'schedule.timer'
+        self.watch.last_scan = time.time()
+        self.watch.units = {('user', unit): {'health_invariant': {'kind': 'systemd'}}}
+        prop = {'ActiveState': 'failed', 'Result': 'exit-code', 'ExecMainStatus': '2',
+                'TriggeredBy': timer, 'ExecMainExitTimestampMonotonic': '0'}
+        timer_prop = {'ActiveState': 'active'}
+        props = {unit: prop, timer: timer_prop}
+        def stop_timer(scope, action, name):
+            self.assertEqual((scope, action, name), ('user', 'stop', timer))
+            timer_prop['ActiveState'] = 'inactive'
+            return subprocess.CompletedProcess([], 0, '', '')
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(sw, 'properties', return_value=props))
+            stop = stack.enter_context(patch.object(sw, 'systemctl', side_effect=stop_timer))
+            stack.enter_context(patch.object(sw, 'command', return_value=subprocess.CompletedProcess(
+                [], 0, '\n'.join(json.dumps({'MESSAGE': message, 'PRIORITY': '6'}) for message in
+                                ('ERROR: first failure', 'ERROR: final failure', 'cleanup complete')), '')))
+            stack.enter_context(patch.object(self.watch.store, 'notify'))
+            for name in ('journals', 'loop_invariants', 'phone_caps_invariant', 'checkout_invariants'):
+                stack.enter_context(patch.object(self.watch, name))
+            for attempt in range(1, 6):
+                prop['ExecMainExitTimestampMonotonic'] = str(attempt)
+                with patch.object(sw, 'Watch', return_value=self.watch), \
+                     patch.object(sys, 'argv', ['service-watch', 'failure', unit]):
+                    self.assertEqual(sw.main(), 0)
+                self.watch.scan()
+                if attempt < 5:
+                    stop.assert_not_called()
+                    self.watch.scan()  # Polling the same exit is not another failure.
+            stop.assert_called_once_with('user', 'stop', timer)
+            receipt = self.watch.store.root / 'circuit-breaker.jsonl'
+            rows = [json.loads(line) for line in receipt.read_text().splitlines()]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]['unit'], unit)
+            self.assertEqual(rows[0]['last_error'], 'ERROR: final failure')
+            with patch.object(self.watch, 'invariant') as invariant:
+                for _ in range(3):
+                    self.watch.scan()
+                invariant.assert_not_called()
+            self.assertIsNone(self.watch.record('user', unit, [sw.event('failed')], force=True))
+            # The latch survives a new watcher, including queued model work.
+            other = sw.Watch(self.watch.store.root, self.root / 'inventory.json')
+            try:
+                self.assertIsNone(other.record('user', unit, [sw.event('failed')], force=True))
+                ident = other.store.db.execute('SELECT id FROM pending LIMIT 1').fetchone()[0]
+                with patch.object(sw, 'post') as post:
+                    other.triage(ident, [])
+                    post.assert_not_called()
+            finally:
+                other.store.db.close()
+            stop.assert_called_once()
+            self.assertEqual(len(receipt.read_text().splitlines()), 1)
+            timer_prop['ActiveState'] = 'active'
+            with patch.object(self.watch, 'invariant', return_value=[]) as invariant:
+                self.watch.scan()
+                invariant.assert_called_once()
+            for attempt in range(6, 10):
+                prop['ExecMainExitTimestampMonotonic'] = str(attempt)
+                self.watch.scan()
+            stop.assert_called_once()
+            prop['ExecMainExitTimestampMonotonic'] = '10'
+            self.watch.scan()
+            self.assertEqual(stop.call_count, 2)
+            self.assertEqual(len(receipt.read_text().splitlines()), 2)
+
+    def test_timer_circuit_breaker_requires_consecutive_identical_user_failures(self):
+        with patch.object(sw, 'properties', return_value={'fixture.timer': {'ActiveState': 'active'}}), \
+             patch.object(sw, 'systemctl', return_value=subprocess.CompletedProcess([], 0, '', '')) as stop, \
+             patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')):
+            for attempt, status in enumerate([2] * 4 + [3] * 4 + [0] + [3] * 5, 1):
+                prop = {'ExecMainExitTimestampMonotonic': str(attempt), 'ExecMainStatus': str(status),
+                        'Result': 'exit-code' if status else 'success', 'TriggeredBy': 'fixture.timer'}
+                self.assertFalse(self.watch.circuit_breaker('system', 'fixture.service', prop))
+                self.assertFalse(self.watch.circuit_breaker('user', 'plain.service', {**prop, 'TriggeredBy': ''}))
+                opened = self.watch.circuit_breaker('user', 'fixture.service', prop)
+                self.assertEqual(opened, attempt == 14)
+                if attempt < 14:
+                    stop.assert_not_called()
+            stop.assert_called_once_with('user', 'stop', 'fixture.timer')
+
     def test_timer_failure_and_age(self):
         self.watch.store.set('timer-success:user:fixture.service', time.time() - 1000)
         with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'exit-code', 'ExecMainExitTimestampMonotonic': str(int((time.monotonic() - 1000) * 1000000))}}):
