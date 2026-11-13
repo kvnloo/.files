@@ -1,0 +1,7 @@
+[Unit]
+Description=gh-pace: sample the shared GitHub API budget (burn rate + attribution)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/gh-pace sample
+Nice=10

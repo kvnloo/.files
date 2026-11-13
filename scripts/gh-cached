@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""gh-cached: serve a plain `gh api <path>` GET from ghcache, the shared caching proxy.
+
+Called by gh-shim for `gh api` reads it can answer exactly like gh:
+  gh api [-X GET] [-H Accept:...] [-q|--jq EXPR] PATH   (PATH without {placeholders})
+  gh api -X GET -f k=v ... PATH                          (fields become query params)
+Anything else (writes, --paginate, -i, --template, --cache, --input, graphql) exits 64 so
+the shim runs the real gh. If ghcache is down, or holding the budget with nothing cached, exit 75 for
+the same fallback. A cached entry is served even while GitHub's budget is held.
+
+Output matches gh when stdout is not a terminal: the raw body. With --jq, strings are printed raw
+and objects compact with sorted keys (gojq's output). On HTTP >= 400 the body goes to stdout,
+`gh: <message> (HTTP <code>)` to stderr, and the exit code is 1.
+"""
+import json, os, subprocess, sys, urllib.error, urllib.parse, urllib.request
+
+BASE = os.environ.get("GHCACHE_URL", "http://127.0.0.1:18090").rstrip("/")
+FALLBACK, UNAVAILABLE = 64, 75
+
+
+def parse(argv):
+    if not argv or argv[0] != "api":
+        return None
+    args, path, method, jq, fields, accept = argv[1:], None, None, None, [], None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        val = args[i + 1] if i + 1 < len(args) else None
+        if a in ("-X", "--method") and val:
+            method, i = val.upper(), i + 2
+        elif a.startswith("--method="):
+            method, i = a.split("=", 1)[1].upper(), i + 1
+        elif a in ("-q", "--jq") and val is not None:
+            jq, i = val, i + 2
+        elif a.startswith("--jq="):
+            jq, i = a.split("=", 1)[1], i + 1
+        elif a in ("-f", "--raw-field") and val and "=" in val:
+            fields.append(tuple(val.split("=", 1))); i += 2
+        elif a in ("-H", "--header") and val and val.lower().startswith("accept:"):
+            accept, i = val.split(":", 1)[1].strip(), i + 2
+        elif a.startswith("-") or path is not None:
+            return None  # an option we don't mirror, or a second positional
+        else:
+            path, i = a, i + 1
+    # gh sends -f fields as a POST body unless -X GET; only a real GET is a read.
+    if method is None:
+        method = "POST" if fields else "GET"
+    if not path or method != "GET" or "{" in path or path.lstrip("/") == "graphql":
+        return None
+    path = "/" + path.lstrip("/")
+    if fields:
+        path += ("&" if "?" in path else "?") + urllib.parse.urlencode(fields)
+    return path, jq, accept
+
+
+def main(argv):
+    p = parse(argv)
+    if p is None:
+        return FALLBACK
+    path, jq, accept = p
+    req = urllib.request.Request(BASE + path, headers={
+        "Accept": accept or "application/vnd.github+json", "User-Agent": "gh-cached"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            status, body = r.status, r.read()
+    except urllib.error.HTTPError as e:
+        status, body = e.code, e.read()
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return UNAVAILABLE
+    if status == 503 or status == 405:
+        return UNAVAILABLE  # budget held with no cached copy, or a request ghcache refuses
+    if status >= 400:
+        sys.stdout.buffer.write(body)
+        try:
+            msg = json.loads(body).get("message") or ""
+        except ValueError:
+            msg = ""
+        sys.stderr.write(f"gh: {msg} (HTTP {status})\n" if msg else f"gh: HTTP {status}\n")
+        return 1
+    if jq is None:
+        sys.stdout.buffer.write(body)
+        return 0
+    return subprocess.run(["jq", "-r", "-c", "-S", jq], input=body).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
