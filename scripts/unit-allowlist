@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Keep groot's user systemd units to an owner-approved allowlist.
+
+Any enabled or running user unit not matched by config/host/groot-units.allow
+is undeclared. --report (default) writes what would be stopped; --enforce
+disables and stops it. No model decides: the list is the only input.
+Exit 0 clean, 1 undeclared units found (report) or acted on (enforce).
+"""
+import argparse
+import datetime
+import fnmatch
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ALLOW = ROOT / 'config/host/groot-units.allow'
+KINDS = ('.service', '.timer', '.path', '.socket')
+
+
+def systemctl(*args):
+    return subprocess.run(['systemctl', '--user', *args], capture_output=True, text=True, timeout=30).stdout
+
+
+def load_allow(path):
+    pats = []
+    for line in Path(path).read_text().splitlines():
+        line = line.split('#', 1)[0].strip()
+        if line:
+            pats.append(line)
+    return pats
+
+
+def live_units():
+    enabled = {l.split()[0] for l in systemctl('list-unit-files', '--state=enabled', '--no-legend').splitlines() if l.strip()}
+    running = {l.split()[0] for l in systemctl('list-units', '--state=running', '--no-legend', '--plain').splitlines() if l.strip()}
+    return {u for u in enabled | running if u.endswith(KINDS)}, enabled
+
+
+def undeclared(units, pats):
+    return sorted(u for u in units if not any(fnmatch.fnmatchcase(u, p) for p in pats))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--allow', type=Path, default=DEFAULT_ALLOW)
+    ap.add_argument('--enforce', action='store_true')
+    ap.add_argument('--output', type=Path)
+    a = ap.parse_args()
+    pats = load_allow(a.allow)
+    units, enabled = live_units()
+    extra = undeclared(units, pats)
+    acted = []
+    if a.enforce:
+        for u in extra:
+            if u in enabled:
+                systemctl('disable', u)
+            systemctl('stop', u)
+            acted.append(u)
+    rec = {'schema': 'unit-allowlist.v1', 'at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+           'mode': 'enforce' if a.enforce else 'report', 'allow': str(a.allow),
+           'undeclared': extra, 'acted': acted}
+    text = json.dumps(rec, indent=1)
+    if a.output:
+        a.output.parent.mkdir(parents=True, exist_ok=True)
+        a.output.write_text(text)
+    print(f"unit-allowlist {rec['mode']}: {len(extra)} undeclared" + (f", stopped {len(acted)}" if acted else ''))
+    for u in extra:
+        print(' ', u)
+    return 1 if extra else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

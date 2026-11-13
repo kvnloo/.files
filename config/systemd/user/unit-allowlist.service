@@ -1,0 +1,9 @@
+[Unit]
+Description=Report (or stop) user units not on groot's owner-approved allowlist
+
+[Service]
+Type=oneshot
+# Installed copies (scripts/install-unit-allowlist) so the run never depends on a checkout's branch.
+# Report-only until the owner approves the list; then add --enforce.
+ExecStart=%h/.local/lib/unit-allowlist/unit-allowlist --allow %h/.local/lib/unit-allowlist/groot-units.allow --output %h/.local/state/unit-allowlist/latest.json
+SuccessExitStatus=1
