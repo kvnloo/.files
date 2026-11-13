@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report/notify-only host watcher, generalized from Dash's finite-fact sidecar."""
+"""Host watcher with bounded recovery for stranded monotonic user timers."""
 import argparse
 import collections
 import datetime
@@ -117,7 +117,7 @@ def systemctl(scope, *args):
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,Unit,TimersMonotonic')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -295,7 +295,7 @@ class Store:
         cutoff = datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time.min).astimezone().timestamp()
         with self.lock:
             rows = self.db.execute('SELECT id,ts,unit,scope,data FROM incidents WHERE ts>=? ORDER BY ts', (cutoff,)).fetchall()
-            lines = [f'# Service watch — {day}', '', 'Report and notify only. No watched service is restarted or changed.',
+            lines = [f'# Service watch — {day}', '', 'Report and notify, with at most three stranded timer services started per tick.',
                      'Remote triage receives finite signatures and numeric evidence only. Raw journal text is withheld.', '']
             checkout = self.get('worktree-reaper')
             if checkout:
@@ -580,6 +580,26 @@ class Watch:
             pass  # Persistent pending table is drained by the worker after memory backlog.
         return ident
 
+    def rearm_timers(self, props, now):
+        started = set()
+        for timer, prop in props.items():
+            check_stop()
+            if (not timer.endswith('.timer') or prop.get('ActiveState') != 'active'
+                    or prop.get('SubState') != 'elapsed' or not prop.get('TimersMonotonic')):
+                continue
+            unit = prop.get('Unit', '')
+            if not unit_ok(unit) or not unit.endswith('.service') or unit in started:
+                continue
+            state = properties('user', [unit]).get(unit, {}).get('ActiveState')
+            if not state or state in ('active', 'activating'):
+                continue
+            result = systemctl('user', 'start', '--no-block', unit)
+            self.store.append('timer-rearms.jsonl', {'ts': now, 'timer': timer,
+                              'unit': unit, 'returncode': result.returncode})
+            started.add(unit)
+            if len(started) == 3:
+                break
+
     def scan(self):
         check_stop()
         now = time.time()
@@ -592,6 +612,8 @@ class Watch:
             names = [unit for s, unit in self.units if s == scope]
             try:
                 props = properties(scope, names)
+                if scope == 'user':
+                    self.rearm_timers(props, now)
             except (RuntimeError, subprocess.SubprocessError):
                 self.record('user', 'service-watch.service', [event('invariant_unavailable')])
                 continue
@@ -630,7 +652,7 @@ class Watch:
         completed_at = time.time()
         dash.atomic(self.store.root / 'status.json', {'updated_at': completed_at,
                     'scan_completed_at': completed_at, 'pid': os.getpid(),
-                    'units': len(self.units), 'coverage': self.coverage, 'report_only': True,
+                    'units': len(self.units), 'coverage': self.coverage, 'report_only': False,
                     'worktrees': self.store.get('worktree-reaper'),
                     'pending': self.store.db.execute('SELECT count(*) FROM pending').fetchone()[0],
                     'phone_delivery': 'not_enabled_no_existing_verified_path'})

@@ -633,6 +633,56 @@ class Contracts(unittest.TestCase):
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 
+    def test_scan_rearms_only_stranded_monotonic_user_timers(self):
+        timers = {
+            'running.timer': {'Unit': 'running.service'},
+            'starting.timer': {'Unit': 'starting.service'},
+            'calendar.timer': {'TimersMonotonic': ''},
+            'inactive.timer': {'ActiveState': 'inactive'},
+            'waiting.timer': {'SubState': 'waiting'},
+            'missing.timer': {'Unit': 'missing.service'},
+            'stranded.timer': {'Unit': 'custom.service'},
+            'duplicate.timer': {'Unit': 'custom.service'},
+            **{f'stranded-{i}.timer': {} for i in range(3)},
+        }
+        rows = {unit: {'Id': unit, 'ActiveState': 'active', 'SubState': 'elapsed',
+                       'TimersMonotonic': '{ OnUnitActiveUSec=1min ; next_elapse=0 }',
+                       'Unit': unit.replace('.timer', '.service'), **overrides}
+                for unit, overrides in timers.items()}
+        rows.update({unit: {'Id': unit, 'ActiveState': state} for unit, state in
+                     [('running.service', 'active'), ('starting.service', 'activating'),
+                      ('custom.service', 'inactive'),
+                      *[(f'stranded-{i}.service', 'inactive') for i in range(3)]]})
+        starts = []
+
+        def fake_systemctl(scope, *args):
+            if args[0] == 'show':
+                fields = args[-1].removeprefix('--property=').split(',')
+                output = '\n\n'.join('\n'.join(f'{key}={value}' for key, value in rows[unit].items()
+                                              if key in fields)
+                                     for unit in args[1:-1] if unit in rows)
+                return subprocess.CompletedProcess(args, 0, output, '')
+            self.assertEqual(scope, 'user')
+            self.assertEqual(args[:2], ('start', '--no-block'))
+            starts.append(args[2])
+            return subprocess.CompletedProcess(args, 0, '', '')
+
+        self.watch.last_scan = time.time()
+        self.watch.units = {(scope, unit): {'health_invariant': {'kind': 'systemd'}}
+                            for scope in ('user', 'system') for unit in timers}
+        with patch.object(sw, 'systemctl', side_effect=fake_systemctl), \
+             patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), \
+             patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'checkout_invariants'):
+            for tick in range(2):
+                self.watch.scan()
+                self.assertEqual(starts, ['custom.service', 'stranded-0.service', 'stranded-1.service'] * (tick + 1))
+        receipts = [json.loads(line) for line in
+                    (self.watch.store.root / 'timer-rearms.jsonl').read_text().splitlines()]
+        self.assertEqual([row['unit'] for row in receipts], starts)
+        self.assertEqual([row['timer'] for row in receipts],
+                         ['stranded.timer', 'stranded-0.timer', 'stranded-1.timer'] * 2)
+        self.assertTrue(all(row['returncode'] == 0 for row in receipts))
+
     def test_timer_failure_and_age(self):
         self.watch.store.set('timer-success:user:fixture.service', time.time() - 1000)
         with patch.object(sw, 'properties', return_value={'fixture.service': {'Result': 'exit-code', 'ExecMainExitTimestampMonotonic': str(int((time.monotonic() - 1000) * 1000000))}}):
