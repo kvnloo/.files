@@ -145,6 +145,9 @@ cmd_kueue() {
   kc apply --server-side --force-conflicts -f "$tmp" >/dev/null
   kc -n kueue-system rollout status deploy/kueue-controller-manager --timeout=300s
   # The admission webhook can lag the rollout by a few seconds.
+  # Webhooks of integrations we leave disabled must not fail closed: a crash-looping controller
+  # would otherwise block every Deployment/Pod change cluster-wide.
+  KUBECONFIG="${KUBECONFIG:-$HOME/.kube/k3s.yaml}" python3 "$(dirname "$0")/kueue-webhook-scope"
   local i; for i in 1 2 3 4 5 6; do kc apply -f "$CFG/kueue/" && return 0; sleep 10; done
   die "kueue queues did not apply"
 }
