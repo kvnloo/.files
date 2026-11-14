@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""worktree-reap: daily, proof-gated removal of finished git worktrees and branches (Kevin's
+23:25 rule; ayo RP16). Sources: the network model's branch proofs (work/branches.json), a
+live scan of T3 Code worktrees (~/.t3/worktrees/<repo>/<name>), and every linked worktree of any
+repo with one under SCAN_ROOTS (agent worktree dirs; $WORKTREE_REAP_ROOTS overrides).
+
+Deletes only:
+  tier 1  a branch with a merged-elsewhere proof (ancestor/tree/patch/pr) that no worktree has
+          checked out -> `git branch -d` (lowercase: git itself refuses anything unmerged)
+  tier 2  a worktree whose branch is merged elsewhere, or whose creating task is done and which
+          has no commit missing from every remote -> `git worktree remove` (no --force: git
+          refuses dirty or untracked trees), then `git branch -d`
+  tier 3  any worktree idle for --idle-days (no file written, no commit, no process inside), with or
+          without proof (Kevin: finished worktrees must not pile up). First every non-ignored change,
+          tracked or untracked, is committed to refs/reaped/<name> (parent HEAD; KB, nothing lost;
+          the branch is kept), and only after that ref is verified is the tree removed with
+          `worktree remove --force`. It keeps trees holding an untracked, non-ignored file over 50 MB.
+Every item is re-checked live (head unchanged, no process inside, not locked) and gets one
+receipt line. Anything else is kept and never touched.
+"""
+import argparse, json, os, re, subprocess, tempfile, time
+from pathlib import Path
+
+NETWORK = Path("/mnt/zer0models/workspace/zer0/data/operations/network-model/work/branches.json")
+RUNS = Path("/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/runs")
+T3 = Path.home() / ".t3/worktrees"
+# Agent worktree roots no task record names (hermes-wt army, z0-wt, ...): found by scan, tier 3 only.
+SCAN_ROOTS = [Path(p) for p in os.environ.get("WORKTREE_REAP_ROOTS", ":".join([
+    "/mnt/zer0models/z0-wt", "/mnt/zer0models/hermes-wt", "/mnt/zer0models/worktrees",
+    "/mnt/zer0models/workspaces", "/workspace/worktrees", "/workspace/.worktrees",
+    # repo-local worktree dirs (products/<repo>/.worktrees/*, oss/<repo>-wt/*) and the workspace worktrees tree
+    "/mnt/zer0models/workspace/zer0/worktrees", "/mnt/zer0models/workspace/zer0/products",
+    "/mnt/zer0models/workspace/zer0/oss",
+    str(Path.home() / ".dotfiles-worktrees")])).split(":") if p]
+MERGED = ("ancestor:", "tree:", "patch:", "pr:")
+IDLE_DAYS = 3.0
+BIG = 50 << 20
+PRUNE = (".git", "node_modules", ".venv", "venv", "target", "dist", "build", ".next", "__pycache__")
+
+
+GIT_TIMEOUT = float(os.environ.get("WORKTREE_REAP_GIT_TIMEOUT", 120))
+
+
+def git(cd, *a, timeout=None, env=None):
+    return subprocess.run(["git", "-C", str(cd), *a], capture_output=True, text=True,
+                          timeout=timeout or GIT_TIMEOUT, env=env)
+
+
+def merged_proof(proofs):
+    return [p for p in proofs if p.startswith(MERGED)]
+
+
+def in_use(path, proc=Path("/proc")):
+    root = os.path.realpath(path)
+    for p in proc.iterdir():
+        if p.name.isdigit():
+            try:
+                cwd = os.readlink(p / "cwd")
+            except OSError:
+                continue
+            if cwd == root or cwd.startswith(root + "/"):
+                return p.name
+    return None
+
+
+def systemd_reference(path, roots=None):
+    """Return the unit naming this tree. Incomplete scans raise and prevent removal."""
+    home = str(Path.home())
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    if roots is None:
+        roots = [Path.home() / ".config/systemd/user", Path("/etc/systemd/user"),
+                 Path("/run/systemd/user"), Path("/usr/local/lib/systemd/user"),
+                 Path("/usr/lib/systemd/user"), runtime / "systemd/user",
+                 runtime / "systemd/transient"]
+    target = os.path.realpath(path)
+    def fail(error):
+        raise error
+    for root in roots:
+        try:
+            root.stat()
+        except FileNotFoundError:
+            continue
+        for base, dirs, files in os.walk(root, followlinks=False, onerror=fail):
+            for name in files:
+                if not name.endswith((".service", ".conf")):
+                    continue
+                unit = Path(base) / name
+                data = unit.read_text(errors="replace")
+                for token in ("${HOME}", "$HOME", "%h", "~"):
+                    data = data.replace(token, home)
+                for reference in re.findall(r"/[^\s\"';:=]+", data):
+                    reference = os.path.realpath(reference)
+                    if reference == target or reference.startswith(target + os.sep):
+                        return str(unit)
+    return None
+
+
+def size_kib(path):
+    out = subprocess.run(["du", "-sxk", str(path)], capture_output=True, text=True, timeout=600).stdout
+    return int(out.split()[0]) if out else None
+
+
+def t3_rows(root=T3):
+    """T3 worktrees carry no task record: the only proof is HEAD reachable from origin's default."""
+    rows = []
+    for wt in sorted(root.glob("*/*")):
+        if not (wt / ".git").is_file():
+            continue
+        br = git(wt, "branch", "--show-current").stdout.strip()
+        head = git(wt, "rev-parse", "HEAD").stdout.strip()
+        default = git(wt, "rev-parse", "--abbrev-ref", "origin/HEAD").stdout.strip() or "origin/main"
+        proof = [f"ancestor:{default}"] if git(wt, "merge-base", "--is-ancestor", "HEAD", default).returncode == 0 else []
+        common = git(wt, "rev-parse", "--git-common-dir").stdout.strip()
+        rows.append({"repo": wt.parent.name, "commondir": os.path.realpath(os.path.join(wt, common)), "branch": br,
+                     "head": head[:12], "finished": proof, "worktree": str(wt), "task": None, "source": "t3"})
+    return rows
+
+
+def scan_rows(roots=None):
+    """Every linked worktree of every repo that has one under a scan root. No proof: tier 3 decides."""
+    commons = set()
+    for root in roots if roots is not None else SCAN_ROOTS:
+        if not root.is_dir():
+            continue
+        out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
+                              ")", "-prune", "-o", "-name", ".git", "-type", "f", "-print"],
+                             capture_output=True, text=True, timeout=600).stdout.split("\n")
+        for dotgit in filter(None, out):
+            common = git(Path(dotgit).parent, "rev-parse", "--path-format=absolute", "--git-common-dir", timeout=30)
+            if common.returncode == 0:
+                commons.add(os.path.realpath(common.stdout.strip()))
+    rows = []
+    for cd in sorted(commons):
+        blocks = git(cd, "worktree", "list", "--porcelain").stdout.split("\n\n")
+        for b in blocks[1:]:                       # first block is the main checkout
+            kv = dict((l.split(" ", 1) + [""])[:2] for l in b.splitlines() if l)
+            if "worktree" not in kv or "bare" in kv or "prunable" in kv:
+                continue
+            rows.append({"repo": Path(cd).parent.name, "commondir": cd,
+                         "branch": kv.get("branch", "").removeprefix("refs/heads/"), "head": kv.get("HEAD", "")[:12],
+                         "finished": [], "worktree": kv["worktree"], "task": None, "source": "scan"})
+    return rows
+
+
+def decide(row, check, idle_days=IDLE_DAYS):
+    """Return (action, reason). check() supplies live facts; pure so tests can drive it."""
+    proofs = row.get("finished") or []
+    merged = merged_proof(proofs)
+    done = any(p.startswith("task_done:") for p in proofs)
+    live = check(row)
+    if live["head"] is None or not live["head"].startswith(row["head"]):
+        return "keep", "head moved or branch gone since the proof"
+    if not row.get("worktree"):
+        return (("branch", "tier1 merged elsewhere: " + ",".join(merged)) if merged
+                else ("keep", "no merged proof"))
+    if live.get("systemd"):
+        return "keep", f"referenced by systemd: {live['systemd']}"
+    if live["linked"]:
+        return "keep", "path reached through a symlink (git would empty the target)"
+    if live["main"]:
+        return "keep", "main checkout of the repo"
+    if live["locked"]:
+        return "keep", "worktree locked"
+    if live["pid"]:
+        return "keep", f"in use by pid {live['pid']}"
+    why = None
+    if not (merged or done):
+        why = "no proof"
+    elif live["outside"]:
+        why = "real path outside the repo's parent tree"
+    elif live["dirty"]:
+        why = "dirty worktree"
+    elif not merged and live["unpushed"]:
+        why = f"{live['unpushed']} commit(s) on no remote"
+    if why is None:
+        return "worktree", "tier2 " + ",".join(merged or [p for p in proofs if p.startswith("task_done:")]) + " + clean tree"
+    idle = live["idle"]() if callable(live.get("idle")) else live.get("idle")
+    if idle is None or not live.get("registered"):
+        return "keep", why
+    if idle < idle_days:
+        return "keep", f"{why}; active {idle:.1f} d ago"
+    return "idle", f"tier3 idle {idle:.1f} d ({why}); snapshot to refs/reaped"
+
+
+def live_check(row):
+    cd = row["commondir"]
+    wt = row.get("worktree")
+    ref = f"refs/heads/{row['branch']}" if row.get("branch") else "HEAD"
+    head = git(wt if ref == "HEAD" and wt and Path(wt).exists() else cd, "rev-parse", "--verify", "-q", ref).stdout.strip() or None
+    if not wt:
+        return {"head": head}
+    if not Path(wt).exists():
+        return {"head": None}
+    st = git(wt, "status", "--porcelain")
+    unpushed = git(wt, "rev-list", "--count", "HEAD", "--not", "--remotes").stdout.strip()
+    gd = git(wt, "rev-parse", "--absolute-git-dir").stdout.strip()
+    return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
+            "unpushed": int(unpushed) if unpushed.isdigit() else 1,
+            "linked": os.path.islink(wt),
+            "outside": not os.path.realpath(wt).startswith(
+                os.path.dirname(os.path.dirname(os.path.realpath(cd))) + os.sep),
+            "main": os.path.realpath(gd) == os.path.realpath(cd),
+            "registered": registered(cd, wt),
+            "idle": lambda: idle_days_of(wt, row.get("_idle_days", IDLE_DAYS)),
+            "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt),
+            "systemd": systemd_reference(wt)}
+
+
+def registered(cd, wt):
+    """git itself lists this real path as a linked worktree of the repo."""
+    out = git(cd, "worktree", "list", "--porcelain").stdout
+    paths = {os.path.realpath(l[9:]) for l in out.splitlines() if l.startswith("worktree ")}
+    return os.path.realpath(wt) in paths
+
+
+def idle_days_of(wt, idle_days=IDLE_DAYS, now=None):
+    """Days since the newest sign of work: HEAD's commit or any file written (deps/build dirs pruned).
+    Stops at the first file newer than the idle window, so active trees cost one short walk."""
+    now = now or time.time()
+    commit = int(git(wt, "log", "-1", "--format=%ct").stdout.strip() or 0)
+    prune = sum([["-name", n, "-o"] for n in PRUNE], [])[:-1]
+    hit = subprocess.run(["find", os.path.realpath(wt), "-xdev", "(", *prune, ")", "-prune", "-o",
+                          "-newermt", f"@{int(now - idle_days * 86400)}", "-printf", "%T@\\n", "-quit"],
+                         capture_output=True, text=True, timeout=1800).stdout.split()
+    newest = max([commit] + [int(float(h)) for h in hit])
+    return (now - newest) / 86400 if newest else None
+
+
+def snapshot(row, wt):
+    """Commit every non-ignored change (tracked + untracked) to refs/reaped/<name>; return the ref or raise."""
+    big = [f for f in git(wt, "ls-files", "-o", "--exclude-standard", "-z").stdout.split("\0")
+           if f and os.path.isfile(os.path.join(wt, f)) and os.path.getsize(os.path.join(wt, f)) > BIG]
+    if big:
+        raise RuntimeError(f"untracked file over 50 MB: {big[0]}")
+    name = re.sub(r"[^A-Za-z0-9._/-]", "-", row.get("branch") or Path(wt).name).strip("/.") or "wt"
+    ref = f"refs/reaped/{name}-{time.strftime('%Y%m%d')}-{os.urandom(3).hex()}"
+    with tempfile.TemporaryDirectory() as td:
+        env = dict(os.environ, GIT_INDEX_FILE=os.path.join(td, "index"))
+        for step in (["read-tree", "HEAD"], ["add", "-A"]):
+            r = git(wt, *step, env=env, timeout=1800)
+            if r.returncode:
+                raise RuntimeError(f"git {step[0]}: {r.stderr.strip()[:200]}")
+        tree = git(wt, "write-tree", env=env).stdout.strip()
+    msg = f"worktree-reap snapshot of {wt}"
+    c = git(wt, "-c", "user.name=worktree-reap", "-c", "user.email=worktree-reap@localhost",
+            "commit-tree", tree, "-p", "HEAD", "-m", msg).stdout.strip()
+    if not c or git(wt, "update-ref", ref, c).returncode or git(wt, "cat-file", "-e", f"{ref}^{{tree}}").returncode:
+        raise RuntimeError("snapshot ref not written")
+    return ref
+
+
+IGNORED_ARCHIVE = Path(os.environ.get("WORKTREE_REAP_ARCHIVE", "/mnt/zer0models/quarantine/worktree-reap"))
+
+
+def archive_ignored(ref, wt):
+    """Tar gitignored files (.env, local DBs) outside dependency/build dirs; return the path or None."""
+    out = git(wt, "ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z").stdout.split("\0")
+    keep = [f for f in out if f and not any(p in PRUNE for p in Path(f.rstrip("/")).parts)]
+    if not keep:
+        return None
+    dest = IGNORED_ARCHIVE / (ref.removeprefix("refs/reaped/").replace("/", "_") + ".tar.gz")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    excl = [f"--exclude={p}" for p in PRUNE]
+    r = subprocess.run(["tar", "-czf", str(dest), *excl, "-C", wt, "--null", "-T", "-"],
+                       input="\0".join(keep), capture_output=True, text=True, timeout=1800)
+    if r.returncode or not dest.is_file():
+        raise RuntimeError(f"ignored-file archive failed: {r.stderr.strip()[:200]}")
+    if dest.stat().st_size > (BIG * 4):
+        dest.unlink()
+        raise RuntimeError("ignored files over 200 MB compressed; kept")
+    return str(dest)
+
+
+def apply(row, action):
+    cd, br, wt = row["commondir"], row["branch"], row.get("worktree")
+    rec = {}
+    if wt:
+        reference = systemd_reference(wt)
+        if reference:
+            return {"kept": f"referenced by systemd: {reference}"}
+    if action == "idle":
+        try:
+            rec["snapshot_ref"] = snapshot(row, wt)
+            rec["ignored_archive"] = archive_ignored(rec["snapshot_ref"], wt)
+        except (RuntimeError, subprocess.SubprocessError, OSError) as e:
+            rec["kept"] = str(e)[:300]
+            return rec
+        rec["size_kib"] = size_kib(wt)
+        reference = systemd_reference(wt)
+        if reference:
+            return {**rec, "kept": f"referenced by systemd: {reference}"}
+        r = git(cd, "worktree", "remove", "--force", os.path.realpath(wt))
+        rec["worktree_removed"] = r.returncode == 0
+        if r.returncode:
+            rec["git"] = r.stderr.strip()[:300]
+        return rec   # branch kept: an idle branch is KBs and may be resumed
+    if action == "worktree":
+        rec["size_kib"] = size_kib(wt)
+        reference = systemd_reference(wt)
+        if reference:
+            return {**rec, "kept": f"referenced by systemd: {reference}"}
+        r = git(cd, "worktree", "remove", wt)
+        rec["worktree_removed"] = r.returncode == 0
+        if r.returncode:
+            rec["git"] = r.stderr.strip()[:300]
+            return rec
+    r = git(cd, "branch", "-d", br)
+    rec["branch_deleted"] = r.returncode == 0
+    if r.returncode:
+        rec["branch_kept"] = r.stderr.strip()[:300]
+    return rec
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--network", type=Path, default=NETWORK)
+    ap.add_argument("--max-age-h", type=float, default=36, help="refuse network proofs older than this")
+    ap.add_argument("--idle-days", type=float, default=IDLE_DAYS, help="tier 3: reap worktrees idle this long")
+    ap.add_argument("--out", type=Path, default=RUNS / time.strftime("worktree-reap-%Y%m%d"))
+    a = ap.parse_args()
+    net = json.loads(a.network.read_text())
+    if time.time() - float(net.get("generated_at", 0)) > a.max_age_h * 3600:
+        raise SystemExit(f"network proofs older than {a.max_age_h} h; refusing")
+    rows, seen = [], set()
+    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows() + scan_rows():
+        key = os.path.realpath(r["worktree"]) if r.get("worktree") else (r["commondir"], r["branch"])
+        if key not in seen:
+            seen.add(key)
+            rows.append(r)
+    a.out.mkdir(parents=True, exist_ok=True)
+    counts, reclaimed = {}, 0
+    with open(a.out / "receipts.jsonl", "a") as f:
+        for row in rows:
+            row["_idle_days"] = a.idle_days
+            try:
+                action, why = decide(row, live_check, a.idle_days)
+            except (subprocess.SubprocessError, OSError) as e:
+                action, why = "keep", f"check failed: {e}"
+            rec = {"ts": time.strftime("%FT%T%z"), "repo": row["repo"], "commondir": row["commondir"],
+                   "branch": row["branch"], "head": row["head"], "worktree": row.get("worktree"),
+                   "creator": row.get("creator") or row.get("source"), "task": row.get("task"),
+                   "action": action, "why": why, "applied": False}
+            if action != "keep" and a.apply:
+                try:   # one slow/failed git call (busy disk) must not abort the rest of the run
+                    rec.update(apply(row, action), applied=True)
+                except (subprocess.SubprocessError, OSError) as e:
+                    rec.update(error=str(e)[:300])
+                reclaimed += rec.get("size_kib") or 0
+            counts[action] = counts.get(action, 0) + 1
+            if action != "keep":
+                f.write(json.dumps(rec) + "\n")
+    summary = {"ts": time.strftime("%FT%T%z"), "apply": a.apply, "rows": len(rows), "counts": counts,
+               "reclaimed_kib": reclaimed}
+    with open(a.out / "runs.jsonl", "a") as f:
+        f.write(json.dumps(summary) + "\n")
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
