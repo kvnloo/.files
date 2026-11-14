@@ -7,6 +7,8 @@ Wants=network-online.target
 [Service]
 Type=exec
 ExecStart=/home/kvn/.local/bin/tern remote serve --user --access /home/kvn/.config/tern/access.toml --authorized-keys /home/kvn/.ssh/authorized_keys
+# The remote transport must not terminate the daemon or pane processes on restart.
+KillMode=process
 Restart=on-failure
 RestartSec=2
 RestartPreventExitStatus=2

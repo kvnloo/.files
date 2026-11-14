@@ -18,6 +18,31 @@ Avrea take work through these lanes:
 The registry is `config/fleet/nodes.yaml`. Everything here is idempotent:
 re-running a command with the same registry changes nothing.
 
+## Tern mobile session visibility
+
+Tailscale reachability and Tern authentication do not prove session visibility.
+Tern layouts are scoped by window key. The phone normally uses the primary key
+(`""`), while another desktop window can own a separate layout such as `"2"`.
+Use `tern inspect --json` to find client keys, then `tern ls --window KEY --json`
+to inspect the relevant layout. Older versions do not report client keys.
+
+On 2026-10-29, MBP ran Tern 0.9.5 (protocol 37), while Groot and the S25 client
+used protocol 39. MBP's primary layout was empty and its seven active panes were
+in window `"2"`. MBP was upgraded to 0.9.7. The recovered three-tab layout now
+appears as the `MBP` session in the primary scope, alongside the current user tabs.
+Do not infer visibility from the default `tern ls` result alone.
+
+Keep the remote service's `KillMode=process`: a transport restart must not kill
+its child daemon and panes. `tern restart` cannot upgrade a 0.9.5 daemon directly.
+Its palette's **Restart session daemon** action supports an in-place handoff.
+Back up `~/.local/state/tern/daemon.state` before maintenance.
+
+Do not close a desktop window to migrate sessions. Unlike quitting Tern, a
+window close can terminate its programs. This repair encountered that failure
+and restored the saved daemon snapshot and agent conversations. Preserve pane
+IDs, split trees, current user tabs and agent session IDs during layout migration.
+Verify `live`/`exited`, actual capture access and the phone's client key afterward.
+
 ## Kueue workload priority
 
 `fleet-build --class test|build|bench` sets the Kueue workload priority label,

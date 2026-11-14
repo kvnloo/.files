@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
+import subprocess
 import sys
 import time
 
@@ -37,7 +39,24 @@ def full_psi_avg60() -> float:
     return 0.0
 
 
-def why_not(need_mb: int) -> str | None:
+def why_not(need_mb: int, need_vram_mb: int | None = None, port: int | None = None) -> str | None:
+    if need_vram_mb is not None:
+        try:
+            output = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                text=True, stderr=subprocess.PIPE,
+            )
+            free_vram = max(int(line) for line in output.splitlines())
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            return f"VRAM check failed: {exc}"
+        if free_vram < need_vram_mb:
+            return f"only {free_vram} MiB VRAM free; need {need_vram_mb}"
+    if port is not None:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind(("127.0.0.1", port))
+        except (OSError, OverflowError) as exc:
+            return f"port {port} unavailable: {exc}"
     m = meminfo()
     avail = m["MemAvailable"] // 1024
     if avail < MIN_AVAILABLE_MB + need_mb:
@@ -54,13 +73,15 @@ def why_not(need_mb: int) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--need-mb", type=int, default=1024, help="the job's expected peak RSS")
+    ap.add_argument("--need-vram-mb", type=int, help="minimum free VRAM on a GPU in MiB")
+    ap.add_argument("--port", type=int, help="port that must be bindable on 127.0.0.1")
     ap.add_argument("--wait", type=int, default=0, help="retry for up to SECS before giving up")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
     a = ap.parse_args(argv)
     cmd = a.cmd[1:] if a.cmd[:1] == ["--"] else a.cmd
     deadline = time.monotonic() + a.wait
     while True:
-        reason = why_not(a.need_mb)
+        reason = why_not(a.need_mb, a.need_vram_mb, a.port)
         if reason is None:
             break
         if time.monotonic() >= deadline:
