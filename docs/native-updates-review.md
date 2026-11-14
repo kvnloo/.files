@@ -2,7 +2,23 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-12 at 14:01 UTC
+## Latest observation, 2026-11-14 at 15:46 UTC
+
+This capture is from the verdict's host, not the MBP. The MBP report previously in the execution folder is preserved in `logs/20261114-preserved-mbp/`. The existing clean `ayo/R09` worktree was reused. Sources: execution `logs/20261114-groot-revalidation.log:2-10`; `logs/20261114-preserved-mbp/REPORT.md:3-6`.
+
+Both custom timers remain enabled and active. The maintenance deadline is **November 15 at 04:00 CST**, `America/Chicago`. The installed timer still calls this a placeholder requiring Kevin's choice. Approval is not established by the supplied item or verdict. No timer was changed here. Sources: execution `logs/20261114-groot-revalidation.log:93-178,201-203`; `ITEM.json:4-6`; `VERDICT.json:12-15`.
+
+The installed updater still has SHA256 `2c6646cee8eb36e3a23b62ae13a8fa54a73734f9cb117dd266f98f28e401934e`. It classifies separate check output, then refreshes and applies a live transaction. It has no workload-drain check and can request a reboot. It never reads the staged list before installation. These are source findings, not a live transaction test. Source: execution `logs/20261114-groot-revalidation.log:226-285`.
+
+Today's daily receipt reports staging with 433 output lines. The staged file has 437 lines. Neither count proves unique packages or a safe installation. The daily service retains a peak of 1,218,723,840 bytes and 42.789372 CPU-seconds. IO and IP accounting are off. These are staging counters, not installation or foreground-impact measurements. Source: execution `logs/20261114-groot-revalidation.log:181-198,287-295`.
+
+Root and package cache share XFS root with 10,552,456 KiB available, below the proposal's 15 GiB admission floor. `pacman-offline`, Snapper, and Timeshift remain absent. The live units' documentation target, `/workspace/.files/docs/fleet/OS-UPDATE.md`, is also absent. None of this proves that no backup exists. No restore or recovery boot ran. Sources: execution `logs/20261114-groot-revalidation.log:205-224`; `logs/20261114-groot-owner-state.log:14-15`; `scripts/setup-native-updates:45-53`.
+
+The existing syntax, diagnostic, and cadence probes completed. Diagnostic exit zero is not readiness. The four admission tests did not start: `fleet-build --node mbp --light --local-data --wait 1800` failed with exit 1 while querying Kueue's `lanes` clusterqueue. No tests ran on groot as a fallback. Sources: execution `logs/20261114-groot-revalidation.log:13-92`; `logs/20261114-groot-fleet-tests.log:1-3`.
+
+R09 remains incomplete. The owner must reconcile updater ownership and bind classification to the actual transaction. Kevin must confirm or replace the active window and define drain/defer behavior. Privileged update, reboot, and restore execution requires separate authorization. Cancellation and cached package downgrades do not prove consistent OS rollback. Sources: the source and recovery findings above; this review's recovery gates below; `VERDICT.json:12-15`.
+
+## Earlier observation, 2026-11-12 at 14:01 UTC
 
 Both custom timers remain enabled and active. Maintenance is still due November 15 at 04:00 CST, `America/Chicago`, and the installed unit still labels that time a placeholder. The next daily deadline is November 13 at 03:39:41 CST. No window approval was established. Source: execution `logs/20261112-revalidation.log:93-178,200-202`.
 
