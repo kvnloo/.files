@@ -1,0 +1,22 @@
+# K3s server config for the MBP: single-node control plane (rebuild 2026-11-14,
+# data/operations/k3s-rebuild-20261113). Install: sudo SERVER_CONFIG=server-mbp.yaml
+# scripts/setup-k3s.sh server. No secrets live here.
+# Minimal on purpose: no Kueue, network policies, webhooks or healers (FAILURE-HISTORY.md).
+node-ip: "@TS_IP@"
+advertise-address: "@TS_IP@"
+flannel-iface: tailscale0
+tls-san:
+  - "@TS_IP@"
+  - "@HOSTNAME@"
+disable:
+  - traefik
+  - servicelb
+write-kubeconfig-mode: "0600"
+node-label:
+  - "z0.dev/role=server"
+kubelet-arg:
+  - "system-reserved=cpu=1,memory=1Gi"
+  # Absolute, not percent: the 10% default held this 500 GB disk at 49.6 GB free (#329).
+  - "eviction-hard=memory.available<512Mi,nodefs.available<15Gi,imagefs.available<15Gi"
+  - "eviction-minimum-reclaim=nodefs.available=2Gi,imagefs.available=2Gi"
+data-dir: "@K3S_DATA@"

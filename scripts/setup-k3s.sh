@@ -70,7 +70,13 @@ run_installer() {
 cmd_server() {
   need_root; preflight; open_firewall server
   local changed svc=k3s
-  changed=$(install_config "$CFG/server.yaml")
+  # A host that was an agent of an old server must drop that identity first, or the
+  # installed-version check below skips the server install entirely.
+  if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then
+    say "removing previous k3s agent on this host"; /usr/local/bin/k3s-agent-uninstall.sh
+  fi
+  # SERVER_CONFIG picks the template: server.yaml (groot, GPU) or server-mbp.yaml.
+  changed=$(install_config "$CFG/${SERVER_CONFIG:-server.yaml}")
   if [ "$(installed_version)" != "$K3S_VERSION" ]; then
     say "installing k3s $K3S_VERSION (server)"; run_installer server
   elif [ "$changed" = changed ]; then
