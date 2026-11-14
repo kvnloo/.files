@@ -1,0 +1,111 @@
+{
+  "id": "PH8",
+  "measurement_notes": "Sizes are allocated-byte du estimates, not guaranteed reclaimable space. Btrfs extents can be shared. Null means not measured or incomplete, never zero. No cleanup was executed.",
+  "hosts": {
+    "groot": [
+      {
+        "path": "/home/kvn/.npm/_npx",
+        "size_bytes": 2507194368,
+        "size_kind": "allocated_du_estimate",
+        "reproducible": "yes",
+        "reason": "cleanup-cachyos.sh:141-170 calls this a reproducible npx execution cache, but running npm exec clients trigger the existing keep-cache rule. Preserve the whole cache.",
+        "action": "keep_active",
+        "evidence": ["logs/candidates-probes.log", "/workspace/.files/scripts/cleanup-cachyos.sh:141-170", "/workspace/hermes-home/profiles/clean/skills/root-pressure-safe-cleanup/references/disk-reclaim.md:27"]
+      },
+      {
+        "path": "/home/kvn/.cache/uv",
+        "resolved_path": "/mnt/zer0models/home-offload/kvn/offload-2026-09-21/cache/uv",
+        "size_bytes": 16512851968,
+        "size_kind": "allocated_du_estimate",
+        "reproducible": "yes",
+        "reason": "Existing tool-cache policy permits uv prune in general but forbids all resolved bulk-storage paths. The bounded repair recorded a skip, not a cleanup.",
+        "action": "keep_policy_forbidden",
+        "evidence": ["logs/candidates-probes.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl:3", "/mnt/zer0models/releases/host-storage/1650568ad1d371bdbf431794dcfe7dbdf9241088/scripts/zer0_storage_autotier.py:108,431-433,620-624"]
+      },
+      {
+        "path": "/var/cache/pacman/pkg",
+        "resolved_path": "/mnt/zer0models/system-offload/pacman-pkg",
+        "size_bytes": null,
+        "observed_partial_allocated_bytes": 17183862784,
+        "size_kind": "incomplete_permission_denied_du_exit_1",
+        "reproducible": "yes",
+        "reason": "Package download cache is rebuildable, but broad purge requires elevated permission and affects rollback availability. No credentials or privileged cleanup under this contract. Initial du of the symlink itself was zero and is not a cache measurement.",
+        "action": "owner_review",
+        "evidence": ["logs/candidates-probes.log", "logs/candidate-sizes-policy.log", "/workspace/.files/scripts/cleanup-cachyos.sh:112-124"]
+      },
+      {
+        "path": "/home/kvn/tmp",
+        "size_bytes": null,
+        "reproducible": "no",
+        "reason": "Mixed checkouts and scratch. The old plan is not a current keep/delete authorization. No recursive scan or deletion was attempted.",
+        "action": "owner_keep_delete_list",
+        "evidence": ["logs/candidates-probes.log", "/mnt/zer0models/z0-wt/salvage/pc-reorg/RECOVERED-PLAN.md:51-54"]
+      }
+    ],
+    "mbp": [
+      {
+        "path": "/home/agentjob/.cache",
+        "size_bytes": null,
+        "size_kind": "bounded_du_timed_out_exit_124",
+        "reproducible": "no",
+        "reason": "Mixed cache contents are not individually qualified as reproducible. Five-second metadata-only size probe timed out. Reliability owns MBP disk recovery. No cleanup or retry scan.",
+        "action": "defer_R11",
+        "evidence": ["logs/candidate-sizes-policy.log", "/mnt/zer0models/workspace/zer0/data/operations/owner-message-audit-20261104/ASK-LEDGER.md:64-68"]
+      },
+      {
+        "path": "/home/agentjob/.gradle/caches",
+        "size_bytes": null,
+        "reproducible": "yes",
+        "reason": "Known build-cache category, but the bounded probe reported directory unavailable. No reclaim estimate or cleanup claim.",
+        "action": "unavailable",
+        "evidence": ["logs/candidate-sizes-policy.log", "/mnt/zer0models/releases/host-storage/1650568ad1d371bdbf431794dcfe7dbdf9241088/scripts/zer0_storage_autotier.py:625-632"]
+      },
+      {
+        "path": "/home/agentjob/.local/state/fleet",
+        "size_bytes": null,
+        "reproducible": "no",
+        "reason": "Explicit do-not-touch path. Contains mixed stages and terminal evidence. Neither read nor changed by PH8. Test jobs were not routed to MBP.",
+        "action": "excluded_R11_owner",
+        "evidence": ["ITEM.json", "FAILURE-CLASSES.md", "logs/tests-fleet.log", "logs/tests-fleet-s22.log"]
+      }
+    ],
+    "s25": [
+      {
+        "path": "/data/local/tmp/fleet-jobs",
+        "size_bytes": 126976,
+        "size_kind": "allocated_du_kib_times_1024",
+        "reproducible": "no",
+        "reason": "Mixed stages and receipts. No terminal/ownership qualification for deletion. Tiny measured job directory cannot explain a 236747489280-byte data volume with only 2258890752 bytes available. No app-data inventory or phone UI input.",
+        "action": "preserve_receipts_owner_review",
+        "evidence": ["logs/phone-candidates.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl:2"]
+      },
+      {
+        "path": "/data/local/tmp/fleet-bin",
+        "size_bytes": null,
+        "reproducible": "yes",
+        "reason": "Fleet toolbox category is reconstructible, but the read-only probe reported this directory unavailable. No cleanup candidate qualified.",
+        "action": "unavailable",
+        "evidence": ["logs/phone-candidates.log", "/mnt/zer0models/releases/files-live/1611c2a190e95c91d6da8bb5ad6bfa61914875bc36b07c802eae5b5476e43d3c/scripts/fleet-adb:20-21"]
+      }
+    ],
+    "s22": [
+      {
+        "path": "/data/local/tmp/fleet-jobs",
+        "size_bytes": 249856,
+        "size_kind": "allocated_du_kib_times_1024",
+        "reproducible": "no",
+        "reason": "Mixed stages and receipts without terminal/ownership qualification. Preserve them. The data volume has 11148210176 bytes available. No phone deletion or UI input.",
+        "action": "preserve_receipts_owner_review",
+        "evidence": ["logs/phone-candidates.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl:2"]
+      },
+      {
+        "path": "/data/local/tmp/fleet-bin",
+        "size_bytes": null,
+        "reproducible": "yes",
+        "reason": "Fleet toolbox category is reconstructible, but the read-only probe reported this directory unavailable. No cleanup candidate qualified.",
+        "action": "unavailable",
+        "evidence": ["logs/phone-candidates.log", "/mnt/zer0models/releases/files-live/1611c2a190e95c91d6da8bb5ad6bfa61914875bc36b07c802eae5b5476e43d3c/scripts/fleet-adb:20-21"]
+      }
+    ]
+  }
+}

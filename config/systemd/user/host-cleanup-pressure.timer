@@ -1,0 +1,10 @@
+[Unit]
+Description=Check disk reserves hourly without phone UI input
+
+[Timer]
+OnBootSec=15min
+OnUnitInactiveSec=1h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,38 @@
+{
+  "id": "PH8",
+  "cleanup_executed": false,
+  "deliberately_removed_bytes": 0,
+  "note": "No eligible safe cleanup was found among the measured candidates. Free-space changes from concurrent activity are not PH8 reclaim evidence.",
+  "receipts": [
+    {
+      "host": "groot",
+      "status": "skipped",
+      "reason": "Active npm clients protect npx cache. uv resolves to policy-forbidden bulk storage. Pacman cache requires elevated action and sizing is incomplete. Mixed tmp checkouts need a keep/delete list.",
+      "detector_command": "python3 scripts/host-cleanup-pressure.py --repair-uv --state-dir /mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-PH8/logs/disk-receipts-fixed",
+      "detector_exit_code": 1,
+      "repair_command_executed": null,
+      "evidence": ["logs/verification.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl", "logs/candidates-probes.log", "logs/candidate-sizes-policy.log"]
+    },
+    {
+      "host": "mbp",
+      "status": "excluded_from_cleanup",
+      "reason": "R11 Reliability owns recovery. No reads or writes under /home/agentjob/.local/state/fleet. Storage and cache metadata only, with an incomplete bounded cache-size scan.",
+      "repair_command_executed": null,
+      "evidence": ["logs/candidates-probes.log", "logs/candidate-sizes-policy.log"]
+    },
+    {
+      "host": "s25",
+      "status": "skipped",
+      "reason": "Authenticated disk measurement and metadata-only fleet directory sizes. No existing authorized phone-cache deletion policy. Preserve mixed jobs and receipts. No UI input, app launch, pairing, connect, tcpip, or restart performed.",
+      "repair_command_executed": null,
+      "evidence": ["logs/phone-candidates.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl"]
+    },
+    {
+      "host": "s22",
+      "status": "skipped",
+      "reason": "Authenticated disk measurement and metadata-only fleet directory sizes. No existing authorized phone-cache deletion policy. Preserve mixed jobs and receipts. No UI input, app launch, pairing, connect, tcpip, or restart performed.",
+      "repair_command_executed": null,
+      "evidence": ["logs/phone-candidates.log", "logs/disk-receipts-fixed/20261105T060725Z-8d5973698c974761bffdd5ccf660a743.jsonl"]
+    }
+  ]
+}

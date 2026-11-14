@@ -1,0 +1,14 @@
+[Unit]
+Description=Disk reserve receipts for groot and authenticated S25/S22 transports
+ConditionHost=groot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/lib/host-cleanup-pressure/host-cleanup-pressure.py --repair-uv
+UMask=0077
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=128M
+TasksMax=16
+NoNewPrivileges=true
+TimeoutStartSec=180
