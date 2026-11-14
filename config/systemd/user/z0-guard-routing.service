@@ -3,10 +3,9 @@ Description=O7: provider routing check over omp, Hermes profile and Dash role co
 
 [Service]
 Type=oneshot
-Environment=PYTHONPATH=/mnt/zer0models/z0-wt/bend-ops-laws/src
 # report-only: findings go to ~/.local/state/z0-guard/decisions.jsonl; values of key/token
 # fields are never read into the output.
-ExecStart=/usr/bin/python3 -m z0int.fsm.guard routing
+ExecStart=%h/.local/bin/z0-guard routing
 TimeoutStartSec=1min
 Nice=10
 NoNewPrivileges=true
