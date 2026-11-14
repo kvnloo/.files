@@ -54,22 +54,23 @@ optional = true
 group = "base"
 unit = "agent.slice"
 property = "MemoryMax"
-equals = "10G"
+equals = "16G"
 owner = "60-oomd-desktop-guard.conf"
-why = "one owner for the agent ceiling; a 50-MemoryMax.conf residue (14G) shadowed by 60- was attempt #33"
+why = "owner-approved policy from commit 7f8da8fa; the 10G ceiling killed agent workers"
 
 [[cgroup]]
 group = "base"
 path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
 file = "memory.max"
-equals = "10G"
+equals = "16G"
 
 [[unit]]
 group = "base"
 unit = "agent.slice"
 property = "MemoryHigh"
-equals = "infinity"
-why = "slice-wide MemoryHigh is the recorded livelock"
+equals = "13G"
+owner = "60-oomd-desktop-guard.conf"
+why = "owner-approved policy from commit 7f8da8fa; retain 3G headroom below MemoryMax"
 
 [[unit]]
 group = "base"
@@ -167,14 +168,14 @@ equals = "0"
 group = "batch"
 unit = "agent.slice"
 property = "MemorySwapMax"
-equals = "4G"
+equals = "6G"
 owner = "60-oomd-desktop-guard.conf"
 
 [[cgroup]]
 group = "batch"
 path = "user.slice/user-1000.slice/user@1000.service/agent.slice"
 file = "memory.swap.max"
-equals = "4G"
+equals = "6G"
 
 [[unit]]
 group = "batch"
