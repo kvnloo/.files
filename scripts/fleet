@@ -114,7 +114,9 @@ def probe(n):
             out = subprocess.run(ssh_cmd(n) + [f"python3 {probe_path(n)}"], capture_output=True,
                                  text=True, timeout=90).stdout
         return json.loads(out.strip().splitlines()[-1])
-    except (subprocess.TimeoutExpired, IndexError, ValueError) as e:
+    except Exception as e:
+        if isinstance(e, json.JSONDecodeError):
+            print(f"fleet: {n['name']} non-JSON probe reply: {out!r}", file=sys.stderr)
         return {"error": f"probe failed: {type(e).__name__}"}
 
 
@@ -366,7 +368,7 @@ def cmd_health(args):
         lines = hist.read_text().splitlines() if hist.exists() else []
         if len(lines) > 20000:
             hist.write_text("\n".join(lines[-10000:]) + "\n")
-    return rc
+    return 3 if rc else 0
 
 
 # ---------------------------------------------------------------- run

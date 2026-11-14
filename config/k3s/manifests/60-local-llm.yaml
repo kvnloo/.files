@@ -1,0 +1,116 @@
+# local-llm: groot's small llama.cpp lanes as k3s Deployments on FIXED loopback ports.
+#
+# Clients (z0live voice lanes, Hermes ttft/tps swarm) dial 127.0.0.1:<port> directly,
+# so the pods run hostNetwork on groot and bind loopback only (nothing new on the tailnet).
+# Ports are the contract; they replace hermes-swarm-llama / hermes-ttft-llama user units:
+#   15637 qwen3-0.6b-q8   z0live smol fast lane
+#   11542 qwen3-1.7b      z0live smol + Hermes swarm floor lane (8 slots, 16K unified KV)
+#   11540 qwen3.5-4b      z0live smol small lane + Hermes ttft (2 slots, unified 64K KV: each slot sees 64K, the Hermes floor)
+# GPU: shared through the nvidia runtime (NVIDIA_VISIBLE_DEVICES), NOT a nvidia.com/gpu
+# request: the device plugin is exclusive (10-nvidia.yaml) and z0-farm-llama shares the card.
+# VRAM (12 GB card, shared with z0-farm-llama): ~1.4 + ~2.5 awake + ~4.8 GB; 1.7B/4B unload when idle.
+# Image pinned to the upstream CUDA 13 build nearest the host's b11270.
+# PSS privileged is required for hostNetwork + hostPath; containers stay non-root, no caps,
+# read-only root and read-only model mounts.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-llm
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen3-0-6b, namespace: local-llm, labels: {app: qwen3-0-6b, z0.dev/port: "15637"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}  # the host port can't be held by two pods at once
+  selector: {matchLabels: {app: qwen3-0-6b}}
+  template:
+    metadata: {labels: {app: qwen3-0-6b}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      runtimeClassName: nvidia
+      nodeSelector: {kubernetes.io/hostname: groot}
+      tolerations: [{key: z0.dev/host, operator: Equal, value: interactive, effect: PreferNoSchedule}]
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp@sha256:f9f7c9f689cf6dba993075b74697253c46c639f7c5956a3421fcabf7e8aef715  # server-cuda13-b11277
+          args: [--model, /models/router/qwen3-0.6b-q8.gguf, --alias, qwen3-0.6b-q8, --host, 127.0.0.1, --port, "15637",
+                 --device, CUDA0, -ngl, "99", -c, "8192", --parallel, "4", -kvu, -fa, "on", -ctk, q8_0, -ctv, q8_0, --no-webui, --jinja, --reasoning, "off", -t, "2", --cache-ram, "128"]
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: all}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          startupProbe: {httpGet: {host: 127.0.0.1, path: /health, port: 15637}, periodSeconds: 2, failureThreshold: 90}
+          livenessProbe: {tcpSocket: {host: 127.0.0.1, port: 15637}, periodSeconds: 20, failureThreshold: 3}
+          volumeMounts: [{name: models, mountPath: /models, readOnly: true}]
+      volumes: [{name: models, hostPath: {path: /mnt/zer0models/z0-farm/models, type: Directory}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen3-1-7b, namespace: local-llm, labels: {app: qwen3-1-7b, z0.dev/port: "11542"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}  # the host port can't be held by two pods at once
+  selector: {matchLabels: {app: qwen3-1-7b}}
+  template:
+    metadata: {labels: {app: qwen3-1-7b}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      runtimeClassName: nvidia
+      nodeSelector: {kubernetes.io/hostname: groot}
+      tolerations: [{key: z0.dev/host, operator: Equal, value: interactive, effect: PreferNoSchedule}]
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp@sha256:f9f7c9f689cf6dba993075b74697253c46c639f7c5956a3421fcabf7e8aef715  # server-cuda13-b11277
+          args: [--model, /models/Qwen3-1.7B-Q4_K_M.gguf, --alias, qwen3-1.7b, --host, 127.0.0.1, --port, "11542",
+                 --device, CUDA0, -ngl, "99", -c, "16384", --parallel, "8", -kvu, -fa, "on", -ctk, q8_0, -ctv, q8_0, --no-webui, --jinja, --reasoning, "off", -t, "4", --cache-ram, "256", --sleep-idle-seconds, "300"]
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: all}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 3Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          startupProbe: {httpGet: {host: 127.0.0.1, path: /health, port: 11542}, periodSeconds: 2, failureThreshold: 90}
+          livenessProbe: {tcpSocket: {host: 127.0.0.1, port: 11542}, periodSeconds: 20, failureThreshold: 3}
+          volumeMounts: [{name: models, mountPath: /models, readOnly: true}]
+      volumes: [{name: models, hostPath: {path: /mnt/zer0models/z0-farm/models, type: Directory}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen3-5-4b, namespace: local-llm, labels: {app: qwen3-5-4b, z0.dev/port: "11540"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}  # the host port can't be held by two pods at once
+  selector: {matchLabels: {app: qwen3-5-4b}}
+  template:
+    metadata: {labels: {app: qwen3-5-4b}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      runtimeClassName: nvidia
+      nodeSelector: {kubernetes.io/hostname: groot}
+      tolerations: [{key: z0.dev/host, operator: Equal, value: interactive, effect: PreferNoSchedule}]
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp@sha256:f9f7c9f689cf6dba993075b74697253c46c639f7c5956a3421fcabf7e8aef715  # server-cuda13-b11277
+          args: [--model, /models/toolcall/Qwen_Qwen3.5-4B-Q4_K_M.gguf, --alias, qwen3.5-4b, --host, 127.0.0.1, --port, "11540",
+                 --device, CUDA0, -ngl, "99", -c, "65536", --parallel, "2", -kvu, -fa, "on", -ctk, q8_0, -ctv, q8_0, --no-webui, --jinja, --reasoning, "off", -t, "4", --cache-ram, "512", --sleep-idle-seconds, "600"]
+          env:
+            - {name: NVIDIA_VISIBLE_DEVICES, value: all}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 5Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          startupProbe: {httpGet: {host: 127.0.0.1, path: /health, port: 11540}, periodSeconds: 2, failureThreshold: 90}
+          livenessProbe: {tcpSocket: {host: 127.0.0.1, port: 11540}, periodSeconds: 20, failureThreshold: 3}
+          volumeMounts: [{name: models, mountPath: /models, readOnly: true}]
+      volumes: [{name: models, hostPath: {path: /mnt/zer0models/z0-farm/models, type: Directory}}]
