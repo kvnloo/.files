@@ -50,8 +50,10 @@ CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_f
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',
          'checkout_count_exceeded', 'phone_resource_caps', 'policy_stale',
          'offload_obligation', 'findings_ingest_stall', 'host_config_drift', 'host_drift_unknown', 'loop_degraded', 'unrecognized',
-         'out_of_memory', 'memory_pressure', 'memory-pressure'}
+         'out_of_memory', 'memory_pressure', 'memory-pressure',
+         'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak'}
 SEVERE = {'failed', 'restart_loop', 'silent_noop', 'error_file_growth', 'heartbeat_stale',
+          'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak',
           'checkout_count_exceeded', 'phone_resource_caps', 'offload_obligation',
           'host_config_drift', 'host_drift_unknown', 'unrecognized',
           'out_of_memory', 'memory_pressure', 'memory-pressure'}
@@ -498,6 +500,8 @@ class Watch:
                     events.append(event('receipt_error_share', count=len(rows), share=share, bytes=size))
                     if growth > 65536 or size > 32 * 1024 * 1024:
                         events.append(event('error_file_growth', count=len(rows), share=share, bytes=size, growth=growth))
+            elif kind == 'keyring':
+                events += self.keyring_events(invariant, now)
             elif kind == 'timer':
                 service = invariant.get('service', unit.removesuffix('.timer') + '.service')
                 detail = properties(scope, [service]).get(service, {})
@@ -624,6 +628,7 @@ class Watch:
 
         self.checkout_invariants()
         self.phone_caps_invariant()
+        self.keyring_invariant()
         check_stop()
         self.journals()
         self.store.digest()
@@ -696,6 +701,44 @@ class Watch:
             events.append(event('invariant_unavailable', age=age))
         if events:
             self.record('user', 'worktree-reaper.service', events)
+    def keyring_probe(self):
+        """(locked, open fds, fd soft limit) of the GNOME login keyring daemon."""
+        env = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/%d/bus' % os.getuid()}
+        out = command(['busctl', '--user', 'get-property', 'org.freedesktop.secrets',
+                       '/org/freedesktop/secrets/collection/login',
+                       'org.freedesktop.Secret.Collection', 'Locked'], env=env).stdout.split()
+        if out[:1] != ['b']:
+            raise ValueError('keyring property unavailable')
+        pid = int(systemctl('user', 'show', '-p', 'MainPID', '--value', 'gnome-keyring-daemon.service').stdout.strip())
+        limit = next(int(line.split()[3]) for line in Path(f'/proc/{pid}/limits').read_text().splitlines()
+                     if line.startswith('Max open files'))
+        return out[1] == 'true', len(os.listdir(f'/proc/{pid}/fd')), limit
+
+    def keyring_events(self, invariant, now):
+        """Login keyring stays unlocked; agents' headless prompts must not leak its fds."""
+        locked, fds, limit = self.keyring_probe()
+        events = []
+        if locked:
+            # Self-heal with the owned TPM unlock unit, then judge the result.
+            command(['systemctl', '--user', 'start', 'keyring-autounlock.service'], timeout=30)
+            locked, fds, limit = self.keyring_probe()
+            if locked:
+                events.append(event('keyring_locked'))
+        if fds > limit * invariant.get('max_fd_share', .5):
+            events.append(event('keyring_fd_pressure', count=fds, threshold=limit))
+        history = [[ts, n] for ts, n in self.store.get('keyring-fds', []) if ts > now - 300] + [[now, fds]]
+        self.store.set('keyring-fds', history)
+        growth = fds - min(n for _, n in history)
+        if growth >= invariant.get('max_fd_growth', 20):
+            # One leaked eventfd per failed system prompt: some unit is calling
+            # Secret Service headlessly (2026-10-19, 2026-11-10 lockouts).
+            events.append(event('keyring_fd_leak', count=fds, growth=growth))
+        return events
+
+    def keyring_invariant(self):
+        events = self.invariant('user', 'gnome-keyring-daemon.service', {'kind': 'keyring'}, {}, time.time())
+        self.record('user', 'gnome-keyring-daemon.service', events)
+
     def phone_caps_invariant(self):
         fleet = shutil.which('fleet')
         root = Path(fleet).resolve().parent.parent if fleet else ROOT.parent

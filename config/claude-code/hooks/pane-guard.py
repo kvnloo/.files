@@ -12,7 +12,7 @@ own process chain or the owner's interactive desktop programs:
   loginctl terminate-*|kill-*         reboot / poweroff / shutdown / systemctl reboot
 
 Protected names: tern, tmux, Hyprland, waybar, noctalia, quickshell/qs, firefox, zen,
-omp, claude, kitty, alacritty (override with Z0_GUARD_PROTECTED, comma-separated).
+omp, claude, kitty, alacritty, gnome-keyring-daemon (override with Z0_GUARD_PROTECTED, comma-separated).
 Commands inside `ssh HOST '...'`, `bash -c '...'`, `sudo`, `env`, `timeout` etc. are
 checked too.
 
@@ -39,7 +39,7 @@ import time
 
 DEFAULT_PROTECTED = ("tern", "tmux", "hyprland", "waybar", "noctalia", "quickshell", "qs",
                      "firefox", "zen", "zen-bin", "zen-browser", "omp", "claude", "kitty",
-                     "alacritty")
+                     "alacritty", "gnome-keyring-daemon")
 STATE = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "z0-guard"
 ALLOW_FILE = Path(os.environ.get("Z0_GUARD_CONFIG") or Path.home() / ".config/z0-guard") / "allow-kill"
 ALLOW_TTL = 15 * 60
@@ -191,9 +191,10 @@ def check_segment(seg: list[str], ancestors: set[int], remote: bool, depth: int)
     if cmd in POWER or (cmd == "systemctl" and any(a in POWER for a in args)):
         return [f"`{' '.join(seg[:3])}` ends every pane and session"]
     if cmd == "systemctl" and any(a in ("stop", "restart", "kill", "try-restart",
-                                          "reload-or-restart", "isolate") for a in args):
+                                          "reload-or-restart", "isolate", "mask", "disable") for a in args):
         units = [a for a in args if not a.startswith("-") and a not in (
-            "stop", "restart", "kill", "try-restart", "reload-or-restart", "isolate")]
+            "stop", "restart", "kill", "try-restart", "reload-or-restart", "isolate", "mask",
+            "disable")]
         bad = [u for u in units if is_protected_name(re.sub(r"[@.].*$", "", u))
                or name_re().search(u)]
         if bad:

@@ -375,6 +375,22 @@ class Contracts(unittest.TestCase):
         events = self.watch.invariant('user', 'fixture.service', {'kind': 'file_freshness', 'path': str(path), 'max_age_seconds': 1}, {}, time.time() + 10)
         self.assertEqual(events[0]['code'], 'stale_file')
 
+    def test_keyring_self_heals_then_flags_lock_and_fd_leak(self):
+        probes = iter([(True, 12, 1000), (False, 12, 1000), (False, 40, 1000), (True, 600, 1000), (True, 600, 1000)])
+        with patch.object(self.watch, 'keyring_probe', side_effect=lambda: next(probes)), \
+                patch.object(sw, 'command') as command:
+            self.assertEqual(self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 100.0), [])
+            command.assert_called_once_with(['systemctl', '--user', 'start', 'keyring-autounlock.service'], timeout=30)
+            self.assertEqual([e['code'] for e in self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 110.0)],
+                             ['keyring_fd_leak'])
+            codes = [e['code'] for e in self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 120.0)]
+            self.assertEqual(codes, ['keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak'])
+            self.assertTrue(all(sw.event(c)['severity'] == 'severe' for c in codes))
+
+    def test_keyring_probe_failure_is_not_healthy(self):
+        with patch.object(self.watch, 'keyring_probe', side_effect=ValueError):
+            self.assertEqual(self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 1.0)[0]['code'], 'invariant_unavailable')
+
     def test_unknown_and_missing_invariants_are_not_healthy(self):
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'unknown'}, {}, time.time())[0]['code'], 'invariant_unavailable')
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'file_freshness', 'path': str(self.root / 'missing'), 'max_age_seconds': 1}, {}, time.time())[0]['code'], 'invariant_unavailable')
@@ -626,10 +642,10 @@ class Contracts(unittest.TestCase):
     def test_restarts_in_window_not_lifetime_and_no_remediation(self):
         self.watch.last_scan = time.time()
         self.watch.units = {('user', 'fixture.service'): {'health_invariant': {'kind': 'systemd'}}}
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '30'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'keyring_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2], [])
-        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
+        with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'keyring_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
 

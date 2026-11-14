@@ -44,7 +44,9 @@ class PaneGuard(unittest.TestCase):
         for cmd in ("tern kill 3", "tern close --all", "tmux kill-server", "tmux -L x kill-pane",
                     "pkill waybar", "pkill -f omp", "killall -9 Hyprland", "pkill -9 firefox",
                     "ssh host 'pkill -f tern'", "bash -c 'tmux kill-session -t a'",
-                    "sudo systemctl --user restart waybar.service", "hyprctl dispatch exit",
+                    "sudo systemctl --user restart waybar.service",
+                    "systemctl --user mask gnome-keyring-daemon.socket",
+                    "pkill -f gnome-keyring-daemon", "hyprctl dispatch exit",
                     "hyprctl kill", "kill $PPID", "kill -9 -1", "pkill -u me",
                     "pgrep noctalia | xargs kill", "x && timeout 5 killall qs", "reboot",
                     "loginctl terminate-user me", f"kill {os.getppid()}"):
