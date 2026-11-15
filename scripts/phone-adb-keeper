@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""Keep the S22 sender's ADB transport alive without touching the phone UI.
+
+Why it drops: Android turns Wireless debugging (TLS port) off or onto a new
+random port when Wi-Fi disconnects/reconnects (seen 2026-11-04 09:46: Wi-Fi
+drop + MAC_CHANGE + band switch, uptime unchanged, so no reboot). Legacy
+tcpip mode on 5555 survives Wi-Fi changes but not a reboot or adbd restart.
+
+Each run (timer, every 2 min): detect -> repair -> append a receipt line.
+  1. Find a live transport whose ro.serialno matches. If none, `adb connect`
+     the fixed 5555 endpoints (tailnet, LAN) and the mDNS-advertised TLS port.
+  2. If connected but adbd no longer listens on 5555, re-arm `adb tcpip 5555`,
+     only while the sender's UI lock is free (never mid-send; no UI input).
+  3. Drop stale `offline` transports for this phone's hosts.
+Diagnostics per receipt (uptime, adb_wifi_enabled, BSSID, tcp port) let the
+next drop be attributed: uptime reset = reboot, BSSID change = Wi-Fi roam,
+adb_wifi_enabled=0 with same uptime = Android turned wireless debugging off.
+If nothing reconnects, the receipt says `needs_owner_pairing`.
+DHCP moves the LAN IP (S22 went .31 -> .8), so every run learns wlan0's IPv4
+and the next run tries it; a USB-only transport also gets a :5555 Wi-Fi peer
+so unplugging the cable never drops the phone. `wireless` names that peer.
+"""
+import fcntl, json, os, re, subprocess, sys, time
+from pathlib import Path
+
+ADB = str(Path.home() / 'android/sdk/platform-tools/adb')
+PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1.31'],
+                  'ui_lock': Path.home() / 'tmp/s22-ui.lock'},
+          # CAROL bike's Lenovo Tab P11 Gen 2 (TB350FU); Tailscale app node lenovo-tab-p11-2nd-gen.
+          'carol-tablet': {'serial': 'HVA5TTYB', 'hosts': ['100.94.207.126', '192.168.1.65'],
+                           'ui_lock': Path.home() / 'tmp/carol-tablet-ui.lock',
+                           # Never paired: its receipt still says needs_owner_pairing, but it must
+                           # not hold the unit red, or a real S22 drop never reaches failed-unit-watch.
+                           'required': False}}
+STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
+
+
+def adb(*args, timeout=20):
+    try:
+        return subprocess.run([ADB, *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 124, '', 'timeout')
+
+
+def transports():
+    rows = {}
+    for line in adb('devices').stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2:
+            rows[parts[0]] = parts[1]
+    return rows
+
+
+def serial_of(transport):
+    r = adb('-s', transport, 'shell', 'getprop ro.serialno', timeout=10)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def live_transport(phone):
+    ts = transports()
+    # Prefer the fixed tcpip endpoint, then any other matching transport.
+    for t in sorted((t for t, s in ts.items() if s == 'device'), key=lambda t: not t.endswith(':5555')):
+        if serial_of(t) == phone['serial']:
+            return t
+    return None
+
+
+def mdns_endpoints(phone):
+    out = adb('mdns', 'services').stdout
+    return [line.split()[-1] for line in out.splitlines()
+            if phone['serial'] in line and '_adb-tls-connect._tcp' in line]
+
+
+def diagnostics(t):
+    script = ('cut -d" " -f1 /proc/uptime; settings get global adb_wifi_enabled; getprop service.adb.tcp.port; '
+              'dumpsys wifi | grep -m1 -o "BSSID: [0-9a-f:]*"; ip -4 -o addr show wlan0')
+    out = adb('-s', t, 'shell', script, timeout=20).stdout
+    lines = (out.splitlines() + [''] * 4)[:4]
+    ip = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', out)
+    return {'uptime_s': float(lines[0]) if re.fullmatch(r'[0-9.]+', lines[0].strip()) else None,
+            'adb_wifi_enabled': lines[1].strip() or None, 'tcp_port': lines[2].strip() or None,
+            'bssid': lines[3].replace('BSSID:', '').strip() if lines[3].startswith('BSSID') else None, 'lan_ip': ip.group(1) if ip else None}
+
+
+def hosts(phone, learned=None):
+    """Fixed hosts plus the last LAN IP the phone reported, deduplicated, learned first."""
+    ip = (learned or {}).get('lan_ip')
+    return list(dict.fromkeys(([ip] if ip else []) + phone['hosts']))
+
+
+def open_5555(prefix):
+    """IPv4 hosts in prefix (e.g. '192.168.1.') whose TCP 5555 speaks adb; parallel probes.
+
+    Open-port alone is not enough: the router also listens on 5555, and every adb
+    disconnect of its non-adb transport kicked the S22's .18:5555 too (11-15 07:59:01).
+    So send an adb CNXN and keep only hosts that answer CNXN/AUTH/STLS; adb never
+    attaches to a non-adb host, so nothing needs disconnecting."""
+    from concurrent.futures import ThreadPoolExecutor
+    import socket, struct
+    payload = b'host::\0'
+    cnxn = struct.pack('<6I', 0x4E584E43, 0x01000001, 256 * 1024, len(payload), sum(payload),
+                       0x4E584E43 ^ 0xFFFFFFFF) + payload
+
+    def probe(ip):
+        try:
+            with socket.create_connection((ip, 5555), timeout=0.4) as s:
+                s.settimeout(1.5)
+                s.sendall(cnxn)
+                return ip if s.recv(4) in (b'CNXN', b'AUTH', b'STLS') else None
+        except OSError:
+            return None
+    with ThreadPoolExecutor(64) as pool:
+        return [ip for ip in pool.map(probe, (f'{prefix}{n}' for n in range(1, 255))) if ip]
+
+
+def lan_prefixes(host_list):
+    return list(dict.fromkeys(h.rsplit('.', 1)[0] + '.' for h in host_list
+                              if re.fullmatch(r'(192\.168\.\d+|10\.\d+\.\d+)\.\d+', h)))
+
+
+def is_wireless_5555(transport):
+    return re.fullmatch(r'\d+\.\d+\.\d+\.\d+:5555', transport or '') is not None
+
+
+def connect_5555(phone, host_list):
+    for h in host_list:
+        c = f'{h}:5555'
+        r = adb('connect', c, timeout=15)
+        if 'connected' in r.stdout and 'failed' not in r.stdout and serial_of(c) == phone['serial']:
+            return c
+    return None
+
+
+def attribute(previous, diag):
+    if not previous or not diag:
+        return None
+    if previous.get('uptime_s') and diag.get('uptime_s') is not None and diag['uptime_s'] < previous['uptime_s']:
+        return 'reboot'
+    if previous.get('bssid') and diag.get('bssid') and previous['bssid'] != diag['bssid']:
+        return 'wifi-roam'
+    if previous.get('adb_wifi_enabled') == '1' and diag.get('adb_wifi_enabled') == '0':
+        return 'wireless-debugging-turned-off'
+    return None
+
+
+def keep(name, phone, learned=None):
+    actions = []
+    host_list = hosts(phone, learned)
+    t = live_transport(phone)
+    if t is None:
+        candidates = [f'{h}:5555' for h in host_list] + mdns_endpoints(phone)
+        for c in candidates:
+            r = adb('connect', c, timeout=15)
+            actions.append({'connect': c, 'out': (r.stdout + r.stderr).strip()[:160]})
+            if 'connected' in r.stdout and 'failed' not in r.stdout:
+                time.sleep(1)
+                if serial_of(c) == phone['serial']:
+                    t = c
+                    break
+    if t is None:
+        # DHCP moved the phone (S22 .8 -> .18 on 11-13; MAC randomization is 'auto', so no MAC
+        # lookup): sweep the LAN /24 for an open 5555 and keep the host whose serial matches.
+        for prefix in lan_prefixes(host_list):
+            # Skip hosts already attached: they are another phone (live_transport would have
+            # matched ours), and disconnecting them kicked the S22 during the tablet's sweep.
+            attached = {c.split(':')[0] for c, s in transports().items() if s == 'device'}
+            found = [h for h in open_5555(prefix) if h not in host_list and h not in attached]
+            actions.append({'lan_sweep': prefix + '0/24', 'open_5555': found})
+            # One host at a time, dropping non-matches before the next connect: disconnecting
+            # 192.168.1.1:5555 (router) after .18 attached also kicked .18 (adb log 11-15 07:57:11).
+            for h in found:
+                t = connect_5555(phone, [h])
+                if t:
+                    break
+                adb('disconnect', f'{h}:5555')
+            if t:
+                break
+    diag = diagnostics(t) if t else None
+    if t and diag and diag.get('tcp_port') != '5555':
+        with open(phone['ui_lock'], 'a') as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                actions.append({'tcpip': 'deferred: sender holds UI lock'})
+            else:
+                r = adb('-s', t, 'tcpip', '5555', timeout=20)
+                actions.append({'tcpip': (r.stdout + r.stderr).strip()[:160]})
+                time.sleep(3)
+                diag = diagnostics(t) or diag
+    if diag:
+        host_list = hosts(phone, diag)
+    for stale, state in transports().items():
+        if state == 'offline' and any(stale.startswith(h + ':') for h in host_list):
+            adb('disconnect', stale)
+            actions.append({'disconnect_offline': stale})
+    if t and any(h.startswith('100.') for h in phone['hosts']):
+        # Second path: Tailscale was installed with always-on VPN but its tunnel was down
+        # (11-15), so the tailnet host timed out while DHCP moved the LAN IP. Re-raise it
+        # without UI via the app's documented CONNECT_VPN intent.
+        up = adb('-s', t, 'shell', 'ip -o -4 addr show', timeout=10).stdout
+        if not re.search(r'inet 100\.', up):
+            r = adb('-s', t, 'shell', 'am broadcast -a com.tailscale.ipn.CONNECT_VPN '
+                    '-n com.tailscale.ipn/.IPNReceiver', timeout=15)
+            actions.append({'tailscale_connect': (r.stdout + r.stderr).strip()[-60:]})
+    t = live_transport(phone) or (connect_5555(phone, [t.split(':')[0]]) if is_wireless_5555(t) else None)
+    wireless = t if is_wireless_5555(t) else None
+    if t and not wireless and diag and diag.get('tcp_port') == '5555':
+        wireless = connect_5555(phone, host_list)
+        actions.append({'wireless_peer': wireless})
+        t = live_transport(phone) or t
+    return t, diag, actions, wireless
+
+
+def main():
+    STATE.mkdir(parents=True, exist_ok=True)
+    last_path = STATE / 'phone-adb-keeper.last.json'
+    last = json.loads(last_path.read_text()) if last_path.exists() else {}
+    rc = 0
+    for name, phone in PHONES.items():
+        before = last.get(name, {})
+        t, diag, actions, wireless = keep(name, phone, before.get('diag'))
+        receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
+                   'state': 'ok' if t else 'needs_owner_pairing', 'was': before.get('state'),
+                   'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
+                   'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
+        if t is None and phone.get('required', True):
+            rc = 1
+        if actions or receipt['state'] != before.get('state'):
+            with open(STATE / 'phone-adb-keeper.jsonl', 'a') as fh:
+                fh.write(json.dumps(receipt) + '\n')
+        last[name] = receipt
+        print(json.dumps(receipt))
+    last_path.write_text(json.dumps(last, indent=1))
+    return rc
+
+
+if __name__ == '__main__':
+    sys.exit(main())

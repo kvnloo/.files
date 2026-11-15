@@ -1,0 +1,9 @@
+[Unit]
+Description=Every 2 minutes: keep the S22 sender ADB transport alive
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=2min
+
+[Install]
+WantedBy=timers.target
