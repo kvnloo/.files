@@ -17,6 +17,10 @@ systemctl --user list-units --type=service --state=running --no-legend --plain \
   [[ $unit =~ $SKIP ]] && continue
   [[ $(systemctl --user show -P MemoryMax "$unit") == infinity ]] || continue
   if [[ $unit =~ $ROOTS ]]; then max=$ROOT_MAX swap=$ROOT_SWAP; else max=$DEFAULT_MAX swap=$DEFAULT_SWAP; fi
-  echo "cap $unit MemoryMax=$max MemorySwapMax=$swap"
-  [[ $DRY == 1 ]] || systemctl --user set-property --runtime "$unit" MemoryMax="$max" MemorySwapMax="$swap"
+  # Never overwrite a swap bound the unit already declares (UF3 2026-11-15: agentsview's IaC
+  # 62-swap-bound.conf says 3G; the runtime 1G override failed memory-drift every run).
+  props=(MemoryMax="$max")
+  [[ $(systemctl --user show -P MemorySwapMax "$unit") == infinity ]] && props+=(MemorySwapMax="$swap")
+  echo "cap $unit ${props[*]}"
+  [[ $DRY == 1 ]] || systemctl --user set-property --runtime "$unit" "${props[@]}"
 done
