@@ -23,7 +23,7 @@ touched after the action opened; or the owner's lane-status file naming it outsi
   action-escalate --actions actions.jsonl --state escalate-state.json [--push]
   action-escalate --actions actions.jsonl --replay 2026-11-13T00:00 2026-11-15T23:59 [--step 30]
 """
-import argparse, glob, json, os, re, sqlite3, subprocess, sys, time
+import argparse, glob, json, os, re, shutil, sqlite3, subprocess, sys, time
 from datetime import datetime
 from pathlib import Path
 
@@ -324,12 +324,17 @@ def new_pushes(rows, state, now, grace_h=6.0, per_day=5, generic_per_day=3, gap_
 
 
 def push(rows, run=subprocess.run):
+    """kevin-push rc; 127 when it cannot be launched (timer units run without ~/.local/bin on PATH)."""
     if not rows:
         return None
     title = f"{len(rows)} routed action(s) unclaimed > 6 h"
     body = "\n".join(r["line"] for r in rows)
     env = dict(os.environ, CIRCADIAN_CLASS="decision")
-    return run(["kevin-push", "action-escalate", title, body], env=env, capture_output=True, text=True).returncode
+    exe = os.environ.get("KEVIN_PUSH") or shutil.which("kevin-push") or str(HOME / ".local/bin/kevin-push")
+    try:
+        return run([exe, "action-escalate", title, body], env=env, capture_output=True, text=True).returncode
+    except OSError:
+        return 127
 
 
 def _stamp(t):
