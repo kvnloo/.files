@@ -110,7 +110,8 @@ cmd_agent() {
   [ -s $ETC/join-token ] || die "copy the server's node-token to $ETC/join-token (mode 0600) first"
   chmod 0600 $ETC/join-token
   local changed; changed=$(install_config "$CFG/agent.yaml")
-  if [ "$(installed_version)" != "$K3S_VERSION" ]; then
+  # A former server has the same binary but no k3s-agent unit: install in that case too.
+  if [ "$(installed_version)" != "$K3S_VERSION" ] || [ ! -f /etc/systemd/system/k3s-agent.service ]; then
     say "installing k3s $K3S_VERSION (agent)"; run_installer agent
   elif [ "$changed" = changed ]; then
     systemctl restart k3s-agent
