@@ -185,5 +185,20 @@ class PhonePolicyTests(unittest.TestCase):
         self.assertIn("pacman -Q nodejs bun go rust gcc", run.call_args.args[0][-1])
 
 
+
+class NativeAdmission(unittest.TestCase):
+    down = {"status": "guest_down", "error": "guest_down: Omalauncher LinuxService missing", "load1": 1.0}
+
+    def test_native_launch_ignores_down_guest(self):
+        self.assertNotIn("error", fleet.native_admission({"kind": "phone"}, self.down, guest=False))
+
+    def test_guest_launch_still_needs_guest(self):
+        self.assertIn("error", fleet.native_admission({"kind": "phone"}, self.down, guest=True))
+
+    def test_other_errors_still_block(self):
+        p = {"status": "error", "error": "adb offline"}
+        self.assertIn("error", fleet.native_admission({"kind": "phone"}, p, guest=False))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -123,6 +123,14 @@ def probe_error(n, message, transport):
             "error": f"probe_error: {message}", "transport": transport}
 
 
+def native_admission(n, p, guest):
+    """A native adb launch never touches the PRoot guest, so a down guest is not a launch
+    error there (it held the S25 out of all native work). --guest launches still need it."""
+    if n["kind"] == "phone" and not guest and p.get("status") == "guest_down":
+        return {k: v for k, v in p.items() if k != "error"}
+    return p
+
+
 def probe(n, guest=False):
     """Return health or a named probe_error. Never parse failed transport output."""
     transport = "local"
@@ -499,7 +507,7 @@ def cmd_run(args):
                                  if python_guest else probe(n, args.guest), cands)))
     best, notes = None, []
     for n in cands:
-        p = probes[n["name"]]
+        p = native_admission(n, probes[n["name"]], args.guest)
         if "error" in p:
             notes.append(f"{n['name']}: {p['error']}"); continue
         # The health timer's strike window is NOT launch admission. A fresh unsafe

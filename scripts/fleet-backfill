@@ -20,6 +20,7 @@ and its receipt (log + result.json) lands in RUNS/<suite>/<unit>-<node>/.
 """
 import argparse
 import datetime
+import itertools
 import json
 import os
 import shutil
@@ -118,7 +119,9 @@ def plan(cfg, *, mem_available, mbp_free, mbp_pending, boat_ok, active, recent):
 
 
 def phone_shards(n_items, size):
-    return [(k, k * size, min(n_items, (k + 1) * size)) for k in range((n_items + size - 1) // size)]
+    """Full shards only: the corpus is append-only, so a partial tail would be marked
+    done and never see the lines appended after it. The tail waits until it fills."""
+    return [(k, k * size, (k + 1) * size) for k in range(n_items // size)]
 
 
 def phone_pick(shards, done, busy):
@@ -264,8 +267,11 @@ def phone_tick(cfg, now, dry_run=False):
     if not phones:
         return {}
     corpus = Path(phones["corpus"])
-    lines = corpus.read_text().splitlines()
-    tag = f"{corpus.stem}-{len(lines)}-s{phones['shard']}"  # shard k means a different range per size
+    # Stream it: the corpus is ~70 MB and the tick unit has MemoryMax=256M (a read_text()
+    # + splitlines() got the tick OOM-killed). Append-only, so the tag is stable as it grows.
+    with corpus.open("rb") as f:
+        n_lines = sum(1 for _ in f)
+    tag = f"{corpus.stem}-s{phones['shard']}"  # shard k means a different range per size
     root = RUNS / "phone-embed" / tag
     state_dir = CACHE / "phones"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -305,7 +311,7 @@ def phone_tick(cfg, now, dry_run=False):
         r = json.loads(res.read_text())
         if r.get("exit_code") == 0 or r.get("attempts", 0) >= MAX_ATTEMPTS:
             done.add(r["shard"])
-    shards = phone_shards(len(lines), phones["shard"])
+    shards = phone_shards(n_lines, phones["shard"])
     if mem_available() < PHONE_GROOT_FLOOR:
         report["launch"] = "held: groot MemAvailable < 512 MiB"
         return report
@@ -321,7 +327,8 @@ def phone_tick(cfg, now, dry_run=False):
         shard = state_dir / "shards" / tag / f"{k:04d}.jsonl"
         if not shard.exists():
             shard.parent.mkdir(parents=True, exist_ok=True)
-            items = (json.loads(l) for l in lines[lo:hi])
+            with corpus.open() as f:
+                items = [json.loads(l) for l in itertools.islice(f, lo, hi)]
             shard.write_text("".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
         argv = phone_argv(cfg, node, shard)
         if dry_run:

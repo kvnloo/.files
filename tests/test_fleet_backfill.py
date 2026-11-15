@@ -112,7 +112,7 @@ if __name__ == "__main__":
 class PhoneFeeder(unittest.TestCase):
     def test_shards_cover_corpus_once(self):
         shards = bf.phone_shards(1001, 400)
-        self.assertEqual(shards, [(0, 0, 400), (1, 400, 800), (2, 800, 1001)])
+        self.assertEqual(shards, [(0, 0, 400), (1, 400, 800)])  # tail 800-1001 waits to fill
 
     def test_pick_skips_done_and_held(self):
         shards = bf.phone_shards(1200, 400)
