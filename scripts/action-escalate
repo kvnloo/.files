@@ -292,10 +292,11 @@ def escalate(actions, now, hours=6.0, grace_h=6.0, kinds=("dead:",), receipts=()
     return rows
 
 
-def new_pushes(rows, state, now, grace_h=6.0, per_day=5, gap_h=3.0, urgent_h=6.5):
+def new_pushes(rows, state, now, grace_h=6.0, per_day=5, generic_per_day=3, gap_h=4.0):
     """Rows to send now. Drops keys already pushed this episode (forgotten once the action is gone for
-    > grace). Rate: at most `per_day` push calls per rolling 24 h and, unless a pending row is already
-    idle >= urgent_h, one per `gap_h`; held rows stay pending and go out batched in the next call."""
+    > grace). Rate: at most `per_day` push calls per rolling 24 h. A row carrying a concrete restore
+    command goes out at once (any free slot); generic triage rows alone may use only `generic_per_day`
+    slots, one per `gap_h`, so they cannot starve a real fix. Every call carries all pending rows."""
     sent = state.setdefault("sent", {})
     calls = [t for t in state.get("calls", []) if now - t < 86400]
     live = {r["key"] for r in rows}
@@ -308,8 +309,12 @@ def new_pushes(rows, state, now, grace_h=6.0, per_day=5, gap_h=3.0, urgent_h=6.5
             sent[r["key"]]["seen"] = now
         else:
             pending.append(r)
-    urgent = any(r["idle_h"] >= urgent_h for r in pending)
-    if not pending or len(calls) >= per_day or (calls and now - calls[-1] < gap_h * 3600 and not urgent):
+    urgent = any(r["fix"].startswith("restore") for r in pending)
+    generic = [t for t in state.get("generic", []) if now - t < 86400]
+    hold = not pending or len(calls) >= per_day or (not urgent and (
+        len(generic) >= generic_per_day or (calls and now - calls[-1] < gap_h * 3600)))
+    state["generic"] = generic + ([] if hold or urgent else [now])
+    if hold:
         state["calls"] = calls
         return []
     for r in pending:

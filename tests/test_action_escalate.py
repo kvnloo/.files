@@ -114,16 +114,18 @@ class Escalate(Base):
         st, n = {}, 0
         for i in range(48):  # a new unclaimed unit every 30 min for a day
             now = T0 + i * 1800
-            rows = [{"key": f"k{j}", "opened": T0, "idle_h": 6.0} for j in range(i + 1)]
+            rows = [{"key": f"k{j}", "opened": T0, "idle_h": 6.0, "fix": "triage" if j % 4 else "restore x"}
+                    for j in range(i + 1)]
             n += bool(ae.new_pushes(rows, st, now))
         self.assertLessEqual(n, 5)
         self.assertEqual(len(st["calls"]), n)
 
-    def test_urgent_row_bypasses_gap_not_cap(self):
-        st = {}
-        self.assertTrue(ae.new_pushes([{"key": "a", "opened": T0, "idle_h": 6.0}], st, T0))
-        self.assertEqual(ae.new_pushes([{"key": "b", "opened": T0, "idle_h": 6.0}], st, T0 + H), [])
-        self.assertTrue(ae.new_pushes([{"key": "b", "opened": T0, "idle_h": 6.5}], st, T0 + 2 * H))
+    def test_restore_row_bypasses_generic_budget_not_cap(self):
+        st, g = {}, lambda k: {"key": k, "opened": T0, "idle_h": 6.0, "fix": "triage"}
+        self.assertTrue(ae.new_pushes([g("a")], st, T0))
+        self.assertEqual(ae.new_pushes([g("b")], st, T0 + H), [])  # generic: 4 h gap
+        out = ae.new_pushes([g("b"), {"key": "c", "opened": T0, "idle_h": 6.0, "fix": "restore x"}], st, T0 + 2 * H)
+        self.assertEqual({r["key"] for r in out}, {"b", "c"})  # restore goes now and carries pending rows
 
     def test_archived_owner_routes_to_live_lane(self):
         p = self.log({"at": T0, "key": "dead:os_service:plain.service", "owner": "reliability-archive-pre-1107", "line": "d"})
