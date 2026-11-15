@@ -40,7 +40,8 @@ case $cmd in
     write_tmpfiles
     for u in "${units[@]}"; do
       mkdir -p "$udir/$u.service.d"
-      ln -sfn "$repo/config/systemd/user/agent-private-tmp.conf" "$udir/$u.service.d/agent-private-tmp.conf"
+      # Copy, not symlink: checkouts get switched or reaped under running units.
+      install -m 0644 "$repo/config/systemd/user/agent-private-tmp.conf" "$udir/$u.service.d/agent-private-tmp.conf"
     done
     systemctl --user daemon-reload
     for u in "${units[@]}"; do systemctl --user restart "$u"; done
