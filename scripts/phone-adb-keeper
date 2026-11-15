@@ -85,6 +85,26 @@ def hosts(phone, learned=None):
     return list(dict.fromkeys(([ip] if ip else []) + phone['hosts']))
 
 
+def open_5555(prefix):
+    """IPv4 hosts in prefix (e.g. '192.168.1.') with TCP 5555 open; one parallel 0.4 s probe each."""
+    from concurrent.futures import ThreadPoolExecutor
+    import socket
+
+    def probe(ip):
+        try:
+            with socket.create_connection((ip, 5555), timeout=0.4):
+                return ip
+        except OSError:
+            return None
+    with ThreadPoolExecutor(64) as pool:
+        return [ip for ip in pool.map(probe, (f'{prefix}{n}' for n in range(1, 255))) if ip]
+
+
+def lan_prefixes(host_list):
+    return list(dict.fromkeys(h.rsplit('.', 1)[0] + '.' for h in host_list
+                              if re.fullmatch(r'(192\.168\.\d+|10\.\d+\.\d+)\.\d+', h)))
+
+
 def is_wireless_5555(transport):
     return re.fullmatch(r'\d+\.\d+\.\d+\.\d+:5555', transport or '') is not None
 
@@ -124,6 +144,18 @@ def keep(name, phone, learned=None):
                 if serial_of(c) == phone['serial']:
                     t = c
                     break
+    if t is None:
+        # DHCP moved the phone (S22 .8 -> .18 on 11-13; MAC randomization is 'auto', so no MAC
+        # lookup): sweep the LAN /24 for an open 5555 and keep the host whose serial matches.
+        for prefix in lan_prefixes(host_list):
+            found = [h for h in open_5555(prefix) if h not in host_list]
+            actions.append({'lan_sweep': prefix + '0/24', 'open_5555': found})
+            t = connect_5555(phone, found)
+            for h in found:
+                if f'{h}:5555' != t:
+                    adb('disconnect', f'{h}:5555')  # not ours: never leave other devices attached
+            if t:
+                break
     diag = diagnostics(t) if t else None
     if t and diag and diag.get('tcp_port') != '5555':
         with open(phone['ui_lock'], 'a') as fh:

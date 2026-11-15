@@ -41,5 +41,47 @@ class EndpointTests(unittest.TestCase):
             self.assertFalse(keeper.is_wireless_5555(t))
 
 
+
+class RediscoveryTests(unittest.TestCase):
+    """DHCP moved the S22 .8 -> .18 on 11-13; the keeper retried .8 for two days."""
+
+    def test_stale_learned_ip_finds_phone_by_lan_sweep(self):
+        import subprocess
+        connected = set()
+        state = {}
+
+        def adb(*args, timeout=20):
+            if args[0] == 'connect':
+                host = args[1].split(':')[0]
+                if host == '192.168.1.18':
+                    connected.add(args[1])
+                    return subprocess.CompletedProcess(args, 0, f'connected to {args[1]}', '')
+                return subprocess.CompletedProcess(args, 1, f"failed to connect to '{args[1]}': Connection refused", '')
+            return subprocess.CompletedProcess(args, 0, '', '')
+
+        patches = {
+            'adb': adb,
+            'transports': lambda: {c: 'device' for c in connected},
+            'serial_of': lambda t: 'S22' if t == '192.168.1.18:5555' else 'OTHER',
+            'mdns_endpoints': lambda phone: [],
+            'open_5555': lambda prefix: ['192.168.1.8', '192.168.1.18'] if prefix == '192.168.1.' else [],
+            'diagnostics': lambda t: {'tcp_port': '5555', 'lan_ip': '192.168.1.18'},
+        }
+        saved = {k: getattr(keeper, k, None) for k in patches}
+        orig_sleep = keeper.time.sleep
+        try:
+            for k, v in patches.items():
+                setattr(keeper, k, v)
+            keeper.time.sleep = lambda s: None
+            phone = {'serial': 'S22', 'hosts': ['100.72.191.23'], 'ui_lock': pathlib.Path('/dev/null')}
+            t, diag, actions, wireless = keeper.keep('s22', phone, {'lan_ip': '192.168.1.8'})
+        finally:
+            for k, v in saved.items():
+                setattr(keeper, k, v)
+            keeper.time.sleep = orig_sleep
+        self.assertEqual(t, "192.168.1.18:5555", actions)
+        self.assertEqual(wireless, '192.168.1.18:5555')
+        self.assertTrue(any(a.get('lan_sweep') for a in actions))
+
 if __name__ == '__main__':
     unittest.main()
