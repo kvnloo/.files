@@ -63,6 +63,40 @@ def in_use(path, proc=Path("/proc")):
     return None
 
 
+_UNIT_LINES = None
+
+
+def unit_lines():
+    """(file, line) for every user systemd unit and drop-in, read once per run."""
+    global _UNIT_LINES
+    if _UNIT_LINES is None:
+        _UNIT_LINES = []
+        base = Path(os.environ.get("HOME", "~")).expanduser() / ".config/systemd/user"
+        seen = set()
+        for f in sorted(base.rglob("*")) if base.is_dir() else []:
+            try:   # units are often symlinks into a dotfiles repo; wants/ links repeat them
+                real = os.path.realpath(f)
+                if real in seen or not os.path.isfile(real):
+                    continue
+                seen.add(real)
+                text = Path(real).read_text(errors="replace")
+            except OSError:
+                continue
+            _UNIT_LINES += [(str(f.relative_to(base)), l.rstrip()) for l in text.splitlines()
+                            if "/" in l and not l.startswith(("#", "Documentation="))]
+    return _UNIT_LINES
+
+
+def unit_ref(path):
+    """A user systemd unit (or drop-in) naming this worktree: services run from it even when no
+    process has its cwd there (11-15: reaping one killed z0-ghcache)."""
+    names = {str(path).rstrip("/"), os.path.realpath(path)}
+    for f, line in unit_lines():
+        if any(n + "/" in line or n + " " in line or line.endswith(n) for n in names):
+            return f
+    return None
+
+
 def size_kib(path):
     out = subprocess.run(["du", "-sxk", str(path)], capture_output=True, text=True, timeout=600).stdout
     return int(out.split()[0]) if out else None
@@ -129,6 +163,8 @@ def decide(row, check, idle_days=IDLE_DAYS):
         return "keep", "worktree locked"
     if live["pid"]:
         return "keep", f"in use by pid {live['pid']}"
+    if live.get("unit"):
+        return "keep", f"referenced by systemd unit {live['unit']}"
     why = None
     if not (merged or done):
         why = "no proof"
@@ -168,7 +204,7 @@ def live_check(row):
             "main": os.path.realpath(gd) == os.path.realpath(cd),
             "registered": registered(cd, wt),
             "idle": lambda: idle_days_of(wt, row.get("_idle_days", IDLE_DAYS)),
-            "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt)}
+            "locked": bool(gd) and (Path(gd) / "locked").exists(), "pid": in_use(wt), "unit": unit_ref(wt)}
 
 
 def registered(cd, wt):

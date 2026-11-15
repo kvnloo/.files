@@ -254,10 +254,26 @@ class Reap(unittest.TestCase):
                            capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(slow.exists())
-        self.assertFalse(other.exists())
+        self.assertFalse(other.exists())                                 # same idle tree, no unit: reaped
         recs = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
         self.assertIn("timed out", next(x for x in recs if x["branch"] == "slow-wt")["error"])
         self.assertTrue((self.out / "runs.jsonl").exists())
+
+    def test_worktree_a_systemd_unit_runs_from_is_kept(self):
+        # 11-15: an idle worktree held z0-ghcache's ExecStart path (via a drop-in); reaping it silently
+        # killed the GitHub proxy and every factory reader behind it. No pid had its cwd there.
+        wt = self.add_idle("svc-wt", lambda wt: None)
+        other = self.add_idle("plain-wt", lambda wt: None)
+        dropin = self.tmp / ".config/systemd/user/svc.service.d"
+        dropin.mkdir(parents=True)
+        (dropin / "x.conf").write_text(f"[Service]\nEnvironment=TOOLS={wt}/tools/factory\n")
+        linked = self.add_idle("linked-wt", lambda wt: None)              # unit symlinked from a dotfiles repo
+        (self.tmp / "dotfiles.service").write_text(f"[Service]\nExecStart=/usr/bin/python3 {linked}/serve.py\n")
+        (self.tmp / ".config/systemd/user/dot.service").symlink_to(self.tmp / "dotfiles.service")
+        self.run_reap("--apply")
+        self.assertTrue(wt.exists())
+        self.assertTrue(linked.exists())
+        self.assertFalse(other.exists())                                 # same idle tree, no unit: reaped
 
     def test_in_use_idle_worktree_is_kept(self):
         wt = self.add_idle("idle-in-use", lambda wt: None)
