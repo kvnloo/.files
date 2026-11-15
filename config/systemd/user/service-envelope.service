@@ -1,0 +1,9 @@
+[Unit]
+Description=Cap memory of uncapped user services so a hog dies alone (not its neighbours)
+Documentation=file:///home/kvn/.local/bin/service-envelope
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/service-envelope
+MemoryMax=64M
+Nice=5
