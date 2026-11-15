@@ -89,14 +89,24 @@ def hosts(phone, learned=None):
 
 
 def open_5555(prefix):
-    """IPv4 hosts in prefix (e.g. '192.168.1.') with TCP 5555 open; one parallel 0.4 s probe each."""
+    """IPv4 hosts in prefix (e.g. '192.168.1.') whose TCP 5555 speaks adb; parallel probes.
+
+    Open-port alone is not enough: the router also listens on 5555, and every adb
+    disconnect of its non-adb transport kicked the S22's .18:5555 too (11-15 07:59:01).
+    So send an adb CNXN and keep only hosts that answer CNXN/AUTH/STLS; adb never
+    attaches to a non-adb host, so nothing needs disconnecting."""
     from concurrent.futures import ThreadPoolExecutor
-    import socket
+    import socket, struct
+    payload = b'host::\0'
+    cnxn = struct.pack('<6I', 0x4E584E43, 0x01000001, 256 * 1024, len(payload), sum(payload),
+                       0x4E584E43 ^ 0xFFFFFFFF) + payload
 
     def probe(ip):
         try:
-            with socket.create_connection((ip, 5555), timeout=0.4):
-                return ip
+            with socket.create_connection((ip, 5555), timeout=0.4) as s:
+                s.settimeout(1.5)
+                s.sendall(cnxn)
+                return ip if s.recv(4) in (b'CNXN', b'AUTH', b'STLS') else None
         except OSError:
             return None
     with ThreadPoolExecutor(64) as pool:
