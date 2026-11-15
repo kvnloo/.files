@@ -165,6 +165,18 @@ class Escalate(Base):
         finally:
             ae.push, ae.proposed_fix = orig_push, orig_fix
 
+    def test_push_finds_kevin_push_off_path_and_survives_missing(self):
+        calls = []
+        old = dict(ae.os.environ)
+        try:
+            ae.os.environ["PATH"] = "/usr/bin"; ae.os.environ.pop("KEVIN_PUSH", None)
+            ae.push([{"line": "x"}], run=lambda argv, **k: calls.append(argv[0]) or type("R", (), {"returncode": 0}))
+            self.assertEqual(calls, [str(ae.HOME / ".local/bin/kevin-push")])
+            ae.os.environ["KEVIN_PUSH"] = str(self.tmp / "nope")
+            self.assertEqual(ae.push([{"line": "x"}]), 127)
+        finally:
+            ae.os.environ.clear(); ae.os.environ.update(old)
+
 
 if __name__ == "__main__":
     unittest.main()
