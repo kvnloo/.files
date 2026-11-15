@@ -46,8 +46,23 @@ class RediscoveryTests(unittest.TestCase):
     """DHCP moved the S22 .8 -> .18 on 11-13; the keeper retried .8 for two days."""
 
     def test_stale_learned_ip_finds_phone_by_lan_sweep(self):
-        import subprocess
         connected = set()
+        t, diag, actions, wireless = self.run_keep(connected, 'S22', {'lan_ip': '192.168.1.8'})
+        self.assertEqual(t, '192.168.1.18:5555', actions)
+        self.assertEqual(wireless, '192.168.1.18:5555')
+        self.assertTrue(any(a.get('lan_sweep') for a in actions))
+        self.assertEqual(connected, {'192.168.1.18:5555'})  # still attached, router dropped
+
+    def test_other_phones_sweep_leaves_attached_s22_alone(self):
+        # 11-15 08:00:24: the CAROL tablet's sweep connected .18, saw a foreign serial and
+        # disconnected it, kicking the S22 the same run had just repaired.
+        connected = {'192.168.1.18:5555'}
+        t, diag, actions, wireless = self.run_keep(connected, 'TABLET', {'lan_ip': '192.168.1.65'})
+        self.assertIsNone(t)
+        self.assertIn('192.168.1.18:5555', connected)
+
+    def run_keep(self, connected, serial, learned):
+        import subprocess
         state = {}
 
         def adb(*args, timeout=20):
@@ -61,10 +76,7 @@ class RediscoveryTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, f'connected to {args[1]}', '')
                 return subprocess.CompletedProcess(args, 1, f"failed to connect to '{args[1]}': Connection refused", '')
             if args[0] == 'disconnect':
-                # Real adb (11-15 07:57:11): disconnecting 192.168.1.1:5555 also kicked 192.168.1.18:5555.
-                host = args[1].split(':')[0]
-                for c in [c for c in connected if c.startswith(host)]:
-                    connected.discard(c)
+                connected.discard(args[1])
             return subprocess.CompletedProcess(args, 0, '', '')
 
         patches = {
@@ -73,7 +85,7 @@ class RediscoveryTests(unittest.TestCase):
             'serial_of': lambda t: 'S22' if t == '192.168.1.18:5555' else 'OTHER',
             'mdns_endpoints': lambda phone: [],
             'open_5555': lambda prefix: ['192.168.1.1', '192.168.1.8', '192.168.1.18'] if prefix == '192.168.1.' else [],
-            'diagnostics': lambda t: {'tcp_port': '5555', 'lan_ip': '192.168.1.18'},
+            'diagnostics': lambda t: {'tcp_port': '5555', 'lan_ip': t.split(':')[0]},
         }
         saved = {k: getattr(keeper, k, None) for k in patches}
         orig_sleep = keeper.time.sleep
@@ -81,16 +93,13 @@ class RediscoveryTests(unittest.TestCase):
             for k, v in patches.items():
                 setattr(keeper, k, v)
             keeper.time.sleep = lambda s: None
-            phone = {'serial': 'S22', 'hosts': ['100.72.191.23'], 'ui_lock': pathlib.Path('/dev/null')}
-            t, diag, actions, wireless = keeper.keep('s22', phone, {'lan_ip': '192.168.1.8'})
+            phone = {'serial': serial, 'hosts': ['100.72.191.23'], 'ui_lock': pathlib.Path('/dev/null')}
+            return keeper.keep(serial.lower(), phone, learned)
         finally:
             for k, v in saved.items():
                 setattr(keeper, k, v)
             keeper.time.sleep = orig_sleep
-        self.assertEqual(t, "192.168.1.18:5555", actions)
-        self.assertEqual(wireless, '192.168.1.18:5555')
-        self.assertTrue(any(a.get('lan_sweep') for a in actions))
-        self.assertEqual(connected, {'192.168.1.18:5555'})  # still attached, router dropped
+
 
 if __name__ == '__main__':
     unittest.main()

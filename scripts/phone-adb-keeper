@@ -161,7 +161,10 @@ def keep(name, phone, learned=None):
         # DHCP moved the phone (S22 .8 -> .18 on 11-13; MAC randomization is 'auto', so no MAC
         # lookup): sweep the LAN /24 for an open 5555 and keep the host whose serial matches.
         for prefix in lan_prefixes(host_list):
-            found = [h for h in open_5555(prefix) if h not in host_list]
+            # Skip hosts already attached: they are another phone (live_transport would have
+            # matched ours), and disconnecting them kicked the S22 during the tablet's sweep.
+            attached = {c.split(':')[0] for c, s in transports().items() if s == 'device'}
+            found = [h for h in open_5555(prefix) if h not in host_list and h not in attached]
             actions.append({'lan_sweep': prefix + '0/24', 'open_5555': found})
             # One host at a time, dropping non-matches before the next connect: disconnecting
             # 192.168.1.1:5555 (router) after .18 attached also kicked .18 (adb log 11-15 07:57:11).
