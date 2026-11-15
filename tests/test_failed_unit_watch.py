@@ -64,7 +64,7 @@ class FailedUnitWatch(unittest.TestCase):
                    f"Environment=FACTORY_TOOLS={gone}/tools/factory\nExecStart={live}/x.py\n")
             run = lambda cmd, **kw: SimpleNamespace(stdout=cat)
             self.assertEqual(fuw.missing_paths("z0-ghcache.service", run), [gone])
-            b = fuw.block([("z0-ghcache.service", 0.0, "exit-code", "1")], 3600.0, 30, "T",
+            b = fuw.block([("z0-ghcache.service", 100.0, "exit-code", "1")], 3600.0, 30, "T",
                           missing=lambda u: fuw.missing_paths(u, run))
             self.assertIn(f"MISSING PATH {gone}", b)
 
