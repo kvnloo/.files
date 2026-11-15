@@ -28,7 +28,10 @@ PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1
                   'ui_lock': Path.home() / 'tmp/s22-ui.lock'},
           # CAROL bike's Lenovo Tab P11 Gen 2 (TB350FU); Tailscale app node lenovo-tab-p11-2nd-gen.
           'carol-tablet': {'serial': 'HVA5TTYB', 'hosts': ['100.94.207.126', '192.168.1.65'],
-                           'ui_lock': Path.home() / 'tmp/carol-tablet-ui.lock'}}
+                           'ui_lock': Path.home() / 'tmp/carol-tablet-ui.lock',
+                           # Never paired: its receipt still says needs_owner_pairing, but it must
+                           # not hold the unit red, or a real S22 drop never reaches failed-unit-watch.
+                           'required': False}}
 STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
 
 
@@ -195,7 +198,7 @@ def main():
                    'state': 'ok' if t else 'needs_owner_pairing', 'was': before.get('state'),
                    'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
                    'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
-        if t is None:
+        if t is None and phone.get('required', True):
             rc = 1
         if actions or receipt['state'] != before.get('state'):
             with open(STATE / 'phone-adb-keeper.jsonl', 'a') as fh:
