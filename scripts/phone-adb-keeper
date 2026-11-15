@@ -15,7 +15,7 @@ Each run (timer, every 2 min): detect -> repair -> append a receipt line.
 Diagnostics per receipt (uptime, adb_wifi_enabled, BSSID, tcp port) let the
 next drop be attributed: uptime reset = reboot, BSSID change = Wi-Fi roam,
 adb_wifi_enabled=0 with same uptime = Android turned wireless debugging off.
-If nothing reconnects, the receipt says `needs_owner_pairing`.
+If nothing reconnects, the receipt says `unreachable` (diag says whether LAN or tailnet answered).
 DHCP moves the LAN IP (S22 went .31 -> .8), so every run learns wlan0's IPv4
 and the next run tries it; a USB-only transport also gets a :5555 Wi-Fi peer
 so unplugging the cable never drops the phone. `wireless` names that peer.
@@ -29,8 +29,9 @@ PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1
           # CAROL bike's Lenovo Tab P11 Gen 2 (TB350FU); Tailscale app node lenovo-tab-p11-2nd-gen.
           'carol-tablet': {'serial': 'HVA5TTYB', 'hosts': ['100.94.207.126', '192.168.1.65'],
                            'ui_lock': Path.home() / 'tmp/carol-tablet-ui.lock',
-                           # Never paired: its receipt still says needs_owner_pairing, but it must
-                           # not hold the unit red, or a real S22 drop never reaches failed-unit-watch.
+                           # Paired (owner, 11-10) but often off or away from home (tailnet offline,
+                           # LAN no route): it must not hold the unit red, or a real S22 drop never
+                           # reaches failed-unit-watch.
                            'required': False}}
 STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
 
@@ -220,7 +221,7 @@ def main():
         before = last.get(name, {})
         t, diag, actions, wireless = keep(name, phone, before.get('diag'))
         receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
-                   'state': 'ok' if t else 'needs_owner_pairing', 'was': before.get('state'),
+                   'state': 'ok' if t else 'unreachable', 'was': before.get('state'),
                    'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
                    'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
         if t is None and phone.get('required', True):
