@@ -36,7 +36,18 @@ def track(state, rows, result_of, now_mono):
     return new
 
 
-def block(rows, now_mono, min_minutes, stamp, state=None):
+WT = re.compile(r"(/mnt/zer0models/worktrees/[^/\s\"';:]+)")
+
+
+def missing_paths(unit, run=subprocess.run):
+    """Worktree roots a unit's files reference that no longer exist (11-15: a cleanup deleted
+    oss-factory-integrate-20261020 and silently killed z0-ghcache plus every GitHub reader)."""
+    text = run(["systemctl", "--user", "cat", unit], capture_output=True, text=True).stdout
+    live = "\n".join(l for l in text.splitlines() if not l.startswith(("#", "Documentation=")))
+    return sorted({m for m in WT.findall(live) if not os.path.exists(m)})
+
+
+def block(rows, now_mono, min_minutes, stamp, state=None, missing=missing_paths):
     state = state or {}
     stale = []
     for u, t, r, s in rows:
@@ -47,8 +58,10 @@ def block(rows, now_mono, min_minutes, stamp, state=None):
     if not stale:
         return ""
     lines = [BEGIN, f"- FAILED UNITS >{min_minutes} min or failing every run, on groot (failed-unit-watch, {stamp}):"]
-    lines += [f"  - {u}: failed {m:.0f} min, {n} consecutive failures, result={r} status={s}"
-              for u, m, r, s, n in sorted(stale, key=lambda x: -x[1])]
+    for u, m, r, s, n in sorted(stale, key=lambda x: -x[1]):
+        gone = missing(u)
+        lines.append(f"  - {u}: failed {m:.0f} min, {n} consecutive failures, result={r} status={s}"
+                     + (f" -- MISSING PATH {', '.join(gone)} (unit or drop-in points at a deleted worktree)" if gone else ""))
     return "\n".join(lines + [END])
 
 

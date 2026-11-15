@@ -55,6 +55,19 @@ class FailedUnitWatch(unittest.TestCase):
         state = fuw.track(state, [], lambda u: "success", 1220.0)
         self.assertEqual(state, {})
 
+    def test_failed_unit_names_its_deleted_worktree(self):
+        # 11-15: a reaped worktree killed z0-ghcache via a drop-in; the block should say so, not just "exit-code"
+        with tempfile.TemporaryDirectory() as d:
+            live = "/mnt/zer0models/worktrees/oss-factory-substrate"
+            gone = "/mnt/zer0models/worktrees/zz-deleted-for-test"
+            cat = (f"# {gone}/old.conf\nDocumentation=file://{gone}/README\n[Service]\n"
+                   f"Environment=FACTORY_TOOLS={gone}/tools/factory\nExecStart={live}/x.py\n")
+            run = lambda cmd, **kw: SimpleNamespace(stdout=cat)
+            self.assertEqual(fuw.missing_paths("z0-ghcache.service", run), [gone])
+            b = fuw.block([("z0-ghcache.service", 0.0, "exit-code", "1")], 3600.0, 30, "T",
+                          missing=lambda u: fuw.missing_paths(u, run))
+            self.assertIn(f"MISSING PATH {gone}", b)
+
     def test_unit_runs_every_10_minutes(self):
         timer = (ROOT / "config/systemd/user/failed-unit-watch.timer").read_text()
         self.assertIn("OnUnitActiveSec=10min", timer)
