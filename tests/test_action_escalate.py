@@ -145,6 +145,26 @@ class Escalate(Base):
         c.execute("insert into tasks values('b','fix plain unit','x','reliability',?)", (T0 + 2 * H,)); c.commit()
         self.assertEqual(kp(), T0 + 2 * H)  # dedicated card (title names it)
 
+    def test_failed_push_and_dry_run_never_mark_sent(self):
+        p = self.log({"at": 0, "key": "dead:os_service:plain.service", "owner": "r", "line": "d"})
+        st = self.tmp / "state.json"
+        orig_push, orig_fix = ae.push, ae.proposed_fix
+        ae.proposed_fix = lambda *a: ("triage", {})
+        try:
+            ae.main(["--actions", str(p), "--state", str(st), "--receipts", "/nonexistent/*"])
+            self.assertFalse(st.exists())  # dry run writes nothing
+            ae.push = lambda rows: 1  # kevin-push failed
+            ae.main(["--actions", str(p), "--state", str(st), "--receipts", "/nonexistent/*", "--push"])
+            s = json.loads(st.read_text())
+            self.assertEqual((s.get("sent", {}), s.get("calls", []), s["last_push"]["rc"]), ({}, [], 1))
+            ae.push = lambda rows: 0
+            ae.main(["--actions", str(p), "--state", str(st), "--receipts", "/nonexistent/*", "--push"])
+            s = json.loads(st.read_text())
+            self.assertIn("dead:os_service:plain.service", s["sent"])
+            self.assertEqual(len(s["calls"]), 1)
+        finally:
+            ae.push, ae.proposed_fix = orig_push, orig_fix
+
 
 if __name__ == "__main__":
     unittest.main()

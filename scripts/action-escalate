@@ -374,21 +374,26 @@ def main(argv=None):
                           f"{_stamp(t)} PUSH#{calls} {r['line']}  [opened {_stamp(r['opened'])}]")
         print(f"# push calls: {calls}; keys pushed: {len(state.get('sent', {}))}")
         return 0
+    if a.push and not a.state:
+        ap.error("--push needs --state")
     now = time.time()
     rows = escalate(a.actions, now, a.hours, a.grace, kinds, receipts)
-    state = json.loads(a.state.read_text()) if a.state and a.state.exists() else {}
+    old = a.state.read_text() if a.state and a.state.exists() else "{}"
+    state = json.loads(old)
     fresh = new_pushes(rows, state, now, a.grace)
     if a.push:
-        if not a.state:
-            ap.error("--push needs --state")
         rc = push(fresh)
+        if fresh and rc != 0:  # not delivered: keep keys unsent and the call budget unspent
+            state = json.loads(old)
+            fresh = []
         state["last_push"] = {"at": int(now), "n": len(fresh), "rc": rc}
-    if a.state:
+    if a.state and a.push:  # a dry run never marks keys as sent
         tmp = a.state.with_suffix(".tmp")
         tmp.write_text(json.dumps(state, indent=1, sort_keys=True))
         os.replace(tmp, a.state)
     for r in rows:
-        print(json.dumps(r) if a.json else ("NEW  " if r in fresh else "SENT ") + r["line"])
+        tag = "NEW  " if r in fresh else "SENT " if r["key"] in state.get("sent", {}) else "HELD "
+        print(json.dumps(r) if a.json else tag + r["line"])
     return 0
 
 

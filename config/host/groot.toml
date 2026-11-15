@@ -4783,6 +4783,14 @@ owner = "scripts/apply-agent-oom"
 reason = "Travel hardening: the messaging gateway (Telegram intake) was never enabled, so a reboot left it down (drift noted since 2026-09-22)."
 
 [[user]]
+live = "~/.local/bin/action-escalate"
+source = "scripts/action-escalate"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "t_296e6b06 2026-11-15: network-model refresh.sh runs action-escalate --push; routed dead-unit actions unclaimed 6 h reach kevin-push (decision), <=5 calls/24 h, deduped per key."
+
+[[user]]
 live = "~/.local/bin/memory-drift"
 source = "scripts/memory-drift"
 scope = "user"
