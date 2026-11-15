@@ -64,6 +64,7 @@ def in_use(path, proc=Path("/proc")):
 
 
 _UNIT_LINES = None
+SCRIPT_EXT = (".py", ".sh", ".ts", ".js", ".mjs")
 
 
 def unit_lines():
@@ -82,8 +83,28 @@ def unit_lines():
                 text = Path(real).read_text(errors="replace")
             except OSError:
                 continue
-            _UNIT_LINES += [(str(f.relative_to(base)), l.rstrip()) for l in text.splitlines()
+            name = str(f.relative_to(base))
+            _UNIT_LINES += [(name, l.rstrip()) for l in text.splitlines()
                             if "/" in l and not l.startswith(("#", "Documentation="))]
+            # One hop into the scripts Exec*= lines run: a service can depend on a worktree only
+            # its script names (11-13: unii-memexp-feed's Term.ts worktree was reaped).
+            for l in text.splitlines():
+                if not l.startswith("Exec"):
+                    continue
+                for tok in re.findall(r"(?<![\w.])(/[^\s'\"]+)", l):
+                    try:
+                        p = os.path.realpath(tok.replace("%h", str(base.parents[2])))
+                        if p.startswith(("/usr/", "/bin/")) or not p.endswith(SCRIPT_EXT) or not os.path.isfile(p):
+                            continue
+                        # the script plus its siblings: it may import the file that names the worktree
+                        for q in [p] + sorted(str(x) for x in Path(p).parent.iterdir() if str(x).endswith(SCRIPT_EXT)):
+                            if q in seen or not os.path.isfile(q) or os.path.getsize(q) > (1 << 20):
+                                continue
+                            seen.add(q)
+                            _UNIT_LINES += [(f"{name} -> {q}", s.rstrip())
+                                            for s in Path(q).read_text(errors="replace").splitlines() if "/" in s]
+                    except (OSError, ValueError):
+                        continue
     return _UNIT_LINES
 
 

@@ -284,6 +284,21 @@ class Reap(unittest.TestCase):
             p.kill()
         self.assertTrue(wt.exists())
 
+    def test_worktree_named_only_by_a_unit_script_is_kept(self):
+        # 11-13: unii-memexp-feed ran a script that imports Term.ts from an idle worktree; the unit
+        # file never named the worktree, so it was reaped and the feed failed for two days.
+        wt = self.add_idle("script-dep", lambda wt: None)
+        script = self.tmp / "bin/feed.py"
+        script.parent.mkdir()
+        script.write_text("import acp\n")
+        (script.parent / "acp.py").write_text(f"TERM = '{wt}/Term.ts'\n")   # named by an imported sibling
+        units = self.tmp / ".config/systemd/user"
+        units.mkdir(parents=True)
+        (units / "feed.service").write_text(f"[Service]\nExecStart=/usr/bin/python3 {script} --pass\n")
+        self.run_reap("--apply")
+        self.assertTrue(wt.exists())
+        self.assertEqual(self.snapshots(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
