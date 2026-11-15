@@ -1,0 +1,42 @@
+# Shared Blender sandbox: one k3d (k3s) node on groot with the GPU passed through.
+# Managed by scripts/blender-sandbox (up/down/run/status). Many agents share it; each run gets its own
+# dir under /work/runs and its own Job, so nothing is per-agent.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: blender
+servers: 1
+agents: 0
+image: z0/k3s-gpu:v1.35.5-k3s1
+kubeAPI:
+  host: 127.0.0.1
+  hostIP: 127.0.0.1
+  hostPort: "6551"
+volumes:
+  # the only read-write mount: run dirs (staged in/out, removed after each run) and shared projects
+  - volume: "/mnt/zer0models/workspace/zer0/data/blender-sandbox:/work"
+    nodeFilters: ["server:0"]
+  # read-only references
+  - volume: "/home/kvn/.hermes/profiles/clean/skills:/refs/skills:ro"
+    nodeFilters: ["server:0"]
+  - volume: "/mnt/zer0models/project-artifacts:/refs/artifacts:ro"
+    nodeFilters: ["server:0"]
+options:
+  k3d:
+    wait: true
+    timeout: 180s
+    disableLoadbalancer: true  # single node; the serverlb proxy crash-loops on groot and adds nothing
+  k3s:
+    extraArgs:
+      - arg: "--disable=traefik,servicelb,metrics-server"
+        nodeFilters: ["server:*"]
+      # the docker disk sits ~86% full; default image GC (85%) evicts the imported never-pull images
+      - arg: "--kubelet-arg=image-gc-high-threshold=97"
+        nodeFilters: ["server:*"]
+      - arg: "--kubelet-arg=image-gc-low-threshold=95"
+        nodeFilters: ["server:*"]
+  runtime:
+    gpuRequest: all
+    labels:
+      - label: z0.dev/sandbox=blender
+        nodeFilters: ["server:*"]

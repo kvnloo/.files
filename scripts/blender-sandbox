@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""blender-sandbox: the shared k3s Blender sandbox on groot (k3d cluster `blender`, GPU, no network).
+
+  blender-sandbox up                 create or start the cluster (idempotent, ~1 min from cached images)
+  blender-sandbox status             node, GPU, jobs, leftover run dirs
+  blender-sandbox run [opts] SCRIPT [-- ARGS...]
+        --in PATH       stage a file/dir into the run's in/ (repeatable)
+        --out DIR       copy the run's out/ here, then delete the run dir (private inputs never linger)
+        --name NAME     run name (default <script>-<time>)
+        --cpu           no GPU (skips the GPU lock and the GPU quota)
+        --timeout SEC   job deadline (default 1800)   --mem SIZE (default 6Gi)   --keep (keep run dir)
+      ARGS may use @in / @out (the run's in/ and out/ inside the pod); with no ARGS, "@in @out" is passed.
+      SCRIPT is a host path (copied in) or an in-pod path under /work or /refs (used as is).
+  blender-sandbox down [--purge]     delete the cluster (--purge also drops the images; /work is kept)
+  blender-sandbox install            copy this script + config to ~/.local/lib/blender-sandbox, link ~/.local/bin
+
+Mounts in every pod: /work (rw, host data/blender-sandbox), /refs/skills and /refs/artifacts (ro).
+Kubeconfig: ~/.kube/k3d-blender.yaml.
+"""
+# reuse-checked: blue-tears sandbox (per-project k3d cluster, project-only mount), agent-sandbox (Hermes profile
+# pods on fleet k3s), fleet-build (CPU builds, no GPU Blender) -- none runs arbitrary Blender scripts on the GPU
+# for any project; this is that shared layer, run on demand, no timer by design.
+import argparse, fcntl, json, os, re, shutil, subprocess, sys, time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CONF = HERE.parent / "config/k3d/blender"
+CLUSTER, NS, NODE = "blender", "blender", "k3d-blender-server-0"
+WORK = Path("/mnt/zer0models/workspace/zer0/data/blender-sandbox")
+KUBECONFIG = Path.home() / ".kube/k3d-blender.yaml"
+GPU_LOCK = f"/run/user/{os.getuid()}/z0-gpu-exclusive.lock"
+IMAGES = {  # tag -> (build dir, older identical tag to seed from)
+    "z0/k3s-gpu:v1.35.5-k3s1": ("k3s-gpu", "blue-tears/k3s-gpu:v1.35.5-k3s1"),
+    "z0/blender:5.2": ("blender", "blue-tears/blender:5.2"),
+}
+BLENDER = "z0/blender:5.2"
+RUN_TTL_S = 3 * 86400  # run dirs a crashed run left behind are removed after this
+
+
+def sh(*a, check=True, quiet=False, **kw):
+    if quiet:
+        kw.setdefault("stdout", subprocess.DEVNULL); kw.setdefault("stderr", subprocess.DEVNULL)
+    return subprocess.run(a, check=check, **kw)
+
+
+def out(*a):
+    return subprocess.run(a, capture_output=True, text=True).stdout.strip()
+
+
+def kubectl(*a, **kw):
+    return sh("kubectl", "--kubeconfig", str(KUBECONFIG), *a, **kw)
+
+
+def kout(*a):
+    return out("kubectl", "--kubeconfig", str(KUBECONFIG), *a)
+
+
+def ensure_images():
+    for tag, (d, seed) in IMAGES.items():
+        if sh("docker", "image", "inspect", tag, check=False, quiet=True).returncode == 0:
+            continue
+        if sh("docker", "image", "inspect", seed, check=False, quiet=True).returncode == 0:
+            sh("docker", "tag", seed, tag)
+        else:
+            sh("docker", "build", "-t", tag, str(CONF / "images" / d))
+
+
+def ensure_blender_image_in_node():
+    # kubelet image GC can evict the imported never-pull image on a full disk; re-import when missing
+    if not out("docker", "exec", NODE, "ctr", "-n", "k8s.io", "images", "ls", "-q", f"name==docker.io/{BLENDER}"):
+        sh("k3d", "image", "import", BLENDER, "-c", CLUSTER, quiet=True)
+
+
+def up(_):
+    ensure_images()
+    WORK.mkdir(parents=True, exist_ok=True); (WORK / "runs").mkdir(exist_ok=True)
+    os.chmod(WORK / "runs", 0o700)
+    if sh("k3d", "cluster", "get", CLUSTER, check=False, quiet=True).returncode != 0:
+        sh("k3d", "cluster", "create", "--config", str(CONF / "cluster.yaml"),
+           "--kubeconfig-update-default=false", "--kubeconfig-switch-context=false")
+    elif out("docker", "inspect", "-f", "{{.State.Running}}", NODE) != "true":
+        sh("k3d", "cluster", "start", CLUSTER)
+    KUBECONFIG.parent.mkdir(exist_ok=True)
+    KUBECONFIG.write_text(out("k3d", "kubeconfig", "get", CLUSTER) + "\n"); os.chmod(KUBECONFIG, 0o600)
+    for _ in range(60):
+        if kubectl("get", "--raw", "/readyz", check=False, quiet=True).returncode == 0 and \
+           kubectl("get", "runtimeclass", "nvidia", check=False, quiet=True).returncode == 0:
+            break
+        time.sleep(3)
+    kubectl("apply", "-f", str(CONF / "manifests.yaml"))
+    kubectl("-n", "kube-system", "rollout", "status", "ds/nvidia-device-plugin", "--timeout=180s")
+    ensure_blender_image_in_node()
+    status(None)
+
+
+def down(a):
+    sh("k3d", "cluster", "delete", CLUSTER, check=False)
+    KUBECONFIG.unlink(missing_ok=True)
+    if a.purge:  # remove by tag so other tags of the same image (blue-tears/*) survive
+        for tag in IMAGES:
+            sh("docker", "image", "rm", tag, check=False)
+    print("left over (expect none):", out("docker", "ps", "-a", "--filter", f"name=k3d-{CLUSTER}-", "--format", "{{.Names}}"))
+
+
+def status(_):
+    if not KUBECONFIG.exists():
+        sys.exit("blender sandbox is down (run: blender-sandbox up)")
+    print(kout("get", "nodes", "-o", "custom-columns=NODE:.metadata.name,READY:.status.conditions[-1].type,"
+               "GPU:.status.allocatable.nvidia\\.com/gpu"))
+    print(kout("-n", NS, "get", "jobs,pods", "--no-headers") or "no jobs")
+    runs = sorted(p.name for p in (WORK / "runs").iterdir()) if (WORK / "runs").exists() else []
+    print("run dirs:", ", ".join(runs) or "none")
+
+
+def prune_runs():
+    now = time.time()
+    for p in (WORK / "runs").iterdir():
+        if now - p.stat().st_mtime > RUN_TTL_S:
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def gpu_lock(wait_s=900):
+    f = open(GPU_LOCK, "w"); t0 = time.time(); said = False
+    while True:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB); return f
+        except BlockingIOError:
+            if time.time() - t0 > wait_s:
+                sys.exit(f"GPU lock {GPU_LOCK} still held after {wait_s}s")
+            if not said:
+                print("waiting for the GPU lock ...", file=sys.stderr); said = True
+            time.sleep(5)
+
+
+def run(a):
+    if not KUBECONFIG.exists() or kubectl("get", "--raw", "/readyz", check=False, quiet=True).returncode:
+        up(None)
+    prune_runs()
+    script = a.script
+    name = a.name or f"{Path(script).stem}-{time.strftime('%m%d-%H%M%S')}"
+    name = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")[:63].rstrip("-")  # a valid Job name
+    host = WORK / "runs" / name
+    if host.exists():
+        sys.exit(f"run dir exists: {host}")
+    pod = f"/work/runs/{name}"
+    (host / "in").mkdir(parents=True); (host / "out").mkdir()
+    for p in a.inputs:
+        p = Path(p)
+        (shutil.copytree if p.is_dir() else shutil.copy2)(p, host / "in" / p.name)
+    if not script.startswith(("/work/", "/refs/")):
+        shutil.copy2(script, host / Path(script).name); script = f"{pod}/{Path(script).name}"
+    args = [x.replace("@in", f"{pod}/in").replace("@out", f"{pod}/out") for x in (a.args or ["@in", "@out"])]
+    limits = {"cpu": "4", "memory": a.mem}
+    spec = {"restartPolicy": "Never",
+            "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000,
+                                "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": [{"name": "blender", "image": BLENDER, "imagePullPolicy": "Never",
+                            "args": ["--python-exit-code", "1", "-P", script, "--", *args],
+                            "resources": {"limits": limits},
+                            "securityContext": {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}},
+                            "volumeMounts": [{"name": "work", "mountPath": "/work"},
+                                             {"name": "refs", "mountPath": "/refs", "readOnly": True}]}],
+            "volumes": [{"name": "work", "persistentVolumeClaim": {"claimName": "work"}},
+                        {"name": "refs", "persistentVolumeClaim": {"claimName": "refs", "readOnly": True}}]}
+    if not a.cpu:
+        spec["runtimeClassName"] = "nvidia"; limits["nvidia.com/gpu"] = 1
+    job = {"apiVersion": "batch/v1", "kind": "Job",
+           "metadata": {"name": name, "namespace": NS, "labels": {"z0.dev/run": name}},
+           "spec": {"backoffLimit": 0, "activeDeadlineSeconds": a.timeout, "ttlSecondsAfterFinished": 600,
+                    "template": {"spec": spec}}}
+    lock = None if a.cpu else gpu_lock()
+    ok = False
+    try:
+        ensure_blender_image_in_node()
+        kubectl("apply", "-f", "-", input=json.dumps(job), text=True, quiet=True)
+        t0 = time.time()
+        while time.time() - t0 < a.timeout + 120:
+            s = kout("-n", NS, "get", "job", name, "-o", "jsonpath={.status.succeeded}/{.status.failed}")
+            if s not in ("/", ""):
+                ok = s.startswith("1"); break
+            time.sleep(2)
+        log = kout("-n", NS, "logs", f"job/{name}", "--tail=-1")
+        (host / "out" / "run.log").write_text(log + "\n")
+        print("\n".join(log.splitlines()[-12:]))
+        print(f"{'OK' if ok else 'FAILED'} {name} in {time.time() - t0:.0f}s")
+    finally:
+        if lock:
+            lock.close()
+        kubectl("-n", NS, "delete", "job", name, "--ignore-not-found", "--wait=false", quiet=True, check=False)
+        if a.out:
+            dest = Path(a.out); dest.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(host / "out", dest, dirs_exist_ok=True)
+            print("outputs:", dest)
+            if not a.keep:
+                shutil.rmtree(host)
+        else:
+            print("outputs:", host / "out")
+    sys.exit(0 if ok else 1)
+
+
+def install(_):
+    dst = Path.home() / ".local/lib/blender-sandbox"
+    shutil.rmtree(dst, ignore_errors=True)
+    (dst / "scripts").mkdir(parents=True)
+    shutil.copy2(Path(__file__).resolve(), dst / "scripts/blender-sandbox")
+    shutil.copytree(CONF, dst / "config/k3d/blender")
+    link = Path.home() / ".local/bin/blender-sandbox"
+    link.unlink(missing_ok=True); link.symlink_to(dst / "scripts/blender-sandbox")
+    print("installed", link, "->", dst)
+
+
+def main():
+    argv = sys.argv[1:]
+    extra = []
+    if "--" in argv:
+        i = argv.index("--"); argv, extra = argv[:i], argv[i + 1:]
+    p = argparse.ArgumentParser(prog="blender-sandbox", description=__doc__.split("\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("up").set_defaults(f=up)
+    sub.add_parser("status").set_defaults(f=status)
+    sub.add_parser("install").set_defaults(f=install)
+    d = sub.add_parser("down"); d.add_argument("--purge", action="store_true"); d.set_defaults(f=down)
+    r = sub.add_parser("run")
+    r.add_argument("script"); r.add_argument("--in", dest="inputs", action="append", default=[])
+    r.add_argument("--out"); r.add_argument("--name"); r.add_argument("--cpu", action="store_true")
+    r.add_argument("--timeout", type=int, default=1800); r.add_argument("--mem", default="6Gi")
+    r.add_argument("--keep", action="store_true"); r.set_defaults(f=run)
+    a = p.parse_args(argv); a.args = extra
+    a.f(a)
+
+
+if __name__ == "__main__":
+    main()

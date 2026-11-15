@@ -1,0 +1,91 @@
+# Namespace `blender`: restricted Pod Security, a groot-sized quota, no network at all (Blender jobs
+# read /work and /refs only), node mounts exposed as PVs because restricted PSS forbids hostPath.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blender
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: {name: blender, namespace: blender}
+spec:
+  hard:
+    requests.cpu: "4"
+    limits.memory: 12Gi
+    requests.nvidia.com/gpu: "1"
+    pods: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata: {name: defaults, namespace: blender}
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "4", memory: 6Gi}
+      defaultRequest: {cpu: "1", memory: 1Gi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: no-network, namespace: blender}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: blender-work}
+spec:
+  capacity: {storage: 500Gi}
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath: {path: /work, type: Directory}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: blender-refs}
+spec:
+  capacity: {storage: 500Gi}
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath: {path: /refs, type: Directory}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: work, namespace: blender}
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: manual
+  volumeName: blender-work
+  resources: {requests: {storage: 500Gi}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: refs, namespace: blender}
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: manual
+  volumeName: blender-refs
+  resources: {requests: {storage: 500Gi}}
+---
+# NVIDIA device plugin (exposes nvidia.com/gpu); kube-system is not PSS-restricted.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: nvidia-device-plugin, namespace: kube-system}
+spec:
+  selector: {matchLabels: {name: nvidia-device-plugin}}
+  template:
+    metadata: {labels: {name: nvidia-device-plugin}}
+    spec:
+      runtimeClassName: nvidia
+      priorityClassName: system-node-critical
+      containers:
+        - name: plugin
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.17.4
+          env: [{name: FAIL_ON_INIT_ERROR, value: "false"}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+          volumeMounts: [{name: dp, mountPath: /var/lib/kubelet/device-plugins}]
+      volumes: [{name: dp, hostPath: {path: /var/lib/kubelet/device-plugins}}]
