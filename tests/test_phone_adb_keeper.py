@@ -61,7 +61,18 @@ class RediscoveryTests(unittest.TestCase):
         self.assertIsNone(t)
         self.assertIn('192.168.1.18:5555', connected)
 
-    def run_keep(self, connected, serial, learned):
+    def test_tailnet_down_is_raised_with_connect_vpn(self):
+        shell = []
+        t, diag, actions, wireless = self.run_keep({'192.168.1.18:5555'}, 'S22', {'lan_ip': '192.168.1.18'}, shell)
+        self.assertTrue(any('CONNECT_VPN' in c for c in shell), shell)
+        self.assertTrue(any('tailscale_connect' in a for a in actions))
+
+    def test_tailnet_up_sends_nothing(self):
+        shell = []
+        self.run_keep({'192.168.1.18:5555'}, 'S22', {'lan_ip': '192.168.1.18'}, shell, tun='inet 100.72.191.23/32')
+        self.assertFalse(any('CONNECT_VPN' in c for c in shell), shell)
+
+    def run_keep(self, connected, serial, learned, shell=None, tun=''):
         import subprocess
         state = {}
 
@@ -77,6 +88,9 @@ class RediscoveryTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 1, f"failed to connect to '{args[1]}': Connection refused", '')
             if args[0] == 'disconnect':
                 connected.discard(args[1])
+            if 'shell' in args and shell is not None:
+                shell.append(args[-1])
+                return subprocess.CompletedProcess(args, 0, tun if 'addr' in args[-1] else '', '')
             return subprocess.CompletedProcess(args, 0, '', '')
 
         patches = {

@@ -193,6 +193,15 @@ def keep(name, phone, learned=None):
         if state == 'offline' and any(stale.startswith(h + ':') for h in host_list):
             adb('disconnect', stale)
             actions.append({'disconnect_offline': stale})
+    if t and any(h.startswith('100.') for h in phone['hosts']):
+        # Second path: Tailscale was installed with always-on VPN but its tunnel was down
+        # (11-15), so the tailnet host timed out while DHCP moved the LAN IP. Re-raise it
+        # without UI via the app's documented CONNECT_VPN intent.
+        up = adb('-s', t, 'shell', 'ip -o -4 addr show', timeout=10).stdout
+        if not re.search(r'inet 100\.', up):
+            r = adb('-s', t, 'shell', 'am broadcast -a com.tailscale.ipn.CONNECT_VPN '
+                    '-n com.tailscale.ipn/.IPNReceiver', timeout=15)
+            actions.append({'tailscale_connect': (r.stdout + r.stderr).strip()[-60:]})
     t = live_transport(phone) or (connect_5555(phone, [t.split(':')[0]]) if is_wireless_5555(t) else None)
     wireless = t if is_wireless_5555(t) else None
     if t and not wireless and diag and diag.get('tcp_port') == '5555':
