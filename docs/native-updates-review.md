@@ -2,7 +2,23 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-14 at 15:46 UTC
+## Latest observation, 2026-11-15 at 04:18 UTC
+
+The existing clean `ayo/R09` worktree was inspected without changing the dirty owner checkout. The read-only capture completed with exit 0. Its diagnostic `check` still masks missing packages and does not establish readiness. Sources: execution `20261115-revalidation.log:1-25,89-91,299-310`; `host-inspection.log` records owner HEAD and proposal hashes.
+
+Both custom timers remain active and enabled. Maintenance next runs November 15 at 04:00 CST, `America/Chicago`, or 10:00 UTC. The installed unit still labels this window a placeholder requiring Kevin's choice. The item and verdict do not establish approval. No timer was changed. Sources: execution `20261115-revalidation.log:93-104,153-163,200-202`; `ITEM.json:4-6`; `VERDICT.json:12-15`.
+
+The installed updater hash remains `2c6646cee8eb36e3a23b62ae13a8fa54a73734f9cb117dd266f98f28e401934e`. It classifies `checkupdates` output before a separate live refresh and application. It never reads the staged file for installation. No workload-drain gate precedes its possible reboot. These are source findings, not a reproduced transaction. Source: execution `20261115-revalidation.log:225-284`.
+
+The latest receipt remains November 14 staging, with 433 output lines. The staged file has 437 lines. Neither count proves unique packages or safe installation. Current CPU and peak-memory counters are unset. IO and IP accounting remain off, so this capture adds no installation or foreground-impact measurement. Source: execution `20261115-revalidation.log:180-198,286-294`.
+
+Root and cache share XFS with 8,764,972 KiB available, below the proposal's 15 GiB floor. The native updater, Snapper, and Timeshift are absent. The units' recovery-document target is absent too. These checks do not prove no backup exists. No restore drill ran. Sources: execution `20261115-revalidation.log:204-223`; `20261115-owner-extra.log:1-2`; `scripts/setup-native-updates:45-53`.
+
+Fleet admission tests did not start. `fleet-build --node mbp --light --local-data --wait 1800` failed while querying Kueue's `lanes` clusterqueue, exit 1. No groot fallback ran. Source: execution `20261115-fleet-tests.log:1-3`.
+
+R09 remains incomplete. Transaction binding, approved drain/defer handling, consistent rollback, and actual resource-impact evidence remain missing. Privileged maintenance, reboot, service changes, and recovery execution require separate owner authorization. No such action ran here. Sources: findings above; recovery gates below; `VERDICT.json:12-15`.
+
+## Earlier observation, 2026-11-14 at 15:46 UTC
 
 This capture is from the verdict's host, not the MBP. The MBP report previously in the execution folder is preserved in `logs/20261114-preserved-mbp/`. The existing clean `ayo/R09` worktree was reused. Sources: execution `logs/20261114-groot-revalidation.log:2-10`; `logs/20261114-preserved-mbp/REPORT.md:3-6`.
 
