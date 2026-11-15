@@ -2,7 +2,25 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-15 at 04:18 UTC
+## Latest observation, 2026-11-15 at 17:16 UTC
+
+The installed custom updater ran independently before this inspection. Its receipt reports `applied-rebooting`, rc 0, at 04:04:44 CST, or 10:04:44 UTC. The journal records successful maintenance completion and a new boot at 04:05 CST. This is an observed maintenance application and reboot, not an action requested by this execution. Sources: execution `logs/20261115-current/host.log:378-386`; `logs/20261115-current/boot.log:22-27,57-60`.
+
+The running kernel is `7.3.4-1-cachyos`, matching the installed kernel and NVIDIA kernel-package version. The loaded NVIDIA driver and `nvidia-utils` both report `620.70.06`. These checks do not establish workload recovery or rollback safety. Source: execution `logs/20261115-current/boot.log:1-20`.
+
+The previous boot's maintenance journal records 6min 29.916s CPU time, 4min 43.970s wall time, 5.9G peak memory, and 103M peak swap. Current service counters are unset after reboot. Transfer volume, disk IO, foreground impact, and recovery remain unmeasured. Sources: execution `logs/20261115-current/boot.log:57-60`; `logs/20261115-current/host.log:272-290`.
+
+Both custom timers remain active and enabled. The next maintenance deadline is November 22 at 04:00 CST, or 10:00 UTC, in `America/Chicago`. The installed timer still calls its window a placeholder requiring Kevin's choice. Approval is not established by the supplied item and verdict. Sources: execution `logs/20261115-current/host.log:183-196,245-255,292-294,403-406`; `ITEM.json:4-6`; `VERDICT.json:12-15`.
+
+Transaction binding and workload drain remain absent from the installed source. It classifies one check result before a separate live refresh and installation. It never reads the staged file for installation. The updater hash is unchanged. Source: execution `logs/20261115-current/host.log:317-376`.
+
+Root and cache share XFS with 7,201,124 KiB available, below the native proposal's 15 GiB floor. The native updater and queried snapshot tools remain absent. The units' recovery-document target is missing. These checks do not prove that no backup exists. The capture exits 1 because the staged file is now absent, not because the maintenance transaction failed. Sources: execution `logs/20261115-current/host.log:296-315,384-409`; `scripts/setup-native-updates:45-53`.
+
+Fleet tests did not start. The absolute-path invocation failed querying Kueue's `lanes` clusterqueue, exit 1. An earlier clean-shell invocation failed PATH lookup, exit 127. No groot fallback ran. Sources: execution `logs/20261115-current/fleet-absolute.log:1-12`; `logs/20261115-current/fleet.log:1-4`.
+
+R09 remains incomplete. A successful maintenance observation does not prove safe non-reboot transactions, approved drain/defer handling, or consistent rollback. No package, service, or reboot change was invoked here.
+
+## Earlier observation, 2026-11-15 at 04:18 UTC
 
 The existing clean `ayo/R09` worktree was inspected without changing the dirty owner checkout. The read-only capture completed with exit 0. Its diagnostic `check` still masks missing packages and does not establish readiness. Sources: execution `20261115-revalidation.log:1-25,89-91,299-310`; `host-inspection.log` records owner HEAD and proposal hashes.
 
@@ -109,7 +127,7 @@ The native proposal uses packaged offline preparation, not a new resident update
 | Safe non-reboot updates | Policy defers the complete Arch OS transaction. | No continuously installed safe subset is implemented or proven. |
 | Reboot class only at scheduled maintenance | Proposal disables the automatic reboot timer. | Preparation can arm the next user reboot, not specifically an approved window. There is no workload drain gate. |
 | Rollback | Disable calls the native abort command; cache cleanup retains packaged defaults. | No tested OS rollback, restored backup, or recovery boot. |
-| Resource impact | November 11 retained staging counters showed about 177 MiB peak RAM and 7.48 CPU-seconds. November 12 counters are unset. Sources: `logs/20261111-revalidation.log:180-198,289`, `logs/20261112-revalidation.log:180-198`. | No installation resource measurement, transfer volume, disk IO, or foreground-latency measurement. |
+| Resource impact | November 15 maintenance journal records 6min 29.916s CPU, 4min 43.970s wall time, 5.9G peak memory, and 103M peak swap. Source: `logs/20261115-current/boot.log:57-60`. | No transfer volume, disk IO, foreground-latency measurement, or proven resource admission for future transactions. |
 
 Sources: `docs/native-updates.md:5-12,28-32,45-60`, `scripts/setup-native-updates:22-28,48-56`, and execution `logs/native-readonly-rerun.log`. `check` exits zero despite missing dependencies because lines 9-11 suppress individual failures. Its success is diagnostic completion, not readiness.
 
