@@ -56,7 +56,15 @@ class RediscoveryTests(unittest.TestCase):
                 if host == '192.168.1.18':
                     connected.add(args[1])
                     return subprocess.CompletedProcess(args, 0, f'connected to {args[1]}', '')
+                if host == '192.168.1.1':  # router: TCP 5555 open, not adb
+                    connected.add(args[1])
+                    return subprocess.CompletedProcess(args, 0, f'connected to {args[1]}', '')
                 return subprocess.CompletedProcess(args, 1, f"failed to connect to '{args[1]}': Connection refused", '')
+            if args[0] == 'disconnect':
+                # Real adb (11-15 07:57:11): disconnecting 192.168.1.1:5555 also kicked 192.168.1.18:5555.
+                host = args[1].split(':')[0]
+                for c in [c for c in connected if c.startswith(host)]:
+                    connected.discard(c)
             return subprocess.CompletedProcess(args, 0, '', '')
 
         patches = {
@@ -64,7 +72,7 @@ class RediscoveryTests(unittest.TestCase):
             'transports': lambda: {c: 'device' for c in connected},
             'serial_of': lambda t: 'S22' if t == '192.168.1.18:5555' else 'OTHER',
             'mdns_endpoints': lambda phone: [],
-            'open_5555': lambda prefix: ['192.168.1.8', '192.168.1.18'] if prefix == '192.168.1.' else [],
+            'open_5555': lambda prefix: ['192.168.1.1', '192.168.1.8', '192.168.1.18'] if prefix == '192.168.1.' else [],
             'diagnostics': lambda t: {'tcp_port': '5555', 'lan_ip': '192.168.1.18'},
         }
         saved = {k: getattr(keeper, k, None) for k in patches}
@@ -82,6 +90,7 @@ class RediscoveryTests(unittest.TestCase):
         self.assertEqual(t, "192.168.1.18:5555", actions)
         self.assertEqual(wireless, '192.168.1.18:5555')
         self.assertTrue(any(a.get('lan_sweep') for a in actions))
+        self.assertEqual(connected, {'192.168.1.18:5555'})  # still attached, router dropped
 
 if __name__ == '__main__':
     unittest.main()

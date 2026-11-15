@@ -153,10 +153,13 @@ def keep(name, phone, learned=None):
         for prefix in lan_prefixes(host_list):
             found = [h for h in open_5555(prefix) if h not in host_list]
             actions.append({'lan_sweep': prefix + '0/24', 'open_5555': found})
-            t = connect_5555(phone, found)
+            # One host at a time, dropping non-matches before the next connect: disconnecting
+            # 192.168.1.1:5555 (router) after .18 attached also kicked .18 (adb log 11-15 07:57:11).
             for h in found:
-                if f'{h}:5555' != t:
-                    adb('disconnect', f'{h}:5555')  # not ours: never leave other devices attached
+                t = connect_5555(phone, [h])
+                if t:
+                    break
+                adb('disconnect', f'{h}:5555')
             if t:
                 break
     diag = diagnostics(t) if t else None
@@ -177,7 +180,7 @@ def keep(name, phone, learned=None):
         if state == 'offline' and any(stale.startswith(h + ':') for h in host_list):
             adb('disconnect', stale)
             actions.append({'disconnect_offline': stale})
-    t = live_transport(phone) or t
+    t = live_transport(phone) or (connect_5555(phone, [t.split(':')[0]]) if is_wireless_5555(t) else None)
     wireless = t if is_wireless_5555(t) else None
     if t and not wireless and diag and diag.get('tcp_port') == '5555':
         wireless = connect_5555(phone, host_list)
