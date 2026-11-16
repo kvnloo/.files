@@ -68,7 +68,14 @@ def stalled_timers(run=subprocess.run):
         if kv.get("SubState") == "elapsed" and kv.get("UnitFileState", "").startswith(("enabled", "linked")) \
                 and any(r in chunk for r in REPEATS):
             out.append((kv["Id"], kv.get("Unit", "")))
-    return sorted(out)
+    if not out:
+        return []
+    # A service mid-run also leaves its timer `elapsed` (OnUnitInactiveSec counts from its stop): not stalled.
+    state = run(["systemctl", "--user", "show", "-p", "Id,ActiveState", *(svc for _, svc in out if svc)],
+                capture_output=True, text=True).stdout
+    busy = {kv.get("Id") for kv in ({k: v for k, _, v in (l.partition("=") for l in c.splitlines() if l)}
+                                     for c in state.split("\n\n")) if kv.get("ActiveState") not in ("inactive", "failed")}
+    return sorted(t for t in out if t[1] not in busy)
 
 
 def rearm(stalled, run=subprocess.run):

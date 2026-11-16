@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 loader = importlib.machinery.SourceFileLoader('failed_unit_watch', str(ROOT / 'scripts/failed-unit-watch'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec
 fuw = importlib.util.module_from_spec(spec)
 loader.exec_module(fuw)
 
@@ -16,7 +17,10 @@ SHOW = ("Id=fork.timer\nUnit=fork.service\nSubState=elapsed\nUnitFileState=enabl
         "Id=ok.timer\nUnit=ok.service\nSubState=waiting\nUnitFileState=enabled\n"
         "TimersMonotonic={ OnUnitActiveUSec=6h ; next_elapse=6h }\n\n"
         "Id=off.timer\nUnit=off.service\nSubState=elapsed\nUnitFileState=disabled\n"
-        "TimersMonotonic={ OnUnitInactiveUSec=1h ; next_elapse=0 }\n")
+        "TimersMonotonic={ OnUnitInactiveUSec=1h ; next_elapse=0 }\n\n"
+        "Id=busy.timer\nUnit=busy.service\nSubState=elapsed\nUnitFileState=enabled\n"
+        "TimersMonotonic={ OnUnitInactiveUSec=45min ; next_elapse=0 }\n")
+SERVICES = "Id=fork.service\nActiveState=inactive\n\nId=busy.service\nActiveState=activating\n"
 
 
 class FakeSystemctl:
@@ -27,13 +31,14 @@ class FakeSystemctl:
         self.calls.append(cmd)
         out = ""
         if "list-units" in cmd:
-            out = "fork.timer loaded active elapsed x\ndated.timer loaded active elapsed y\nok.timer loaded active waiting z\noff.timer l a e w\n"
+            out = "fork.timer loaded active elapsed x\ndated.timer loaded active elapsed y\nok.timer loaded active waiting z\noff.timer l a e w\nbusy.timer l a e w\n"
         elif "show" in cmd:
-            out = SHOW
+            out = SHOW if any(c.endswith(".timer") for c in cmd) else SERVICES
         return subprocess.CompletedProcess(cmd, 0, out, "")
 
 
-def test_only_enabled_repeating_timers_left_elapsed_are_stalled():
+def test_only_enabled_repeating_timers_left_elapsed_with_an_idle_service_are_stalled():
+    """busy.timer is elapsed only because its OnUnitInactiveSec service is mid-run: not stalled."""
     assert fuw.stalled_timers(FakeSystemctl()) == [("fork.timer", "fork.service")]
 
 
