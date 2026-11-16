@@ -27,8 +27,6 @@ unit = "z0int-memory-mcp.socket"
 [[timer]]
 unit = "agentsview-sync.timer"
 [[timer]]
-unit = "ctx-import.timer"
-[[timer]]
 unit = "memory-recall-check.timer"
 [[timer]]
 unit = "memory-corrections-capture.timer"
@@ -46,9 +44,6 @@ unit = "z0int-policy.service"
 known = ["zero_byte_json"]
 [[oneshot]]
 unit = "z0int-loop-tick.service"
-known = []
-[[oneshot]]
-unit = "ctx-import.service"
 known = []
 [[oneshot]]
 unit = "memory-corrections-capture.service"
@@ -79,7 +74,11 @@ fixed_dirs = ["~/.hermes/sessions"]
 # Newest archived session per profile may trail the profile's own newest session by this much.
 max_lag_hours = 2
 
+# ctx refresh is retired (2026-11-15): AgentsView is the live store, and a ctx rebuild of this corpus
+# fills any host-safe memory cap (ctxrs/ctx#1192, #1193). enabled = false skips the ctx probes; turn it
+# back on together with ctx-import.timer once upstream bounds generation upgrades.
 [ctx]
+enabled = false
 data_root = "/mnt/zer0models/host-offload/home_kvn_.ctx"
 import_log = "/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log"
 max_age_hours = 3

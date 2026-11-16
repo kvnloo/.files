@@ -1,6 +1,12 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/ctx-import.service", sha256 = "a338ff9a44a40985b7872f569420f253ad718cc56e5b31d792801248de534d17", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
+  { live = "~/.config/systemd/user/ctx-import.timer", sha256 = "c3dcf23935ce32df5b4eaa4a9d2a37cd1ec711c5850773ef5400df93fc3c40b7", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
+  { live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer", sha256 = "c3dcf23935ce32df5b4eaa4a9d2a37cd1ec711c5850773ef5400df93fc3c40b7", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
+  { live = "~/.config/systemd/user/ctx-import.service.d/90-service-watch.conf", sha256 = "0f5672113ea89ab212cbb39b9f86d67477b7bba4a08a118eff3f1ec40d785338", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
+  { live = "~/.config/systemd/user/ctx-import.timer.d/90-service-watch.conf", sha256 = "339a12ed4f11ac896c74a3aed787606e20bf0290bcf93abb811b09aba4b7741a", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
+  { live = "~/.local/bin/ctx-import-hourly", sha256 = "0eb6966ffff137ff5cb74da30cc9c464f98e7a912159fbc7e3c79567dfcda1aa", reason = "Retired 2026-11-15: AgentsView is the live memory store; a ctx refresh of this corpus fills any host-safe memory cap and stalls the host (upstream ctxrs/ctx#1192, #1193), and the index has not refreshed since 10-26. The read-only index stays for ctx MCP readers. Revive by restoring these rows and memory-system-intent [ctx] enabled." },
   { live = "~/.config/systemd/user/whisperflow.service", sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
   { live = "~/.config/systemd/user/whisperflow-kind-bridge.service", sha256 = "9f9782e7d33e127baf54e4b593f1cace628ae6a7aac97e997ac0d2453f9d7d40", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
   { live = "~/.config/systemd/user/whisperflow.service.d/90-service-watch.conf", sha256 = "7ea10a6d2dca108d80f6f37318e631aa5832544abc7b0c3bfb55b05c019d6645", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
@@ -721,6 +727,14 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "a632773d6329f353cbfea2faa3d83bd424e47ba44ab0e426862d0dd486dced2d"
+
+[[user]]
+live = "~/.config/systemd/user/o8-serve.service.d/60-memory-cap.conf"
+source = "config/systemd/user/o8-serve.service.d/60-memory-cap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Cap o8's leaking next-server so a leak restarts o8, not the host (global OOM 2026-11-15 18:46)."
 
 [[user]]
 live = "~/.config/systemd/user/service-watch.service"
@@ -4413,65 +4427,12 @@ owner = "scripts/apply-agent-oom"
 reason = "Owner-corrections capture for the per-prompt seam (z0intelligence #239); memory-replay-eval REPORT.md."
 
 [[user]]
-live = "~/.config/systemd/user/ctx-import.service"
-source = "config/systemd/user/ctx-import.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "fc6bbd0cb63b39fd7b2ed04b3aa9f483dfd3d430c1dfacc87016b178492d2bb4"
-
-[[user]]
-live = "~/.config/systemd/user/ctx-import.timer"
-source = "config/systemd/user/ctx-import.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "9265cb6a9bb50c325fdf7e78e867add21170ebfe4c564cde96c23301301b1495"
-
-[[user]]
-live = "~/.config/systemd/user/ctx-import.service.d/90-service-watch.conf"
-source = "config/systemd/user/ctx-import.service.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "0f5672113ea89ab212cbb39b9f86d67477b7bba4a08a118eff3f1ec40d785338"
-
-[[user]]
-live = "~/.config/systemd/user/ctx-import.timer.d/90-service-watch.conf"
-source = "config/systemd/user/ctx-import.timer.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "339a12ed4f11ac896c74a3aed787606e20bf0290bcf93abb811b09aba4b7741a"
-
-[[user]]
-live = "~/.local/bin/ctx-import-hourly"
-source = "scripts/ctx-import-hourly"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
-
-[[user]]
 live = "~/.local/bin/memory-unit-receipt"
 source = "scripts/memory-unit-receipt"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Durable per-run JSON receipts for the memory units (ExecStopPost); the user journal rotates within hours. memory-services-20261027 step 0b. Brought from master (ac5fe3a3) because ctx-import.service calls it."
-
-[[user]]
-live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
-source = "config/systemd/user/ctx-import.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
 
 [[pending_action]]
 paths = ["/etc/default/earlyoom", "/etc/sysctl.d/99-groot.conf", "/etc/systemd/journald.conf.d/50-groot-retention.conf", "/etc/systemd/system/user-1000.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user.slice.d/70-desktop-reserve.conf", "/etc/systemd/system/user@1000.service.d/70-desktop-reserve.conf", "/etc/systemd/zram-generator.conf", "vm.dirty_bytes", "vm.dirty_background_bytes", "net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter", "net.netfilter.nf_conntrack_max", "user-1000.slice", "user.slice", "user@1000.service"]

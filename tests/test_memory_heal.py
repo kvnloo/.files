@@ -15,6 +15,7 @@ heal = importlib.util.module_from_spec(spec_)
 sys.modules[loader.name] = heal
 loader.exec_module(heal)
 SPEC = tomllib.loads((ROOT / 'config/host/memory-system-intent.toml').read_text())
+CTX_ON = {**SPEC, 'ctx': {**SPEC['ctx'], 'enabled': True}}  # the ctx paths, for when ctx refresh comes back
 
 CONFIG_CONTAINER = '''[agents]
   [agents.hermes]
@@ -51,6 +52,10 @@ class FakeHost(heal.Host):
     def systemctl(self, *args):
         self.calls.append(args)
         return 0, '', ''
+
+    def run(self, argv, timeout=60):  # never the real ctx: `ctx sources` can auto-start its daemon
+        self.calls.append(tuple(argv))
+        return 0, '[]', ''
 
     def now(self):
         return NOW
@@ -145,13 +150,22 @@ class Invariants(unittest.TestCase):
 
     def test_unwanted_timer_is_red(self):
         """ctx-import.timer was linked but not in timers.target.wants after the 10-31 reboot."""
-        wanted = {t['unit'] for t in SPEC['timer']} - {'ctx-import.timer'}
+        wanted = {t['unit'] for t in SPEC['timer']} - {'agentsview-sync.timer'}
         [f] = heal.check(SPEC, self.healthy(wanted=wanted))
-        self.assertEqual((f.subject, f.remedy), ('ctx-import.timer', 'enable_now'))
+        self.assertEqual((f.subject, f.remedy), ('agentsview-sync.timer', 'enable_now'))
 
     def test_stale_ctx_is_red(self):
-        [f] = heal.check(SPEC, self.healthy(ctx_log='2026-10-26T14:46:47-05:00 wait_rc=0 gen a -> a\n'))
+        [f] = heal.check(CTX_ON, self.healthy(ctx_log='2026-10-26T14:46:47-05:00 wait_rc=0 gen a -> a\n'))
         self.assertEqual((f.invariant, f.remedy), ('ctx_fresh', 'run_ctx_import'))
+
+    def test_disabled_ctx_is_neither_checked_nor_restarted(self):
+        """2026-11-15: ctx refresh cannot finish inside a host-safe memory bound (ctxrs/ctx#1192), yet the
+        ctx_fresh remedy kept starting ctx-import 4x per 6 h. Disabled means: no ctx probe, no finding."""
+        host = self.healthy(ctx_log='2026-10-26T14:46:47-05:00 wait_rc=0 gen a -> a\n')
+        self.assertFalse(SPEC['ctx']['enabled'])
+        self.assertEqual(heal.check(SPEC, host), [])
+        self.assertFalse([c for c in host.calls if 'ctx' in c])
+        self.assertFalse([t for t in SPEC['timer'] + SPEC['oneshot'] if t['unit'].startswith('ctx-import')])
 
     def test_zero_byte_policy_state_is_a_known_class(self):
         tb = 'json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\n'

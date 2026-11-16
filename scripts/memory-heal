@@ -173,6 +173,33 @@ def classify_oneshot(journal_text):
 
 
 # ---------------------------------------------------------------- checks
+def check_ctx(c, host, now, findings):
+    # ctx config must load before ctx can manage its own sources.
+    rc, out, err = host.run(['env', f"CTX_DATA_ROOT={expand(c['data_root'])}",
+                             'ctx', 'sources', '--all', '--format', 'json'])
+    if rc:
+        detail = (err or out).strip()
+        findings.append(Finding('ctx_config_loads', str(expand(c['data_root']) / 'config.toml'),
+                                f'ctx sources rc={rc}: {detail}',
+                                'drop_missing_ctx_roots' if 'provider source links must resolve' in out + err else None))
+    # ctx freshness
+    log_text = ''
+    try:
+        log_text = host.read(c['import_log'])
+        last = last_ctx_success(log_text)
+    except OSError:
+        last = None
+    age_h = (now - last) / 3600 if last else None
+    if age_h is None or age_h > c['max_age_hours']:
+        tail = log_text.splitlines()[-3:]
+        failed = [re.search(r'\bwait_rc=1\s+gen (\S+) -> \1(?=\s|$)', line) for line in tail]
+        blocked = len(failed) == 3 and all(failed) and len({m[1] for m in failed}) == 1
+        findings.append(Finding('ctx_fresh', 'ctx-import',
+                                'blocked: owner decision' if blocked else f"last successful refresh {age_h and round(age_h, 1)} h ago",
+                                None if blocked else 'run_ctx_import',
+                                {'blocked_generation': failed[0][1]} if blocked else {'mem_available_kib': host.mem_available_kib()}))
+
+
 def check(spec, host: Host):
     findings: list[Finding] = []
     now = host.now()
@@ -232,31 +259,9 @@ def check(spec, host: Host):
                                         f'archive missing sessions up to {lag_h:.1f} h older than the profile\'s newest settled session', 'sync_archive', {'lag_h': round(lag_h, 1)}))
     except sqlite3.Error as e:
         findings.append(Finding('archive_readable', a['archive'], str(e), None))
-    # ctx config must load before ctx can manage its own sources.
     c = spec['ctx']
-    rc, out, err = host.run(['env', f"CTX_DATA_ROOT={expand(c['data_root'])}",
-                             'ctx', 'sources', '--all', '--format', 'json'])
-    if rc:
-        detail = (err or out).strip()
-        findings.append(Finding('ctx_config_loads', str(expand(c['data_root']) / 'config.toml'),
-                                f'ctx sources rc={rc}: {detail}',
-                                'drop_missing_ctx_roots' if 'provider source links must resolve' in out + err else None))
-    # ctx freshness
-    log_text = ''
-    try:
-        log_text = host.read(c['import_log'])
-        last = last_ctx_success(log_text)
-    except OSError:
-        last = None
-    age_h = (now - last) / 3600 if last else None
-    if age_h is None or age_h > c['max_age_hours']:
-        tail = log_text.splitlines()[-3:]
-        failed = [re.search(r'\bwait_rc=1\s+gen (\S+) -> \1(?=\s|$)', line) for line in tail]
-        blocked = len(failed) == 3 and all(failed) and len({m[1] for m in failed}) == 1
-        findings.append(Finding('ctx_fresh', 'ctx-import',
-                                'blocked: owner decision' if blocked else f"last successful refresh {age_h and round(age_h, 1)} h ago",
-                                None if blocked else 'run_ctx_import',
-                                {'blocked_generation': failed[0][1]} if blocked else {'mem_available_kib': host.mem_available_kib()}))
+    if c.get('enabled', True):  # off while ctx refresh has no host-safe memory bound (ctxrs/ctx#1192)
+        check_ctx(c, host, now, findings)
     # recall receipt
     r = spec['recall']
     try:
