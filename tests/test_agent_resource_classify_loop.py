@@ -50,7 +50,11 @@ def test_unit_is_resident_and_has_no_timer():
 
 def test_former_subminute_timers_stay_at_two_minutes_or_slower():
     import re
-    for name in ('quackles-arbiter.timer', 'dash-turbo-follow.timer'):
+    # F16: the 1-min group moved to 2 min too (jepa-host-sampler and service-watch-heartbeat stay).
+    names = ('quackles-arbiter', 'dash-turbo-follow', 'z0-guard-gateway-watch', 'reset-grant', 'free-pace',
+             'gh-feedback-watch', 'o8-phone-reverse', 'network-optimizer')
+    assert 'OnCalendar=*-*-* *:0/2:00' in (ROOT / 'config/systemd/user/neuroforge-import.timer').read_text()
+    for name in (n + '.timer' for n in names):
         text = (ROOT / 'config/systemd/user' / name).read_text()
         for value in re.findall(r'^OnUnit(?:Active|Inactive)Sec=(\S+)', text, re.M):
             assert value.endswith('min') and int(value[:-3]) >= 2, (name, value)

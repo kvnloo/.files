@@ -1,8 +1,8 @@
 [Unit]
-Description=reset-grant watcher (every minute; reads the cached burn-pace snapshot, no API calls)
+Description=reset-grant watcher (every 2 min; reads the cached burn-pace snapshot, no API calls)
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=1min
+OnUnitActiveSec=2min
 AccuracySec=10s
 Persistent=true
 [Install]

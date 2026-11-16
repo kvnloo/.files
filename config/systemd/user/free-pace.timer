@@ -1,9 +1,9 @@
 [Unit]
-Description=free-pace every minute
+Description=free-pace every 2 min
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=1min
+OnUnitInactiveSec=2min
 AccuracySec=10s
 
 [Install]

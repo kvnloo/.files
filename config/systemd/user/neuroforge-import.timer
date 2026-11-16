@@ -3,7 +3,7 @@ Description=Periodically import existing redacted activity and learning outboxes
 
 [Timer]
 OnBootSec=45s
-OnCalendar=*-*-* *:*:00
+OnCalendar=*-*-* *:0/2:00
 Persistent=true
 AccuracySec=5s
 RandomizedDelaySec=3s

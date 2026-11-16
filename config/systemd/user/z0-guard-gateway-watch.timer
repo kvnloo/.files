@@ -1,9 +1,9 @@
 [Unit]
-Description=O9 gateway-restart watch every minute
+Description=O9 gateway-restart watch every 2 min
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=1min
+OnUnitActiveSec=2min
 AccuracySec=10s
 Unit=z0-guard-gateway-watch.service
 
