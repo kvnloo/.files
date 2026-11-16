@@ -11,7 +11,7 @@ C=${CTX_BIN:-/home/kvn/.local/bin/ctx}; R=/mnt/zer0models/host-offload/home_kvn_
 # (~2 GB read, 2 GB RSS, once 60 GB) before auto mode was refused. Fail before touching ctx; the unit
 # stays red and is declared in kvnloo/home map/parked.json until Kevin decides. Absolute path: the
 # unit sets HOME to ctx-import-home.
-OFF=${CTX_DAEMON_OFF:-/home/kvn/.config/ctx-daemon-off}
+OFF=${CTX_IMPORT_OFF_SWITCH:-/home/kvn/.config/ctx-daemon-off}
 if [ -e "$OFF" ]; then
   echo "$(date -Is) wait_rc=2 skipped: ctx daemon off by decision ($OFF); parked in kvnloo/home map/parked.json" >> $LOG
   echo "ctx daemon is off ($OFF exists): nothing to import; parked in kvnloo/home map/parked.json" >&2

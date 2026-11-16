@@ -15,7 +15,7 @@ def run(tmp_path, off_switch):
     if off_switch:
         off.touch()
     log = tmp_path / "ctx-import.log"
-    env = dict(os.environ, CTX_BIN=str(ctx), CTX_IMPORT_LOG=str(log), CTX_DAEMON_OFF=str(off))
+    env = dict(os.environ, CTX_BIN=str(ctx), CTX_IMPORT_LOG=str(log), CTX_IMPORT_OFF_SWITCH=str(off))
     r = subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
     return r, (calls.read_text() if calls.exists() else ""), (log.read_text() if log.exists() else "")
 
