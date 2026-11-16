@@ -19,6 +19,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -56,6 +57,13 @@ USER_UNIT_PATHS = (USER_UNIT_DIR, Path.home() / '.local/share/systemd/user', Pat
 # daemon-reload (76/day on 2026-11-16, each re-arming every OnActiveSec timer). Their failures still
 # reach the watchlist through list-units.
 TRANSIENT_DIR = Path(f'/run/user/{os.getuid()}/systemd/transient')
+FX = Path.home() / '.local/bin/fx'
+CONFIRM_MODEL = 'gpt-6-luna'
+CONFIRM_PROMPT = ('Confirm service anomaly severity from finite facts only. No tools or actions. '
+                  'Return JSON only: severity (info,warn,severe), cause, fix, evidence (nonempty array of integer '
+                  'evidence indices), confidence (number 0..1). A failed service, restart loop, repeated silent '
+                  'no-op or growing error flood is severe. Do not invent a detailed cause not supported by these '
+                  'facts. Facts: ')
 HOOK_NAME = '90-service-watch.conf'
 HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.service\n')
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
@@ -1200,14 +1208,18 @@ class Watch:
         if severe:
             start = time.monotonic()
             try:
-                request = {'facts': window}  # Never local summaries, raw unit names, paths or logs.
-                proc = subprocess.run(['bun', str(ROOT / 'service-watch-confirm.ts')],
-                                      input=json.dumps(request), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                      text=True, timeout=55)
+                # Owner rule: subscription GPT runs only via fx. `window` is project()'s finite projection
+                # (never summaries, unit names, paths or logs). Without --auto/--full-access fx denies
+                # every tool request, and an empty cwd leaves it no project context to read.
+                with tempfile.TemporaryDirectory() as cwd:
+                    proc = subprocess.run([str(FX), 'ask', '--model', CONFIRM_MODEL, '--effort', 'low', '--json',
+                                           '--no-save', '--no-color', '--', CONFIRM_PROMPT + json.dumps(window)],
+                                          cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                          stderr=subprocess.DEVNULL, text=True, timeout=55)
                 result = json.loads(proc.stdout)
-                if not result.get('ok') or result.get('returned_model') != 'gpt-6-luna':
+                if proc.returncode or result.get('model') != CONFIRM_MODEL or result.get('tool_calls'):
                     raise ValueError('luna_unavailable')
-                selected = parse_decision(result['text'], len(window['evidence']))
+                selected = parse_decision(result['final_output'], len(window['evidence']))
                 model = 'openai-codex/gpt-6-luna'
                 tiers.append({'model': model, 'ok': True, 'severity': selected['severity'],
                               'confidence': selected['confidence'], 'latency_ms': (time.monotonic() - start) * 1000})

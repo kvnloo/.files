@@ -957,6 +957,32 @@ class Contracts(unittest.TestCase):
         self.assertEqual(data['decision']['severity'], 'severe')
         self.assertFalse(data['severe_confirmed'])
 
+    def test_severe_confirmation_runs_through_fx_without_tool_permissions(self):
+        # 2026-11-16: the bun SDK import path vanished when omp became one binary, so every confirm
+        # failed silently for days and model-only severe incidents never notified. Owner rule:
+        # subscription GPT runs only via fx.
+        decision = {'severity': 'severe', 'cause': 'Error flood', 'fix': 'Inspect manually', 'evidence': [0], 'confidence': .9}
+        ident = self.watch.record('user', 'fixture.service', [sw.event('journal_error_rate', count=10)], ['synthetic error'])
+        remote = {'ok': True, 'provider': 'groq', 'model': 'openai/gpt-oss-20b', 'output': json.dumps(decision)}
+        calls = []
+        def fx(argv, **kw):
+            calls.append((argv, kw, list(Path(kw['cwd']).iterdir())))
+            out = {'final_output': json.dumps(decision), 'model': 'gpt-6-luna', 'tool_calls': [], 'exit_code': 0}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(out), '')
+        with patch.object(sw, 'post', lambda url, body, timeout=40: remote if url != sw.LOCAL_URL else {}), \
+                patch.object(sw.subprocess, 'run', fx), patch.object(self.watch.store, 'notify') as notify:
+            self.watch.triage(ident, ['synthetic error'])
+            notify.assert_called_once()
+        argv, kw, cwd_entries = calls[0]
+        self.assertEqual(argv[1:4], ['ask', '--model', 'gpt-6-luna'])
+        self.assertFalse({'--auto', '--full-access', '--yolo'} & set(argv))
+        self.assertNotIn('synthetic error', argv[-1])
+        self.assertEqual(cwd_entries, [])  # no project context for fx to read
+        self.assertFalse((ROOT / 'scripts/service-watch-confirm.ts').exists())
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertTrue(data['severe_confirmed'])
+        self.assertEqual(data['tiers'][-1]['model'], 'openai-codex/gpt-6-luna')
+
     def test_raw_route_fails_closed_if_host_does_not_own_address(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '[{\"addr_info\":[{\"local\":\"127.0.0.1\"}]}]', '')), patch.object(sw.urllib.request, 'build_opener') as opener:
             with self.assertRaises(ValueError):

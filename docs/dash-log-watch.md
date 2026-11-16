@@ -138,15 +138,12 @@ not process liveness or the start of an unfinished scan.
 The model worker cannot block deterministic checks. It batches each anomalous
 unit window, sends bounded raw excerpts **only** to the host-owned Qwen router
 endpoint (its IP must appear in live interface addresses), then sends finite signature/numeric projections to the router's
-validated zero-cost Groq route. Potential severe incidents additionally use the
-installed pi-ai SDK via `service-watch-confirm.ts`. The existing Dash Hermes
-OAuth transport remains unchanged: host confirmation uses the requested
-`~/.omp/agent/agent.db` instead, strictly read-only, with credentials in memory
-only. No token refresh, credential copying or account writes. If no unexpired
-subscription credential is available, confirmation is unavailable rather than
-silently using a paid fallback. The helper independently validates the closed
-vocabulary and can capture its actual SDK request payload (never headers) with
-`--capture-request=PATH` for privacy audits. No auth data belongs in a receipt.
+validated zero-cost Groq route. Potential severe incidents are additionally
+confirmed by `gpt-6-luna` through `fx ask` (the only sanctioned subscription-GPT
+route), with the same finite projection, no tool permissions, no saved session and
+an empty working directory. If fx is unavailable or returns another model or any
+tool call, confirmation is unavailable rather than silently using a paid fallback.
+No auth data belongs in a receipt.
 Qwen uses a constrained JSON schema, including nonempty integer evidence indices.
 Seed/replayed windows recover at most twelve local journal excerpts preceding
 the observation; raw excerpts are never persisted.
@@ -264,12 +261,13 @@ and `service-watch-system-failure@.service`, then `sudo systemctl daemon-reload`
 
 ## Deterministic worktree cleanup
 
-`z0-guard worktrees --inventory` records the checkout classification without
-removal. `--apply` immediately archives and removes eligible non-LIVE checkouts;
-`--daily` applies the age policy (SAFE at least 3 days, WIP at least 14 days).
-LIVE checkouts are never removed. The classifier lives in
-`scripts/worktree-reaper.py`; other `z0-guard` commands retain their existing
-external ops-plane dispatcher.
+`z0-guard worktrees --inventory` records checkout classification without removal.
+Both `--apply` and `--daily` require a matching expired artifact lease inside the
+fixed groot allowlist. The fleet actor is `scripts/artifact-leases.py`, which
+reuses `scripts/worktree-reaper.py` for LIVE classification and verified Git
+archives. The lease timer replaces the old age-only timer. Missing lease,
+unknown visibility, LIVE references, symlink traversal, and archive failures
+all keep the artifact. See the fleet README for deployment and node receipts.
 The LIVE collector scans all symlinks under `$HOME`, including dangling targets.
 It also scans the agent configuration roots and `/workspace/hermes-home`.
 Installed plugin, extension, and skill directories are live code sources.
