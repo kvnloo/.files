@@ -1,6 +1,5 @@
 [Unit]
 Description=Check service watch self-heartbeat without LLM calls
-OnFailure=service-watch-failure@service\x2dwatch\x2dheartbeat.service.service
 
 [Service]
 Type=oneshot

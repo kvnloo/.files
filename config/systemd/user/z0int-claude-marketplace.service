@@ -1,7 +1,6 @@
 [Unit]
 Description=Ensure z0intelligence Claude marketplace loads in every config dir; fail loudly on breakage
 Documentation=man:z0int-claude-marketplace(1)
-OnFailure=service-watch-failure@z0int\x2dclaude\x2dmarketplace.service
 After=network-online.target
 Wants=network-online.target
 

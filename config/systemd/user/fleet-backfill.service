@@ -1,6 +1,5 @@
 [Unit]
 Description=fleet: backfill idle MBP/Boat capacity with public upstream CI at bench priority (scripts/fleet-backfill)
-OnFailure=service-watch-failure@fleet\x2dbackfill.service.service
 
 [Service]
 Type=oneshot
