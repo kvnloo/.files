@@ -48,6 +48,8 @@ def offenders():
         if s.get('IOSchedulingClass', '').strip() not in ('idle', '3'):
             continue
         spans = [seconds(s[k]) for k in DEADLINES if k in s]
+        # A unit that declares its own budget has a deadline too (z0int loop tick --budget-s).
+        spans += [int(n) for n in re.findall(r'--budget-s[= ](\d+)', s.get('ExecStart', ''))]
         short = [x for x in spans if x is not None and x <= SHORT]
         if short:
             bad.append(f'{path.name} ({min(short):g}s)')
@@ -57,6 +59,12 @@ def offenders():
 def test_seconds():
     assert seconds('20') == 20 and seconds('5min') == 300 and seconds('1min 30s') == 90
     assert seconds('infinity') is None and seconds('1h') == 3600
+
+
+def test_long_running_servers_are_not_idle_io():
+    # Clients time out on a server whose reads wait ~10 s each (agentsview-sync: daemon not responding).
+    path = UNITS / 'agentsview.service.d/63-io-best-effort.conf'
+    assert 'IOSchedulingClass=best-effort' in path.read_text()
 
 
 def test_short_deadline_units_are_not_idle_io():
