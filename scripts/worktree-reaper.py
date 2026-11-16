@@ -95,6 +95,10 @@ def discover(roots):
     # recursively stat'ing every dependency/build artifact in each repository.
     pending = list(found)
     visited = set()
+    # Every linked worktree reports its repository's full list, so a repo with
+    # N worktrees yields N^2 targets; resolve roots once and judge each target once.
+    real_roots = [os.path.realpath(r) for r in roots if os.path.isdir(r)]
+    seen = set()
     while pending:
         path = pending.pop()
         if path in visited:
@@ -107,9 +111,12 @@ def discover(roots):
             p = git(path, 'config', '--file', '.gitmodules', '--get-regexp', r'^submodule\..*\.path$', check=False)
             targets.extend(os.path.join(path, line.split(None, 1)[1]) for line in p.stdout.decode(errors='replace').splitlines() if len(line.split(None, 1)) == 2)
         for target in targets:
+            if target in seen:
+                continue
+            seen.add(target)
             target = os.path.realpath(target)
-            in_scope = any(target == os.path.realpath(r) or target.startswith(os.path.realpath(r) + '/') for r in roots)
-            generated = any(target.startswith(os.path.realpath(r) + '/') and any(output_component(part) for part in Path(os.path.relpath(target, os.path.realpath(r))).parts) for r in roots)
+            in_scope = any(target == r or target.startswith(r + '/') for r in real_roots)
+            generated = any(target.startswith(r + '/') and any(output_component(part) for part in Path(os.path.relpath(target, r)).parts) for r in real_roots)
             if in_scope and not generated and os.path.exists(os.path.join(target, '.git')) and target not in found:
                 if text(target, 'rev-parse', '--is-inside-work-tree', check=False) == 'true':
                     found.add(target)
