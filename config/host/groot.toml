@@ -1,6 +1,11 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/hermes-pr87494-preview.service", sha256 = "0ed640e1c69fd81302f90833920bc04fa4a388b8afcd678d71cfdd253d17b634", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/t_865bad0a is gone (sysgraph missing); previews are recreated per review." },
+  { live = "~/.config/systemd/user/hermes-pr87495-preview.service", sha256 = "bf882984d57923f47778361502ca91ee25bcf6d24fd841f18cf54bce673196c2", reason = "PR preview whose worktree /workspace/hermes-home/kanban/boards/spatial-canvas/workspaces/t_4407766a is gone (sysgraph missing); previews are recreated per review." },
+  { live = "~/.config/systemd/user/hermes-pr88716-a58cc427-preview.service", sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716 is gone (sysgraph missing); previews are recreated per review." },
+  { live = "~/.config/systemd/user/hermes-pr88716-preview.service", sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716 is gone (sysgraph missing); previews are recreated per review." },
+  { live = "~/.config/systemd/user/hermes-pr88752-preview.service", sha256 = "b512b46177ea9e1564ea0340e2e8dded7e78def227a661691cad1d34fbb8fa2f", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/t_72b4d311 is gone (sysgraph missing); previews are recreated per review." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-qualified-8212.service", sha256 = "11015c6f89603d0d3f246dd899472494ba485f29bff53014863829ade66c7860", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf", sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea", reason = "Superseded by canonical dash-bridge.service." },
@@ -453,51 +458,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "a72bb92b30e4811294ccaeed85496879fd395b386b23dc93179fe2e9a5eba004"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-pr87494-preview.service"
-source = "config/systemd/user/hermes-pr87494-preview.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "0ed640e1c69fd81302f90833920bc04fa4a388b8afcd678d71cfdd253d17b634"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-pr87495-preview.service"
-source = "config/systemd/user/hermes-pr87495-preview.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "bf882984d57923f47778361502ca91ee25bcf6d24fd841f18cf54bce673196c2"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-pr88716-a58cc427-preview.service"
-source = "config/systemd/user/hermes-pr88716-a58cc427-preview.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-pr88716-preview.service"
-source = "config/systemd/user/hermes-pr88716-preview.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-pr88752-preview.service"
-source = "config/systemd/user/hermes-pr88752-preview.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "b512b46177ea9e1564ea0340e2e8dded7e78def227a661691cad1d34fbb8fa2f"
 
 [[user]]
 live = "~/.config/systemd/user/hermes-voice-web.service"
@@ -4701,7 +4661,6 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
-
 
 [[user]]
 live = "~/.local/bin/github-dev-tracks-default"
