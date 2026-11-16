@@ -159,7 +159,7 @@ owner = "62-swap-bound.conf"
 group = "app"
 unit = "o8-serve.service"
 property = "MemoryMax"
-equals = "1536M"
+equals = "2G"
 owner = "60-memory-cap.conf"
 why = "uncapped next-server reached 7.5 GiB and preceded the 11-15 18:46 global OOM crash"
 
@@ -167,5 +167,12 @@ why = "uncapped next-server reached 7.5 GiB and preceded the 11-15 18:46 global 
 group = "app"
 unit = "o8-serve.service"
 property = "MemorySwapMax"
-equals = "2G"
+equals = "3G"
 owner = "60-memory-cap.conf"
+
+[[unit]]
+group = "app"
+unit = "o8-serve.service"
+property = "MemoryHigh"
+equals = "infinity"
+why = "a MemoryHigh under the working set throttled o8 to 75 s per request (11-15)"
