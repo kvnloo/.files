@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -318,6 +319,29 @@ class Contracts(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 2)
         finally:
             timer.join()
+            del sw.COMMAND_CONTEXT.stop
+
+    def test_child_terminated_by_unit_stop_is_shutdown_not_failure(self):
+        # systemd SIGTERMs the whole cgroup: the systemctl child can die before our handler sets
+        # stop, and its rc=-15 used to surface as systemd_read_failed -> exit 1 -> false incident.
+        stop = threading.Event()
+        sw.COMMAND_CONTEXT.stop = stop
+        timer = threading.Timer(.2, stop.set)
+        timer.start()
+        try:
+            with self.assertRaises(sw.ShutdownRequested):
+                sw.command(['sh', '-c', 'kill -TERM $$'], 5)
+        finally:
+            timer.join()
+            del sw.COMMAND_CONTEXT.stop
+
+    def test_child_terminated_without_shutdown_is_returned(self):
+        stop = threading.Event()
+        sw.COMMAND_CONTEXT.stop = stop
+        try:
+            result = sw.command(['sh', '-c', 'kill -TERM $$'], 5)
+            self.assertEqual(result.returncode, -signal.SIGTERM)
+        finally:
             del sw.COMMAND_CONTEXT.stop
 
     def test_cancelled_journal_preserves_cursor_without_gap_incident(self):

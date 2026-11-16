@@ -129,6 +129,12 @@ def command(argv, timeout=15, **kwargs):
                 raise subprocess.TimeoutExpired(argv, timeout)
             try:
                 stdout, stderr = proc.communicate(timeout=min(.1, remaining))
+                if proc.returncode in (-signal.SIGTERM, -signal.SIGINT):
+                    # A unit stop SIGTERMs the whole cgroup; the child can die before our handler
+                    # sets stop. Give it a moment so a shutdown never reads as a systemd failure.
+                    stop = getattr(COMMAND_CONTEXT, 'stop', None)
+                    if stop is not None and stop.wait(1):
+                        raise ShutdownRequested()
                 return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
             except subprocess.TimeoutExpired:
                 pass
