@@ -69,6 +69,10 @@ def snapshot(wt, apply=True):
     if not apply:
         return "dirty", []
     new = git(wt, "ls-files", "-o", "--exclude-standard", "-z").stdout.split("\0")
+    # Environments rebuild from lockfiles; a venv missing from .gitignore cost a 5 h run (2026-11-16).
+    envs = [f[:-len("/pyvenv.cfg")] for f in new if f.endswith("/pyvenv.cfg")]
+    skip = [":(exclude,glob)**/node_modules/**", *[f":(exclude){d}" for d in envs]]
+    new = [f for f in new if "node_modules/" not in f and not any(f.startswith(d + "/") for d in envs)]
     big = [f for f in new if f and os.path.isfile(os.path.join(wt, f)) and os.path.getsize(os.path.join(wt, f)) > BIG]
     with tempfile.TemporaryDirectory() as td:
         env = dict(os.environ, GIT_INDEX_FILE=os.path.join(td, "index"))
@@ -78,7 +82,7 @@ def snapshot(wt, apply=True):
             shutil.copyfile(idx, env["GIT_INDEX_FILE"])
         elif git(wt, "read-tree", "HEAD", env=env).returncode:
             return None, ["read-tree failed"]
-        git(wt, "add", "-A", "--", ".", *[f":(exclude){f}" for f in big], env=env, timeout=1800)
+        git(wt, "add", "-A", "--", ".", *skip, *[f":(exclude){f}" for f in big], env=env, timeout=1800)
         tree = git(wt, "write-tree", env=env).stdout.strip()
     sha = git(wt, "-c", "user.name=offsite-sync", "-c", "user.email=offsite-sync@localhost", "commit-tree",
               tree, "-p", "HEAD", "-m", f"offsite-sync snapshot of {wt}").stdout.strip()

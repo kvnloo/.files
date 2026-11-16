@@ -42,6 +42,19 @@ class Offsite(unittest.TestCase):
         self.assertNotIn(".env", g(self.bare, "ls-tree", "--name-only", snap).split())   # gitignore respected
         self.assertEqual(g(wt, "status", "--porcelain"), "?? .gitignore\n?? idea.md")    # local untouched
 
+    def test_untracked_venvs_and_node_modules_are_not_snapshotted(self):
+        # 2026-11-16: offsite.service ran 5 h hashing z0intelligence's .venv-311 site-packages (not in its
+        # .gitignore) into git objects. Environments rebuild from lockfiles; they are not work product.
+        (self.repo / "notes.md").write_text("keep")
+        venv = self.repo / ".venv-311"; (venv / "lib").mkdir(parents=True)
+        (venv / "pyvenv.cfg").write_text("home = /usr/bin\n"); (venv / "lib/mod.py").write_text("x")
+        (self.repo / "web/node_modules/pkg").mkdir(parents=True); (self.repo / "web/node_modules/pkg/i.js").write_text("x")
+        (self.repo / "web/app.js").write_text("app")
+        r = self.run_sync("--apply"); self.assertEqual(r.returncode, 0, r.stderr)
+        host = os.uname().nodename.split(".")[0]
+        files = g(self.bare, "ls-tree", "-r", "--name-only", self.remote(f"refs/offsite/{host}/main")).split()
+        self.assertEqual(sorted(files), ["notes.md", "web/app.js"])
+
     def test_dry_run_pushes_nothing(self):
         g(self.repo, "switch", "-q", "-c", "feat/x"); g(self.repo, "commit", "-q", "--allow-empty", "-m", "x")
         self.run_sync()
