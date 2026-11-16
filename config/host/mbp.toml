@@ -83,20 +83,20 @@ owner = "scripts/apply-agent-oom"
 reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
 
 [[user]]
-live = "~/.config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
-source = "config/systemd/user/z0int-loop-tick.service.d/90-service-watch.conf"
+live = "~/.config/systemd/user/service.d/90-service-watch.conf"
+source = "config/systemd/user/service.d/90-service-watch.conf"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
-reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+reason = "Type-level OnFailure hook (one drop-in per unit type, as on groot since .files@73837607)."
 
 [[user]]
-live = "~/.config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
-source = "config/systemd/user/z0int-loop-tick.timer.d/90-service-watch.conf"
+live = "~/.config/systemd/user/timer.d/90-service-watch.conf"
+source = "config/systemd/user/timer.d/90-service-watch.conf"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
-reason = "mbp runs the z0int release tick from ~/.local/lib/z0int-shadow/current, as groot does."
+reason = "Type-level OnFailure hook (one drop-in per unit type, as on groot since .files@73837607)."
 
 [[user]]
 live = "~/.config/systemd/user/service-watch-failure@.service"

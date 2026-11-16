@@ -1822,15 +1822,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "781da54bd0d74e4439e81ab9021cc28a1bacff706b8fe39ef254b0c40f75bb58"
 
 [[user]]
-live = "~/.config/systemd/user/timers.target.wants/agent-resource-classify.timer"
-source = "config/systemd/user/agent-resource-classify.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "fc0538aca05285e239b7b480f3d231a47696ba771f94f0a3cd631fc5d0b32911"
-
-[[user]]
 live = "~/.config/systemd/user/timers.target.wants/agent-telemetry-refresh.timer"
 source = "config/systemd/user/agent-telemetry-refresh.timer"
 scope = "user"

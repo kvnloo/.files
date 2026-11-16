@@ -244,3 +244,16 @@ class CheckoutDirectoryLinkTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ManifestSourcesTracked(unittest.TestCase):
+    def test_every_manifest_source_is_a_tracked_file(self):
+        # 2026-11-16: a deleted timer kept its timers.target.wants row, so install-host-drift refused
+        # every new snapshot ("not a tracked source") and host-drift kept auditing a stale tree.
+        import tomllib
+        tracked = set(subprocess.check_output(['git', '-C', str(ROOT), 'ls-files'], text=True).splitlines())
+        for manifest in sorted((ROOT / 'config/host').glob('*.toml')):
+            data = tomllib.loads(manifest.read_text())
+            missing = [f"{row.get('live')} <- {row['source']}" for row in data.get('system', []) + data.get('user', [])
+                       if isinstance(row, dict) and 'source' in row and row['source'] not in tracked]
+            self.assertEqual(missing, [], manifest.name)
