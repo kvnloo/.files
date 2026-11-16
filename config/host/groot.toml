@@ -3605,6 +3605,14 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "827b81ce1e6a7e15b61a84ed9566ecc607a14bf002408d98608bc736e60138ee"
 
 [[user]]
+live = "~/.config/environment.d/05-local-bin-path.conf"
+source = "config/environment.d/05-local-bin-path.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "User manager PATH lacked ~/.local/bin, so systemd-run jobs calling groot-admit by bare name failed ~7x/h; appended so existing resolution is unchanged."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
