@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily off-machine copies (offsite-sync + offsite-blobs)
+Description=Daily off-machine git copies (offsite-sync)
 
 [Timer]
 OnCalendar=*-*-* 02:30
