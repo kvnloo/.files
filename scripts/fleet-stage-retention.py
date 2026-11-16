@@ -257,9 +257,16 @@ def main():
         raise ValueError('registry must use agentjob')
     ssh = fleet['ssh_cmd'](node)
     kube = ['kubectl', '--kubeconfig', str(Path.home() / '.kube/k3s.yaml')]
+    def items(kind):
+        try:
+            return json.loads(checked(kube + ['get', kind, '-A', '-o', 'json']))['items']
+        except subprocess.CalledProcessError as exc:
+            # No Kueue API means no Kueue workloads can exist; jobs and pods still must answer.
+            if kind.endswith('.kueue.x-k8s.io') and "doesn't have a resource type" in (exc.stderr or ''):
+                return []
+            raise
     def snapshot():
-        return {key: json.loads(checked(kube + ['get', kind, '-A', '-o', 'json']))['items']
-                for key, kind in [('jobs', 'jobs'), ('pods', 'pods'), ('workloads', 'workloads.kueue.x-k8s.io')]}
+        return {key: items(kind) for key, kind in [('jobs', 'jobs'), ('pods', 'pods'), ('workloads', 'workloads.kueue.x-k8s.io')]}
     from fleet_paths import runs_dir
     receipts = {}
     for file in runs_dir().glob('fleet-mbp-*.json'):

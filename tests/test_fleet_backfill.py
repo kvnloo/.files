@@ -168,3 +168,15 @@ class PhoneFeeder(unittest.TestCase):
         i = argv.index("--")
         self.assertEqual(argv[i + 1:i + 6], ["chrt", "-i", "0", "taskset", "f0"])
         self.assertIn("18432", argv)
+
+    def test_tick_without_kueue_skips_mbp_boat_but_other_kubectl_errors_fail(self):
+        from unittest import mock
+        absent = subprocess.CalledProcessError(1, "kubectl", stderr='error: the server doesn\'t have a resource type "clusterqueue"\n')
+        down = subprocess.CalledProcessError(1, "kubectl", stderr="The connection to the server was refused\n")
+        with mock.patch.object(bf, "phone_tick", return_value=[]), mock.patch.object(bf, "sh", side_effect=absent) as sh:
+            self.assertEqual(bf.tick(CFG, dry_run=True), 0)
+            self.assertEqual(sh.call_count, 1)  # Boat limits never asked: nothing can be admitted
+        with mock.patch.object(bf, "phone_tick", return_value=[]), mock.patch.object(bf, "sh", side_effect=down):
+            with self.assertRaises(subprocess.CalledProcessError):
+                bf.tick(CFG, dry_run=True)
+

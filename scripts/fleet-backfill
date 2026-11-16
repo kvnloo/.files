@@ -176,6 +176,11 @@ def sh(*cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, check=True, **kw).stdout
 
 
+def kueue_absent(exc):
+    """True when kubectl failed only because the cluster has no Kueue API (pure; tested)."""
+    return "doesn't have a resource type" in (exc.stderr or "")
+
+
 def mem_available():
     for line in Path("/proc/meminfo").read_text().splitlines():
         if line.startswith("MemAvailable:"):
@@ -401,7 +406,14 @@ def tick(cfg, dry_run=False):
     except Exception as exc:  # phones must never stall the MBP/Boat half of the tick
         print(json.dumps({"phones": f"error {type(exc).__name__}: {exc}"[:300]}))
     env = {**os.environ, "KUBECONFIG": KUBECONFIG}
-    queues = json.loads(sh("kubectl", "get", "clusterqueue", "lanes", "bench-lanes", "-o", "json", env=env))["items"]
+    try:
+        queues = json.loads(sh("kubectl", "get", "clusterqueue", "lanes", "bench-lanes", "-o", "json", env=env))["items"]
+    except subprocess.CalledProcessError as exc:
+        if not kueue_absent(exc):
+            raise
+        # MBP and Boat work is admitted only through Kueue; with no Kueue there is nothing to launch.
+        print(json.dumps({"mbp_boat": "skipped: Kueue is not installed on this cluster"}))
+        return 0
     free, pending = cohort_free(queues)
     limits = json.loads(sh(boat_pool.BOAT, "--no-update", "--json", "limits", timeout=90) or "{}")
     active = active_units()
