@@ -1,0 +1,11 @@
+[Unit]
+Description=Learn from existing fleet health/outcome events, without a second polling timer
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Path]
+PathChanged=%h/.local/state/fleet/health/history.jsonl
+PathChanged=/mnt/zer0models/host-offload/home_kvn_.local_state_fleet_runs
+Unit=host-optimizer.service
+
+[Install]
+WantedBy=default.target
