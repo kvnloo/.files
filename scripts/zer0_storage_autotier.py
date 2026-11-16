@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 import fnmatch
+import functools
 import glob
 import json
 import os
@@ -248,6 +249,21 @@ def on_home_device(path: Path) -> bool:
         return False
 
 
+@functools.cache
+def _bundled_lib_wheels(site: Path) -> frozenset[str]:
+    """Top-level entries of wheels that ship a <dist>.libs dir (auditwheel's bundled .so files).
+
+    Their extensions find those libs via RPATH $ORIGIN/../..., which the loader resolves
+    physically, so tiering either half alone behind a symlink breaks the import (scipy, 11-12).
+    """
+    coupled: set[str] = set()
+    for record in site.glob("*.dist-info/RECORD"):
+        tops = {line.split(",", 1)[0].split("/", 1)[0] for line in record.read_text(errors="replace").splitlines()}
+        if any(top.endswith(".libs") for top in tops):
+            coupled |= tops
+    return frozenset(coupled)
+
+
 def discover_root_candidates(used: set[str] | None = None) -> list[tuple[int, Path]]:
     """Idle, unused, unprotected bulk under ROOT_TIER_GLOBS, largest first."""
     used = paths_in_use_deep() if used is None else used  # mapped .so files count as in use
@@ -264,6 +280,9 @@ def discover_root_candidates(used: set[str] | None = None) -> list[tuple[int, Pa
                 continue
             if _root_protected(path):
                 print(f"root skip protected {path}", flush=True)
+                continue
+            if path.parent.name == "site-packages" and path.name in _bundled_lib_wheels(path.parent):
+                print(f"root skip wheel-with-bundled-libs {path}", flush=True)
                 continue
             if in_use(path, used):
                 print(f"root skip in-use {path}", flush=True)

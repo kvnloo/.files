@@ -793,6 +793,27 @@ def test_discovery_treats_mapped_files_as_in_use(monkeypatch, tmp_path):
     assert [p for _s, p in autotier.discover_root_candidates()] == [pkg]
 
 
+def test_discovery_never_splits_a_wheel_from_its_bundled_libs(monkeypatch, tmp_path):
+    # 11-12: scipy/ was tiered without scipy.libs/; its RPATH $ORIGIN/../../scipy.libs resolves
+    # physically into the offload tree, so `import scipy.linalg` failed for 4 days.
+    now = time.time()
+    home = tmp_path / "home"
+    site = ".local/lib/python3.14/site-packages"
+    scipy, libs, plain = (_tree(home, f"{site}/{name}", 10, now) for name in ("scipy", "scipy.libs", "plain"))
+    for dist, tops in (("scipy-1.0", ("scipy", "scipy.libs")), ("plain-1.0", ("plain",))):
+        info = home / site / f"{dist}.dist-info"
+        info.mkdir()
+        (info / "RECORD").write_text("".join(f"{top}/data.bin,sha256=x,64\n" for top in tops) + f"{dist}.dist-info/RECORD,,\n")
+    monkeypatch.setattr(autotier, "HOME", home)
+    monkeypatch.setattr(autotier, "ROOT_TIER_GLOBS", (".local/lib/python3.*/site-packages/*",))
+    monkeypatch.setattr(autotier, "ROOT_MIN_MIB", 0)
+    monkeypatch.setattr(autotier, "is_idle", lambda path, days=None: True)
+    monkeypatch.setattr(autotier, "paths_in_use_deep", lambda: set())
+    found = {p for _s, p in autotier.discover_root_candidates()}
+    assert plain in found and not found & {scipy, libs}
+    assert scipy.is_dir() and libs.is_dir()
+
+
 # --- dead dependency homes ---------------------------------------------------
 
 
