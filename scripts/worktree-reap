@@ -312,6 +312,23 @@ def snapshot(row, wt):
     return ref
 
 
+OFFSITE_RE = os.environ.get("WORKTREE_REAP_REMOTE_RE", r"github\.com[:/]kvnloo/")
+
+
+def push_offsite(wt, ref):
+    """Kevin 11-16: groot is never the only copy. Push the snapshot to a kvnloo remote as branch
+    reaped/<name>, or raise so the worktree is kept."""
+    remotes = [l.split()[:2] for l in git(wt, "remote", "-v").stdout.splitlines()]
+    name = next((n for n, u in remotes if re.search(OFFSITE_RE, u)), None)
+    if not name:
+        raise RuntimeError("no kvnloo remote: snapshot would be the only copy")
+    dest = "refs/heads/reaped/" + ref.removeprefix("refs/reaped/")
+    r = git(wt, "push", "--no-verify", name, f"{ref}:{dest}", timeout=900)
+    if r.returncode:
+        raise RuntimeError(f"snapshot push failed: {r.stderr.strip()[-200:]}")
+    return f"{name}:{dest}"
+
+
 IGNORED_ARCHIVE = Path(os.environ.get("WORKTREE_REAP_ARCHIVE", "/mnt/zer0models/quarantine/worktree-reap"))
 
 
@@ -340,6 +357,7 @@ def apply(row, action):
     if action == "idle":
         try:
             rec["snapshot_ref"] = snapshot(row, wt)
+            rec["snapshot_pushed"] = push_offsite(wt, rec["snapshot_ref"])
             rec["ignored_archive"] = archive_ignored(rec["snapshot_ref"], wt)
         except (RuntimeError, subprocess.SubprocessError, OSError) as e:
             rec["kept"] = str(e)[:300]
