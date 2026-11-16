@@ -121,7 +121,18 @@ def exec_sandboxed(argv, stdin_bytes=None):
     os.execv(bwrap, args)
 
 
+def default_scratch():
+    """F22: fx (bun) unpacks a native .so into TMPDIR each run; keep it off RAM-backed /tmp.
+    Same default as agent-launch; an explicit TMPDIR (e.g. Hermes profile scratch) wins."""
+    if os.environ.get("TMPDIR"):
+        return
+    d = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "agent-tmp")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    os.environ["TMPDIR"] = d
+
+
 def main(argv):
+    default_scratch()
     if argv and argv[0] in UNSANDBOXED:
         os.execv(FX, [FX, *argv])
     if not argv or argv[0] != "ask":

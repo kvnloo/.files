@@ -125,5 +125,35 @@ class Guard(unittest.TestCase):
         self.assertEqual(self.probe()[1], {})
 
 
+class Scratch(unittest.TestCase):
+    """F22: fx is a bun binary that unpacks an 8-13 MB native .so into TMPDIR on each run; with no
+    TMPDIR that lands in RAM-backed /tmp. Default to the disk-backed agent-tmp cache that
+    agent-launch uses, and keep an explicit TMPDIR (e.g. Hermes profile scratch)."""
+
+    def run_fx(self, cmd, tmpdir=None):
+        t = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, t, True)
+        out = t / "tmpdir.txt"
+        fx = t / "fx"; fx.write_text(f"#!/bin/sh\nprintf %s \"$TMPDIR\" > {out}\n"); fx.chmod(0o755)
+        env = {k: v for k, v in os.environ.items() if k != "TMPDIR"}
+        env.update(FX_BIN=str(fx), XDG_CACHE_HOME=str(t / "cache"), HOME=str(t))
+        env.pop("FX_PRIVACY_MASK", None)
+        if tmpdir:
+            env["TMPDIR"] = tmpdir
+        r = subprocess.run([sys.executable, str(GUARD), cmd], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return t, out.read_text()
+
+    def test_default_scratch_is_disk_backed_agent_tmp(self):
+        for cmd in ("status", "pr"):   # unsandboxed and sandboxed exec paths
+            t, got = self.run_fx(cmd)
+            self.assertEqual(got, str(t / "cache/agent-tmp"), cmd)
+            self.assertEqual((t / "cache/agent-tmp").stat().st_mode & 0o777, 0o700)
+
+    def test_explicit_tmpdir_is_kept(self):
+        t, got = self.run_fx("status", tmpdir="/somewhere/explicit")
+        self.assertEqual(got, "/somewhere/explicit")
+
+
 if __name__ == "__main__":
     unittest.main()
