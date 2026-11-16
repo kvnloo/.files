@@ -795,8 +795,11 @@ class Contracts(unittest.TestCase):
 
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []
-        def fake(argv, timeout=15):
+        def fake(argv, timeout=15, **kwargs):
             delivered.append(argv)
+            # 11-16: notify-send went to a desktop Kevin no longer uses (36 delivery_failed/24 h);
+            # kevin-push is the one route to him, and report class keeps alerts off his Telegram cap.
+            self.assertEqual(kwargs['env']['CIRCADIAN_CLASS'], 'report')
             return subprocess.CompletedProcess(argv, 0, '', '')
         with patch.object(sw, 'command', fake):
             ident = self.watch.record('user', 'fixture.service', [sw.event('failed')])
@@ -806,7 +809,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(other.notify(fingerprint, 'fixture.service', 'failed', ident), 'deduplicated')
             other.db.close()
         self.assertEqual(len(delivered), 1)
-        self.assertEqual(delivered[0][0], 'notify-send')
+        self.assertEqual((Path(delivered[0][0]).name, delivered[0][1]), ('kevin-push', 'service-watch'))
         digest = self.watch.store.digest().read_text()
         self.assertIn('fixture.service', digest)
         self.assertIn('severe', digest)

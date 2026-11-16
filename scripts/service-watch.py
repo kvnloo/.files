@@ -469,9 +469,11 @@ class Store:
             self.db.execute('INSERT INTO notifications VALUES (?,?,0)', (fingerprint, now))
             self.db.commit()
         try:
-            result = command(['notify-send', '--app-name=service-watch', '--urgency=critical',
-                              '--hint=string:x-service-watch-id:' + ident,
-                              'Service watch: ' + unit, cause[:180] + '\nservice-watch details ' + ident], 10)
+            # kevin-push is the one route to Kevin (he is phone-only; notify-send hit a desktop nobody
+            # sees). Report class lands in its log, the place reports go, and spares his Telegram cap.
+            result = command([str(Path.home() / '.local/bin/kevin-push'), 'service-watch', 'Service watch: ' + unit,
+                              cause[:180] + '\nservice-watch details ' + ident], 10,
+                             env={**os.environ, 'CIRCADIAN_CLASS': 'report'})
             delivered = result.returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             delivered = False
