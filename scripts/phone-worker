@@ -313,12 +313,14 @@ def winddown(dry):
 
 
 def notify(title, body):
-    tool = "/mnt/zer0models/z0-wt/dash-turbo/bridge/bin/dash-notify"
-    bun = str(HOME / ".bun/bin/bun")
+    """kevin-push logs it and decides whether Kevin sees it (11-15: Dash notes are useless)."""
+    exe = os.environ.get("KEVIN_PUSH") or str(HOME / ".local/bin/kevin-push")
     try:
-        subprocess.run([bun, tool, title[:80], body[:600]], capture_output=True, timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        pass
+        rc = subprocess.run([exe, "phone-worker", title[:80], body[:600]], capture_output=True, timeout=20).returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        rc = repr(exc)
+    if rc != 0:
+        print(f"phone-worker: kevin-push failed ({rc}): {title}", file=sys.stderr)
 
 
 def tick():
