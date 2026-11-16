@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Route user coding-agent trees out of the compositor cgroup."""
-import json, os, pathlib, subprocess, sys
+import json, os, pathlib, subprocess, sys, time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agent_oom_policy as policy  # noqa: E402  (one harness recognizer for placement and OOM order)
@@ -108,7 +108,7 @@ def rescue(data):
                            ('MemorySwapMax', 't', str(1 << 30))], loose)
     return stuck
 
-def main():
+def tick():
     data = snapshot()
     pids = select(data)
     if '--dry-run' in sys.argv:
@@ -124,6 +124,10 @@ def main():
     result = place(unit, [('Description', 's', 'Isolated coding-agent workloads'),
                           ('Slice', 's', 'agent.slice'), ('Delegate', 'b', 'true')], pids)
     if result.returncode:
+        if 'No such process' in result.stderr:
+            # A routed pid exited between the scan and the attach: the next tick rescans.
+            print(json.dumps({'skipped_exited': pids}))
+            return
         raise SystemExit(f'agent-resource-classify: placing {pids} in {unit} failed: {result.stderr.strip()}')
     for pid in pids:
         try:
@@ -131,6 +135,37 @@ def main():
         except (ProcessLookupError, PermissionError):
             pass
     print(json.dumps({'routed': pids, 'unit': unit, 'nice': 10}))
+
+TICK = 10
+MAX_FAILURES = 6  # one minute of consecutive failures ends the loop, so OnFailure reports it
+
+
+def loop(tick_fn=tick, sleep=time.sleep, tick_s=TICK, max_failures=MAX_FAILURES):
+    """Resident mode: one interpreter instead of a fresh oneshot every 10 s (F16: 339 starts/h).
+
+    A single failed tick is logged and retried; repeated failures exit non-zero
+    so the unit fails visibly instead of looping silently."""
+    failures = 0
+    while True:
+        try:
+            tick_fn()
+            failures = 0
+        except (SystemExit, Exception) as exc:  # noqa: BLE001 - every tick failure is counted
+            if isinstance(exc, SystemExit) and exc.code in (None, 0):
+                failures = 0
+            else:
+                failures += 1
+                print(f'agent-resource-classify: tick failed ({failures}/{max_failures}): {exc}', file=sys.stderr, flush=True)
+                if failures >= max_failures:
+                    return 1
+        sys.stdout.flush()
+        sleep(tick_s)
+
+
+def main():
+    if '--loop' in sys.argv:
+        raise SystemExit(loop())
+    tick()
 
 if __name__ == '__main__':
     main()

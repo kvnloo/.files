@@ -2,11 +2,18 @@
 Description=Keep coding-agent processes inside their resource budget
 
 [Service]
-Type=oneshot
-ExecStart=/usr/bin/python3 /home/kvn/.local/bin/agent-resource-classify
+# Resident loop (F16): a 10 s oneshot timer cost ~340 interpreter starts per hour.
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/bin/agent-resource-classify --loop
+Restart=always
+RestartSec=10
 Nice=15
 # Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
 # streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
-TimeoutStartSec=20
+MemoryHigh=96M
+MemoryMax=160M
+
+[Install]
+WantedBy=default.target

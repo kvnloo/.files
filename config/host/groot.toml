@@ -104,6 +104,8 @@ user_retired_files = [
   { live = "~/.local/bin/glide-morning-check", sha256 = "d8da6d9d178386ccbdb489132568d60c7cc7a54e1e84e8d533e5a79e268544ef", reason = "Retired 2026-11-16: expired one-shot (OnCalendar date passed, ran once with success); live-only, sysgraph unhomed. Backup retire-expired-oneshots-20261116T024852" },
   { live = "~/.local/bin/retire-chiefstaff-day7", sha256 = "105da4142a4bb179b2166d4b507f470b026a61c19dadf47c8da57981abb33d26", reason = "Retired 2026-11-16: expired one-shot (OnCalendar date passed, ran once with success); live-only, sysgraph unhomed. Backup retire-expired-oneshots-20261116T024852" },
   { live = "~/.local/bin/sub2-ultra-check", sha256 = "30c51f1194fb785cd203b32a8a9964fb4063b886f8673a5915b6c1150a1bf6aa", reason = "Retired 2026-11-16: expired one-shot (OnCalendar date passed, ran once with success); live-only, sysgraph unhomed. Backup retire-expired-oneshots-20261116T024852" },
+  { live = "~/.config/systemd/user/agent-resource-classify.timer", sha256 = "fc0538aca05285e239b7b480f3d231a47696ba771f94f0a3cd631fc5d0b32911", reason = "Retired 2026-11-16 (F16): agent-resource-classify runs as a resident --loop service; the 10 s timer cost ~340 interpreter starts per hour." },
+  { live = "~/.config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf", sha256 = "196498249d86b529e8f82ae245890e85afae15777f482798ed9a51fd1f055e0c", reason = "Retired 2026-11-16 (F16): agent-resource-classify runs as a resident --loop service; the 10 s timer cost ~340 interpreter starts per hour." },
 ]
 user_control_cleanup = [
   { live = "/run/user/1000/systemd/user.control/agent.slice.d/50-MemoryMax.conf", sha256 = "9db1736dffd3ed050d30d8fa374befe52fe05961c1746b8eb086c9de5f4dab59" },
@@ -136,15 +138,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "0da755f125df4be26fcbc9142776c8844e54da70f42f6f5c071fb7207f06e3f5"
-
-[[user]]
-live = "~/.config/systemd/user/agent-resource-classify.timer"
-source = "config/systemd/user/agent-resource-classify.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "fc0538aca05285e239b7b480f3d231a47696ba771f94f0a3cd631fc5d0b32911"
 
 [[user]]
 live = "~/.config/systemd/user/agent-telemetry-refresh.service"
@@ -1282,15 +1275,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "ec0a297d0e1a0b5cd84d3864337bc8960bffde173de7cf31acee63004959c383"
-
-[[user]]
-live = "~/.config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf"
-source = "config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "196498249d86b529e8f82ae245890e85afae15777f482798ed9a51fd1f055e0c"
 
 [[user]]
 live = "~/.config/systemd/user/agent-telemetry-refresh.service.d/90-service-watch.conf"
