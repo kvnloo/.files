@@ -43,6 +43,12 @@ def isolated_provider_env(tmp_path, monkeypatch):
             "NOUS_API_KEY", "VERCEL_AI_GW_KEY", "VERCEL_API_KEY", "BWS_BIN",
         }:
             monkeypatch.delenv(name, raising=False)
+    # codexbar-env.sh falls back to /run/user/<uid>/bws-secrets/codexbar.env, the live vault.
+    # Give it an empty scope so a configured real key cannot leak into the test.
+    vault = tmp_path / "run" / "bws-secrets"
+    vault.mkdir(parents=True)
+    (vault / "codexbar.env").write_text("")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
 
 
 def test_live_groq_and_cerebras_are_missing_keys(isolated_provider_env):
