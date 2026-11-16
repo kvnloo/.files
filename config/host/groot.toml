@@ -1,6 +1,14 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/agentweb-ad-arena.service", sha256 = "d03555a8858a28748ddf63de7e9bd751154933bdfdbbb8f008565750cd6bbe22", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/clients/agentweb/product/ad-arena/src/server.mjs is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/cardtwin-8462.service", sha256 = "0a37c7ceab5c2b2b790126970c5327c3add80aa5202e46edfefcc683f398e432", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/deployments/cardtwin-8462 is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/hermes-community-review-factory.service", sha256 = "7028eeeda5af167e592f248b31dd58308b2711d4426956a739ad7cc45014c41b", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/hermes-home/profiles/community-manager/community-factory/v2-src/tick.py is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/hermes-drive-voice-proxy.service", sha256 = "2325f4587dbda5f0940d775236721345cdbb1909172183479b169aa90f1239cc", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40/scripts/tailnet_voice_proxy.py is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/hermes-drive-voice.service", sha256 = "e22d0b1d8a95a50f395f134029618f7336c038baa84c16d7345e281deda755db", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/oss/hermes-agent/.worktrees/t_28b4ba40 is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/hermes3d-renderer.service", sha256 = "dc3e515849d65e58b1c06f102d083c59190dfd2a1dd2c3601d8624b9d7aee040", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/products/content-creation/hermes3d-live/engine/.worktrees/live-runtime is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/z0int-decide-shadow.service", sha256 = "d7efb40a247b9d567bcb58fdf9b576f21c036511cf56b2d0c7a213a253b99e9a", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /mnt/zer0models/z0-wt/z0int-decide-shadow is gone (sysgraph missing); recover from git history if revived." },
+  { live = "~/.config/systemd/user/z0int-decide-shadow-report.service", sha256 = "f0550e68f78abe478643f622b3b5493a0f60679233d61847e65931a37cdb5a08", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /mnt/zer0models/z0-wt/z0int-decide-shadow is gone (sysgraph missing); recover from git history if revived." },
   { live = "~/.config/systemd/user/hermes-pr87494-preview.service", sha256 = "0ed640e1c69fd81302f90833920bc04fa4a388b8afcd678d71cfdd253d17b634", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/t_865bad0a is gone (sysgraph missing); previews are recreated per review." },
   { live = "~/.config/systemd/user/hermes-pr87495-preview.service", sha256 = "bf882984d57923f47778361502ca91ee25bcf6d24fd841f18cf54bce673196c2", reason = "PR preview whose worktree /workspace/hermes-home/kanban/boards/spatial-canvas/workspaces/t_4407766a is gone (sysgraph missing); previews are recreated per review." },
   { live = "~/.config/systemd/user/hermes-pr88716-a58cc427-preview.service", sha256 = "27939bea2ec133d0a5985f7353ed3b6adc3e9d1c1ae1e9a54893496ed5d0564f", reason = "PR preview whose worktree /workspace/zer0/oss/hermes-agent/.worktrees/preview-pr-88716 is gone (sysgraph missing); previews are recreated per review." },
@@ -99,15 +107,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "fc7ba1bd03b9cd7a060573d197dc537ffd52eebf49112cd356079398f262f2be"
 
 [[user]]
-live = "~/.config/systemd/user/agentweb-ad-arena.service"
-source = "config/systemd/user/agentweb-ad-arena.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "d03555a8858a28748ddf63de7e9bd751154933bdfdbbb8f008565750cd6bbe22"
-
-[[user]]
 live = "~/.config/systemd/user/artifact-leases.service"
 source = "config/systemd/user/artifact-leases.service"
 scope = "user"
@@ -169,15 +168,6 @@ install = "symlink-stamped"
 owner = "scripts/install-bws-secrets"
 reason = "Refresh scoped runtime credentials without persistent plaintext dotenv exports."
 migration_sha256 = "e91d2b131c7f978e732961c478188643200e8147eb42598f034f6b2497bcc99c"
-
-[[user]]
-live = "~/.config/systemd/user/cardtwin-8462.service"
-source = "config/systemd/user/cardtwin-8462.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "0a37c7ceab5c2b2b790126970c5327c3add80aa5202e46edfefcc683f398e432"
 
 [[user]]
 live = "~/.config/systemd/user/cardtwin-flux-tiled-ab.service"
@@ -334,15 +324,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "564cf5e21e11edb7495b740160db2d52c66e3aff9269a09cb3f09bd18eacc8b3"
 
 [[user]]
-live = "~/.config/systemd/user/hermes-community-review-factory.service"
-source = "config/systemd/user/hermes-community-review-factory.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "7028eeeda5af167e592f248b31dd58308b2711d4426956a739ad7cc45014c41b"
-
-[[user]]
 live = "~/.config/systemd/user/hermes-community-review-factory.timer"
 source = "config/systemd/user/hermes-community-review-factory.timer"
 scope = "user"
@@ -359,24 +340,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "311fe429ab96460858d9972049656b4ad58bc0e5b3a04f1d19a0560ca4a300ba"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-drive-voice-proxy.service"
-source = "config/systemd/user/hermes-drive-voice-proxy.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "2325f4587dbda5f0940d775236721345cdbb1909172183479b169aa90f1239cc"
-
-[[user]]
-live = "~/.config/systemd/user/hermes-drive-voice.service"
-source = "config/systemd/user/hermes-drive-voice.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "e22d0b1d8a95a50f395f134029618f7336c038baa84c16d7345e281deda755db"
 
 [[user]]
 live = "~/.config/systemd/user/hermes-drive-web-proxy.service"
@@ -512,15 +475,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "a302666ec8e2fc93c79adef8b6df1fd9437187b79d9ee3f4053f1dda09b59d2b"
-
-[[user]]
-live = "~/.config/systemd/user/hermes3d-renderer.service"
-source = "config/systemd/user/hermes3d-renderer.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "dc3e515849d65e58b1c06f102d083c59190dfd2a1dd2c3601d8624b9d7aee040"
 
 [[user]]
 live = "~/.config/systemd/user/hermes3d-stream.service"
