@@ -1,0 +1,7 @@
+#!/bin/sh
+# Reliability doctor (oss-factory #313): the model a session shows must equal the model that ran.
+# Exit 1 when label_drift.py finds drift rows in the last 2 h. Receipt per run in label-drift.jsonl.
+out=$(/usr/bin/python3 "$HOME/.hermes/profiles/analyst/workspace/label_drift.py" --hours 2); rc=$?
+printf '%s\n' "$out"
+python3 -c 'import json,sys; print(json.dumps({"at":sys.argv[1],"rc":int(sys.argv[2]),"rows":sys.argv[3].splitlines()[:-1][:20],"summary":sys.argv[3].splitlines()[-1] if sys.argv[3] else ""}))' "$(date -Is)" "$rc" "$out" >> "$HOME/.local/state/fleet/health/label-drift.jsonl"
+exit $rc

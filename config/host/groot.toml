@@ -3613,6 +3613,96 @@ owner = "scripts/apply-agent-oom"
 reason = "User manager PATH lacked ~/.local/bin, so systemd-run jobs calling groot-admit by bare name failed ~7x/h; appended so existing resolution is unchanged."
 
 [[user]]
+live = "~/.local/bin/gh-pace"
+source = "scripts/gh-pace"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "590fb7ae913e031737e720a2e78a1cb4db7bc2d792dc02b3527b68c9bc61446c"
+
+[[user]]
+live = "~/.local/bin/hermes-gateway-rss-restart"
+source = "scripts/hermes-gateway-rss-restart"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "4eb8d354679911acccc411bb45f7444feecb647e63beee9409c34b381f87fc59"
+
+[[user]]
+live = "~/.local/bin/label-drift-doctor"
+source = "scripts/label-drift-doctor"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "3db6224ff878921a71a4b2e638be3714e2db8aa9965626be5cdd5f790349ce7c"
+
+[[user]]
+live = "~/.local/bin/limitless-sync"
+source = "scripts/limitless-sync"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "07d877a6deff923a8c7eb665e06141949c194a3e94974ad9299fd69313d867a8"
+
+[[user]]
+live = "~/.local/bin/owner-canon-sync"
+source = "scripts/owner-canon-sync"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "bb9c3b45a52815e93d89a8bd5f6f19b4a076add81534bd990913f739b6e719a7"
+
+[[user]]
+live = "~/.local/bin/phone-worker"
+source = "scripts/phone-worker"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "9a2c42893f9581d96e5a1717ba2f36905153dc1c080684d79af83d3faaaacf3e"
+
+[[user]]
+live = "~/.local/bin/reset-grant"
+source = "scripts/reset-grant"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "31643f9302178be3e578f64f4f6168688abf7f5a969a387cbe16109d83b436f5"
+
+[[user]]
+live = "~/.local/bin/s22-stall-alarm"
+source = "scripts/s22-stall-alarm"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "a5aaf08d8e842ee967fd8328e91b81ee2db09e546ad5d5b08d207d1194fd3a49"
+
+[[user]]
+live = "~/.local/bin/sr-decision-shim.py"
+source = "scripts/sr-decision-shim.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "f5af8eaf5adf86c0b5424f6d3f4d55500408c4858ae4664b35294da123342150"
+
+[[user]]
+live = "~/.local/bin/t3code-sync-colors"
+source = "scripts/t3code-sync-colors"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced byte-identical so edits have history and tests."
+migration_sha256 = "6e5cc74cfea85c88bcf72b66d523f1b0f85cbcb12a0a4830e2996f9a33566512"
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"

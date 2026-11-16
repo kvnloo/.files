@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""reset-grant: Kevin's permission slip for subscription resets (owner rule 2026-11-09).
+
+No agent, timer or script uses a reset (Fable reset, Codex banked reset) unless a live grant
+from Kevin exists here. A grant lets the watcher fire at most N resets on an account, and only
+ONCE THE LIMIT IS HIT (weekly or Fable bar >= 99.5%), never before (TOKENMAX).
+
+  reset-grant grant <claude|claude2|claude3|codex|all> <n> [--hours H] [--min-fable P] [--min-hours-left H]
+  reset-grant status | revoke [acct] | check (timer, every 2 min) | consume <acct> (press hooks)
+
+Pressing: if ~/.local/bin/reset-press exists it is called as `reset-press <acct>` (exit 0 =
+pressed). Otherwise the watcher pages Kevin's phone the moment the limit hits.
+"""
+import argparse, json, os, subprocess, sys, time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+S = Path(os.environ.get("RESET_GRANT_STATE", Path.home() / ".z0int/state/posture"))  # override = tests
+GRANTS, LOG, PACE = S / "reset-grants.json", S / "reset-grants.jsonl", S / "burn-pace.jsonl"
+PRESS = Path(os.environ.get("RESET_GRANT_PRESS", Path.home() / ".local/bin/reset-press"))
+NOTIFY = Path(os.environ.get("RESET_GRANT_NOTIFY", Path.home() / ".local/bin/z0-phone-notify"))
+ACCTS = ("claude", "claude2", "claude3", "codex")
+HIT, REPAGE_S, STALE_S = 99.5, 1800, 900
+
+
+def now(): return datetime.now(timezone.utc)
+def load():
+    try: return json.loads(GRANTS.read_text())
+    except Exception: return {}
+def save(g):
+    tmp = GRANTS.with_suffix(".tmp"); tmp.write_text(json.dumps(g, indent=1)); os.replace(tmp, GRANTS)
+def log(**row):
+    with LOG.open("a") as f: f.write(json.dumps({"ts": now().isoformat(timespec="seconds"), **row}) + "\n")
+def notify(title, text):
+    try: subprocess.run([str(NOTIFY), "reset-grant", title, text], timeout=60)
+    except Exception as e: print("notify failed:", e, file=sys.stderr)
+def live(gr): return gr and gr.get("n", 0) > 0 and datetime.fromisoformat(gr["expires"]) > now()
+
+
+def cmd_grant(a):
+    g, accts = load(), (ACCTS if a.acct == "all" else (a.acct,))
+    exp = (now() + timedelta(hours=a.hours)).isoformat(timespec="seconds")
+    for ac in accts:
+        g[ac] = {"n": a.n, "expires": exp, "granted_at": now().isoformat(timespec="seconds"),
+                 "min_fable": a.min_fable, "paged": 0,
+                 # Codex resets restart the weekly clock: worth only the hours pulled forward.
+                 "min_hours_left": a.min_hours_left if a.min_hours_left is not None else (24 if ac == "codex" else 2)}
+        log(event="grant", acct=ac, n=a.n, expires=exp)
+    save(g); cmd_status(a)
+
+
+def cmd_revoke(a):
+    g = load()
+    for ac in ([a.acct] if a.acct else list(g)):
+        if g.pop(ac, None) is not None: log(event="revoke", acct=ac)
+    save(g); cmd_status(a)
+
+
+def cmd_consume(a):
+    """Press hooks call this first; exit 1 (fail closed) without a live grant."""
+    g = load(); gr = g.get(a.acct)
+    if not live(gr):
+        print(f"DENY: no live reset grant for {a.acct}", file=sys.stderr); sys.exit(1)
+    gr["n"] -= 1; save(g); log(event="consume", acct=a.acct, n_left=gr["n"]); print("OK")
+
+
+def cmd_refund(a):
+    """A press hook whose reset did not go through gives the grant back."""
+    g = load(); gr = g.get(a.acct)
+    if gr: gr["n"] += 1; save(g); log(event="refund", acct=a.acct, n_left=gr["n"])
+
+
+def cmd_status(a):
+    g = load()
+    if not any(live(v) for v in g.values()): print("no live reset grants (resets need Kevin's OK)")
+    for ac, v in g.items():
+        if live(v):
+            loc = datetime.fromisoformat(v["expires"]).astimezone().strftime("%a %H:%M")
+            print(f"{ac}: {v['n']} reset(s) allowed until {loc}, fires only at limit hit "
+                  f"(fable>={v['min_fable']}%, >={v['min_hours_left']}h to weekly reset)")
+
+
+def codex_lane():
+    """Live Codex weekly window via `codex app-server` (burn-pace's codexbar probe can be stale)."""
+    sys.path.insert(0, str(Path.home() / ".local/bin")); import importlib.machinery as m
+    rp = m.SourceFileLoader("reset_press", str(Path.home() / ".local/bin/reset-press")).load_module()
+    rl = rp.codex_rpc("account/rateLimits/read", {})["result"]
+    w = rl["rateLimits"]["primary"] or {}
+    return {"weekly_used_pct": w.get("usedPercent"), "fable_used_pct": None,
+            "hours_to_reset": round((w.get("resetsAt", 0) - time.time()) / 3600, 1),
+            "reached": rl["rateLimits"].get("rateLimitReachedType"),
+            "banked": rl.get("rateLimitResetCredits", {}).get("availableCount")}
+
+
+def cmd_check(a):
+    g = load()
+    if not any(live(v) for v in g.values()): return
+    last = json.loads(PACE.read_text().splitlines()[-1])
+    age = (now() - datetime.fromisoformat(last["at"])).total_seconds()
+    claude_fresh = age <= STALE_S
+    dirty = False
+    for ac, gr in g.items():
+        if not live(gr): continue
+        if ac == "codex":
+            try: l = codex_lane()
+            except Exception as e: print("codex read failed:", e, file=sys.stderr); continue
+        elif not claude_fresh:
+            print(f"burn-pace snapshot {int(age)}s old; not acting on {ac}", file=sys.stderr); continue
+        else:
+            l = last["lanes"].get(ac) or {}
+        wk, fab, h = l.get("weekly_used_pct"), l.get("fable_used_pct"), l.get("hours_to_reset")
+        hit = (wk or 0) >= HIT or (fab or 0) >= HIT or bool(l.get("reached"))
+        if not hit: continue  # TOKENMAX: never before the limit binds
+        low_refund = ac != "codex" and (fab or 0) < gr["min_fable"]  # Codex reset refills the whole week
+        if low_refund or (h or 0) < gr["min_hours_left"]:
+            if time.time() - gr.get("paged", 0) > REPAGE_S * 6:
+                why = (f"Fable only {fab}% (refund too small)" if low_refund
+                       else f"weekly reset is only {h}h away")
+                notify(f"Reset held: {ac}", f"{ac} hit its limit (week {wk}%), but {why}. Grant kept, not used.")
+                gr["paged"] = time.time(); dirty = True
+            continue
+        lim = f"week {wk}%" + (f", Fable {fab}%" if fab is not None else "")
+        press_rc = None
+        if PRESS.exists() and os.access(PRESS, os.X_OK):
+            r = subprocess.run([str(PRESS), ac], capture_output=True, text=True, timeout=300)
+            press_rc = r.returncode
+            log(event="press", acct=ac, rc=r.returncode, week=wk, fable=fab, out=(r.stdout + r.stderr)[-400:])
+            if r.returncode == 0:
+                g = load(); dirty = False  # reset-press consumed via `reset-grant consume`
+                notify(f"Reset used: {ac}", f"{ac} hit its limit ({lim}). Granted reset "
+                       f"pressed; {g.get(ac, {}).get('n', 0)} left.")
+                continue
+        if time.time() - gr.get("paged", 0) > REPAGE_S:
+            how = ("claude.ai Settings > Usage > Reset for free" if press_rc in (None, 3)
+                   else f"auto-press failed (rc {press_rc}, see reset-grants.jsonl); Codex app Settings > Usage")
+            notify(f"PRESS RESET NOW: {ac}", f"{ac} hit its limit ({lim}, {h}h to weekly reset). "
+                   f"You granted a reset: {how}.")
+            log(event="page", acct=ac, week=wk, fable=fab); gr["paged"] = time.time(); dirty = True
+    if dirty: save(g)
+
+
+p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+sp = p.add_subparsers(dest="cmd")
+x = sp.add_parser("grant"); x.add_argument("acct", choices=ACCTS + ("all",)); x.add_argument("n", type=int)
+x.add_argument("--hours", type=float, default=12); x.add_argument("--min-fable", type=float, default=20)
+x.add_argument("--min-hours-left", type=float, default=None)
+x = sp.add_parser("revoke"); x.add_argument("acct", nargs="?")
+x = sp.add_parser("consume"); x.add_argument("acct")
+x = sp.add_parser("refund"); x.add_argument("acct")
+sp.add_parser("status"); sp.add_parser("check")
+a = p.parse_args()
+{"grant": cmd_grant, "revoke": cmd_revoke, "consume": cmd_consume, "refund": cmd_refund, "check": cmd_check}.get(a.cmd, cmd_status)(a)

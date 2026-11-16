@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Send the desktop colours (Noctalia's colors.json, which pywal fills from the live wallpaper)
+# to every T3 Code Android build that has the Desktop theme receiver (nightly, glass lab, ...).
+# Run by t3code-sync-colors.path whenever the colours change; safe to run by hand at any time.
+#   T3_COLORS_SERIALS  space-separated ro.serialno values (default: every connected phone)
+# The app picks the Desktop theme up live; pick it once in Settings > Appearance > Themes.
+set -uo pipefail
+COLORS=${T3_COLORS:-$HOME/.config/noctalia/colors.json}
+RECEIVER=expo.modules.t3nativecontrols.T3DesktopColorsReceiver
+[[ -r $COLORS ]] || { echo "no $COLORS" >&2; exit 0; }
+
+# Noctalia mFoo keys -> the app's role names; "#" stripped because the device shell reads it
+# as a comment.
+mapfile -t extras < <(jq -r '
+  to_entries[]
+  | select(.key | test("^m(Surface|OnSurface|Primary|OnPrimary|SurfaceVariant|OnSurfaceVariant|Secondary|OnSecondary|Tertiary|OnTertiary|Error|OnError|Outline|Shadow)$"))
+  | select(.value | test("^#?[0-9a-fA-F]{6}$"))
+  | "--es\n\(.key[1:2] | ascii_downcase)\(.key[2:])\n\(.value | ltrimstr("#"))"
+' "$COLORS")
+printf '%s\n' "${extras[@]}" | grep -qx surface || { echo "colors.json lacks mSurface" >&2; exit 1; }
+
+declare -A transport
+while read -r t state; do
+  [[ $state == device ]] || continue
+  s=$(timeout 10 adb -s "$t" shell getprop ro.serialno </dev/null 2>/dev/null | tr -d '\r')
+  [[ -n $s && -z ${transport[$s]:-} ]] && transport[$s]=$t
+done < <(adb devices | tail -n +2)
+
+serials=${T3_COLORS_SERIALS:-${!transport[*]}}
+rc=0
+for serial in $serials; do
+  t=${transport[$serial]:-}
+  if [[ -z $t ]]; then echo "$serial: not connected over adb, skipped"; continue; fi
+  mapfile -t pkgs < <(timeout 10 adb -s "$t" shell pm list packages --user 0 com.t3tools.t3code </dev/null 2>/dev/null \
+    | tr -d '\r' | sed -n 's/^package://p')
+  for pkg in "${pkgs[@]}"; do
+    timeout 15 adb -s "$t" shell dumpsys package "$pkg" </dev/null 2>/dev/null | grep -q "$RECEIVER" || continue
+    out=$(timeout 15 adb -s "$t" shell am broadcast --user 0 -f 0x20 -n "$pkg/$RECEIVER" "${extras[@]}" </dev/null 2>&1)
+    if grep -q 'Broadcast completed' <<<"$out"; then echo "$serial $pkg: sent $(( ${#extras[@]} / 3 )) colours"
+    else echo "$serial $pkg: broadcast failed: $out" >&2; rc=1; fi
+  done
+done
+exit $rc

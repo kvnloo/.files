@@ -1,0 +1,730 @@
+#!/usr/bin/env python3
+"""limitless-sync: one private, local evidence loop for the Limitless stack (stdlib only).
+
+Every run (user timer, every 15 min):
+  presence  phone Wi-Fi state over adb -> home / away / unknown transitions. No location or
+            coordinates are read; "away" only means "not on a home network".
+  aw        copy the official ActivityWatch Android export when it changed.
+  noop      copy NOOP's database (debug build, run-as) when it changed.
+  digest    per wake day: phone sleep proxy (longest unlock-free gap), night screen minutes,
+            NOOP sleep/journal when fresh, time away from home the previous day.
+  brief     once per morning after the first unlock: one Dash line (circadian digest class).
+  ramp      move circadian's bedTarget along the configured weekly ramp.
+
+Everything lands under the private state dir (0700/0600) and never leaves the host except the
+one-line morning brief to the owner's own phone. Host specifics (adb serial, home SSIDs, paths,
+ramp) live only in ~/.config/limitless/config.json, never in this file.
+
+usage: limitless-sync [run|status|digest [--date YYYY-MM-DD]|report [N]] [--no-brief]
+"""
+from __future__ import annotations
+
+import glob
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+CONFIG = Path(os.environ.get("LIMITLESS_CONFIG", Path.home() / ".config/limitless/config.json"))
+AW_REMOTE_GLOB = "/sdcard/Download/ActivityWatchSync"
+FEEDS = {"X", "Instagram", "Reddit", "YouTube", "TikTok", "Chrome", "Threads", "Facebook"}
+AI = {"ChatGPT", "DeepSeek", "Grok", "T3 Code", "Hermes", "Dash", "Gemini", "Claude"}
+
+
+# ------------------------------------------------------------------ plumbing
+
+def load_config() -> dict:
+    cfg = json.loads(CONFIG.read_text())
+    cfg.setdefault("tz", "America/Chicago")
+    cfg.setdefault("adb", shutil.which("adb") or "adb")
+    cfg.setdefault("noopPackage", "com.noop.whoop.debug")
+    cfg.setdefault("state", str(Path.home() / ".local/state/limitless"))
+    return cfg
+
+
+def private_dir(p: Path) -> Path:
+    p.mkdir(parents=True, exist_ok=True)
+    os.chmod(p, 0o700)
+    return p
+
+
+def write_private(p: Path, data: bytes | str) -> None:
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    mode = "wb" if isinstance(data, bytes) else "w"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, mode) as f:
+        f.write(data)
+    os.replace(tmp, p)
+
+
+def append_jsonl(p: Path, row: dict) -> None:
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a") as f:
+        f.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def read_jsonl(p: Path) -> list[dict]:
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text().splitlines():
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def adb(cfg: dict, *args: str, binary: bool = False, timeout: int = 40):
+    cmd = [cfg["adb"], "-s", cfg["serial"], *args]
+    r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(f"adb {' '.join(args[:2])} rc={r.returncode}")
+    return r.stdout if binary else r.stdout.decode(errors="replace")
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def resolve_s25_serial(cfg: dict) -> str | None:
+    """Find the S25 every run so a rotated wireless-debug port can never pin us to
+    a dead ip:port. Match the stable model token `adb devices -l` prints (works for
+    USB and wireless alike); never the rotating ip:port. Returns None when offline."""
+    want = cfg.get("s25Model", "SM_S938U")
+    try:
+        out = subprocess.run([cfg["adb"], "devices", "-l"], capture_output=True,
+                             text=True, timeout=20).stdout
+    except Exception:  # noqa: BLE001
+        return None
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "device" and f"model:{want}" in parts:
+            return parts[0]
+    return None
+
+
+# ------------------------------------------------------------------ presence
+
+def wifi_state(cfg: dict) -> str:
+    """home | away | unknown. Reads only the connected network name; nothing is stored but the class."""
+    try:
+        out = adb(cfg, "shell", "cmd", "wifi", "status", timeout=15)
+    except Exception:  # noqa: BLE001 - unreachable phone is unknown, never away
+        return "unknown"
+    m = re.search(r'connected to "([^"]*)"', out)
+    if m and m.group(1) in set(cfg.get("homeSsids", [])):
+        return "home"
+    return "away"
+
+
+SLEEP_RULE = re.compile(r"ZenRule\[id=\w+,state=STATE_TRUE,enabled=TRUE,[^\n]*?name=Sleep,[^\n]*?creationTime=(\d+)")
+
+
+def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
+    """Samsung 'Sleep' mode = Kevin's own nap/sleep marker (he turns it on for 15-30 min naps and at night).
+    Appends on/off transitions to sleepmode.jsonl; `at` is the phone's own activation time when known."""
+    p = st / "sleepmode.jsonl"
+    rows = read_jsonl(p)
+    last = rows[-1] if rows else {}
+    try:  # `; true`: a non-zero rc now means the phone is unreachable, not "no Sleep rule"
+        txt = adb(cfg, "shell", "dumpsys notification | grep 'name=Sleep,' | cut -c1-900; true", timeout=30)
+    except (RuntimeError, subprocess.TimeoutExpired):
+        write_private(st / "sleepmode-poll.json", json.dumps({"at": iso(now), "ok": False}))
+        if last.get("on"):  # phone gone mid-nap: his own message after the start proves he is up
+            start = datetime.fromisoformat(last["at"].replace("Z", "+00:00"))
+            woke = first_owner_msg_after(start.timestamp() + 300)
+            if woke:
+                end = datetime.fromtimestamp(woke, timezone.utc).replace(microsecond=0)
+                append_jsonl(p, {"at": iso(end), "on": False, "seen": iso(now), "inferred": "owner message, phone unreachable"})
+                try:
+                    return "off (inferred) · " + nap_return(cfg, start, end)
+                except Exception as exc:  # noqa: BLE001
+                    return f"off (inferred) · return-msg error {type(exc).__name__}"
+        return "phone unreachable"
+    write_private(st / "sleepmode-poll.json", json.dumps({"at": iso(now), "ok": True}))
+    m = SLEEP_RULE.search(txt)
+    on = bool(m)
+    if on and not last.get("on"):
+        # Samsung recreates the rule on each activation, so creationTime = exact start
+        start = datetime.fromtimestamp(int(m.group(1)) / 1000, timezone.utc)
+        if not (now - timedelta(hours=14) < start <= now):
+            start = now
+        append_jsonl(p, {"at": iso(start), "on": True, "seen": iso(now)})
+        return "on"
+    if not on and last.get("on"):
+        # off time is known to the poll interval (limitless-sleepmode.timer, 2 min)
+        append_jsonl(p, {"at": iso(now), "on": False, "seen": iso(now)})
+        start = datetime.fromisoformat(last["at"].replace("Z", "+00:00"))
+        try:
+            return "off · " + nap_return(cfg, start, now)
+        except Exception as exc:  # noqa: BLE001 - the nap row is saved even if the message fails
+            return f"off · return-msg error {type(exc).__name__}"
+    return "on (unchanged)" if on else "off (unchanged)"
+
+
+def first_owner_msg_after(after: float) -> float | None:
+    """Timestamp of Kevin's first own message (any Hermes profile) after `after`."""
+    best = None
+    for db in glob.glob(str(Path.home() / ".hermes/profiles/*/state.db")):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            row = c.execute("select min(m.timestamp) from messages m join sessions s on s.id=m.session_id "
+                            "where m.role='user' and m.timestamp>? and s.source in ('gui','local','acp','cli','tui','telegram','discord') "
+                            "and m.content not like '[%' and m.content not like '<%' and length(m.content) between 2 and 3000",
+                            (after,)).fetchone()
+        except sqlite3.Error:
+            continue
+        if row and row[0] and (best is None or row[0] < best):
+            best = row[0]
+    return best
+
+
+def last_thread(before: float) -> tuple[str, str] | None:
+    """Kevin's last own message (any Hermes profile) before `before`: (session title, text)."""
+    best = None
+    for db in glob.glob(str(Path.home() / ".hermes/profiles/*/state.db")):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            row = c.execute("select m.timestamp, coalesce(s.title, s.display_name, s.cwd, s.id), m.content from messages m join sessions s "
+                            "on s.id=m.session_id where m.role='user' and m.timestamp<? and m.content not like '[%' "
+                            "and m.content not like '<%' and length(m.content) between 2 and 3000 "
+                            "order by m.timestamp desc limit 1", (before,)).fetchone()
+        except sqlite3.Error:
+            continue
+        if row and (best is None or row[0] > best[0]):
+            best = row
+    return (best[1], " ".join(best[2].split())[:160]) if best else None
+
+
+def nap_return(cfg: dict, start: datetime, end: datetime) -> str:
+    """One Telegram message when Sleep mode turns off after a daytime nap: where you left off + held pushes.
+    Night sleep (> 2.5 h) is left to the wake-up brief."""
+    mins = round((end - start).total_seconds() / 60)
+    nap = 5 <= mins <= 150
+    tz = ZoneInfo(cfg["tz"])
+    lines = [f"Nap {mins} min ({start.astimezone(tz):%H:%M}-{end.astimezone(tz):%H:%M})."] if nap else []
+    lt = last_thread(start.timestamp()) if nap else None
+    if lt:
+        lines.append(f"You were on: {lt[0]} - \"{lt[1]}\"")
+        lines.append("Re-entry: reopen that pane first, before the phone.")
+    held = Path.home() / ".local/state/kevin-push/held.jsonl"
+    if held.exists():
+        rows = read_jsonl(held)
+        held.unlink()
+        if rows:
+            lines.append(f"Held while you slept ({len(rows)}):")
+            lines += [f"- {h['title']}: {h['body'][:200]}" for h in rows[-5:]]
+    if not lines:
+        return f"{mins} min (no message)"
+    r = subprocess.run([str(Path.home() / ".local/bin/kevin-push"), "limitless", "Back from nap", "\n".join(lines)],
+                       capture_output=True, text=True, timeout=90)
+    return f"{mins} min, {r.stdout.strip()}"
+
+
+def sync_presence(cfg: dict, st: Path, now: datetime) -> str:
+    p = st / "presence.jsonl"
+    state = wifi_state(cfg)
+    rows = read_jsonl(p)
+    last = rows[-1]["state"] if rows else None
+    if state != last:
+        append_jsonl(p, {"at": iso(now), "state": state})
+    write_private(st / "presence-last.json", json.dumps({"at": iso(now), "state": state}))
+    return state
+
+
+def away_intervals(st: Path, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    rows = [(parse_iso(r["at"]), r["state"]) for r in read_jsonl(st / "presence.jsonl")]
+    last_seen = None
+    lp = st / "presence-last.json"
+    if lp.exists():
+        last_seen = parse_iso(json.loads(lp.read_text())["at"])
+    out, cur = [], None
+    for at, s in rows:
+        if s == "away" and cur is None:
+            cur = at
+        elif s != "away" and cur is not None:
+            out.append((cur, at))
+            cur = None
+    if cur is not None:
+        out.append((cur, last_seen or end))
+    clipped = []
+    for a, b in out:
+        a2, b2 = max(a, start), min(b, end)
+        if b2 > a2:
+            clipped.append((a2, b2))
+    return clipped
+
+
+# ------------------------------------------------------------------ copies
+
+def remote_mtime(cfg: dict, path: str, run_as: str | None = None) -> str | None:
+    try:
+        if run_as:
+            return adb(cfg, "shell", "run-as", run_as, "stat", "-c", "%Y.%s", path, timeout=15).strip() or None
+        return adb(cfg, "shell", "stat", "-c", "%Y.%s", path, timeout=15).strip() or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+FOCUS_SAFE = Path("/mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/focus_safe")
+
+
+def focus_safe_start(component: str) -> int:
+    """Open an app's activity on the S25 agent display (never display 0, never Kevin's focus)."""
+    code = ("import sys,time;sys.path.insert(0,'.');from fsdisplay import FocusSafe\n"
+            f"with FocusSafe('s25') as fs: fs.start('{component}'); time.sleep(8)")
+    r = subprocess.run(["uv", "run", "-q", "--with", "uiautomator2", "python", "-c", code], cwd=FOCUS_SAFE,
+                       env={**os.environ, "UV_CACHE_DIR": "/workspace/cache"}, capture_output=True, timeout=120)
+    return r.returncode
+
+
+def revive_aw_server(cfg: dict) -> str:
+    """AW's export needs its in-app server on :5600, which Android doesn't restart after
+    killing the process (11-12 → 11-15 outage). Reopen it on the agent display, never display 0."""
+    try:
+        if ":15E0 " in adb(cfg, "shell", "cat /proc/net/tcp /proc/net/tcp6", timeout=15).upper():
+            return ""
+        return f" (aw server revived rc={focus_safe_start('net.activitywatch.android/.MainActivity')})"
+    except Exception as exc:  # noqa: BLE001
+        return f" (aw revive error {type(exc).__name__})"
+
+
+def revive_noop(cfg: dict) -> str:
+    """Same failure class: Android killed NOOP 11-12 05:22 and the strap stopped syncing for 3 days
+    while this loop said "unchanged". If the process is gone, reopen it; its launch starts the
+    foreground WhoopConnectionService."""
+    pkg = cfg["noopPackage"]
+    try:
+        if adb(cfg, "shell", f"pidof {pkg} || true", timeout=15).strip():
+            return ""
+        return f" (noop revived rc={focus_safe_start(cfg.get('noopActivity', pkg + '/com.noop.IconDefault'))})"
+    except Exception as exc:  # noqa: BLE001
+        return f" (noop revive error {type(exc).__name__})"
+
+
+def sync_aw(cfg: dict, st: Path) -> str:
+    try:
+        found = adb(cfg, "shell", f"find {AW_REMOTE_GLOB} -name '*.db'", timeout=15).split()
+    except Exception:  # noqa: BLE001
+        return "unreachable"
+    if not found:
+        return "no export"
+    remote = found[0]
+    mt = remote_mtime(cfg, remote)
+    stamp = st / "aw-s25.stamp"
+    if mt and stamp.exists() and stamp.read_text() == mt:
+        return "unchanged" + revive_aw_server(cfg)
+    data = adb(cfg, "exec-out", "cat", remote, binary=True, timeout=120)
+    if len(data) < 4096 or not data.startswith(b"SQLite format 3"):
+        return "bad copy"
+    write_private(st / "aw-s25.db", data)
+    write_private(stamp, mt or "")
+    return f"copied {len(data)}"
+
+
+def has_tables(db: Path) -> bool:
+    """False for a missing file and for the table-less file an empty pull folds into."""
+    if not db.exists():
+        return False
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        return con.execute("select count(*) from sqlite_master where type='table'").fetchone()[0] > 0
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        con.close()
+
+
+def sync_noop(cfg: dict, st: Path) -> str:
+    pkg = cfg["noopPackage"]
+    d = private_dir(st / "noop")
+    mts = [remote_mtime(cfg, f"databases/noop_whoop.db{s}", pkg) for s in ("", "-wal")]
+    if mts[0] is None:
+        return "unreachable"
+    sig = "|".join(m or "" for m in mts)
+    stamp = d / "stamp"
+    out = d / "noop_whoop.db"
+    if stamp.exists() and stamp.read_text() == sig and has_tables(out):
+        return "unchanged" + revive_noop(cfg)
+    tmp = private_dir(d / "incoming")
+    new = tmp / "folded.db"
+    for _ in range(3):  # a live app checkpoints mid-copy -> torn db+wal pair ("malformed"); recopy
+        for suf in ("", "-wal"):  # never copy -shm: a stale index can misread the WAL; SQLite rebuilds it
+            try:
+                data = adb(cfg, "exec-out", "run-as", pkg, "cat", f"databases/noop_whoop.db{suf}", binary=True, timeout=120)
+            except Exception:  # noqa: BLE001
+                data = b""
+            write_private(tmp / f"noop_whoop.db{suf}", data)
+        # Fold the WAL into one consistent private file so readers can open it mode=ro.
+        new.unlink(missing_ok=True)
+        con = sqlite3.connect(tmp / "noop_whoop.db")
+        try:
+            con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            con.execute(f"VACUUM INTO '{new}'")
+            break
+        except sqlite3.DatabaseError:
+            new.unlink(missing_ok=True)
+        finally:
+            con.close()
+    # The phone can answer stat and then fail the cat. Such a pull has no tables: keep the
+    # last good copy and no stamp, so readers never see an empty file and the next run retries.
+    good = has_tables(new)
+    if good:
+        os.chmod(new, 0o600)
+        os.replace(new, out)
+        write_private(stamp, sig)
+    shutil.rmtree(tmp)
+    return "copied" if good else "unreachable"
+
+
+# ------------------------------------------------------------------ digest
+
+def _ts(x: int) -> float:
+    return x / 1e9 if x > 1e14 else x / 1e3 if x > 1e11 else float(x)
+
+
+def aw_events(st: Path):
+    db = st / "aw-s25.db"
+    if not db.exists():
+        return None
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        b = {name: bid for bid, name in con.execute("select id, name from buckets")}
+        unl = sorted(_ts(s) for (s,) in con.execute("select starttime from events where bucketrow=?", (b.get("aw-watcher-android-unlock"),)))
+        win = []
+        for s, e, data in con.execute("select starttime, endtime, data from events where bucketrow=?", (b.get("aw-watcher-android"),)):
+            app = (json.loads(data).get("app") or "?")
+            win.append((_ts(s), _ts(e), app))
+        newest = max([u for u in unl] + [e for _, e, _ in win] or [0])
+        return unl, win, newest
+    finally:
+        con.close()
+
+
+def sleep_proxy(unl: list[float], newest: float, evening: datetime) -> dict | None:
+    a, b = evening.replace(hour=19), evening.replace(hour=19) + timedelta(hours=20)
+    A, B = a.timestamp(), b.timestamp()
+    if newest < B - 6 * 3600:  # export doesn't cover the morning yet
+        return None
+    pts = [A] + [u for u in unl if A <= u <= B] + [min(B, newest)]
+    latest_onset = A + 13 * 3600  # a gap that starts after 08:00 is a daytime gap, not the night
+    gaps = [(s, e) for s, e in zip(pts, pts[1:]) if s <= latest_onset]
+    if not gaps:
+        return None
+    s, e = max(gaps, key=lambda t: t[1] - t[0])
+    if e - s < 2 * 3600:
+        return None
+    tz = evening.tzinfo
+    return {"onset": datetime.fromtimestamp(s, tz).isoformat(timespec="minutes"),
+            "wake": datetime.fromtimestamp(e, tz).isoformat(timespec="minutes"),
+            "gapHours": round((e - s) / 3600, 2),
+            "basis": "longest unlock-free gap 19:00-15:00 (proxy, not measured sleep)"}
+
+
+def night_screen(win, evening: datetime) -> dict:
+    a = evening.replace(hour=22).timestamp()
+    b = (evening.replace(hour=22) + timedelta(hours=7)).timestamp()
+    by = {"feeds": 0.0, "ai": 0.0, "other": 0.0}
+    apps: dict[str, float] = {}
+    for s, e, app in win:
+        if e - s > 4 * 3600:
+            continue
+        s2, e2 = max(s, a), min(e, b)
+        if e2 <= s2:
+            continue
+        m = (e2 - s2) / 60
+        k = "feeds" if app in FEEDS else "ai" if app in AI else "other"
+        by[k] += m
+        apps[app] = apps.get(app, 0) + m
+    top = sorted(apps.items(), key=lambda kv: -kv[1])[:5]
+    return {"window": "22:00-05:00", "minutes": {k: round(v) for k, v in by.items()},
+            "top": [[k, round(v)] for k, v in top],
+            "caveat": "ai minutes can include agent sessions on hidden displays"}
+
+
+def noop_facts(st: Path, evening: datetime, tz: ZoneInfo) -> dict:
+    db = st / "noop" / "noop_whoop.db"
+    if not has_tables(db):
+        return {"available": False}
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        def one(q, *a):
+            r = con.execute(q, a).fetchone()
+            return r[0] if r else None
+        hr = one("select max(ts) from hrSample")
+        out = {"available": True,
+               "hrAgeHours": round((utcnow().timestamp() - _ts(hr)) / 3600, 1) if hr else None}
+        a = evening.replace(hour=18).timestamp()
+        b = a + 22 * 3600
+        rows = con.execute("select startTs, endTs, efficiency from sleepSession").fetchall()
+        main = [(s2, e2, ef) for s, e, ef in rows for s2, e2 in [(_ts(s), _ts(e))]
+                if a <= e2 <= b and e2 - s2 >= 3 * 3600]
+        if main:
+            s, e, ef = max(main, key=lambda r: r[1] - r[0])
+            out["sleep"] = {"start": datetime.fromtimestamp(s, tz).isoformat(timespec="minutes"),
+                            "end": datetime.fromtimestamp(e, tz).isoformat(timespec="minutes"),
+                            "hours": round((e - s) / 3600, 2), "efficiency": ef}
+        day = evening.date().isoformat()
+        try:
+            j = con.execute("select question, answeredYes, numericValue, day from journal").fetchall()
+        except sqlite3.Error:
+            j = []
+        out["journal"] = [{"q": q, "yes": bool(y) if y is not None else None, "value": v}
+                          for q, y, v, d in j if str(d)[:10] == day]
+        return out
+    finally:
+        con.close()
+
+
+def build_digest(cfg: dict, st: Path, wake_day: date) -> dict:
+    tz = ZoneInfo(cfg["tz"])
+    evening = datetime.combine(wake_day - timedelta(days=1), time(0), tz)
+    dg: dict = {"wakeDay": wake_day.isoformat(), "builtAt": iso(utcnow())}
+    ev = aw_events(st)
+    if ev:
+        unl, win, newest = ev
+        dg["phoneProxy"] = sleep_proxy(unl, newest, evening)
+        dg["nightScreen"] = night_screen(win, evening)
+        dg["awNewest"] = iso(datetime.fromtimestamp(newest, timezone.utc))
+    dg["noop"] = noop_facts(st, evening, tz)
+    day0 = evening.astimezone(timezone.utc)
+    aw = away_intervals(st, day0, day0 + timedelta(days=1))
+    dg["awayPrevDay"] = {"minutes": round(sum((b - a).total_seconds() for a, b in aw) / 60),
+                         "first": aw[0][0].astimezone(tz).isoformat(timespec="minutes") if aw else None,
+                         "count": len(aw), "basis": "phone not on a home network (no location)"}
+    dg["bedTarget"] = ramp_target(cfg, wake_day)
+    return dg
+
+
+def save_digest(st: Path, dg: dict) -> None:
+    p = st / "digests.jsonl"
+    rows = [r for r in read_jsonl(p) if r.get("wakeDay") != dg["wakeDay"]] + [dg]
+    rows.sort(key=lambda r: r["wakeDay"])
+    write_private(p, "".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+
+
+def brief_line(dg: dict) -> str | None:
+    px = dg.get("phoneProxy")
+    if not px:
+        return None
+    on, wk = px["onset"][11:16], px["wake"][11:16]
+    parts = [f"Phone down ~{on} \u2192 up {wk} ({px['gapHours']:.1f} h)"]
+    sl = (dg.get("noop") or {}).get("sleep")
+    if sl:
+        parts.append(f"wearable {sl['start'][11:16]}\u2013{sl['end'][11:16]} ({sl['hours']:.1f} h)")
+    ns = (dg.get("nightScreen") or {}).get("minutes") or {}
+    if ns:
+        parts.append(f"night feeds {ns.get('feeds', 0)} min")
+    if dg.get("bedTarget"):
+        parts.append(f"wind-down target {dg['bedTarget']}")
+    return " \u00b7 ".join(parts)
+
+
+# ------------------------------------------------------------------ ramp
+
+def ramp_target(cfg: dict, day: date) -> str | None:
+    r = cfg.get("ramp")
+    if not r:
+        return None
+    start = date.fromisoformat(r["start"])
+    weeks = max(0, (day - start).days // int(r.get("everyDays", 7)))
+    f_h, f_m = map(int, r["from"].split(":"))
+    t_h, t_m = map(int, r["to"].split(":"))
+    frm = (f_h * 60 + f_m) % (24 * 60)
+    to = (t_h * 60 + t_m) % (24 * 60)
+    # minutes after 18:00, so 01:00 < 02:45 compares correctly
+    fx, tx = (frm - 1080) % 1440, (to - 1080) % 1440
+    cur = max(tx, fx - weeks * int(r.get("stepMin", 15)))
+    m = (cur + 1080) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def apply_ramp(cfg: dict, today: date) -> str:
+    target = ramp_target(cfg, today)
+    path = Path(cfg.get("circadianConfig", Path.home() / ".config/circadian/config.json"))
+    if not target or not path.exists():
+        return "off"
+    c = json.loads(path.read_text())
+    if c.get("bedTarget") == target:
+        return f"unchanged {target}"
+    c["bedTarget"] = target
+    write_private(path, json.dumps(c, indent=1) + "\n")
+    subprocess.run(["systemctl", "--user", "try-restart", "circadiand.service"], capture_output=True, timeout=30)
+    return f"bedTarget -> {target}"
+
+
+# ------------------------------------------------------------------ morning brief
+
+def first_unlock_today(st: Path, tz: ZoneInfo, today: date) -> bool:
+    ev = aw_events(st)
+    if not ev:
+        return False
+    lo = datetime.combine(today, time(5), tz).timestamp()
+    return any(u >= lo for u in ev[0])
+
+
+def maybe_brief(cfg: dict, st: Path, dg: dict, today: date) -> str:
+    if not cfg.get("brief", True):
+        return "disabled"
+    sent = st / "brief-sent.json"
+    done = json.loads(sent.read_text()) if sent.exists() else {}
+    if done.get("day") == today.isoformat():
+        return "already sent"
+    if not first_unlock_today(st, ZoneInfo(cfg["tz"]), today):
+        return "waiting for first unlock"
+    # Wake-up brief v1 (limitless-brief): one screen, written to state/brief-latest.md and
+    # pushed as a Dash notice that opens the Notices inbox. Falls back to the v0 one-liner.
+    env = dict(os.environ, CIRCADIAN_CLASS="digest")
+    r = subprocess.run([str(Path.home() / ".local/bin/limitless-brief"), "send"], env=env,
+                       capture_output=True, text=True, timeout=150)
+    if r.returncode == 0:
+        try:
+            ok = json.loads(r.stdout).get("notify_rc") == 0
+        except ValueError:
+            ok = False
+        if ok:
+            write_private(sent, json.dumps({"day": today.isoformat(), "at": iso(utcnow()), "v": 1}))
+            return "sent v1"
+    line = brief_line(dg)
+    if not line:
+        return "no proxy yet"
+    r = subprocess.run([str(Path.home() / ".local/bin/dash-report"), "Last night", line], env=env,
+                       capture_output=True, timeout=60)
+    if r.returncode == 0:
+        write_private(sent, json.dumps({"day": today.isoformat(), "at": iso(utcnow()), "v": 0}))
+        return "sent v0 (v1 failed)"
+    return f"dash-report rc={r.returncode}"
+
+
+# ------------------------------------------------------------------ commands
+
+def input_health(st: Path, now: datetime) -> dict:
+    """Newest datum per input, in hours. A copy that is 'unchanged' can hide a dead producer
+    (AW 11-12..15, NOOP 11-12..15), so freshness is judged on the data itself, not on the copy."""
+    def q(db, sql, *a):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+            return c.execute(sql, a).fetchone()[0]
+        except sqlite3.Error:
+            return None
+    aw, nw = st / "aw-s25.db", st / "noop" / "noop_whoop.db"
+    newest = {
+        "phoneApps": q(aw, "select max(e.endtime) from events e join buckets b on b.id=e.bucketrow where b.name='aw-watcher-android'"),
+        "phoneUnlocks": q(aw, "select max(e.endtime) from events e join buckets b on b.id=e.bucketrow where b.name='aw-watcher-android-unlock'"),
+        "whoop": q(nw, "select max(ts) from hrSample where deviceId like 'whoop-%'"),
+        "oura": q(nw, "select max(ts) from hrSample where deviceId like 'oura-%'"),
+    }
+    try:
+        rows = read_jsonl(st / "flow-ledger.jsonl")
+        newest["ownerMessages"] = datetime.fromisoformat(rows[-1]["start"]).timestamp() + rows[-1]["minutes"] * 60 if rows else None
+    except (KeyError, ValueError):
+        newest["ownerMessages"] = None
+    sm = read_jsonl(st / "sleepmode.jsonl")
+    newest["sleepMode"] = parse_iso(sm[-1]["seen"]).timestamp() if sm else None
+    out = {}
+    for k, v in newest.items():
+        t = _ts(v) if v else None
+        out[k] = round((now.timestamp() - t) / 3600, 1) if t else None
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://127.0.0.1:5600/api/0/info", timeout=2)
+        out["desktopAW"] = "up"
+    except Exception:  # noqa: BLE001
+        out["desktopAW"] = "down"
+    write_private(st / "inputs.json", json.dumps({"at": iso(now), "ageHours": out}))
+    return out
+
+
+def run(cfg: dict, brief: bool = True) -> dict:
+    st = private_dir(Path(cfg["state"]))
+    tz = ZoneInfo(cfg["tz"])
+    now = utcnow()
+    today = now.astimezone(tz).date()
+    res = {"at": iso(now)}
+    resolved = resolve_s25_serial(cfg)  # self-heal past a rotated S25 port
+    if resolved:
+        cfg["serial"] = resolved
+        res["serial"] = resolved
+    else:
+        res["serial"] = f"unresolved (fallback {cfg.get('serial')})"
+    for name, fn in (("presence", lambda: sync_presence(cfg, st, now)),
+                     ("sleepmode", lambda: sync_sleepmode(cfg, st, now)),
+                     ("aw", lambda: sync_aw(cfg, st)),
+                     ("noop", lambda: sync_noop(cfg, st))):
+        try:
+            res[name] = fn()
+        except Exception as exc:  # noqa: BLE001 - one dead source never blocks the others
+            res[name] = f"error {type(exc).__name__}"
+    dg = build_digest(cfg, st, today)
+    save_digest(st, dg)
+    res["digest"] = "proxy" if dg.get("phoneProxy") else "partial"
+    try:  # flow ledger: work blocks + feed leaks, rebuilt from existing data
+        r = subprocess.run([sys.executable, "-I", str(Path.home() / ".local/bin/flow-ledger")],
+                           capture_output=True, text=True, timeout=60)
+        res["flow"] = "ok" if r.returncode == 0 else f"rc={r.returncode}"
+    except Exception as exc:  # noqa: BLE001
+        res["flow"] = f"error {type(exc).__name__}"
+    try:
+        h = input_health(st, now)
+        stale = [k for k, v in h.items() if v == "down" or v is None or (isinstance(v, float) and v > 6
+                 and k not in ("ownerMessages", "sleepMode"))]
+        res["inputs"] = "ok" if not stale else "stale " + ",".join(stale)
+    except Exception as exc:  # noqa: BLE001
+        res["inputs"] = f"error {type(exc).__name__}"
+    res["ramp"] = apply_ramp(cfg, today)
+    res["brief"] = maybe_brief(cfg, st, dg, today) if brief else "skipped"
+    try:  # MIQ: ingest Dash replies, and the one opt-in wind-down prompt per night
+        r = subprocess.run([str(Path.home() / ".local/bin/miq"), "tick"], capture_output=True, text=True, timeout=150)
+        m = json.loads(r.stdout) if r.returncode == 0 else {}
+        res["miq"] = f"ingested {m.get('ingested')} prompt {m.get('prompt')}" if m else f"rc={r.returncode}"
+    except Exception as exc:  # noqa: BLE001
+        res["miq"] = f"error {type(exc).__name__}"
+    append_jsonl(st / "runs.jsonl", res)
+    return res
+
+
+def main(argv: list[str]) -> int:
+    cfg = load_config()
+    cmd = argv[1] if len(argv) > 1 else "run"
+    st = Path(cfg["state"])
+    if cmd == "run":
+        print(json.dumps(run(cfg, brief="--no-brief" not in argv)))
+    elif cmd == "sleepmode":  # cheap 2-min poll (limitless-sleepmode.timer): nap start/end + return message
+        st = private_dir(st)
+        cfg["serial"] = resolve_s25_serial(cfg) or cfg.get("serial")
+        print(sync_sleepmode(cfg, st, utcnow()))
+    elif cmd == "status":
+        runs = read_jsonl(st / "runs.jsonl")
+        print(json.dumps(runs[-1] if runs else {}, indent=1))
+    elif cmd == "digest":
+        d = date.fromisoformat(argv[argv.index("--date") + 1]) if "--date" in argv else datetime.now(ZoneInfo(cfg["tz"])).date()
+        dg = build_digest(cfg, private_dir(st), d)
+        save_digest(st, dg)
+        print(json.dumps(dg, indent=1))
+    elif cmd == "report":
+        n = int(argv[2]) if len(argv) > 2 else 7
+        for r in read_jsonl(st / "digests.jsonl")[-n:]:
+            print(r["wakeDay"], brief_line(r) or "(no proxy)")
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""phone-worker: run the S22 and S25 as workers from groot (TRAVEL-READY-SPEC section 6).
+
+  phone-worker status [--json]           worker mode, presence, routes, telemetry, throughput
+  phone-worker gate DEV                  exit 0 when DEV may take work now (prints the reason when not)
+  phone-worker route [DEV|all]           ensure the localhost adb forwards to the on-phone llama-server
+  phone-worker bench [DEV|all] [--n 64]  timed completion through each route; writes a receipt
+  phone-worker run DEV [fleet-adb run options] -- CMD...   gate, then `fleet-adb run DEV ...`
+  phone-worker ui DEV [--package PKG] -- CMD...            UI lane: host UI lock + gate + restore foreground
+  phone-worker throughput [--hours H]    ChatGPT sends and fleet-adb jobs per device
+  phone-worker tick                      timer body: routes, telemetry row, automatic S25 wind-down
+  phone-worker winddown [--dry-run]      S25 wind-down (6.1): jobs, NPU server, forward, queue loop
+  phone-worker off                       owner switch: S25 worker mode off now (wind-down; stays off)
+  phone-worker on                        owner switch: S25 worker mode on (stays on until `off`)
+
+Policy:
+- S25 worker mode is on unless ~/.local/state/s25-worker-off exists (owner 2026-11-15: on by
+  default, owner turns it off). That file is the same switch the chatgpt-driver guard reads;
+  `phone-worker off` (or creating the file by hand) winds down on the next tick and nothing
+  turns it back on except `phone-worker on` (deleting the file).
+- S25 work starts only when the phone is not in a call and the owner has not touched it for
+  IDLE_S seconds. The S22 is a dedicated agent phone: the call rule only.
+- No agent resource caps (owner law O10, z0-guard phone-caps). Android manages thermal,
+  battery and memory. Thermal and battery values are recorded as telemetry, never as gates.
+"""
+import argparse
+import datetime as dt
+import fcntl
+import glob
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+ADB = str(HOME / "android/sdk/platform-tools/adb")
+FLEET_ADB = str(HOME / ".local/bin/fleet-adb")
+DRIVER = Path("/mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver")
+STATE = HOME / ".local/state/phone-worker"
+RECEIPTS = Path(os.environ.get("PHONE_WORKER_RECEIPTS", HOME / "tmp/phone-worker"))
+S25_OFF = HOME / ".local/state/s25-worker-off"
+IDLE_S = 120
+# Ports and servers are the kevin-phones skill's (native_server_restart.py); not new ones.
+ROUTES = {"s25": {"name": "npu-small", "port": 11455, "remote": 8080,
+                  "engine": "llama.cpp --device HTP0, Qwen3-1.7B Q4_0 (alias shadow-s25)"},
+          "s22": {"name": "free-local-s22", "port": 11452, "remote": 8080,
+                  "engine": "llama.cpp CPU, Qwen3-1.7B Q4_0 (alias shadow-s22)"}}
+RESTART = HOME / ".omp/agent/managed-skills/kevin-phones/scripts/native_server_restart.py"
+RESTART_EVERY_S = 1800
+UNIT_S25_QUEUE = "tern-queue-loop@s25.service"
+
+
+def now_iso():
+    return dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def s25_worker_active():
+    return not S25_OFF.exists()
+
+
+def load_fleet_adb():
+    sys.path.insert(0, str(Path(os.path.realpath(FLEET_ADB)).parent))
+    loader = importlib.machinery.SourceFileLoader("fleet_adb", os.path.realpath(FLEET_ADB))
+    spec = importlib.util.spec_from_loader("fleet_adb", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+_devices = {}
+
+
+def device(dev):
+    """Authenticated transport by hardware identity (fleet-adb discovery; no serials here)."""
+    if dev not in _devices:
+        _devices[dev] = load_fleet_adb().Device(dev)
+    return _devices[dev]
+
+
+def sh(dev, command, timeout=30):
+    return device(dev).call("-s", device(dev).serial, "shell", command, check=False,
+                            timeout=timeout).stdout
+
+
+def presence(dev):
+    """Call state and owner activity. Fails closed: unreadable evidence = busy."""
+    out = sh(dev, "cat /proc/uptime; dumpsys telephony.registry | grep mCallState=; "
+                  "dumpsys power | grep -E 'mLastUserActivityTime|mWakefulness='; "
+                  "dumpsys activity activities | grep -E 'topResumedActivity='")
+    calls = re.findall(r"mCallState=(\d)", out)
+    act = re.search(r"mLastUserActivityTime(?:\(excludingAttention\))?=(\d+)", out)
+    top = re.search(r"topResumedActivity=.*?\bu\d+\s+([^/\s]+)/", out)
+    try:
+        uptime_ms = int(float(out.split()[0]) * 1000)
+    except (IndexError, ValueError):
+        uptime_ms = None
+    idle = (uptime_ms - int(act[1])) / 1000 if act and uptime_ms is not None else None
+    return {"in_call": (any(c != "0" for c in calls) if calls else None),
+            "idle_s": idle, "foreground": top[1] if top else None,
+            "awake": "mWakefulness=Awake" in out}
+
+
+def gate(dev):
+    """Return None when DEV may take work, else the reason."""
+    if dev == "s25" and not s25_worker_active():
+        return "s25 worker mode is off (expired or ~/.local/state/s25-worker-off)"
+    try:
+        p = presence(dev)
+    except Exception as exc:  # noqa: BLE001 - any transport failure is a refusal
+        return f"presence unavailable: {type(exc).__name__}: {exc}"
+    if p["in_call"] is None:
+        return "call state unavailable"
+    if p["in_call"]:
+        return "phone is in a call"
+    if dev == "s25":
+        if p["idle_s"] is None or p["idle_s"] < 0:
+            return "owner activity clock unavailable"
+        if p["idle_s"] < IDLE_S:
+            return f"owner used the phone {p['idle_s']:.0f}s ago (< {IDLE_S}s)"
+    return None
+
+
+def telemetry(dev):
+    """Recorded only. Never used to refuse work (O10)."""
+    out = sh(dev, "dumpsys thermalservice | grep -E 'Thermal Status|mName=(SKIN|AP|BAT),'; "
+                  "dumpsys battery | grep -E '^  (level|AC powered|USB powered|temperature):'; "
+                  "df /data | tail -1; cat /proc/loadavg; grep MemAvailable /proc/meminfo")
+    temps = {m[2]: float(m[1]) for m in re.finditer(r"mValue=([\d.]+), mType=\d+, mName=(\w+)", out)}
+    level = re.search(r"level: (\d+)", out)
+    status = re.search(r"Thermal Status: (\d+)", out)
+    df = re.search(r"\s(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+/", out)
+    load = re.search(r"\n([\d.]+) [\d.]+ [\d.]+ \d+/\d+", out)
+    mem = re.search(r"MemAvailable:\s+(\d+)", out)
+    return {"skin_c": temps.get("SKIN"), "ap_c": temps.get("AP"), "bat_c": temps.get("BAT"),
+            "thermal_status": int(status[1]) if status else None,
+            "battery_pct": int(level[1]) if level else None,
+            "charging": bool(re.search(r"(AC|USB) powered: true", out)),
+            "free_gb": round(int(df[3]) / 1048576, 1) if df else None,
+            "load1": float(load[1]) if load else None,
+            "mem_avail_mb": int(mem[1]) // 1024 if mem else None}
+
+
+def http_json(port, path, body=None, timeout=10):
+    cmd = ["curl", "-s", "-m", str(timeout), f"http://127.0.0.1:{port}{path}"]
+    if body is not None:
+        cmd += ["-H", "content-type: application/json", "-d", json.dumps(body)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+    return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
+
+
+def route(dev):
+    spec = ROUTES[dev]
+    if dev == "s25" and not s25_worker_active():
+        unroute("s25")
+        return {"route": spec["name"], "state": "disabled (s25 worker mode off)"}
+    d = device(dev)
+    have = d.call("forward", "--list", check=False).stdout
+    want = f"tcp:{spec['port']} tcp:{spec['remote']}"
+    if not any(line.startswith(d.serial + " ") and line.endswith(want) for line in have.splitlines()):
+        d.call("-s", d.serial, "forward", f"tcp:{spec['port']}", f"tcp:{spec['remote']}", check=False)
+    health = probe_health(spec["port"])
+    restarted = None
+    if health is None and restart_allowed(dev):
+        # The skill's own restart: owned PID, same model/backend/port; it re-adds the forward.
+        r = subprocess.run([sys.executable, str(RESTART), dev, "--wait-seconds", "240"],
+                           capture_output=True, text=True, timeout=600)
+        restarted = {"rc": r.returncode, "tail": (r.stderr or r.stdout)[-300:]}
+        health = probe_health(spec["port"])
+    return {"route": spec["name"], "url": f"http://127.0.0.1:{spec['port']}", "device": dev,
+            "engine": spec["engine"], "state": "up" if health else "down", "health": health,
+            **({"restarted": restarted} if restarted else {})}
+
+
+def probe_health(port):
+    try:
+        health = http_json(port, "/health", timeout=8)
+    except (subprocess.SubprocessError, ValueError):
+        return None
+    return health if health and health.get("status") == "ok" else None
+
+
+def restart_allowed(dev):
+    """At most one restart per device per RESTART_EVERY_S; the S25 also needs its gate open."""
+    if dev == "s25" and gate(dev):
+        return False
+    STATE.mkdir(parents=True, exist_ok=True)
+    marker = STATE / f"{dev}-last-restart"
+    try:
+        if time.time() - float(marker.read_text()) < RESTART_EVERY_S:
+            return False
+    except (OSError, ValueError):
+        pass
+    marker.write_text(str(time.time()) + "\n")
+    return True
+
+
+def unroute(dev):
+    port = ROUTES[dev]["port"]
+    listing = subprocess.run([ADB, "-P", "5037", "forward", "--list"], capture_output=True,
+                             text=True, timeout=20).stdout
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[1] == f"tcp:{port}":
+            subprocess.run([ADB, "-P", "5037", "-s", fields[0], "forward", "--remove", fields[1]],
+                           capture_output=True, timeout=20)
+
+
+def write_routes(rows):
+    STATE.mkdir(parents=True, exist_ok=True)
+    table = {r["route"]: r for r in rows if r.get("state") == "up"}
+    tmp = STATE / "routes.json.tmp"
+    tmp.write_text(json.dumps({"updated": now_iso(), "routes": table}, indent=2) + "\n")
+    tmp.replace(STATE / "routes.json")
+
+
+def bench(dev, n):
+    r = route(dev)
+    if r["state"] != "up":
+        return {"device": dev, "route": r["route"], "error": f"route {r['state']}"}
+    reason = gate(dev)
+    if reason:
+        return {"device": dev, "route": r["route"], "skipped": reason}
+    before = telemetry(dev)
+    started = time.time()
+    body = {"prompt": "Explain in plain words why a phone slows its CPU when it gets hot.",
+            "n_predict": n, "cache_prompt": False, "temperature": 0}
+    res = http_json(ROUTES[dev]["port"], "/completion", body, timeout=900)
+    wall = time.time() - started
+    if not res or "timings" not in res:
+        return {"device": dev, "route": r["route"], "error": "no timings in response"}
+    t = res["timings"]
+    return {"device": dev, "route": r["route"], "engine": ROUTES[dev]["engine"], "at": now_iso(),
+            "prompt_n": t.get("prompt_n"), "prompt_tok_s": round(t.get("prompt_per_second", 0), 2),
+            "predicted_n": t.get("predicted_n"), "decode_tok_s": round(t.get("predicted_per_second", 0), 2),
+            "wall_s": round(wall, 2), "telemetry_before": before, "telemetry_after": telemetry(dev)}
+
+
+def throughput(hours):
+    cutoff = time.time() - hours * 3600
+    sends = {}
+    for f in glob.glob(str(DRIVER / "*" / "dispatches.jsonl")):
+        for line in open(f):
+            try:
+                r = json.loads(line)
+                t = dt.datetime.strptime(r.get("at") or r.get("ts"), "%Y-%m-%dT%H:%M:%S%z").timestamp()
+            except (ValueError, TypeError):
+                continue
+            if t >= cutoff:
+                key = (r.get("device", "s22"), r.get("status"))
+                sends[key] = sends.get(key, 0) + 1
+    out = {"hours": hours, "chatgpt": {}, "fleet_adb_jobs": {}}
+    for (dev, status), count in sorted(sends.items()):
+        out["chatgpt"].setdefault(dev, {})[status] = count
+    for dev in out["chatgpt"]:
+        out["chatgpt"][dev]["sent_per_hour"] = round(out["chatgpt"][dev].get("sent", 0) / hours, 1)
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(cutoff))
+    for dev in ("s22", "s25"):
+        try:
+            names = sh(dev, "ls /data/local/tmp/fleet-jobs 2>/dev/null").split()
+        except Exception:  # noqa: BLE001
+            out["fleet_adb_jobs"][dev] = None
+            continue
+        out["fleet_adb_jobs"][dev] = sum(1 for n in names if re.match(r"\d{8}-\d{6}-", n) and n[:15] >= stamp)
+    return out
+
+
+def fleet_jobs(dev):
+    names = sh(dev, "ls /data/local/tmp/fleet-jobs 2>/dev/null").split()
+    running = []
+    for name in names:
+        r = subprocess.run([FLEET_ADB, "status", dev, name], capture_output=True, text=True, timeout=60)
+        try:
+            if json.loads(r.stdout).get("state") == "running":
+                running.append(name)
+        except ValueError:
+            continue
+    return running
+
+
+def winddown(dry):
+    """Spec 6.1 wind-down. Idempotent. Settings were never changed, so none are reverted."""
+    steps = []
+
+    def step(name, fn):
+        if dry:
+            steps.append({"step": name, "dry_run": True})
+            return
+        try:
+            steps.append({"step": name, "result": fn()})
+        except Exception as exc:  # noqa: BLE001 - continue the wind-down, record the failure
+            steps.append({"step": name, "error": f"{type(exc).__name__}: {exc}"})
+
+    step("off-switch", lambda: (S25_OFF.parent.mkdir(parents=True, exist_ok=True), S25_OFF.touch(), str(S25_OFF))[2])
+    step("stop queue loop", lambda: subprocess.run(["systemctl", "--user", "stop", UNIT_S25_QUEUE],
+                                                   capture_output=True, text=True, timeout=120).returncode)
+    step("kill fleet-adb jobs", lambda: [subprocess.run([FLEET_ADB, "kill", "s25", j], capture_output=True,
+                                                        text=True, timeout=60).stdout.strip()
+                                         for j in fleet_jobs("s25")])
+    step("stop NPU llama-server", lambda: sh("s25", "pids=$(pidof llama-server); "
+                                                    "[ -n \"$pids\" ] && kill $pids; sleep 1; pidof llama-server || echo stopped"))
+    step("remove forward", lambda: unroute("s25") or "removed")
+    write_routes([route("s22")])
+    receipt = {"at": now_iso(), "dry_run": dry, "steps": steps}
+    if not dry:
+        STATE.mkdir(parents=True, exist_ok=True)
+        (STATE / "s25-winddown.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    return receipt
+
+
+def notify(title, body):
+    tool = "/mnt/zer0models/z0-wt/dash-turbo/bridge/bin/dash-notify"
+    bun = str(HOME / ".bun/bin/bun")
+    try:
+        subprocess.run([bun, tool, title[:80], body[:600]], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def tick():
+    STATE.mkdir(parents=True, exist_ok=True)
+    with open(STATE / "tick.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {"skipped": "another tick runs"}
+        row = {"at": now_iso(), "s25_worker": s25_worker_active()}
+        done = STATE / "s25-winddown.json"
+        if not row["s25_worker"] and (not done.exists() or done.stat().st_mtime < S25_OFF.stat().st_mtime):
+            row["winddown"] = winddown(False)
+            notify("S25 worker off", "Worker mode ended: jobs stopped, NPU route removed, ChatGPT S25 loop stopped.")
+        routes = []
+        for dev in ("s22", "s25"):
+            try:
+                routes.append(route(dev))
+                row[dev] = {"telemetry": telemetry(dev), "gate": gate(dev) or "open"}
+            except Exception as exc:  # noqa: BLE001
+                row[dev] = {"error": f"{type(exc).__name__}: {exc}"}
+        write_routes(routes)
+        row["routes"] = {r["route"]: r["state"] for r in routes}
+        with open(STATE / "telemetry.jsonl", "a") as log:
+            log.write(json.dumps(row) + "\n")
+        return row
+
+
+def ui(dev, package, argv):
+    """UI lane (Dash tests): same host lock as the ChatGPT driver; restore the foreground."""
+    with open(f"/tmp/{dev}-ui.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        reason = gate(dev)
+        if reason:
+            print(f"phone-worker: {dev} busy: {reason}", file=sys.stderr)
+            return 75
+        before = presence(dev)["foreground"]
+        if package:
+            sys.path.insert(0, str(DRIVER))
+            import burst  # the driver's ledger; an agent-opened app is not owner use
+            burst.record_agent_open(dev, package, burst.activity_snapshot(device(dev).serial))
+        env = {**os.environ, "ANDROID_SERIAL": device(dev).serial, "PHONE_WORKER_DEVICE": dev}
+        try:
+            return subprocess.run(argv, env=env).returncode
+        finally:
+            after = presence(dev)["foreground"]
+            if before and after != before:
+                sh(dev, f"monkey -p {before} -c android.intent.category.LAUNCHER 1")
+
+
+def main():
+    argv = sys.argv[1:]
+    split = argv.index("--") if "--" in argv else len(argv)
+    head, cmd = argv[:split], argv[split + 1:]
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("action", choices=["status", "gate", "route", "bench", "run", "ui", "throughput",
+                                       "tick", "winddown", "on", "off"])
+    ap.add_argument("dev", nargs="?", default="all")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--n", type=int, default=64)
+    ap.add_argument("--hours", type=float, default=1)
+    ap.add_argument("--package")
+    ap.add_argument("--dry-run", action="store_true")
+    a, extra = ap.parse_known_args(head)
+    devs = ["s22", "s25"] if a.dev == "all" else [a.dev]
+    if any(d not in ("s22", "s25") for d in devs):
+        ap.error("DEV must be s22, s25 or all")
+    if a.action == "gate":
+        reason = gate(devs[0])
+        print(reason or "open")
+        return 0 if reason is None else 75
+    if a.action == "run":
+        reason = gate(devs[0])
+        if reason:
+            print(f"phone-worker: {devs[0]} busy: {reason}", file=sys.stderr)
+            return 75
+        return subprocess.run([FLEET_ADB, "run", devs[0], *extra, "--", *cmd]).returncode
+    if a.action == "ui":
+        return ui(devs[0], a.package, cmd)
+    if a.action == "route":
+        rows = [route(d) for d in devs]
+        if a.dev == "all":
+            write_routes(rows)
+        out = rows
+    elif a.action == "bench":
+        out = [bench(d, a.n) for d in devs]
+        RECEIPTS.mkdir(parents=True, exist_ok=True)
+        (RECEIPTS / f"bench-{time.strftime('%Y%m%d-%H%M%S')}.json").write_text(json.dumps(out, indent=2) + "\n")
+    elif a.action == "throughput":
+        out = throughput(a.hours)
+    elif a.action == "tick":
+        out = tick()
+    elif a.action == "winddown":
+        out = winddown(a.dry_run)
+    elif a.action == "off":
+        out = winddown(False)
+    elif a.action == "on":
+        S25_OFF.unlink(missing_ok=True)
+        out = {"at": now_iso(), "s25_worker": True, "route": route("s25")}
+    else:
+        out = {"at": now_iso(), "s25_worker": s25_worker_active(),
+               "devices": {d: {"gate": gate(d) or "open", "presence": presence(d), "telemetry": telemetry(d)}
+                           for d in devs},
+               "routes": json.loads((STATE / "routes.json").read_text()) if (STATE / "routes.json").exists() else None,
+               "throughput_1h": throughput(1), "throughput_24h": throughput(24)}
+    print(json.dumps(out, indent=None if a.action == "tick" else 2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

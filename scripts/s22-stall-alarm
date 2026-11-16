@@ -1,0 +1,23 @@
+#!/bin/bash
+# Alarm: S22 ChatGPT sender has queued briefs but sent nothing for 20+ min. Notifies the S25 once per stall.
+C=/mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver
+pending=$(ls $C/*/queue/*.json 2>/dev/null | wc -l)
+[ "$pending" -eq 0 ] && exit 0
+last=$(cat $C/*/launches.jsonl 2>/dev/null | python3 -c '
+import sys, json
+ts = []
+for l in sys.stdin:
+    try:
+        d = json.loads(l)
+    except Exception:
+        continue
+    if d.get("device") == "s22" and d.get("status") == "sent":
+        ts.append(d.get("t0", 0))
+print(int(max(ts)) if ts else 0)')
+age=$(( $(date +%s) - last ))
+S=~/.local/state/s22-stall-alarm; mkdir -p "$S"
+if [ "$age" -lt 1200 ]; then rm -f "$S/notified"; exit 0; fi
+[ -e "$S/notified" ] && exit 0
+reason=$(journalctl --user -u tern-queue-loop@s22 --since "-15 min" --no-pager -o cat | grep -o '"reason": "[^"]*"' | sort | uniq -c | sort -rn | head -1)
+active=$(systemctl --user is-active tern-queue-loop@s22)
+~/.local/bin/z0-phone-notify s22-stall "S22 ChatGPT sender stalled $((age/60)) min" "$pending briefs waiting. loop=$active. Top reason: ${reason:-none logged}" </dev/null >/dev/null 2>&1 && touch "$S/notified"
