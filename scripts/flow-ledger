@@ -85,13 +85,27 @@ def feeds(since):
     return [(s / 1e9, e / 1e9) for s, e, d in rows if json.loads(d).get("app") in FEEDS]
 
 
+def devices(c, table):
+    """Distinct deviceId values by index skip (one seek per device, not a table scan)."""
+    out, d = [], c.execute(f"select min(deviceId) from {table}").fetchone()[0]
+    while d is not None:
+        out.append(d)
+        d = c.execute(f"select min(deviceId) from {table} where deviceId > ?", (d,)).fetchone()[0]
+    return out
+
+
 def body(a, z):
     """Mean HR and RMSSD from the NOOP copy (any wearable) inside [a, z]; None when not worn."""
     try:
         c = sqlite3.connect(f"file:{ST}/noop/noop_whoop.db?mode=ro", uri=True)
-        hr = [b for (b,) in c.execute("select bpm from hrSample where ts between ? and ? and bpm>30", (a, z))]
-        rr = [r for (r,) in c.execute("select rrMs from rrInterval where ts between ? and ? and coalesce(tsSuspect,0)=0 "
-                                      "and rrMs between 300 and 2000 order by ts, ord", (a, z))]
+        # Both primary keys lead with deviceId, so `where ts between` alone scanned each table once per
+        # block (~60 blocks x 2 tables per run). Name the devices so each one range-seeks (deviceId, ts).
+        dev = lambda t: ",".join("?" * len(devices(c, t)))
+        hr = [b for (b,) in c.execute(f"select bpm from hrSample where deviceId in ({dev('hrSample')}) "
+                                      "and ts between ? and ? and bpm>30", (*devices(c, "hrSample"), a, z))]
+        rr = [r for (r,) in c.execute(f"select rrMs from rrInterval where deviceId in ({dev('rrInterval')}) "
+                                      "and ts between ? and ? and coalesce(tsSuspect,0)=0 "
+                                      "and rrMs between 300 and 2000 order by ts, ord", (*devices(c, "rrInterval"), a, z))]
     except sqlite3.Error:
         return {}
     out = {}

@@ -70,5 +70,33 @@ class OwnerMsgs(unittest.TestCase):
         self.assertEqual(fl.owner_msgs(self.now - 86400, self.cache), [round(self.now - 100)])
 
 
+class Body(unittest.TestCase):
+    def test_body_covers_every_device_and_seeks_the_primary_key(self):
+        st = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, st)
+        (st / "noop").mkdir()
+        con = sqlite3.connect(st / "noop/noop_whoop.db")
+        con.executescript("""
+            CREATE TABLE hrSample(deviceId TEXT NOT NULL, ts INTEGER NOT NULL, bpm INTEGER NOT NULL, synced INTEGER NOT NULL,
+                                  PRIMARY KEY(deviceId, ts));
+            CREATE TABLE rrInterval(deviceId TEXT NOT NULL, ts INTEGER NOT NULL, rrMs INTEGER NOT NULL, seq INTEGER NOT NULL,
+                                    synced INTEGER NOT NULL, ord INTEGER, srcChannel INTEGER, tsSuspect INTEGER,
+                                    PRIMARY KEY(deviceId, ts, rrMs, seq));""")
+        con.executemany("insert into hrSample values (?,?,?,0)",
+                        [("oura", t, 60) for t in range(100, 110)] + [("whoop", t, 80) for t in range(100, 110)]
+                        + [("whoop", 500, 200)])
+        con.executemany("insert into rrInterval values ('whoop',?,?,?,0,?,0,0)",
+                        [(100 + i // 10, 800 + (i % 2) * 20, i, i) for i in range(120)])
+        con.commit()
+        plan = " ".join(r[3] for r in con.execute(
+            "explain query plan select bpm from hrSample where deviceId in ('a','b') and ts between 1 and 2"))
+        con.close()
+        self.assertNotIn("SCAN", plan)
+        with mock.patch.object(fl, "ST", str(st)):
+            self.assertEqual(fl.devices(sqlite3.connect(st / "noop/noop_whoop.db"), "hrSample"), ["oura", "whoop"])
+            self.assertEqual(fl.body(100, 120), {"hrMean": 70, "rmssdMs": 20.0})
+            self.assertEqual(fl.body(1000, 2000), {})
+
+
 if __name__ == "__main__":
     unittest.main()
