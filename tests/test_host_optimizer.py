@@ -180,6 +180,16 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn('PathChanged=', path)
         self.assertIn('--repair-cpu --experiments', service)
 
+    def test_path_trigger_is_debounced_through_a_rearming_timer(self):
+        path = (ROOT/'config/systemd/user/host-optimizer.path').read_text()
+        timer = (ROOT/'config/systemd/user/host-optimizer-debounce.timer').read_text()
+        self.assertIn('Unit=host-optimizer-debounce.timer', path)
+        self.assertIn('Unit=host-optimizer.service', timer)
+        self.assertIn('RemainAfterElapse=no', timer)
+        self.assertNotIn('[Install]', timer)
+        self.assertNotRegex(timer, r'OnUnit(Active|Inactive)Sec')
+        self.assertRegex(timer, r'(?m)^OnActiveSec=(10|1[0-9])min$')
+
     def test_harness_timeout_keeps_last_observation_labelled_stale_until_too_old(self):
         failed = {'status': 'unavailable', 'reason': 'OperationalError'}
         seen = {'status': 'observed', 'sampled_sessions': 9, 'groups': []}

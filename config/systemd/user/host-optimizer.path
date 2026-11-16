@@ -5,7 +5,10 @@ ConditionPathIsMountPoint=/mnt/zer0models
 [Path]
 PathChanged=%h/.local/state/fleet/health/history.jsonl
 PathChanged=/mnt/zer0models/host-offload/home_kvn_.local_state_fleet_runs
-Unit=host-optimizer.service
+# Debounce (F16 2026-11-16): fleet-health appends every 2 min, so triggering the service directly ran a
+# 3-15 s, 200-360 MB learner ~35x/h. The timer runs it once 10 min after the first change; changes in
+# between are absorbed (the learner reads the whole history), and the next change re-arms it.
+Unit=host-optimizer-debounce.timer
 
 [Install]
 WantedBy=default.target

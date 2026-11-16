@@ -1,0 +1,11 @@
+[Unit]
+Description=Run host-optimizer once, 10 min after fleet health/outcome files change (debounce, not polling)
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Timer]
+OnActiveSec=10min
+AccuracySec=30s
+# Stop after firing so the next path trigger can start (re-arm) it; an elapsed timer stays active and
+# would swallow every later start.
+RemainAfterElapse=no
+Unit=host-optimizer.service
