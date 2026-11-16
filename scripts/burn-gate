@@ -63,8 +63,7 @@ def reading():
 HERMES_SRC = Path.home() / ".hermes/hermes-agent"
 # The law lives with the other z0 Bend laws (bend/burn_pace); its Python twin is lib/z0/burn_pace.py.
 Z0_LIB_CANDIDATES = [os.environ.get("Z0_BURN_PACE_SRC", ""),
-                     str(Path.home() / ".local/lib/z0-burn-pace/current/lib"),
-                     "/mnt/zer0models/z0-wt/z0-burn-pace/lib"]
+                     str(Path.home() / ".local/lib/z0-burn-pace/current/lib")]
 
 
 def law_module():
