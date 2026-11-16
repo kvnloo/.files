@@ -24,6 +24,15 @@ case "$name" in
     ;;
 esac
 
+# Default tool scratch to the user's disk-backed cache, not RAM-backed /tmp.
+# Preserve explicit caller isolation (e.g. Hermes profile scratch).
+if [ -z "${TMPDIR:-}" ]; then
+  agent_tmp="${XDG_CACHE_HOME:-${HOME:?HOME must be set}/.cache}/agent-tmp"
+  (umask 077; mkdir -p -- "$agent_tmp") || { echo 'agent-launch: cannot create private scratch directory' >&2; exit 1; }
+  [ -d "$agent_tmp" ] && [ -w "$agent_tmp" ] || { echo 'agent-launch: scratch directory is not writable' >&2; exit 1; }
+  export TMPDIR="$agent_tmp"
+fi
+
 inline() { exec "$@"; }
 [ -n "${AGENT_LAUNCH_INLINE:-}" ] && inline "$@"
 command -v systemd-run >/dev/null 2>&1 || { echo 'agent-launch: systemd-run required; refusing unbounded launch' >&2; exit 1; }

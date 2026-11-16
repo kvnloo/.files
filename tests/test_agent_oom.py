@@ -146,6 +146,41 @@ class InstallerTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def test_default_scratch_uses_private_cache_and_reaches_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'cache'
+            env = dict(os.environ, AGENT_LAUNCH_INLINE='1', XDG_CACHE_HOME=str(cache))
+            env.pop('TMPDIR', None)
+            result = subprocess.run(['bash', str(ROOT / 'scripts/agent-launch'), 'test',
+                                     sys.executable, '-c', 'import os; print(os.environ["TMPDIR"])'],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            expected = cache / 'agent-tmp'
+            self.assertEqual(result.stdout.strip(), str(expected))
+            self.assertEqual(expected.stat().st_mode & 0o777, 0o700)
+
+    def test_explicit_scratch_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, AGENT_LAUNCH_INLINE='1', TMPDIR=tmp,
+                       XDG_CACHE_HOME=str(Path(tmp) / 'unused-cache'))
+            result = subprocess.run(['bash', str(ROOT / 'scripts/agent-launch'), 'test',
+                                     sys.executable, '-c', 'import os; print(os.environ["TMPDIR"])'],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), tmp)
+            self.assertFalse((Path(tmp) / 'unused-cache').exists())
+
+    def test_unavailable_default_scratch_fails_before_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / 'not-a-directory'
+            cache.write_text('occupied')
+            env = dict(os.environ, AGENT_LAUNCH_INLINE='1', XDG_CACHE_HOME=str(cache))
+            env.pop('TMPDIR', None)
+            result = subprocess.run(['bash', str(ROOT / 'scripts/agent-launch'), 'test',
+                                     '/usr/bin/true'], env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('cannot create private scratch', result.stderr)
+
     def launch(self, manager_ok=True, nested=False):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
