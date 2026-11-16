@@ -1,0 +1,22 @@
+[Unit]
+Description=z0live S25 full-time AutoKernel keep/revert supervisor (realtime voice models; yields to owner and calls)
+Documentation=file:///mnt/zer0models/github/autokernel/mobile/INVENTORY-S25.md
+After=network-online.target
+# Model-free supervisor: it queues bench_s25.py runs on the phone over adb. Kill switches: phone
+# /data/local/tmp/z0live-ar/STOP, mobile/state/STOP, or `systemctl --user stop z0live-fulltime`.
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/zer0models/github/autokernel/mobile
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/usr/sbin
+# Optional host-local overrides (e.g. S25_SERIAL); kept out of git because it holds a tailnet address.
+# Without it, bench_s25.py auto-detects the S25 from `adb devices -l`.
+EnvironmentFile=-%h/.config/z0live/fulltime.env
+ExecStart=/usr/bin/python3 /mnt/zer0models/github/autokernel/mobile/fulltime.py
+Restart=on-failure
+RestartSec=120
+Nice=10
+
+[Install]
+WantedBy=default.target
