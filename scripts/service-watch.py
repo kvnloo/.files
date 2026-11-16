@@ -51,9 +51,9 @@ CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_f
          'checkout_count_exceeded', 'phone_resource_caps', 'policy_stale',
          'offload_obligation', 'findings_ingest_stall', 'host_config_drift', 'host_drift_unknown', 'loop_degraded', 'unrecognized',
          'out_of_memory', 'memory_pressure', 'memory-pressure',
-         'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak'}
+         'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak', 'keyring_unavailable'}
 SEVERE = {'failed', 'restart_loop', 'silent_noop', 'error_file_growth', 'heartbeat_stale',
-          'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak',
+          'keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak', 'keyring_unavailable',
           'checkout_count_exceeded', 'phone_resource_caps', 'offload_obligation',
           'host_config_drift', 'host_drift_unknown', 'unrecognized',
           'out_of_memory', 'memory_pressure', 'memory-pressure'}
@@ -716,7 +716,12 @@ class Watch:
 
     def keyring_events(self, invariant, now):
         """Login keyring stays unlocked; agents' headless prompts must not leak its fds."""
-        locked, fds, limit = self.keyring_probe()
+        try:
+            locked, fds, limit = self.keyring_probe()
+        except (OSError, ValueError, StopIteration, subprocess.SubprocessError):
+            # No answer from the Secret Service: every secret lookup on the host hangs.
+            # Severe, not the generic invariant_unavailable a hung probe would otherwise become.
+            return [event('keyring_unavailable')]
         events = []
         if locked:
             # Self-heal with the owned TPM unlock unit, then judge the result.

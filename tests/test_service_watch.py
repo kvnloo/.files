@@ -389,7 +389,8 @@ class Contracts(unittest.TestCase):
 
     def test_keyring_probe_failure_is_not_healthy(self):
         with patch.object(self.watch, 'keyring_probe', side_effect=ValueError):
-            self.assertEqual(self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 1.0)[0]['code'], 'invariant_unavailable')
+            event = self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 1.0)[0]
+            self.assertEqual((event['code'], event['severity']), ('keyring_unavailable', 'severe'))
 
     def test_unknown_and_missing_invariants_are_not_healthy(self):
         self.assertEqual(self.watch.invariant('user', 'fixture.service', {'kind': 'unknown'}, {}, time.time())[0]['code'], 'invariant_unavailable')
