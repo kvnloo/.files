@@ -26,6 +26,20 @@ class ControllerTests(unittest.TestCase):
         with patch.object(c.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '{}', 'failure')):
             with self.assertRaises(RuntimeError): c.run(['false'])
 
+    def test_ssh_transport_flake_retried_once(self):
+        # 2026-11-16: one 'banner exchange' timeout to a loaded MBP failed the whole 3-node report (7x/week).
+        flake = subprocess.CompletedProcess([], 255, '', 'Connection timed out during banner exchange')
+        ok = subprocess.CompletedProcess([], 0, '{}', '')
+        with patch.object(c.time, 'sleep'), patch.object(c.subprocess, 'run', side_effect=[flake, ok]) as call:
+            self.assertEqual(c.run(['ssh', 'mbp', 'true']), '{}')
+        self.assertEqual(call.call_count, 2)
+        with patch.object(c.time, 'sleep'), patch.object(c.subprocess, 'run', side_effect=[flake, flake]):
+            with self.assertRaises(RuntimeError): c.run(['ssh', 'mbp', 'true'])
+        remote = subprocess.CompletedProcess([], 1, '', 'remote failure')
+        with patch.object(c.subprocess, 'run', side_effect=[remote]) as call:
+            with self.assertRaises(RuntimeError): c.run(['ssh', 'mbp', 'false'])
+        self.assertEqual(call.call_count, 1)
+
     def test_hardware_identity_required(self):
         with patch.object(c, 'run', side_effect=['List of devices attached\nwrong device\n', 'OTHER\nSM-S938U\n']):
             with self.assertRaises(RuntimeError):

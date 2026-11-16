@@ -19,8 +19,15 @@ SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
        '-o', 'ControlMaster=no', '-o', 'ControlPath=none']
 
 
+SSH_CONNECT_FLAKE = ('banner exchange', 'Connection timed out', 'Connection reset', 'Connection closed by')
+
+
 def run(argv, source=None):
     p = subprocess.run(argv, input=source, text=True, capture_output=True, timeout=120)
+    # ssh exits 255 only for its own transport errors; retry a connect-phase flake once, never a remote failure.
+    if p.returncode == 255 and argv[0] == 'ssh' and any(s in p.stderr for s in SSH_CONNECT_FLAKE):
+        time.sleep(5)
+        p = subprocess.run(argv, input=source, text=True, capture_output=True, timeout=120)
     if p.returncode:
         raise RuntimeError('transport/identity/core failed: ' + p.stderr[-1000:])
     return p.stdout
