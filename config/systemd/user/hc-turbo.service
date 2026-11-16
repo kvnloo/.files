@@ -1,0 +1,22 @@
+[Unit]
+Description=HC-TURBO fleet hill-climb dispatcher (PC, MBP, S25, S22, Lenovo tab)
+After=network-online.target
+
+[Service]
+# host-private (not in git): S25_SERIAL S22_SERIAL TAB_SERIAL
+EnvironmentFile=%h/.config/host-units/hc-turbo.env
+WorkingDirectory=/mnt/zer0models/worktrees/autokernel-live
+# Runs the `live` branch. Promote a tested fix: git push origin HEAD:live && systemctl --user reload hc-turbo
+# reload (SIGHUP) drains owned runs, exits, and Restart=always pulls+starts the new code;
+# restart (SIGTERM) cancels in-flight phone runs and logs them as FAIL.
+ExecStartPre=-/usr/bin/git -C /mnt/zer0models/worktrees/autokernel-live pull --ff-only -q
+Environment=PATH=%h/.local/bin:%h/android/sdk/platform-tools:/usr/local/bin:/usr/bin
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/bin/python3 -m turbo.turbo --state /mnt/zer0models/workspace/zer0/data/operations/hc-turbo-20261106/state start
+Restart=always
+RestartSec=30
+KillMode=mixed
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

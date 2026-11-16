@@ -1,0 +1,23 @@
+[Unit]
+Description=sr-decision OpenAI shim (vllm-sr/decision)
+After=network.target sr-decision-llama.service
+Requires=sr-decision-llama.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/sr-decision-shim.py
+Restart=on-failure
+RestartSec=5
+Environment=LLAMA_BASE=http://127.0.0.1:11531/v1
+Environment=JEV_ENDPOINT=https://api.jev-typesafe.com/v1
+# JEV_API_KEY unset on purpose: the old line passed the literal '${JEV_API_KEY}' as a bearer
+Environment=SHADOW_LOG_DIR=%h/.z0int/shadow/sr-decision
+Environment=MODEL_ID=vllm-sr/decision
+Environment=DEFAULT_RETURN=d1
+Environment=CONFIDENCE_THRESHOLD=0.7
+Environment=JEV_ALLOWED=false
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

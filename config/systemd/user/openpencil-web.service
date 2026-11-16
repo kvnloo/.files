@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenPencil web editor, self-built from oss/open-pencil (opens Taste board .fig links); tailnet via tailscale serve :8796
+
+[Service]
+# host-private (not in git): __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+EnvironmentFile=%h/.config/host-units/openpencil-web.env
+WorkingDirectory=/mnt/zer0models/workspace/zer0/oss/open-pencil
+ExecStart=/mnt/zer0models/workspace/zer0/oss/open-pencil/node_modules/.bin/vite preview --host 127.0.0.1 --port 8796 --strictPort
+Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

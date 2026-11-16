@@ -1,0 +1,23 @@
+[Unit]
+Description=NeuroSkill -> Open Wearables bridge + live EEG field (contrib/neuroskill)
+After=neuroskill-daemon.service
+Wants=neuroskill-daemon.service
+
+[Service]
+# host-private (not in git): OW_USER_ID
+EnvironmentFile=%h/.config/host-units/neuroskill-bridge.env
+# host-private (not in git): BRIDGE_BIND
+EnvironmentFile=%h/.config/host-units/neuroskill-bridge.env
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/services/open-wearables/contrib/neuroskill/neuro_bridge.py
+WorkingDirectory=/mnt/zer0models/workspace/zer0/services/neuroskill/bridge
+Environment=NS_TOKEN_FILE=/mnt/zer0models/workspace/zer0/services/neuroskill/home/.config/skill/daemon/auth.token
+Environment=OW_URL=http://127.0.0.1:8000
+Environment=OW_API_KEY_FILE=/mnt/zer0models/workspace/zer0/services/neuroskill/bridge/ow_api_key
+Environment=DATA_DIR=/mnt/zer0models/workspace/zer0/services/neuroskill/bridge/data
+MemoryMax=512M
+Nice=5
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

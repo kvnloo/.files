@@ -1,0 +1,14 @@
+[Unit]
+Description=Dash turbo live integration Metro 18213
+After=network-online.target
+[Service]
+# metro-turbo.env (host-private) also carries: EXPO_PACKAGER_PROXY_URL
+WorkingDirectory=/mnt/zer0models/z0-wt/dash-turbo/app
+EnvironmentFile=%h/.config/dash-services/metro-turbo.env
+Environment=CI=false EXPO_PUBLIC_DASH_TURBO=1
+ExecStart=%h/.bun/bin/bun node_modules/expo/bin/cli start --dev-client --localhost --port 18213
+Nice=10
+Restart=on-failure
+RestartSec=10
+[Install]
+WantedBy=default.target

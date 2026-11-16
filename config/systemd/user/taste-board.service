@@ -1,0 +1,19 @@
+[Unit]
+Description=Taste board (live brainstorm pages; private, tailnet via tailscale serve :8789)
+Wants=openpencil-web.service
+
+[Service]
+# host-private (not in git): TASTE_BOARD_URL TASTE_PENCIL_URL
+EnvironmentFile=%h/.config/host-units/taste-board.env
+WorkingDirectory=/mnt/zer0models/worktrees/taste-atlas/examples/taste-atlas
+Environment=TASTE_BOARD_PORT=8789
+# Self-built OpenPencil (openpencil-web.service): the hosted app.openpencil.dev build predates ?file= links.
+# Board agent (scripts/agent.mjs) runs `hermes acp` in this profile.
+Environment=HERMES_HOME=%h/.hermes/profiles/clean
+Environment=PATH=/mnt/zer0models/project-artifacts/taste/openpencil/node_modules/.bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node scripts/board.mjs serve
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

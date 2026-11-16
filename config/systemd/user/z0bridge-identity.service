@@ -1,0 +1,15 @@
+[Unit]
+Description=z0bridge identity-only listener (Dash pairing/JWKS) loopback 4789 + tailnet 4788
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# host-private (not in git): DASH_HOST
+EnvironmentFile=%h/.config/host-units/z0bridge-identity.env
+ExecStartPre=%h/.local/lib/dash-services/current/dash-wait-tailnet
+ExecStart=%h/.local/bin/z0bridge serve --harnesses none --identity-host ${DASH_HOST} --identity-port 4788 --port 4789 --issuer z0bridge:%H
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

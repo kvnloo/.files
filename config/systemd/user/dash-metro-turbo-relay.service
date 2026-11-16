@@ -1,0 +1,11 @@
+[Unit]
+Description=Dash turbo tailnet-only Metro relay 8213
+After=network-online.target dash-metro-turbo.service
+Wants=dash-metro-turbo.service
+[Service]
+EnvironmentFile=%h/.config/dash-services/metro.env
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/dash-turbo/metro-relay.py
+Restart=on-failure
+RestartSec=10
+[Install]
+WantedBy=default.target
