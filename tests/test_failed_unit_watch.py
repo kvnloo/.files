@@ -56,3 +56,34 @@ def test_block_reports_stalled_timers_even_with_no_failed_units():
     assert "fork.timer" in out and "re-armed: started fork.service once" in out
     assert out.startswith(fuw.BEGIN) and out.endswith(fuw.END)
     assert fuw.block([], 0, 30, "now") == ""
+
+
+TIMED = ("Id=tick.timer\nUnit=tick.service\n\nId=slow.timer\nUnit=slow.service\n\n"
+         "Id=capped.timer\nUnit=capped.service\n\nId=idle.timer\nUnit=idle.service\n")
+TIMED_SERVICES = (  # now = 10_000 s monotonic
+    "Id=tick.service\nActiveState=activating\nInactiveExitTimestampMonotonic=4000000000\nTimeoutStartUSec=infinity\n\n"
+    "Id=slow.service\nActiveState=activating\nInactiveExitTimestampMonotonic=9000000000\nTimeoutStartUSec=infinity\n\n"
+    "Id=capped.service\nActiveState=activating\nInactiveExitTimestampMonotonic=1000000000\nTimeoutStartUSec=45min\n\n"
+    "Id=idle.service\nActiveState=inactive\nInactiveExitTimestampMonotonic=1\nTimeoutStartUSec=infinity\n")
+
+
+class TimedSystemctl(FakeSystemctl):
+    def __call__(self, cmd, **kw):
+        self.calls.append(cmd)
+        out = ""
+        if "list-units" in cmd:
+            out = "tick.timer l a r w\nslow.timer l a r w\ncapped.timer l a r w\nidle.timer l a w w\n"
+        elif "show" in cmd:
+            out = TIMED if any(c.endswith(".timer") for c in cmd) else TIMED_SERVICES
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+
+def test_timer_service_running_past_the_limit_with_no_timeout_is_reported():
+    """11-15: z0int-loop-tick hung 1h+ in one run, so its hourly timer never fired again; nothing failed.
+    A unit with a finite TimeoutStartSec is left to systemd; one under the limit is just slow."""
+    assert fuw.overrunning(TimedSystemctl(), now_mono=10_000, limit_min=60) == [("tick.service", 100)]
+
+
+def test_block_reports_overrunning_services_without_acting():
+    out = fuw.block([], 0, 30, "now", overrun=[("tick.service", 100)])
+    assert "tick.service: activating 100 min" in out and out.startswith(fuw.BEGIN)

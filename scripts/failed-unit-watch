@@ -78,6 +78,36 @@ def stalled_timers(run=subprocess.run):
     return sorted(t for t in out if t[1] not in busy)
 
 
+def _chunks(text):
+    return [{k: v for k, _, v in (l.partition("=") for l in c.splitlines() if l)} for c in text.split("\n\n")]
+
+
+def overrunning(run=subprocess.run, now_mono=None, limit_min=60):
+    """Timer services stuck in one run past limit_min with no TimeoutStartSec: report only, never kill (owner
+    11-07: a tick slows instead of dying). Their timer cannot fire again until the run ends, and nothing fails.
+    11-15: z0int-loop-tick sat in one verify glob for 1h+ while its hourly timer waited."""
+    now_mono = time.clock_gettime(time.CLOCK_MONOTONIC) if now_mono is None else now_mono
+    out = run(["systemctl", "--user", "list-units", "--type=timer", "--all", "--plain", "--no-legend"],
+              capture_output=True, text=True).stdout
+    timers = [l.split()[0] for l in out.splitlines() if l.strip()]
+    if not timers:
+        return []
+    show = run(["systemctl", "--user", "show", "-p", "Id,Unit", *timers], capture_output=True, text=True).stdout
+    services = sorted({kv["Unit"] for kv in _chunks(show) if kv.get("Unit")})
+    if not services:
+        return []
+    state = run(["systemctl", "--user", "show", "-p", "Id,ActiveState,InactiveExitTimestampMonotonic,TimeoutStartUSec",
+                 *services], capture_output=True, text=True).stdout
+    found = []
+    for kv in _chunks(state):
+        started = int(kv.get("InactiveExitTimestampMonotonic") or 0) / 1e6
+        if kv.get("ActiveState") == "activating" and kv.get("TimeoutStartUSec") == "infinity" and started:
+            minutes = (now_mono - started) / 60
+            if minutes > limit_min:
+                found.append((kv["Id"], round(minutes)))
+    return sorted(found)
+
+
 def rearm(stalled, run=subprocess.run):
     """Run each stalled timer's service once: what the timer itself should have done; afterwards OnUnit*Sec has a
     base again. A deliberately stopped timer is `dead`, not `elapsed`, so this never overrides an owner stop."""
@@ -86,7 +116,7 @@ def rearm(stalled, run=subprocess.run):
             run(["systemctl", "--user", "start", "--no-block", service], capture_output=True, text=True)
 
 
-def block(rows, now_mono, min_minutes, stamp, state=None, missing=missing_paths, stalled=()):
+def block(rows, now_mono, min_minutes, stamp, state=None, missing=missing_paths, stalled=(), overrun=()):
     state = state or {}
     stale = []
     for u, t, r, s in rows:
@@ -94,12 +124,16 @@ def block(rows, now_mono, min_minutes, stamp, state=None, missing=missing_paths,
         m = (now_mono - e["first"]) / 60 if e["first"] else 0
         if m > min_minutes or e["streak"] >= 3:
             stale.append((u, m, r, s, e["streak"]))
-    if not stale and not stalled:
+    if not stale and not stalled and not overrun:
         return ""
     lines = [BEGIN]
     if stalled:
         lines.append(f"- STALLED TIMERS (repeating, but systemd armed nothing), on groot (failed-unit-watch, {stamp}):")
         lines += [f"  - {t}: elapsed; re-armed: started {svc} once" for t, svc in stalled]
+    if overrun:
+        lines.append(f"- OVERRUNNING TIMER SERVICES (one run blocks every later tick; not killed), on groot "
+                     f"(failed-unit-watch, {stamp}):")
+        lines += [f"  - {svc}: activating {m} min, no TimeoutStartSec" for svc, m in overrun]
     if stale:
         lines.append(f"- FAILED UNITS >{min_minutes} min or failing every run, on groot (failed-unit-watch, {stamp}):")
     for u, m, r, s, n in sorted(stale, key=lambda x: -x[1]):
@@ -138,7 +172,8 @@ def main():
     a.state.write_text(json.dumps(state))
     stalled = stalled_timers()
     rearm(stalled)
-    update(a.status, block(rows, now, a.min, time.strftime("%Y-%m-%d %H:%M %Z"), state, stalled=stalled))
+    update(a.status, block(rows, now, a.min, time.strftime("%Y-%m-%d %H:%M %Z"), state, stalled=stalled,
+                           overrun=overrunning(now_mono=now)))
     return 0
 
 
