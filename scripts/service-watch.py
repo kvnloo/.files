@@ -47,7 +47,7 @@ DEFAULT = OPERATIONS / 'service-watch'
 INVENTORY = OPERATIONS / 'host-hygiene/units.json'
 REAPER_STATUS = OPERATIONS / 'worktree-reaper/latest.json'
 BUSY_TIMEOUT = 30
-RETAIN_DAYS = 14
+RETAIN_DAYS = 7
 LOCKED = re.compile(r'database is (locked|busy)')
 USER_UNIT_DIR = Path.home() / '.config/systemd/user'
 USER_UNIT_PATHS = (USER_UNIT_DIR, Path.home() / '.local/share/systemd/user', Path('/etc/systemd/user'),
@@ -470,6 +470,7 @@ class Watch:
         self.checkout_threshold = checkout_threshold
         self.checkout_roots = checkout_roots
         self.reaper_status = Path(reaper_status)
+        self.intake = Path(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()) / 'service-watch/intake'
         self.store = Store(root)
         self.inventory = Path(inventory)
         self.units = {}
@@ -706,6 +707,16 @@ class Watch:
             self.record(**call)
             path.unlink()
             done += 1
+        # OnFailure hooks only touch an empty file named after the escaped unit (no Python, no DB):
+        # 5,956 hook runs in 24 h each loaded this script and queued on the write lock (F14).
+        for path in sorted(self.intake.iterdir()) if self.intake.is_dir() else []:
+            unit = failure_target(re.sub(r'\\x([0-9a-fA-F]{2})', lambda m: chr(int(m.group(1), 16)), path.name))
+            if unit:
+                self.record('user', unit, [event('failed')])
+                done += 1
+            else:
+                print('SERVICE_WATCH_BAD_INTAKE ' + json.dumps(path.name), flush=True)
+            path.unlink()
         return done
 
     def scan(self):

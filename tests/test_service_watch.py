@@ -79,6 +79,19 @@ class Contracts(unittest.TestCase):
         self.assertEqual(stored['latest'], {'mode': 'apply', 'removed_count': 2, 'errors': [0, 1, 2, 3, 4]})
         self.assertLess(len(json.dumps(stored)), 20000)
 
+    def test_failure_hook_intake_is_drained_without_python_in_the_hook(self):
+        unit_file = (ROOT / 'config/systemd/user/service-watch-failure@.service').read_text()
+        self.assertNotIn('service-watch failure', [l for l in unit_file.splitlines() if l.startswith('ExecStart=')][0])
+        self.watch.intake = self.root / 'intake'
+        self.watch.intake.mkdir()
+        for name in ('host\\x2ddrift.service', 'bare\\x2dinstance', 'bad;name'):
+            (self.watch.intake / name).touch()
+        with patch.object(self.watch.store, 'notify', return_value='deduplicated'):
+            self.assertEqual(self.watch.drain_spool(), 2)
+        units = sorted(r[0] for r in self.watch.store.db.execute('SELECT unit FROM incidents'))
+        self.assertEqual(units, ['bare-instance.service', 'host-drift.service'])
+        self.assertEqual(list(self.watch.intake.iterdir()), [])
+
     def test_hooks_for_vanished_transient_units_are_pruned(self):
         # 2026-11-16: 1964 hook dirs for gone instances/D-Bus activations, re-parsed by every daemon-reload.
         ud = self.root / 'units'

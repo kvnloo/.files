@@ -4,7 +4,9 @@ OnFailure=
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/service-watch failure %I
+# Spool, not report: the daemon drains %t/service-watch/intake each scan and stays the only DB
+# writer. `service-watch failure <unit>` remains for manual reports.
+ExecStart=/usr/bin/install -D -m 0600 /dev/null %t/service-watch/intake/%i
 UMask=0077
 Nice=15
 MemoryMax=96M
@@ -15,4 +17,4 @@ IOSchedulingPriority=7
 CPUQuota=
 TasksMax=16
 NoNewPrivileges=true
-TimeoutStartSec=90
+TimeoutStartSec=15
