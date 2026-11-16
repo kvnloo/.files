@@ -2,7 +2,8 @@
 Description=Check every 2 min that Hermes backends run the code on disk
 
 [Timer]
-OnActiveSec=2min
+# OnBootSec, not OnActiveSec: every user daemon-reload re-fires OnActiveSec (~7/h extra starts, 2026-11-16).
+OnBootSec=2min
 # F16 start budget: a backend left on stale code waits at most ~2 min more.
 OnUnitActiveSec=2min
 AccuracySec=10s

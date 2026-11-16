@@ -56,3 +56,15 @@ def test_rate_reads_spans_calendars_and_dropin_resets(tmp_path):
     (tmp_path / 'x.timer.d').mkdir()
     (tmp_path / 'x.timer.d/pace.conf').write_text('[Timer]\nOnUnitActiveSec=\nOnUnitActiveSec=1h 30min\n')
     assert round(timer_rate(t), 2) == round(4 + 1 / 1.5, 2)
+
+
+def test_recurring_timers_do_not_use_on_active_sec():
+    # Every user daemon-reload re-fires OnActiveSec (probe 2026-11-16: reload + 20 s); with ~170 reloads a day
+    # that was ~7 extra starts/h per timer. OnBootSec fires at once when started after boot and survives reloads.
+    # One-shot and debounce timers (no repeat line) keep OnActiveSec.
+    bad = []
+    for p in UNITS.glob('*.timer'):
+        text = ''.join(f.read_text() for f in [p, *sorted(p.with_name(p.name + '.d').glob('*.conf'))])
+        if re.search(r'^OnActiveSec=\S', text, re.M) and REPEAT.search(text):
+            bad.append(p.name)
+    assert not bad, f'recurring timers re-fired by every daemon-reload: {sorted(bad)}'
