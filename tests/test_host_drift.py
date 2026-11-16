@@ -145,6 +145,32 @@ class DriftTests(unittest.TestCase):
             self.assertEqual(self.run_audit()['status'], 'clean')
         self.assertEqual(self.run_audit()['drift'][0]['kind'], 'unstamped_install')
 
+    def test_read_only_named_files_live_release_is_stamped(self):
+        # Single-change releases are cut as files-live/<name>-<git sha> (dirs 0555); 38 served links
+        # read as unstamped_install on 2026-11-16 although each is immutable and git-named.
+        physical = self.base / 'physical-files-live'
+        release = physical / 'swfix-eee4697c'
+        target = release / 'scripts' / 'fixture.service'
+        target.parent.mkdir(parents=True)
+        target.write_text('safe\n')
+        self.live.unlink()
+        self.live.symlink_to(target)
+        self.manifest(install='symlink-stamped')
+        with patch.object(drift, 'PHYSICAL_RELEASE_ROOT', physical):
+            self.assertIn('unstamped_install', {r['kind'] for r in self.run_audit()['drift']})  # writable
+            release.chmod(0o555)
+            try:
+                self.assertEqual(self.run_audit()['status'], 'clean')
+                for bad in ('swfix', 'swfix-nothex12', 'swfix-abc'):  # name must end in a git sha
+                    other = physical / bad
+                    release.rename(other)
+                    self.live.unlink()
+                    self.live.symlink_to(other / 'scripts' / 'fixture.service')
+                    self.assertIn('unstamped_install', {r['kind'] for r in self.run_audit()['drift']}, bad)
+                    other.rename(release)
+            finally:
+                release.chmod(0o755)
+
     def test_declared_git_stamp_requires_identity_and_exact_source(self):
         physical = self.base / 'releases'
         release = physical / 'fixture' / ('c' * 40)

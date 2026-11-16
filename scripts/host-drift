@@ -70,6 +70,20 @@ def deployment_stamped(path, entry, releases=None):
     return stamp.get('name') == name and stamp.get('source_sha') == parts[0]
 
 
+def named_release(target, stamp_root):
+    """files-live/<name>-<git sha>/...: a single-change release cut read-only (no write bits on the
+    release dir). Content is still compared byte-for-byte against the manifest source."""
+    if not stamp_root or not target.is_relative_to(stamp_root) or target == stamp_root:
+        return False
+    release = stamp_root / target.relative_to(stamp_root).parts[0]
+    if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{8,40}', release.name):
+        return False
+    try:
+        return release.is_dir() and not release.stat().st_mode & 0o222
+    except OSError:
+        return False
+
+
 def exec_paths(values, home):
     """Absolute paths a unit executes from or runs in, from systemctl show output."""
     for key in ('ExecStartPre', 'ExecStart', 'ExecStartPost', 'ExecStop'):
@@ -199,6 +213,9 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                     if any(target.is_relative_to(base) and
                            any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(base).parts)
                            for base in (library, stamp_root) if base):
+                        stamped = True
+                        break
+                    if named_release(target, stamp_root):
                         stamped = True
                         break
                 if not stamped and not deployment_stamped(live, entry, releases):
