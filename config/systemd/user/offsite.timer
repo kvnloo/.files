@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily off-machine copies (offsite-sync + offsite-blobs)
+
+[Timer]
+OnCalendar=*-*-* 02:30
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

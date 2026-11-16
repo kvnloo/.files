@@ -51,11 +51,13 @@ class Reap(unittest.TestCase):
         self.net = self.tmp / "branches.json"
         self.net.write_text(json.dumps({"generated_at": time.time(), "rows": rows}))
         self.out = self.tmp / "run"
+        self.remote_re = "origin\\.git"
 
     def run_reap(self, *extra):
         env = dict(os.environ, HOME=str(self.tmp),   # no T3 worktrees under the fake home
                    WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"),
-                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"))
+                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"),
+                   WORKTREE_REAP_REMOTE_RE=self.remote_re)
         return subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out), *extra],
                               capture_output=True, text=True, env=env)
 
@@ -176,6 +178,10 @@ class Reap(unittest.TestCase):
         rec = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
         rec = [x for x in rec if x["branch"] == "idle-dirty"][0]
         self.assertEqual(rec["action"], "idle"); self.assertTrue(rec["worktree_removed"])
+        # the snapshot is off-machine (on the remote) before the tree is removed
+        dest = "refs/heads/reaped/" + ref[0].removeprefix("refs/reaped/")
+        self.assertEqual(g(self.tmp / "origin.git", "rev-parse", dest), g(self.repo, "rev-parse", ref[0]))
+        self.assertEqual(rec["snapshot_pushed"], "origin:" + dest)
         names = subprocess.run(["tar", "-tzf", rec["ignored_archive"]], capture_output=True, text=True).stdout.split()
         self.assertIn(".env", names)                                     # ignored file archived
         self.assertFalse(any("node_modules" in n for n in names))         # deps not archived
@@ -196,6 +202,15 @@ class Reap(unittest.TestCase):
         self.assertFalse(wt.exists())
         ref = [x for x in self.snapshots() if "idle-detached" in x]
         self.assertEqual(g(self.repo, "rev-parse", f"{ref[0]}^"), head)
+
+    def test_idle_worktree_without_offsite_remote_is_kept(self):
+        # Kevin 11-16: groot is never the only copy; no pushable remote means the tree stays
+        self.remote_re = "github\\.com[:/]kvnloo/"
+        wt = self.add_idle("idle-local", lambda wt: (wt / "idea.md").write_text("x"))
+        self.run_reap("--apply")
+        self.assertTrue(wt.exists())
+        rec = [json.loads(l) for l in (self.out / "receipts.jsonl").read_text().splitlines()]
+        self.assertIn("no kvnloo remote", [x for x in rec if x["branch"] == "idle-local"][0]["kept"])
 
     def test_recent_file_keeps_worktree(self):
         wt = self.add_idle("idle-but-touched", lambda wt: None)
@@ -248,7 +263,7 @@ class Reap(unittest.TestCase):
         (fake / "git").write_text(f'#!/bin/sh\ncase "$*" in *"worktree remove"*slow-wt*) sleep 5;; esac\nexec {real} "$@"\n')
         (fake / "git").chmod(0o755)
         env = dict(os.environ, HOME=str(self.tmp), WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"),
-                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"), WORKTREE_REAP_GIT_TIMEOUT="1",
+                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"), WORKTREE_REAP_GIT_TIMEOUT="1", WORKTREE_REAP_REMOTE_RE=self.remote_re,
                    PATH=f"{fake}:{os.environ['PATH']}")
         r = subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out), "--apply"],
                            capture_output=True, text=True, env=env)
