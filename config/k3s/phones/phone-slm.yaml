@@ -1,0 +1,58 @@
+# Phone SLM endpoints: the S25/S22 run native llama-server over adb (no app install,
+# no kubelet: phones are not k8s nodes). The servers listen on the phone's tailnet IP
+# with an API key; k3s only gives them stable in-cluster names.
+#   slm-s25.phone-slm.svc:8080  Qwen3-1.7B Q4_0 on Hexagon HTP0 (NPU)
+#   slm-s22.phone-slm.svc:8080  Qwen3-1.7B Q4_0 on CPU (shares cores with fleet-backfill)
+# Lifecycle stays with kevin-phones scripts/native_server_restart.py (--bind 0.0.0.0
+# --api-key-file ~/.local/state/phone-native-inference/api-key). The key is the
+# Secret phone-slm/api-key (key: key), created out of band, never committed:
+#   kubectl -n phone-slm create secret generic api-key --from-literal=key="$(tr -d '\n' < <that file>)"
+# Tailnet IPs are stable per device; update here if a phone is re-enrolled.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phone-slm
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slm-s25
+  namespace: phone-slm
+spec:
+  ports: [{name: http, port: 8080, targetPort: 8080, protocol: TCP}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: slm-s25-tailnet
+  namespace: phone-slm
+  labels:
+    kubernetes.io/service-name: slm-s25
+    endpointslice.kubernetes.io/managed-by: files.phone-slm
+addressType: IPv4
+ports: [{name: http, port: 8080, protocol: TCP}]
+endpoints:
+  - addresses: ["100.117.226.39"]   # Kevin's S25 Ultra (android tailnet node)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slm-s22
+  namespace: phone-slm
+spec:
+  ports: [{name: http, port: 8080, targetPort: 8080, protocol: TCP}]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: slm-s22-tailnet
+  namespace: phone-slm
+  labels:
+    kubernetes.io/service-name: slm-s22
+    endpointslice.kubernetes.io/managed-by: files.phone-slm
+addressType: IPv4
+ports: [{name: http, port: 8080, protocol: TCP}]
+endpoints:
+  - addresses: ["100.72.191.23"]    # Galaxy S22+ (android tailnet node)

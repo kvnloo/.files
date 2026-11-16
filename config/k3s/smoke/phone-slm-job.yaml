@@ -1,0 +1,49 @@
+# Smoke: a restricted pod reaches each phone SLM by Service name and gets a completion.
+#   kubectl -n phone-slm delete job phone-slm-smoke --ignore-not-found
+#   kubectl apply -f config/k3s/smoke/phone-slm-job.yaml
+#   kubectl -n phone-slm wait --for=condition=complete job/phone-slm-smoke --timeout=180s
+#   kubectl -n phone-slm logs job/phone-slm-smoke
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: phone-slm-smoke
+  namespace: phone-slm
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 240
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: smoke
+          image: curlimages/curl:8.11.1
+          env:
+            - name: KEY
+              valueFrom: {secretKeyRef: {name: api-key, key: key}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+          command: [sh, -c]
+          args:
+            - |
+              rc=0
+              for s in slm-s25 slm-s22; do
+                out=$(curl -sS -m 90 -w ' http=%{http_code} t=%{time_total}s' \
+                  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+                  -d '{"messages":[{"role":"user","content":"Reply with only READY."}],"max_tokens":4,"temperature":0}' \
+                  http://$s:8080/v1/chat/completions) || rc=1
+                echo "$s ${out#*\"content\":}" | cut -c1-200
+                case "$out" in *http=200*) ;; *) rc=1;; esac
+              done
+              noauth=$(curl -s -o /dev/null -w '%{http_code}' -m 20 -d '{}' http://slm-s25:8080/v1/chat/completions)
+              echo "no-key http=$noauth (want 401)"; [ "$noauth" = 401 ] || rc=1
+              exit $rc
