@@ -39,16 +39,17 @@ class Contracts(unittest.TestCase):
 
     def test_old_incidents_are_pruned_but_each_latest_is_kept(self):
         db, now = self.watch.store.db, time.time()
-        rows = [('a1', 'fa', now - 40 * 86400), ('a2', 'fa', now - 20 * 86400), ('a3', 'fa', now - 60),
-                ('b1', 'fb', now - 30 * 86400), ('p1', 'fp', now - 50 * 86400), ('p2', 'fp', now - 10)]
-        for ident, fp, ts in rows:
-            db.execute('INSERT INTO incidents VALUES (?,?,?,?,?,?)', (ident, fp, ts, 'u.service', 'user', '{}'))
+        rows = [('a1', 'fa', now - 40 * 86400, '{}'), ('a2', 'fa', now - 20 * 86400, '{}'), ('a3', 'fa', now - 60, '{}'),
+                ('t1', 'ft', now - 30 * 86400, '{}'), ('p1', 'fp', now - 50 * 86400, '{}'), ('p2', 'fp', now - 10, '{}'),
+                ('o1', 'fo', now - 60 * 86400, '{"once": true}'), ('o2', 'fo', now - 30 * 86400, '{"once": true}')]
+        for ident, fp, ts, data in rows:
+            db.execute('INSERT INTO incidents VALUES (?,?,?,?,?,?)', (ident, fp, ts, 'u.service', 'user', data))
         db.execute('INSERT INTO pending VALUES (?,?)', ('p1', '{}'))
         db.commit()
-        self.assertEqual(self.watch.store.prune(now), 2)
+        self.assertEqual(self.watch.store.prune(now), 4)
         left = {r[0] for r in db.execute('SELECT id FROM incidents')}
-        # a1/a2 aged out; b1 is fb's only row; p1 is still pending triage.
-        self.assertEqual(left, {'a3', 'b1', 'p1', 'p2'})
+        # a1/a2 and a transient unit's only row (t1) age out; p1 is pending; o2 is a report-once fact's latest.
+        self.assertEqual(left, {'a3', 'p1', 'p2', 'o2'})
 
     def test_inactive_unit_nothing_starts_is_not_unexpected(self):
         inv = {'kind': 'systemd', 'expected_active_state': 'active'}
@@ -56,6 +57,12 @@ class Contracts(unittest.TestCase):
             prop = {'ActiveState': 'inactive', 'UnitFileState': state}
             codes = [e['code'] for e in self.watch.invariant('user', 'x.service', inv, prop, time.time())]
             self.assertEqual('unexpected_state' in codes, flagged, state)
+
+    def test_identity_records_are_flagged_report_once(self):
+        with patch.object(self.watch.store, 'notify', return_value='deduplicated'):
+            self.watch.record('user', 'host-drift.service', [sw.event('host_config_drift')], identity={'k': 1}, triage=False)
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents').fetchone()[0])
+        self.assertIs(data['once'], True)
 
     def test_persistent_warning_is_recorded_once_a_day_and_severe_hourly(self):
         with patch.object(self.watch.store, 'notify', return_value='deduplicated'):

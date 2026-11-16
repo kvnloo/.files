@@ -330,12 +330,13 @@ class Store:
         ''')
 
     def prune(self, now, days=RETAIN_DAYS):
-        """Drop incidents older than `days`, keeping each fingerprint's latest row (once-only host
-        facts dedupe on it) and anything still pending triage. Unbounded, the table reached 40k
-        rows (98 MB) by 2026-11-16 and every hook's dedupe read scanned it."""
+        """Drop incidents older than `days` except anything pending triage and the latest row of a
+        report-once fact (identity records dedupe on it forever; host-drift rows predate the flag).
+        Unbounded, the table reached 40k rows (98 MB) by 2026-11-16."""
         with self.lock:
-            cur = self.db.execute('DELETE FROM incidents WHERE ts<? AND id NOT IN (SELECT id FROM pending) '
-                                  'AND ts<(SELECT max(ts) FROM incidents j WHERE j.fingerprint=incidents.fingerprint)',
+            cur = self.db.execute('DELETE FROM incidents WHERE ts<? AND id NOT IN (SELECT id FROM pending) AND NOT ('
+                                  "(coalesce(json_extract(data,'$.once'),0) OR unit='host-drift.service') AND "
+                                  'ts=(SELECT max(ts) FROM incidents j WHERE j.fingerprint=incidents.fingerprint))',
                                   (now - days * 86400,))
             self.db.commit()
         return cur.rowcount
@@ -674,6 +675,8 @@ class Watch:
                     'latency_ms': 0, 'severe_confirmed': severity == 'severe'}
             if action:
                 data['pending_action'] = action
+            if identity is not None:
+                data['once'] = True
             self.store.db.execute('INSERT INTO incidents VALUES (?,?,?,?,?,?)', (ident, fingerprint, now, unit, scope, json.dumps(data)))
             if triage:
                 self.store.db.execute('INSERT INTO pending VALUES (?,?)', (ident, json.dumps({'scope': scope, 'unit': unit, 'fingerprint': fingerprint})))
