@@ -1,0 +1,8 @@
+[Unit]
+Description=gh-feedback-watch: catch human replies to our GitHub contributions (complaints -> backoff + phone)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/bin/gh-feedback-watch poll
+TimeoutStartSec=240
+Nice=10

@@ -3587,6 +3587,24 @@ drift = "owned-upstream"
 issue = "https://github.com/pingdotgg/t3code/issues/24708"
 
 [[user]]
+live = "~/.local/bin/gh-feedback-watch"
+source = "scripts/gh-feedback-watch"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Was an unmanaged live-only file (sysgraph unsourced); poll lock split from followups, tests/test_gh_feedback_watch.py."
+migration_sha256 = "081244bdda673ad8e980d4813577c926749be3b40015f4b66a00169ba9f5649c"
+
+[[user]]
+live = "~/.config/systemd/user/gh-feedback-watch.service"
+source = "config/systemd/user/gh-feedback-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Was an unmanaged live-only file (sysgraph unsourced); poll lock split from followups, tests/test_gh_feedback_watch.py."
+migration_sha256 = "9224f34d092a9a4eacd24943db19afe22322e1d47c160410dcc88afc35660eb0"
+
+[[user]]
 live = "~/.local/bin/dash-log-watch"
 source = "scripts/dash-log-watch.py"
 scope = "user"
