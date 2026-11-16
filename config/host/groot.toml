@@ -4612,6 +4612,30 @@ reason = "Exec'd by limitless-sync every 15 min but was a live-only copy that no
 migration_sha256 = "06cb1c471841ccc11dc3abd4ca7cd4ef9edd8bca49f8054c300a89f39d46296e"
 
 [[user]]
+live = "~/.config/systemd/user/srfree-v3-a0.service.d/53-restart-delay.conf"
+source = "config/systemd/user/srfree-v3-a0.service.d/53-restart-delay.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep the unit's declared RestartSec=5min: the global 52-restart-backoff cap (2 min) otherwise clips it."
+
+[[user]]
+live = "~/.config/systemd/user/srfree-v3-a0eval.service.d/53-restart-delay.conf"
+source = "config/systemd/user/srfree-v3-a0eval.service.d/53-restart-delay.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep the unit's declared RestartSec=15min: the global 52-restart-backoff cap (2 min) otherwise clips it."
+
+[[user]]
+live = "~/.config/systemd/user/graphrag-index.service.d/53-restart-delay.conf"
+source = "config/systemd/user/graphrag-index.service.d/53-restart-delay.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Keep the unit's declared RestartSec=10min: the global 52-restart-backoff cap (2 min) otherwise clips it."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
