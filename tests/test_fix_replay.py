@@ -34,6 +34,25 @@ class FixReplayCost(unittest.TestCase):
             self.assertGreaterEqual(rows["slow-fail"]["ms"], 250)
             self.assertFalse(rows["slow-fail"]["ok"])
 
+    def test_a_malformed_row_fails_alone_and_the_rest_still_replay(self):
+        # 2026-11-16 13:03: one row carried "env" as prose instead of an object; the TypeError aborted the
+        # whole replay, so no tape was checked, the board went stale and nobody was paged.
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Path(tmp) / "ops"
+            ops.mkdir()
+            (ops / "fix-tapes.json").write_text(json.dumps({"tapes": [
+                {"id": "prose-env", "tape": "true", "env": "needs XDG_RUNTIME_DIR"},
+                {"id": "no-tape"},
+                {"id": "fine", "tape": "true", "env": {"A": "1"}},
+            ]}))
+            load(ops).run()
+            rows = {r["id"]: r for r in map(json.loads, (ops / "fix-replay.jsonl").read_text().splitlines())}
+            self.assertTrue(rows["fine"]["ok"])
+            self.assertFalse(rows["prose-env"]["ok"])
+            self.assertIn("malformed tape row", rows["prose-env"]["out"])
+            self.assertFalse(rows["no-tape"]["ok"])
+            self.assertTrue((ops / "BOARD.md").exists())
+
     def test_use_must_be_a_read_only_counter(self):
         # 2026-11-16: a `use` of `systemctl --user start kvnloo-fork-sync.service` turned a daily GitHub sync
         # into an hourly one (14 starts/24 h, ~150 s each) and prose notes were executed as shell.

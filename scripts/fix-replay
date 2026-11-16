@@ -45,6 +45,16 @@ MUTATING_USE = re.compile(r"\bsystemctl\b[^|;&]*\b(start|restart|stop|reload|try
                           r"|<[a-z][\w -]*>")
 
 
+def malformed(t):
+    """Why a row can't run, or ''. A bad row fails alone: on 2026-11-16 one prose `env` aborted the whole replay."""
+    if not isinstance(t.get("tape"), str) or not t["tape"].strip():
+        return "malformed tape row: tape must be a non-empty string"
+    if t.get("env") is not None and not (isinstance(t["env"], dict)
+                                         and all(isinstance(v, str) for v in t["env"].values())):
+        return "malformed tape row: env must be an object of strings (put prose in note)"
+    return ""
+
+
 def status(s, now):
     if not s.get("ok"):
         return "open"
@@ -65,11 +75,12 @@ def run():
     with LOG.open("a") as log:
         for t in tapes():
             t0 = time.monotonic()
-            rc, out = sh(t["tape"], t.get("env"))
+            bad = malformed(t)
+            rc, out = (2, bad) if bad else sh(t["tape"], t.get("env"))
             ok = rc == 0
             s = st.setdefault(t["id"], {"since": now, "ok": ok, "uses": 0, "passes": 0, "fails": 0})
             before = status(s, now)
-            uses, refused = 0, bool(t.get("use") and MUTATING_USE.search(t["use"]))
+            uses, refused = 0, bool(t.get("use") and (bad or MUTATING_USE.search(t["use"])))
             s.pop("use_refused", None)
             if refused:
                 s["use_refused"] = True
