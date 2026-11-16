@@ -1,0 +1,13 @@
+[Unit]
+Description=memory-heal: reconcile the unified memory system with config/host/memory-system-intent.toml
+Documentation=file:///mnt/zer0models/worktrees/files-live/config/host/memory-system-intent.toml
+
+[Service]
+Type=oneshot
+Nice=10
+MemoryMax=256M
+TimeoutStartSec=10min
+# Exit 1 = findings still open after the declared remedies; they are escalated as incidents
+# (operations/memory-heal/incidents) with one bounded LLM diagnosis per fingerprint per day.
+SuccessExitStatus=1
+ExecStart=/usr/bin/python3 %h/.local/bin/memory-heal

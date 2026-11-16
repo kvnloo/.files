@@ -1,0 +1,11 @@
+[Unit]
+Description=Run memory-heal after boot and every 15 minutes
+
+[Timer]
+OnStartupSec=5min
+# OnCalendar, not OnUnitActiveSec: the monotonic form goes "elapsed" after a daemon-reload (ctx-import, 10-25).
+OnCalendar=*:07/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
