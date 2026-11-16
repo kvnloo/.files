@@ -2,7 +2,7 @@
 Description=Local host/fleet performance learner and bounded CPU-policy regression repair
 After=default.target
 ConditionPathIsMountPoint=/mnt/zer0models
-OnFailure=service-watch-failure@host-optimizer.service.service
+OnFailure=service-watch-failure@host\x2doptimizer.service.service
 
 [Service]
 Type=oneshot
