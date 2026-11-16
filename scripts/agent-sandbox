@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# agent-sandbox: run a Hermes profile as one kubernetes-sigs/agent-sandbox Sandbox
+# in namespace `agents` (config/k3s/manifests/60-agents.yaml), off groot.
+#   agent-sandbox up <profile> [node]   seed config + secrets from the profile, apply the Sandbox
+#   agent-sandbox down <profile>        delete the Sandbox, its PVC, ConfigMap and Secret
+#   agent-sandbox ask <profile> <text>  one chat turn via the profile's API server
+#   agent-sandbox ls
+# Seeds only config.yaml (minus host-only `secrets:`), SOUL.md and memories/*.md.
+# Secrets come from the profile's bws scope file; nothing secret is written to disk.
+set -euo pipefail
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+NS=agents
+IMAGE="${AGENT_SANDBOX_IMAGE:-nousresearch/hermes-agent:v0.23.1@sha256:276d44685c65c0cb2a25f190b63c65c8906f9dc76486fb1c05ae71b5826bda08}"
+HERMES_ROOT="${HERMES_ROOT:-$HOME/.hermes}"
+cmd="${1:-ls}"; p="${2:-}"
+need() { [ -n "$p" ] || { echo "usage: agent-sandbox $cmd <profile>" >&2; exit 2; }; }
+name() { printf 'hermes-%s' "$p"; }
+
+up() {
+  need; local node="${3:-mbp}" home="$HERMES_ROOT/profiles/$p" scope="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bws-secrets/hermes-$p.env"
+  [ -f "$home/config.yaml" ] || { echo "no profile $home" >&2; exit 1; }
+  local seed; seed="$(mktemp -d)"; trap 'rm -rf "$seed"' RETURN
+  python3 - "$home/config.yaml" "$seed/config.yaml" <<'PY'
+import sys, yaml
+c = yaml.safe_load(open(sys.argv[1])) or {}
+c.pop("secrets", None)  # host-only secret commands; the pod gets env from a Secret
+yaml.safe_dump(c, open(sys.argv[2], "w"), sort_keys=False, allow_unicode=True)
+PY
+  [ -f "$home/SOUL.md" ] && cp "$home/SOUL.md" "$seed/"
+  for m in "$home"/memories/*.md; do [ -f "$m" ] && cp "$m" "$seed/memory-$(basename "$m")"; done
+  kubectl -n $NS create configmap "$(name)-seed" --from-file="$seed" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  # API key: keep the existing one so callers stay valid across re-ups.
+  local key; key="$(kubectl -n $NS get secret "$(name)-env" -o jsonpath='{.data.API_SERVER_KEY}' 2>/dev/null | base64 -d || true)"
+  [ -n "$key" ] || key="$(openssl rand -hex 24)"
+  { [ -f "$scope" ] && grep -E '^[A-Z0-9_]+=' "$scope" | grep -vE '^(DISCORD|TELEGRAM|SLACK)_' | sed -E "s/^([A-Z0-9_]+)=([\"'])(.*)\2\$/\1=\3/" || true; echo "API_SERVER_KEY=$key"; } \
+    | kubectl -n $NS create secret generic "$(name)-env" --from-env-file=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl apply -f - <<YAML
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata: {name: $(name), namespace: $NS, labels: {z0.dev/profile: "$p"}}
+spec:
+  podTemplate:
+    metadata: {labels: {z0.dev/profile: "$p"}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: $node}
+      automountServiceAccountToken: false
+      shareProcessNamespace: true  # pause container is PID 1 and reaps the gateway's orphans
+      securityContext: {runAsNonRoot: true, runAsUser: 10000, runAsGroup: 10000, fsGroup: 10000, seccompProfile: {type: RuntimeDefault}}
+      initContainers:
+      - name: netpol-ready
+        image: busybox:1.37
+        command: [sh, -c]
+        args: ['i=0; while [ \$i -lt 60 ]; do nc -z -w 1 "\$KUBERNETES_SERVICE_HOST" "\$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=\$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1']
+        securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+        resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+      - name: seed
+        image: $IMAGE
+        command: [sh, -c, 'mkdir -p /opt/data/memories && cd /seed && for f in *; do case \$f in memory-*) cp \$f /opt/data/memories/\${f#memory-};; *) cp \$f /opt/data/\$f;; esac; done']
+        securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+        volumeMounts: [{name: data, mountPath: /opt/data}, {name: seed, mountPath: /seed}]
+      containers:
+      - name: hermes
+        image: $IMAGE
+        command: [hermes, gateway, run]
+        envFrom: [{secretRef: {name: $(name)-env}}]
+        env:
+        - {name: API_SERVER_ENABLED, value: "true"}
+        - {name: API_SERVER_HOST, value: 0.0.0.0}
+        - {name: HOME, value: /opt/data}
+        ports: [{containerPort: 8642, name: api}]
+        readinessProbe: {httpGet: {path: /health, port: 8642}, periodSeconds: 5}
+        securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+        resources: {requests: {cpu: 100m, memory: 384Mi}, limits: {cpu: "1", memory: 1Gi}}
+        volumeMounts: [{name: data, mountPath: /opt/data}]
+      volumes: [{name: seed, configMap: {name: $(name)-seed}}]
+  volumeClaimTemplates:
+  - metadata: {name: data}
+    spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}
+YAML
+  # Re-up: recreate the pod so new seed/env load; the controller keeps the PVC (state.db, sessions).
+  kubectl -n $NS delete pod "$(name)" --ignore-not-found --wait=true >/dev/null
+  sleep 2
+  kubectl -n $NS wait --for=condition=Ready "sandbox/$(name)" --timeout=300s
+}
+
+down() {
+  need
+  kubectl -n $NS delete sandbox "$(name)" --ignore-not-found --wait=true
+  kubectl -n $NS delete configmap "$(name)-seed" --ignore-not-found
+  kubectl -n $NS delete secret "$(name)-env" --ignore-not-found
+  for c in $(kubectl -n $NS get pvc -o name | grep -- "$(name)" || true); do kubectl -n $NS delete "$c" --wait=true; done
+}
+
+ask() {
+  need; local text="${*:3}" key port=$((20000 + RANDOM % 10000))
+  key="$(kubectl -n $NS get secret "$(name)-env" -o jsonpath='{.data.API_SERVER_KEY}' | base64 -d)"
+  kubectl -n $NS port-forward "pod/$(name)" "$port:8642" >/dev/null 2>&1 & local pf=$!
+  trap 'kill $pf 2>/dev/null' RETURN
+  for _ in $(seq 30); do curl -sf -o /dev/null "http://127.0.0.1:$port/health" && break; sleep 0.5; done
+  curl -sS "http://127.0.0.1:$port/v1/chat/completions" -H "Authorization: Bearer $key" -H 'Content-Type: application/json' \
+    -d "$(python3 -c 'import json,sys; print(json.dumps({"model":"hermes-agent","messages":[{"role":"user","content":sys.argv[1]}]}))' "$text")" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"] if "choices" in d else d)'
+}
+
+case "$cmd" in
+  up) up "$@" ;;
+  down) down ;;
+  ask) ask "$@" ;;
+  ls) kubectl -n $NS get sandbox,pod,pvc -o wide ;;
+  *) sed -n '2,9p' "$0"; exit 2 ;;
+esac

@@ -1,0 +1,64 @@
+# agents: every Hermes bot/agent runs here as one agent-sandbox `Sandbox`
+# (kubernetes-sigs/agent-sandbox v1.0.10, installed from its release sandbox.yaml).
+# Same guarantees as `lanes`: restricted pods, netpol-ready init gate, egress only
+# to DNS + public internet (no host services, tailnet or LAN), and a hard ceiling.
+# Agent pods are pinned off groot (owner rule 11-11) by scripts/agent-sandbox.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agents
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agents-ceiling
+  namespace: agents
+spec:
+  hard:
+    pods: "12"
+    requests.cpu: "4"
+    requests.memory: 6Gi
+    limits.memory: 10Gi
+    persistentvolumeclaims: "12"
+    requests.storage: 24Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agents-defaults
+  namespace: agents
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "1", memory: 1Gi}
+      defaultRequest: {cpu: 100m, memory: 256Mi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: untrusted-egress
+  namespace: agents
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 127.0.0.0/8

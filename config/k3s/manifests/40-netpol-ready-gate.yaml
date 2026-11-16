@@ -31,7 +31,7 @@ spec:
         has(variables.first.command) && variables.first.command == ['sh', '-c'] &&
         has(variables.first.args) && size(variables.first.args) == 1 &&
         variables.first.args[0] == 'i=0; while [ $i -lt 60 ]; do nc -z -w 1 "$KUBERNETES_SERVICE_HOST" "$KUBERNETES_SERVICE_PORT" 2>/dev/null || exit 0; i=$((i+1)); sleep 1; done; echo "network policy not enforced"; exit 1'
-      message: "factory/lanes pods must start with the netpol-ready init container (see config/k3s/manifests/40-netpol-ready-gate.yaml)"
+      message: "factory/lanes/agents pods must start with the netpol-ready init container (see config/k3s/manifests/40-netpol-ready-gate.yaml)"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -45,4 +45,4 @@ spec:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [factory, lanes]
+          values: [factory, lanes, agents]
