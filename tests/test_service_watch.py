@@ -654,6 +654,11 @@ class Contracts(unittest.TestCase):
         self.watch.policy_invariants(home, now)
         self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 0)
 
+    def test_failure_target_accepts_hand_written_onfailure_instance(self):
+        self.assertEqual(sw.failure_target('host-drift.service'), 'host-drift.service')
+        self.assertEqual(sw.failure_target('z0int-claude-marketplace'), 'z0int-claude-marketplace.service')
+        self.assertIsNone(sw.failure_target('bad unit; x'))
+
     def test_failure_notifies_once_with_persistent_dedupe_and_digest(self):
         delivered = []
         def fake(argv, timeout=15):

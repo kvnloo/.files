@@ -120,6 +120,15 @@ def unit_ok(unit):
     return isinstance(unit, str) and bool(re.fullmatch(r'[A-Za-z0-9_.:@\\-]+\.(service|timer|socket|scope)', unit))
 
 
+def failure_target(target):
+    """OnFailure= instance -> unit. The generated hook passes the full name; a hand-written
+    service-watch-failure@<escaped>.service line passes it without a type suffix, and that report
+    died as 'Invalid unit', so the unit's failure went unreported."""
+    if unit_ok(target):
+        return target
+    return target + '.service' if unit_ok(str(target) + '.service') else None
+
+
 def systemctl(scope, *args):
     return command(['systemctl'] + (['--user'] if scope == 'user' else ['--system']) + list(args))
 
@@ -1332,9 +1341,10 @@ def main():
                                              'identity': identity, 'action': action, 'triage': False})
         return 0
     if args.action == 'failure':
-        if not unit_ok(args.target):
+        unit = failure_target(args.target)
+        if not unit:
             raise SystemExit('Invalid unit')
-        hook_report(make_watch, args.state, {'scope': args.scope, 'unit': args.target, 'events': [event('failed')]})
+        hook_report(make_watch, args.state, {'scope': args.scope, 'unit': unit, 'events': [event('failed')]})
         return 0
     if args.action == 'heartbeat':
         hook_report(make_watch, args.state,
