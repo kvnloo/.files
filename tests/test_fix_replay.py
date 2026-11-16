@@ -34,6 +34,37 @@ class FixReplayCost(unittest.TestCase):
             self.assertGreaterEqual(rows["slow-fail"]["ms"], 250)
             self.assertFalse(rows["slow-fail"]["ok"])
 
+    def test_use_must_be_a_read_only_counter(self):
+        # 2026-11-16: a `use` of `systemctl --user start kvnloo-fork-sync.service` turned a daily GitHub sync
+        # into an hourly one (14 starts/24 h, ~150 s each) and prose notes were executed as shell.
+        with tempfile.TemporaryDirectory() as tmp:
+            ops, stub = Path(tmp) / "ops", Path(tmp) / "bin"
+            ops.mkdir(); stub.mkdir()
+            marker = Path(tmp) / "started"
+            (stub / "systemctl").write_text(f"#!/bin/sh\necho \"$@\" >> {marker}\necho 0\n")
+            (stub / "systemctl").chmod(0o755)
+            (ops / "fix-tapes.json").write_text(json.dumps({"tapes": [
+                {"id": "mutating", "tape": "true", "use": "systemctl --user start some-sync.service"},
+                {"id": "placeholder", "tape": "true", "use": "systemctl --user show -P OnFailure <unit>"},
+                {"id": "counter", "tape": "true", "use": "echo 3"},
+            ]}))
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{stub}:{old}"
+            try:
+                mod = load(ops)
+                mod.run()
+            finally:
+                os.environ["PATH"] = old
+            rows = {r["id"]: r for r in map(json.loads, (ops / "fix-replay.jsonl").read_text().splitlines())}
+            self.assertFalse(marker.exists(), "a use command must never start or stop units")
+            self.assertTrue(rows["mutating"]["use_refused"])
+            self.assertTrue(rows["placeholder"]["use_refused"])
+            self.assertEqual(rows["counter"]["uses"], 3)
+            self.assertNotIn("use_refused", rows["counter"])
+            state = json.loads((ops / "fix-state.json").read_text())
+            self.assertTrue(state["mutating"]["use_refused"])
+            self.assertIn("use refused", mod.board(state, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

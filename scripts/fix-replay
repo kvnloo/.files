@@ -9,7 +9,7 @@ Status ladder: open (failing now) -> fresh (<3 d) -> holding (3-14 d) -> hardene
 or >=14 d with no use command: 'hardened?' = time-only, unproven under load).
 A tape that fails after being holding/hardened is a REGRESSION and pages Kevin once per streak.
 """
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 from pathlib import Path
 
 OPS = Path(os.environ.get("FIX_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
@@ -39,6 +39,12 @@ def sh(cmd, env=None, timeout=120):
         return 124, "timeout"
 
 
+# `use` counts real exercises of a fix; it must be a read-only counter. A unit start here re-ran a daily
+# GitHub sync every hour, and prose notes with <placeholders> were executed as shell.
+MUTATING_USE = re.compile(r"\bsystemctl\b[^|;&]*\b(start|restart|stop|reload|try-restart|kill|enable|disable|reset-failed)\b"
+                          r"|<[a-z][\w -]*>")
+
+
 def status(s, now):
     if not s.get("ok"):
         return "open"
@@ -60,13 +66,15 @@ def run():
         for t in tapes():
             t0 = time.monotonic()
             rc, out = sh(t["tape"], t.get("env"))
-            ms = int((time.monotonic() - t0) * 1000)  # the run reads 5-14 GB/h; per-tape cost finds the readers
             ok = rc == 0
             s = st.setdefault(t["id"], {"since": now, "ok": ok, "uses": 0, "passes": 0, "fails": 0})
             before = status(s, now)
-            uses = 0
-            if t.get("use"):
-                urc, uout = sh(t["use"], t.get("env"))
+            uses, refused = 0, bool(t.get("use") and MUTATING_USE.search(t["use"]))
+            s.pop("use_refused", None)
+            if refused:
+                s["use_refused"] = True
+            elif t.get("use"):
+                urc, uout = sh(t["use"], t.get("env"), timeout=30)
                 uses = int(uout.split()[-1]) if urc == 0 and uout.split() and uout.split()[-1].isdigit() else 0
                 s["has_use"] = True
             if ok and not s["ok"]:
@@ -82,8 +90,9 @@ def run():
             if ok:
                 s["uses"] += uses
             s.update(cls=t.get("class", ""), what=t.get("what", ""), checked=now)
-            log.write(json.dumps({"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses, "ms": ms,
-                                  "out": "" if ok else out}) + "\n")
+            row = {"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses,
+                   "ms": int((time.monotonic() - t0) * 1000), "out": "" if ok else out}  # tape + use wall time
+            log.write(json.dumps(row | ({"use_refused": True} if refused else {})) + "\n")
     STATE.write_text(json.dumps(st, indent=1))
     for t, before, out in regressions:
         subprocess.run([str(Path.home() / ".local/bin/z0-phone-notify"), "fix-replay", f"REGRESSION {t['id']}",
@@ -99,7 +108,7 @@ def board(st, now):
     for k, s in rows:
         days = round((now - s["since"]) / DAY, 1)
         out.append(f"| {status(s, now)} | {k} | {s.get('cls','')} | {s.get('what','')[:70]} | {days} | "
-                   f"{s.get('uses','-') if s.get('has_use') else '-'} | {s['passes']}/{s['fails']} | "
+                   f"{'use refused' if s.get('use_refused') else s.get('uses','-') if s.get('has_use') else '-'} | {s['passes']}/{s['fails']} | "
                    f"{(s.get('last_fail_at','') + ' ' + s.get('last_fail','')[:60]).strip()} |")
     return "\n".join(out) + "\n"
 
