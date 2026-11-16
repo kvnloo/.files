@@ -52,6 +52,10 @@ LOCKED = re.compile(r'database is (locked|busy)')
 USER_UNIT_DIR = Path.home() / '.config/systemd/user'
 USER_UNIT_PATHS = (USER_UNIT_DIR, Path.home() / '.local/share/systemd/user', Path('/etc/systemd/user'),
                    Path('/usr/lib/systemd/user'))
+# systemd-run units and D-Bus activations: gone within seconds, and a hook for each cost a full user
+# daemon-reload (76/day on 2026-11-16, each re-arming every OnActiveSec timer). Their failures still
+# reach the watchlist through list-units.
+TRANSIENT_DIR = Path(f'/run/user/{os.getuid()}/systemd/transient')
 HOOK_NAME = '90-service-watch.conf'
 HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.service\n')
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
@@ -516,7 +520,7 @@ class Watch:
     def install_hooks(self):
         changed = False
         for scope, unit in self.units:
-            if scope != 'user' or unit.startswith('service-watch-failure@'):
+            if scope != 'user' or unit.startswith('service-watch-failure@') or (TRANSIENT_DIR / unit).exists():
                 continue
             escaped = command(['systemd-escape', unit]).stdout.strip()
             target = USER_UNIT_DIR / (unit + '.d') / HOOK_NAME

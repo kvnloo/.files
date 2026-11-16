@@ -128,6 +128,25 @@ class Contracts(unittest.TestCase):
         self.assertFalse((ud / 'z0int-memory-mcp@0-5000-1000.service.d').exists())
         ctl.assert_not_called()
 
+    def test_transient_units_get_no_hook_and_no_daemon_reload(self):
+        # 2026-11-16: every `systemd-run --user` job got a hook + daemon-reload (76/day), and each
+        # reload re-fired every OnActiveSec timer.
+        ud, transient = self.root / 'units', self.root / 'transient'
+        transient.mkdir()
+        (transient / 'run-p1-i2.service').write_text('[Service]\nExecStart=/bin/true\n')
+        self.watch.units = {('user', 'run-p1-i2.service'): {}, ('user', 'kept.service'): {}}
+        self.watch.coverage = {}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'TRANSIENT_DIR', transient), \
+                patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, 'kept.service\n', '')), \
+                patch.object(sw, 'systemctl') as ctl:
+            self.watch.install_hooks()
+            self.assertFalse((ud / 'run-p1-i2.service.d').exists())
+            self.assertTrue((ud / 'kept.service.d' / sw.HOOK_NAME).exists())
+            self.assertEqual(ctl.call_count, 1)
+            ctl.reset_mock()
+            self.watch.install_hooks()  # nothing new: no reload
+            ctl.assert_not_called()
+
     def test_real_journal_oom_signature_can_use_reserved_capacity(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             for index in range(3):
