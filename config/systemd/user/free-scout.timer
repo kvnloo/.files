@@ -1,0 +1,10 @@
+[Unit]
+Description=free-scout daily
+
+[Timer]
+OnCalendar=*-*-* 07:10
+RandomizedDelaySec=20m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

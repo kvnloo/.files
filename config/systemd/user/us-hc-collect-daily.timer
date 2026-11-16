@@ -1,0 +1,12 @@
+[Unit]
+Description=Us-HC Daily Metrics Collector Timer (Daily 06:00 CST)
+Requires=us-hc-collect-daily.service
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Timezone=America/Chicago
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=S22 garden camera (DroidCam on agent virtual display)
+After=network-online.target
+[Service]
+ExecStart=/mnt/zer0models/workspace/zer0/data/growtwin/private/observations/gardencam/serve
+Restart=always
+RestartSec=30
+[Install]
+WantedBy=default.target

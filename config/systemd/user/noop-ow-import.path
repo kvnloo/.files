@@ -1,0 +1,9 @@
+[Unit]
+Description=Forward NOOP data to Open Wearables whenever limitless-sync refreshes its copy
+
+[Path]
+PathChanged=/mnt/zer0models/sft-svlm/data/limitless/state/noop/noop_whoop.db
+Unit=noop-ow-import.service
+
+[Install]
+WantedBy=default.target

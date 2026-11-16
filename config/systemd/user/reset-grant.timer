@@ -1,0 +1,9 @@
+[Unit]
+Description=reset-grant watcher (every minute; reads the cached burn-pace snapshot, no API calls)
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+[Install]
+WantedBy=timers.target

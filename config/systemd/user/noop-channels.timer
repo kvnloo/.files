@@ -1,0 +1,10 @@
+[Unit]
+Description=NOOP fork GitOps tick every 2 hours
+
+[Timer]
+OnCalendar=*-*-* 00/2:15:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

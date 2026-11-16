@@ -1,0 +1,10 @@
+[Unit]
+Description=Best-way map refresh every 6 h
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

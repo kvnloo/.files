@@ -1,0 +1,8 @@
+[Unit]
+Description=Hourly label drift doctor (oss-factory #313)
+[Timer]
+OnBootSec=5min
+OnCalendar=hourly
+Persistent=true
+[Install]
+WantedBy=timers.target

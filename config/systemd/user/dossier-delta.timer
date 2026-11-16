@@ -1,0 +1,9 @@
+[Unit]
+Description=Sweep for dossier nodes whose delta waited out the per-node rebuild floor (no LLM call when none)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+
+[Install]
+WantedBy=timers.target

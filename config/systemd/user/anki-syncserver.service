@@ -1,0 +1,17 @@
+[Unit]
+Description=Anki Sync Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=SYNC_BASE=/mnt/zer0models/sft-svlm/data/neuroforge/anki/sync
+Environment=SYNC_USER1=kevin:gnY9+A0GWz0JCRxsR3eVZTufTMJ43ZEc
+Environment=SYNC_HOST=0.0.0.0
+Environment=SYNC_PORT=27701
+ExecStart=/mnt/zer0models/sft-svlm/data/neuroforge/anki/venv/bin/python -m anki.syncserver
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

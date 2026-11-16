@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the z0 network-model graph every 30 minutes (offset from agent-telemetry-refresh *:07/30)
+
+[Timer]
+OnCalendar=*:22/30
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

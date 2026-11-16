@@ -1,0 +1,8 @@
+[Unit]
+Description=Regenerate the owner canon block in every harness file when OWNER-CANON.md changes
+
+[Path]
+PathChanged=/mnt/zer0models/workspace/zer0/data/operations/unified-memory/OWNER-CANON.md
+
+[Install]
+WantedBy=default.target

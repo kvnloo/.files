@@ -1,0 +1,15 @@
+[Unit]
+Description=sr:free v3 A0 RSI-Anything code_repair reproduction
+After=srfree-v3-a0.service
+# Retry cap: at most 2 attempts per 12 h; the 2nd resumes the 1st's sealed shards (t_910339bb).
+StartLimitIntervalSec=12h
+StartLimitBurst=2
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/mnt/zer0models/workspace/zer0/data/operations/srfree-hillclimb-20261108/v3/a0-eval.sh >> /mnt/zer0models/workspace/zer0/data/operations/srfree-hillclimb-20261108/v3/a0-eval.log 2>&1'
+Restart=on-failure
+RestartSec=15min
+
+[Install]
+WantedBy=default.target

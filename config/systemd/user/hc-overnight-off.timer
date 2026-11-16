@@ -1,0 +1,5 @@
+[Timer]
+OnCalendar=2026-11-06 10:00
+Unit=hc-overnight-off.service
+[Install]
+WantedBy=timers.target

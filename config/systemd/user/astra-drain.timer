@@ -1,0 +1,8 @@
+[Unit]
+Description=Astra queue: try one contract hourly
+[Timer]
+OnBootSec=15min
+OnUnitInactiveSec=1h
+Persistent=true
+[Install]
+WantedBy=timers.target

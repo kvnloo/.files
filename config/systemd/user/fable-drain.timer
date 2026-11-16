@@ -1,0 +1,8 @@
+[Unit]
+Description=FBL1: try the Fable queue every 20 min
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=20min
+Persistent=true
+[Install]
+WantedBy=timers.target

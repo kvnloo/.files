@@ -1,0 +1,16 @@
+[Unit]
+Description=Dash channel Metro relay (one host address, no wildcard listener)
+Wants=network-online.target dash-channel-metro.service
+After=network-online.target dash-channel-metro.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/dash-channels/channels.env
+ExecStart=/usr/bin/python3 %h/.local/lib/dash/channels/bin/metro-relay.py
+Restart=on-failure
+RestartSec=10
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

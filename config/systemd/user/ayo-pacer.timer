@@ -1,0 +1,7 @@
+[Unit]
+Description=ayo pacer every 15 min (fx Sol bulk work, burn-pace gated)
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+[Install]
+WantedBy=timers.target

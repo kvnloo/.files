@@ -1,0 +1,12 @@
+[Unit]
+Description=StreetSketch image-only dream loop (touch STOP / PAUSE in its dir to control)
+
+[Service]
+WorkingDirectory=/mnt/zer0models/project-artifacts/streetiq/ideate
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env -u PYTHONPATH python3 /mnt/zer0models/project-artifacts/streetiq/ideate/ideate.py
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=default.target

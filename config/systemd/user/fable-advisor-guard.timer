@@ -1,0 +1,7 @@
+[Unit]
+Description=fable-advisor-guard check every 30 min
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+[Install]
+WantedBy=timers.target

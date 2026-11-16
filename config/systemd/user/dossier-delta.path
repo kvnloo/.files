@@ -1,0 +1,9 @@
+[Unit]
+Description=Re-distill owner topic dossiers when a hook appends Kevin's message to DOSSIER-DELTA.jsonl
+
+[Path]
+PathModified=%h/.local/state/z0int/DOSSIER-DELTA.jsonl
+Unit=dossier-delta.service
+
+[Install]
+WantedBy=default.target

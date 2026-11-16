@@ -1,0 +1,7 @@
+[Unit]
+Description=burn-pace refresh every 5 minutes (keeps burn-gate reading fresh)
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target

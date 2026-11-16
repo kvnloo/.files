@@ -1,0 +1,10 @@
+[Unit]
+Description=Dash nightly channel rebuild
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

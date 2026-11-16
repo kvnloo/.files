@@ -1,0 +1,12 @@
+[Unit]
+Description=StreetIQ union preview (vite, port 4393, phone preview)
+
+[Service]
+WorkingDirectory=/mnt/zer0models/z0-wt/streetiq-union/app
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env npx vite --host 0.0.0.0 --port 4393 --strictPort
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

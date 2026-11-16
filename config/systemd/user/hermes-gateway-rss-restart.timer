@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Hermes gateway RSS every 30 min; restart only when idle (t_85eb74e3)
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=30min
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

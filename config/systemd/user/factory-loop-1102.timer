@@ -1,0 +1,7 @@
+[Unit]
+Description=factory-loop-1102 tick every 15min (persistent; recreated 2026-11-04 after reboot dropped the transient timer)
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll make.fun every 30 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00,30:00
+Persistent=true
+AccuracySec=1s
+Unit=makefun-heartbeat.service
+
+[Install]
+WantedBy=timers.target

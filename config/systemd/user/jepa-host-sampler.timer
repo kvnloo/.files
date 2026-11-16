@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the JEPA-HOST host-state sampler every 60s (WP1/Phase-0)
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Live mosaic of agent phone displays (http :8777)
+
+[Service]
+WorkingDirectory=/mnt/zer0models/workspace/zer0/experiments/agent-screen/overview
+ExecStart=/usr/bin/python3 -u overview_server.py 8777
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

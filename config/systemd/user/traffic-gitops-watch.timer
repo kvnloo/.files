@@ -1,0 +1,11 @@
+[Unit]
+Description=Traffic suite GitOps/CI watcher every 20 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=20min
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=ayo ledger reverify hourly (re-armed 2026-11-07 as a real unit; transient copy died 11-06 10:27 crash)
+[Timer]
+OnCalendar=hourly
+Persistent=true
+[Install]
+WantedBy=timers.target

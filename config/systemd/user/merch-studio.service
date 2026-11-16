@@ -1,0 +1,14 @@
+[Unit]
+Description=Nous x Blank Workshop merch studio (store + private studio) on :18791
+After=network-online.target
+
+[Service]
+WorkingDirectory=/mnt/zer0models/workspace/zer0/products/hermes-merch-studio
+ExecStart=/usr/bin/python3 tools/serve.py --port 18791
+Restart=always
+RestartSec=3
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+MemoryMax=600M
+
+[Install]
+WantedBy=default.target

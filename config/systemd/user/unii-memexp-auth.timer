@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh unii-memexp's claude-sub2 login every 20 min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=20min
+
+[Install]
+WantedBy=timers.target

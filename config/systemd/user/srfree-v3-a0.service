@@ -1,0 +1,9 @@
+[Unit]
+Description=sr:free v3 A0 RSI-Anything code_repair assets
+[Service]
+Type=oneshot
+ExecStart=/mnt/zer0models/workspace/zer0/data/operations/srfree-hillclimb-20261108/v3/a0-assets.sh
+Restart=on-failure
+RestartSec=300
+[Install]
+WantedBy=default.target

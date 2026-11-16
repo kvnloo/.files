@@ -1,0 +1,20 @@
+[Unit]
+Description=sr-decision llama-server (d1-3B Q8)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/workspace/z0-farm/llama.cpp-b11270/build/bin/llama-server \
+  -m /mnt/zer0models/zer0-models/gguf/LiquidAI/d1-3B-Q8_0.gguf \
+  --host 127.0.0.1 --port 11531 \
+  --ctx-size 8192 --n-gpu-layers 99 --batch-size 512 --ubatch-size 512 \
+  --parallel 4 --cont-batching --flash-attn auto
+Restart=on-failure
+RestartSec=5
+Environment=CUDA_VISIBLE_DEVICES=0
+# Log to journald
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

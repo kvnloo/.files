@@ -1,0 +1,12 @@
+[Unit]
+Description=Us-HC Weekly Scorer Timer (Sunday 08:00 CST)
+Requires=us-hc-scorer.service
+
+[Timer]
+OnCalendar=Sun *-*-* 08:00:00
+Timezone=America/Chicago
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

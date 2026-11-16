@@ -1,0 +1,10 @@
+[Unit]
+Description=Hermes upstream inbox daily 7-day scan
+
+[Timer]
+OnCalendar=*-*-* 07:40:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

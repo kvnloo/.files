@@ -1,0 +1,8 @@
+[Unit]
+Description=Tick the Hermes upstream review loop every 10 minutes
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=false
+[Install]
+WantedBy=timers.target

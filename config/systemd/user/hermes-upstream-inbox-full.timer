@@ -1,0 +1,10 @@
+[Unit]
+Description=Hermes upstream inbox weekly full-inbox sanity scan
+
+[Timer]
+OnCalendar=Sun *-*-* 03:10:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

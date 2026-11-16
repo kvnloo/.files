@@ -1,0 +1,7 @@
+[Unit]
+Description=Glide submit-readiness ping 07:45
+[Timer]
+OnCalendar=2026-11-11 07:45
+Persistent=true
+[Install]
+WantedBy=timers.target

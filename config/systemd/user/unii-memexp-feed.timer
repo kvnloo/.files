@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep unii-memexp current with the fact ledger every 15 min (probe pass every 2 h)
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=15min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

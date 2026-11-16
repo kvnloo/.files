@@ -1,0 +1,24 @@
+[Unit]
+Description=Dash channel Metro (serves the active release channel)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/dash-channels/channels.env
+WorkingDirectory=%h/.local/lib/dash/channels/active/app
+Environment=CI=false EXPO_NO_TELEMETRY=1
+# Metro keeps its transform cache in TMPDIR; keep it off a small /tmp.
+Environment=TMPDIR=%h/.cache/dash-channel-metro
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/dash-channel-metro
+ExecStart=%h/.bun/bin/bun node_modules/expo/bin/cli start --dev-client --localhost --port ${DASH_CHANNEL_METRO_PORT}
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+Nice=5
+MemoryMax=2500M
+OOMPolicy=continue
+
+[Install]
+WantedBy=default.target

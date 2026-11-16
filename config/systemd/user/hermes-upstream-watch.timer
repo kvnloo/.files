@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily hermes-agent INBOX + TEKNIUM triage
+[Timer]
+OnCalendar=*-*-* 08:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target

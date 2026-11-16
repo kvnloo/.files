@@ -1,0 +1,9 @@
+[Unit]
+Description=RP10 day 7 chiefstaff delete (one shot)
+
+[Timer]
+OnCalendar=2026-11-12 14:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Garden cam snapshots 3x daily
+[Timer]
+OnCalendar=*-*-* 09,13,18:00
+Persistent=false
+[Install]
+WantedBy=timers.target

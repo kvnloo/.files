@@ -1,0 +1,8 @@
+[Unit]
+Description=Run the factory stall watchdog every 10 min
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+[Install]
+WantedBy=timers.target

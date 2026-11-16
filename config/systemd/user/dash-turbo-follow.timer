@@ -1,0 +1,10 @@
+[Unit]
+Description=Dash turbo follower tick (30 s after the previous tick ends)
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

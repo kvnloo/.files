@@ -1,0 +1,8 @@
+[Unit]
+Description=GEV-OSS-1110 tick every 15 min
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+[Install]
+WantedBy=timers.target

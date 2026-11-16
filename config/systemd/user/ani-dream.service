@@ -1,0 +1,14 @@
+# reuse-checked: same command/limits as the transient ani-dream unit (dream_run.sh); persistent after the 11-14 19:56 reset. Stop: touch likeness/dream/STOP (clean exit, not restarted).
+[Unit]
+Description=Ani dream loop (continuous likeness experiments, owner mandate 11-14)
+ConditionPathExists=!/mnt/zer0models/sft-svlm/data/private-receipts/ani-scan/likeness/dream/STOP
+
+[Service]
+Slice=agent.slice
+ExecStart=/mnt/zer0models/project-artifacts/content-factory/ani-tennis/likeness/dream_run.sh
+Restart=on-failure
+RestartSec=1min
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target
