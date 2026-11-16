@@ -26,6 +26,22 @@ SLOTS = (STATE / "night-a.frag", STATE / "night-b.frag")
 DEFAULTS = {"blue_light": 100, "darkness": 45}
 
 
+def hyprland_instance():
+    """Find the live Hyprland IPC instance when systemd did not inherit HYPRLAND_INSTANCE_SIGNATURE.
+
+    The plain hyprland.desktop session never exports it to the user manager, so every
+    timer run failed with "HYPRLAND_INSTANCE_SIGNATURE not set" (40+ days, 2026-11-15).
+    """
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return os.environ["HYPRLAND_INSTANCE_SIGNATURE"]
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "hypr"
+    live = sorted((sock.stat().st_mtime, sock.parent.name) for sock in runtime.glob("*/.socket.sock"))
+    if not live:
+        return None
+    os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = live[-1][1]
+    return live[-1][1]
+
+
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=15)
     if result.returncode:
@@ -172,6 +188,12 @@ def main():
     with (STATE / "lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
+            if args.command == "schedule" and not hyprland_instance():
+                # No desktop yet (headless boot, greeter): nothing to switch. Hyprland's
+                # exec-once starts night-filter.service again at login.
+                print("night-filter: no Hyprland session; skipped until login", file=sys.stderr)
+                return 0
+            hyprland_instance()
             if args.command == "schedule":
                 message = schedule()
             elif args.command in ("on", "off", "toggle"):

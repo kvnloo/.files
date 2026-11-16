@@ -33,8 +33,9 @@ else:
     env = os.environ | {"PATH": f"{binary}:{os.environ['PATH']}", "FILTER_TEST_ROOT": str(tmp_path),
                        "HOME": str(tmp_path), "XDG_STATE_HOME": str(tmp_path / "state"),
                        "XDG_CONFIG_HOME": str(tmp_path / "config"),
-                       "NIGHT_FILTER_SHADER": str(ROOT / "config/hyprland/shaders/night.frag")}
-    env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+                       "NIGHT_FILTER_SHADER": str(ROOT / "config/hyprland/shaders/night.frag"),
+                       "XDG_RUNTIME_DIR": str(tmp_path / "run"),  # never discover the host's Hyprland
+                       "HYPRLAND_INSTANCE_SIGNATURE": "isolated-test"}
     def invoke(*args, success=True):
         result = subprocess.run([str(SCRIPT), *map(str, args), "--json"], env=env,
                                 text=True, capture_output=True)
@@ -132,3 +133,20 @@ def test_schedule_uses_saved_levels_and_existing_timers(backend):
     # A manual toggle must not touch timers.
     call("toggle")
     assert (root / "timers").read_text() == timers
+
+
+def test_schedule_without_a_session_skips_and_finds_a_live_instance(backend):
+    root, env, _ = backend
+    env = dict(env)
+    env.pop("HYPRLAND_INSTANCE_SIGNATURE")
+    result = subprocess.run([str(SCRIPT), "schedule"], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "no Hyprland session" in result.stderr
+    assert not (root / "calls").exists()  # no IPC attempted
+    sock = root / "run/hypr/abc123_1/.socket.sock"
+    sock.parent.mkdir(parents=True)
+    sock.touch()
+    (root / "bin/hyprctl").write_text('#!/bin/sh\necho "$HYPRLAND_INSTANCE_SIGNATURE" >> "$FILTER_TEST_ROOT/sig"\necho \'{"str": ""}\'\n')
+    subprocess.run([str(SCRIPT), "status", "--json"], env=env, capture_output=True, text=True)
+    assert (root / "sig").read_text().split()[0] == "abc123_1"
+
