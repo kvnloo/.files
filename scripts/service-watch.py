@@ -550,7 +550,8 @@ class Watch:
         removed = 0
         for hook in USER_UNIT_DIR.glob('*.d/' + HOOK_NAME):
             unit = hook.parent.name[:-2]
-            if unit in keep or hook.is_symlink() or any((d / unit).exists() for d in USER_UNIT_PATHS):
+            # Transients never get a hook; one left from before that rule outlives prune while still loaded.
+            if (unit in keep and not (TRANSIENT_DIR / unit).exists()) or hook.is_symlink() or any((d / unit).exists() for d in USER_UNIT_PATHS):
                 continue
             try:
                 if not HOOK_BODY.fullmatch(hook.read_text()):

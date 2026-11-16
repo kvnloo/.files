@@ -147,6 +147,22 @@ class Contracts(unittest.TestCase):
             self.watch.install_hooks()  # nothing new: no reload
             ctl.assert_not_called()
 
+    def test_hooks_written_for_still_loaded_transients_before_the_fix_are_pruned(self):
+        # 2026-11-16: 4 pre-fix hooks (e.g. ani-comfy-next.service, a scope from 10-27) survived because
+        # their transient units were still loaded, and prune keeps every loaded unit's hook.
+        ud, transient = self.root / 'units', self.root / 'transient'
+        transient.mkdir()
+        (transient / 'ani-comfy-next.service').write_text('[Service]\nExecStart=/bin/true\n')
+        stale = ud / 'ani-comfy-next.service.d' / sw.HOOK_NAME
+        stale.parent.mkdir(parents=True)
+        stale.write_text('[Unit]\nOnFailure=service-watch-failure@ani\\x2dcomfy\\x2dnext.service.service\n')
+        self.watch.loaded = {'ani-comfy-next.service'}
+        self.watch.units = {('user', 'ani-comfy-next.service'): {}}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'USER_UNIT_PATHS', (ud,)), \
+                patch.object(sw, 'TRANSIENT_DIR', transient):
+            self.assertEqual(self.watch.prune_hooks(), 1)
+        self.assertFalse(stale.parent.exists())
+
     def test_real_journal_oom_signature_can_use_reserved_capacity(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             for index in range(3):
