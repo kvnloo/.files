@@ -3703,6 +3703,14 @@ reason = "Timer-run tool was a live-only copy (home sysgraph unhomed); sourced b
 migration_sha256 = "6e5cc74cfea85c88bcf72b66d523f1b0f85cbcb12a0a4830e2996f9a33566512"
 
 [[user]]
+live = "~/.local/bin/botscreen-companions"
+source = "scripts/botscreen-companions"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Bot Screen companions (Kevin's Chrome, bot Chromium, cua-driver) start from one command and end cleanly with the screen's idle stop instead of failing on X loss."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"

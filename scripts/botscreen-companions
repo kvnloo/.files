@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Companion apps of the Hermes Bot Screen (Xvnc display :20) as one lifecycle.
+
+The screen stops itself after its idle window and takes X with it. Kevin's Chrome, the bot Chromium
+(CDP 127.0.0.1:9555) and cua-driver ran as hand-launched units from skill prose, so every idle stop
+left a "Failed with result 'exit-code'" behind (Chrome exits 1 on losing X) and the next agent had to
+rebuild three systemd-run lines from memory.
+
+  botscreen-companions up            start whichever companions are missing or older than the display
+  botscreen-companions exec -- CMD   run CMD; exit 0 when it ended because the display went away
+"""
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+X11 = Path("/tmp/.X11-unix")
+
+
+def screen(home: Path) -> tuple[str, Path]:
+    bd = home / "bot-desktop"
+    return ":" + (bd / "display").read_text().strip(), bd
+
+
+def display_gone(display: str, x11: Path = X11) -> bool:
+    return not (x11 / f"X{display.lstrip(':')}").exists()
+
+
+def run_bound(argv: list[str], display: str, x11: Path = X11) -> int:
+    """CMD's exit code, except a failure caused by its X server stopping (the screen's idle stop) is a
+    normal end. Signals and failures while the display is still up are passed through."""
+    code = subprocess.run(argv).returncode
+    if code > 0 and display_gone(display, x11):
+        print(f"{display} stopped; {argv[0]} ended with it (exit {code})", file=sys.stderr)
+        return 0
+    return code
+
+
+def companions(home: Path, display: str, bd: Path) -> dict[str, tuple[dict, list[str]]]:
+    x = {"DISPLAY": display, "XAUTHORITY": str(bd / "Xauthority"), "WAYLAND_DISPLAY": ""}
+    sock = Path.home() / ".cache/cua-driver/cua-botscreen.sock"
+    return {
+        "kvn-chrome-botscreen": (x, ["/usr/bin/google-chrome-stable", "--ozone-platform=x11",
+                                     "--force-renderer-accessibility", "--new-window", "about:blank"]),
+        "botscreen-chromium": ({**x, "XDG_CONFIG_HOME": str(bd / "xdg")}, [
+            "/usr/sbin/chromium", "--ozone-platform=x11", f"--user-data-dir={bd / 'browser-profile'}",
+            "--remote-debugging-port=9555", "--remote-debugging-address=127.0.0.1", "--no-first-run",
+            "--password-store=basic", "about:blank"]),
+        "cua-botscreen": (x, [str(Path.home() / ".local/bin/cua-driver"), "serve", "--socket", str(sock)]),
+    }
+
+
+def started_at(unit: str) -> float:
+    """Unix time the unit became active, or -1 when it is not running."""
+    out = subprocess.run(["systemctl", "--user", "show", "--timestamp=unix", "-P",
+                          "ActiveState,ActiveEnterTimestamp", f"{unit}.service"],
+                         capture_output=True, text=True).stdout.split()
+    return float(out[1].lstrip("@")) if len(out) == 2 and out[0] == "active" else -1
+
+
+def up(home: Path) -> int:
+    display, bd = screen(home)
+    if display_gone(display):
+        print(f"bot screen {display} is down; start it with: hermes computer-use screen start", file=sys.stderr)
+        return 2
+    born = (X11 / f"X{display.lstrip(':')}").stat().st_mtime
+    self_cmd = str(Path(sys.argv[0]).resolve())
+    for unit, (env, argv) in companions(home, display, bd).items():
+        if started_at(unit) >= born:  # older ones hold a dead X connection
+            print(f"{unit}: running"); continue
+        subprocess.run(["systemctl", "--user", "stop", f"{unit}.service"], capture_output=True)
+        subprocess.run(["systemctl", "--user", "reset-failed", f"{unit}.service"], capture_output=True)
+        if unit == "cua-botscreen":
+            Path(argv[-1]).unlink(missing_ok=True)
+        sets = [f"--setenv={k}={v}" for k, v in env.items()]
+        r = subprocess.run(["systemd-run", "--user", "--collect", f"--unit={unit}", *sets,
+                            self_cmd, "exec", "--display", display, "--", *argv], capture_output=True, text=True)
+        print(f"{unit}: {'started' if r.returncode == 0 else 'FAILED ' + r.stderr.strip()}")
+    return 0
+
+
+def main(args: list[str]) -> int:
+    home = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes/profiles/clean")
+    if args[:1] == ["up"]:
+        return up(home)
+    if args[:1] == ["exec"] and "--" in args:
+        i = args.index("--")
+        display = args[args.index("--display") + 1] if "--display" in args[:i] else screen(home)[0]
+        return run_bound(args[i + 1:], display)
+    print(__doc__, file=sys.stderr)
+    return 64
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
