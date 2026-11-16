@@ -202,6 +202,31 @@ class PhoneFeeder(unittest.TestCase):
             self.assertTrue(rep["c"].startswith("launched"), rep)  # healthy node unaffected
             self.assertTrue(list(st.glob("a.json.stale-*")))
 
+    def test_corpus_is_streamed_and_only_full_shards_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            c = pathlib.Path(d) / "c.jsonl"
+            c.write_text("".join(json.dumps({"id": i}) + "\n" for i in range(25)) + '{"id": 25')  # torn tail
+            self.assertEqual(bf.corpus_count(c), 25)
+            got = bf.corpus_slices(c, [(1, 10, 20), (2, 20, 25)])
+            self.assertEqual([json.loads(l)["id"] for l in got[1]], list(range(10, 20)))
+            self.assertEqual(len(got[2]), 5)
+
+    def test_growth_keeps_done_shards_from_old_length_tags(self):
+        """A new owner message used to change the tag and restart every embedding."""
+        with tempfile.TemporaryDirectory() as d:
+            runs = pathlib.Path(d)
+            def receipt(tag, k):
+                r = runs / tag / f"shard-{k:04d}-n"
+                r.mkdir(parents=True)
+                (r / "embeddings.jsonl").write_text("{}\n")
+                (r / "result.json").write_text(json.dumps({"shard": k, "exit_code": 0}))
+            receipt("m-250-s100", 0)   # full when embedded
+            receipt("m-250-s100", 2)   # partial (rows 200-249): must be recomputed
+            receipt("m-s100", 1)       # stable tag
+            receipt("m-300-s1000", 0)  # other shard size
+            receipt("mx-300-s100", 2)  # other corpus
+            self.assertEqual(bf.done_shards(runs, "m", 100), {0, 1})
+
     def test_torn_phone_state_is_dropped_and_writes_are_atomic(self):
         with tempfile.TemporaryDirectory() as d:
             p = pathlib.Path(d) / "galaxy-s22plus.json"

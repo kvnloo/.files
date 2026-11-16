@@ -22,6 +22,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -119,6 +120,42 @@ def plan(cfg, *, mem_available, mbp_free, mbp_pending, boat_ok, active, recent):
 
 def phone_shards(n_items, size):
     return [(k, k * size, min(n_items, (k + 1) * size)) for k in range((n_items + size - 1) // size)]
+
+
+def corpus_count(path):
+    """Complete lines, streamed. Reading the 72 MB corpus whole inside the unit's 256M
+    MemoryMax swapped ~1.2 GB per 2-minute tick and kept sdb 99% busy."""
+    with open(path, "rb") as f:
+        return sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1 << 20), b""))
+
+
+def corpus_slices(path, ranges):
+    """{k: [line]} for (k, lo, hi) ranges in one streamed pass (tested)."""
+    out = {k: [] for k, _, _ in ranges}
+    stop = max((hi for _, _, hi in ranges), default=0)
+    with open(path, encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i >= stop:
+                break
+            for k, lo, hi in ranges:
+                if lo <= i < hi:
+                    out[k].append(line)
+    return out
+
+
+def done_shards(runs, stem, size):
+    """Shards finished under this size, including old length-tagged runs (`<stem>-<n>-s<size>`)
+    where the shard was already full: an append-only corpus keeps those rows (tested)."""
+    tag = re.compile(rf"{re.escape(stem)}(?:-(\d+))?-s{size}")
+    done = set()
+    for res in runs.glob(f"{stem}-*s{size}/shard-*/result.json"):
+        m = tag.fullmatch(res.parent.parent.name)
+        if not m:
+            continue
+        r = json.loads(res.read_text())
+        if shard_done(r, res.parent) and (m[1] is None or (r["shard"] + 1) * size <= int(m[1])):
+            done.add(r["shard"])
+    return done
 
 
 def phone_pick(shards, done, busy):
@@ -317,9 +354,12 @@ def phone_tick(cfg, now, dry_run=False):
     if not phones:
         return {}
     corpus = Path(phones["corpus"])
-    lines = corpus.read_text().splitlines()
-    tag = f"{corpus.stem}-{len(lines)}-s{phones['shard']}"  # shard k means a different range per size
-    root = RUNS / "phone-embed" / tag
+    size = phones["shard"]
+    # The corpus is append-only, so a full shard's range never changes: the tag carries only the
+    # shard size (a length in the tag restarted every embedding at each new owner message), and
+    # only full shards launch; the newest partial shard waits until it fills.
+    n_full = corpus_count(corpus) // size * size
+    tag = f"{corpus.stem}-s{size}"
     state_dir = CACHE / "phones"
     state_dir.mkdir(parents=True, exist_ok=True)
     report, held, held_tag = {}, {}, {}
@@ -382,12 +422,8 @@ def phone_tick(cfg, now, dry_run=False):
             if path.exists():
                 path.rename(path.with_name(path.name + f".bad-{int(now)}"))
             report[node] = f"error {type(exc).__name__}: {exc}"[:200]
-    done = set()
-    for res in root.glob("shard-*/result.json"):
-        r = json.loads(res.read_text())
-        if shard_done(r, res.parent):
-            done.add(r["shard"])
-    shards = phone_shards(len(lines), phones["shard"])
+    done = done_shards(RUNS / "phone-embed", corpus.stem, size)
+    shards = phone_shards(n_full, size)
     if mem_available() < PHONE_GROOT_FLOOR:
         report["launch"] = "held: groot MemAvailable < 512 MiB"
         return report
@@ -401,11 +437,11 @@ def phone_tick(cfg, now, dry_run=False):
             continue
         sdir = state_dir / "shards" / tag
         sdir.mkdir(parents=True, exist_ok=True)
-        for k, lo, hi in picks:
-            if not (sdir / f"{k:04d}.jsonl").exists():
-                items = (json.loads(l) for l in lines[lo:hi])
-                (sdir / f"{k:04d}.jsonl").write_text(
-                    "".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
+        missing = [p for p in picks if not (sdir / f"{p[0]:04d}.jsonl").exists()]
+        for k, rows in corpus_slices(corpus, missing).items():
+            items = (json.loads(l) for l in rows)
+            (sdir / f"{k:04d}.jsonl").write_text(
+                "".join(json.dumps({"id": d["id"], "text": d["text"]}) + "\n" for d in items))
         ks = [k for k, _, _ in picks]
         shard = sdir / f"{ks[0]:04d}.jsonl" if len(ks) == 1 else sdir / f"job-{ks[0]:04d}x{len(ks)}.jsonl"
         if len(ks) > 1:
