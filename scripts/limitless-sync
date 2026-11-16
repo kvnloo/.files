@@ -89,6 +89,20 @@ def adb(cfg: dict, *args: str, binary: bool = False, timeout: int = 40):
     return r.stdout if binary else r.stdout.decode(errors="replace")
 
 
+def adb_to_file(cfg: dict, dest: Path, *args: str, timeout: int = 40) -> None:
+    """Stream adb stdout to a 0600 file. Buffering the 184 MB NOOP db in RAM under MemoryMax=256M
+    swapped ~220 MB every 15 min (1.2 GB read per run). A failed pull leaves an empty file."""
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        try:
+            r = subprocess.run([cfg["adb"], "-s", cfg["serial"], *args], stdout=f, stderr=subprocess.DEVNULL, timeout=timeout)
+            ok = r.returncode == 0
+        except Exception:  # noqa: BLE001
+            ok = False
+        if not ok:
+            f.truncate(0)
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -362,28 +376,28 @@ def sync_noop(cfg: dict, st: Path) -> str:
     if stamp.exists() and stamp.read_text() == sig and has_tables(out):
         return "unchanged" + revive_noop(cfg)
     tmp = private_dir(d / "incoming")
-    new = tmp / "folded.db"
+    new = tmp / "noop_whoop.db"
+    good = False
     for _ in range(3):  # a live app checkpoints mid-copy -> torn db+wal pair ("malformed"); recopy
         for suf in ("", "-wal"):  # never copy -shm: a stale index can misread the WAL; SQLite rebuilds it
-            try:
-                data = adb(cfg, "exec-out", "run-as", pkg, "cat", f"databases/noop_whoop.db{suf}", binary=True, timeout=120)
-            except Exception:  # noqa: BLE001
-                data = b""
-            write_private(tmp / f"noop_whoop.db{suf}", data)
-        # Fold the WAL into one consistent private file so readers can open it mode=ro.
-        new.unlink(missing_ok=True)
-        con = sqlite3.connect(tmp / "noop_whoop.db")
+            adb_to_file(cfg, tmp / f"noop_whoop.db{suf}", "exec-out", "run-as", pkg, "cat", f"databases/noop_whoop.db{suf}", timeout=120)
+        (tmp / "noop_whoop.db-shm").unlink(missing_ok=True)
+        # Fold the WAL in place into one rollback-journal file so readers can open it mode=ro.
+        # quick_check reads every page, catching the torn pairs VACUUM INTO used to, without a second full write.
+        con = sqlite3.connect(new)
         try:
             con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            con.execute(f"VACUUM INTO '{new}'")
-            break
+            con.execute("PRAGMA journal_mode=DELETE")
+            good = con.execute("PRAGMA quick_check").fetchone()[0] == "ok"
         except sqlite3.DatabaseError:
-            new.unlink(missing_ok=True)
+            good = False
         finally:
             con.close()
+        if good:
+            break
     # The phone can answer stat and then fail the cat. Such a pull has no tables: keep the
     # last good copy and no stamp, so readers never see an empty file and the next run retries.
-    good = has_tables(new)
+    good = good and has_tables(new)
     if good:
         os.chmod(new, 0o600)
         os.replace(new, out)
