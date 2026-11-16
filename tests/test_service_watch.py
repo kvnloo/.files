@@ -163,6 +163,41 @@ class Contracts(unittest.TestCase):
             self.assertEqual(self.watch.prune_hooks(), 1)
         self.assertFalse(stale.parent.exists())
 
+    def test_type_level_hook_replaces_per_unit_hooks_and_their_reloads(self):
+        # 2026-11-16: each newly seen unit cost a hook file plus a daemon-reload (74 in 12 h), and every
+        # per-session template instance got its own hook dir. One service.d/timer.d drop-in covers all.
+        ud = self.root / 'units'
+        (ud / 'service.d').mkdir(parents=True)
+        (ud / 'service.d' / sw.HOOK_NAME).write_text(sw.TYPE_HOOK_BODY)
+        old = ud / 'loaded.service.d' / sw.HOOK_NAME
+        old.parent.mkdir()
+        old.write_text('[Unit]\nOnFailure=service-watch-failure@loaded.service.service\n')
+        (ud / 'loaded.service').write_text('[Service]\nExecStart=/bin/true\n')  # persistent units too
+        edited = ud / 'edited.service.d' / sw.HOOK_NAME
+        edited.parent.mkdir()
+        edited.write_text('[Unit]\nOnFailure=service-watch-failure@edited.service\nX-Owner=me\n')
+        self.watch.loaded = {'loaded.service', 'edited.service'}
+        self.watch.units = {('user', 'new.service'): {}, ('user', 'loaded.service'): {}, ('user', 'new.timer'): {}}
+        self.watch.coverage = {'user': 'readable'}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'USER_UNIT_PATHS', (ud,)), \
+                patch.object(sw, 'TRANSIENT_DIR', self.root / 'transient'), \
+                patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, 'new.timer\n', '')), \
+                patch.object(sw, 'systemctl') as ctl:
+            self.watch.install_hooks()
+        self.assertFalse((ud / 'new.service.d').exists())
+        self.assertFalse(old.parent.exists())  # covered by the type-level hook: pruned without a reload
+        self.assertTrue(edited.exists())
+        self.assertTrue((ud / 'service.d' / sw.HOOK_NAME).exists())
+        self.assertTrue((ud / 'new.timer.d' / sw.HOOK_NAME).exists())  # no timer.d hook live: old path
+        self.assertEqual(ctl.call_count, 1)
+
+    def test_shipped_type_level_hooks_cover_every_unit_without_recursing(self):
+        units = Path(__file__).resolve().parents[1] / 'config/systemd/user'
+        for kind in ('service', 'timer', 'socket'):
+            self.assertEqual((units / f'{kind}.d' / sw.HOOK_NAME).read_text(), sw.TYPE_HOOK_BODY)
+        # Same file name in the more specific dir replaces the type-level hook for the handler itself.
+        self.assertEqual((units / 'service-watch-failure@.service.d' / sw.HOOK_NAME).read_text(), '[Unit]\nOnFailure=\n')
+
     def test_real_journal_oom_signature_can_use_reserved_capacity(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             for index in range(3):

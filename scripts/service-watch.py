@@ -66,6 +66,15 @@ CONFIRM_PROMPT = ('Confirm service anomaly severity from finite facts only. No t
                   'facts. Facts: ')
 HOOK_NAME = '90-service-watch.conf'
 HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.service\n')
+# One drop-in per unit type (config/systemd/user/{service,timer,socket}.d) covers every unit, transient and
+# template instances included, with no per-unit file and no daemon-reload. %n is unescaped; the failure
+# template's %I maps it back (see drain_spool).
+TYPE_HOOK_BODY = '[Unit]\nOnFailure=service-watch-failure@%n.service\n'
+
+
+def type_hooked(unit):
+    """True when the live type-level hook already covers this unit's type."""
+    return (USER_UNIT_DIR / (unit.rsplit('.', 1)[-1] + '.d') / HOOK_NAME).exists()
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
          'receipt_error_share', 'error_file_growth', 'timer_stale', 'timer_failed',
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',
@@ -528,7 +537,8 @@ class Watch:
     def install_hooks(self):
         changed = False
         for scope, unit in self.units:
-            if scope != 'user' or unit.startswith('service-watch-failure@') or (TRANSIENT_DIR / unit).exists():
+            if scope != 'user' or unit.startswith('service-watch-failure@') or (TRANSIENT_DIR / unit).exists() \
+                    or type_hooked(unit):
                 continue
             escaped = command(['systemd-escape', unit]).stdout.strip()
             target = USER_UNIT_DIR / (unit + '.d') / HOOK_NAME
@@ -550,8 +560,11 @@ class Watch:
         removed = 0
         for hook in USER_UNIT_DIR.glob('*.d/' + HOOK_NAME):
             unit = hook.parent.name[:-2]
-            # Transients never get a hook; one left from before that rule outlives prune while still loaded.
-            if (unit in keep and not (TRANSIENT_DIR / unit).exists()) or hook.is_symlink() or any((d / unit).exists() for d in USER_UNIT_PATHS):
+            if '.' not in unit:  # the type-level hook itself (service.d/...)
+                continue
+            # Transients never get a hook, and a type-hooked unit needs none: drop leftovers even while loaded.
+            covered = (TRANSIENT_DIR / unit).exists() or type_hooked(unit)
+            if hook.is_symlink() or (not covered and (unit in keep or any((d / unit).exists() for d in USER_UNIT_PATHS))):
                 continue
             try:
                 if not HOOK_BODY.fullmatch(hook.read_text()):

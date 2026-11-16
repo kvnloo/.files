@@ -4643,6 +4643,38 @@ owner = "scripts/apply-agent-oom"
 reason = "t3 update rewrites t3code.service each release (live_drift replaced, 2026-11-16); .files owns only its drop-in, tests/test_t3code_unit_ownership.py."
 
 [[user]]
+live = "~/.config/systemd/user/service.d/90-service-watch.conf"
+source = "config/systemd/user/service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Type-level OnFailure hook: covers every unit with no per-unit file or daemon-reload (74/12h on 2026-11-16). tests/test_service_watch.py."
+
+[[user]]
+live = "~/.config/systemd/user/timer.d/90-service-watch.conf"
+source = "config/systemd/user/timer.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Type-level OnFailure hook: covers every unit with no per-unit file or daemon-reload (74/12h on 2026-11-16). tests/test_service_watch.py."
+
+[[user]]
+live = "~/.config/systemd/user/socket.d/90-service-watch.conf"
+source = "config/systemd/user/socket.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Type-level OnFailure hook: covers every unit with no per-unit file or daemon-reload (74/12h on 2026-11-16). tests/test_service_watch.py."
+
+[[user]]
+live = "~/.config/systemd/user/service-watch-failure@.service.d/90-service-watch.conf"
+source = "config/systemd/user/service-watch-failure@.service.d/90-service-watch.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Recursion guard: same name replaces the type-level hook for the failure handler. tests/test_service_watch.py."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
