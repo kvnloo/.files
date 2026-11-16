@@ -28,6 +28,10 @@ def link(source, target):
     temp.symlink_to(source)
     temp.replace(target)
 
+def enable(home, name):
+    """Relative wants link, as systemctl enable writes: it follows the unit link to every new release."""
+    link(Path('..') / name, home / '.config/systemd/user/default.target.wants' / name)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dash-repo', required=True, type=Path)
@@ -70,7 +74,7 @@ def main():
             continue
         link(stamp / Path(source).name, home / target)
         if args.activate and source.endswith('.service'):
-            link(stamp / Path(source).name, home / '.config/systemd/user/default.target.wants' / Path(source).name)
+            enable(home, Path(source).name)
     print('Dash release:', BRIDGE, 'app:', APP, 'service stamp:', stamp.name)
     if args.activate:
         run('systemctl', '--user', 'daemon-reload')

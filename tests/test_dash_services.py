@@ -38,6 +38,21 @@ class DashServices(unittest.TestCase):
             self.assertEqual(target.resolve(), new)
             self.assertFalse(target.with_name('current.dash-new').exists())
 
+    def test_enable_link_follows_the_unit_link(self):
+        # 11-16: absolute wants links into an old stamp kept stale unit text after the unit link moved on.
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            units = home / '.config/systemd/user'
+            units.mkdir(parents=True)
+            (home / 'a.service').write_text('old')
+            (home / 'b.service').write_text('new')
+            module.link(home / 'a.service', units / 'dash-bridge.service')
+            module.enable(home, 'dash-bridge.service')
+            module.link(home / 'b.service', units / 'dash-bridge.service')
+            wants = units / 'default.target.wants/dash-bridge.service'
+            self.assertEqual(str(wants.readlink()), '../dash-bridge.service')
+            self.assertEqual(wants.read_text(), 'new')
+
     def test_unit_semantics(self):
         for name in ('bridge', 'metro', 'metro-relay'):
             config = unit(name)
