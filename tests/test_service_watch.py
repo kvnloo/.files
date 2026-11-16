@@ -37,6 +37,25 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_hooks_for_vanished_transient_units_are_pruned(self):
+        # 2026-11-16: 1964 hook dirs for gone instances/D-Bus activations, re-parsed by every daemon-reload.
+        ud = self.root / 'units'
+        def hook(unit, body=None):
+            p = ud / (unit + '.d') / sw.HOOK_NAME
+            p.parent.mkdir(parents=True)
+            p.write_text(body or '[Unit]\nOnFailure=service-watch-failure@' + unit.replace('-', '\\x2d') + '.service\n')
+            return p
+        gone = hook('z0int-memory-mcp@0-4097-1000.service')
+        loaded, watched, on_disk = hook('loaded.service'), hook('watched.timer'), hook('persistent.service')
+        (ud / 'persistent.service').write_text('[Service]\nExecStart=/bin/true\n')
+        mine = hook('edited.service', '[Unit]\nOnFailure=service-watch-failure@edited.service\nX-Owner=me\n')
+        self.watch.loaded = {'loaded.service'}
+        self.watch.units = {('user', 'watched.timer'): {}}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'USER_UNIT_PATHS', (ud,)):
+            self.assertEqual(self.watch.prune_hooks(), 1)
+        self.assertFalse(gone.exists() or gone.parent.exists())
+        self.assertTrue(all(p.exists() for p in (loaded, watched, on_disk, mine)))
+
     def test_real_journal_oom_signature_can_use_reserved_capacity(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             for index in range(3):

@@ -2,6 +2,7 @@
 """Report/notify-only host watcher, generalized from Dash's finite-fact sidecar."""
 import argparse
 import collections
+import contextlib
 import datetime
 import fcntl
 import hashlib
@@ -47,6 +48,11 @@ INVENTORY = OPERATIONS / 'host-hygiene/units.json'
 REAPER_STATUS = OPERATIONS / 'worktree-reaper/latest.json'
 BUSY_TIMEOUT = 30
 LOCKED = re.compile(r'database is (locked|busy)')
+USER_UNIT_DIR = Path.home() / '.config/systemd/user'
+USER_UNIT_PATHS = (USER_UNIT_DIR, Path.home() / '.local/share/systemd/user', Path('/etc/systemd/user'),
+                   Path('/usr/lib/systemd/user'))
+HOOK_NAME = '90-service-watch.conf'
+HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.service\n')
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
          'receipt_error_share', 'error_file_growth', 'timer_stale', 'timer_failed',
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',
@@ -434,6 +440,7 @@ class Watch:
         self.store = Store(root)
         self.inventory = Path(inventory)
         self.units = {}
+        self.loaded = set()
         self.pending = queue.Queue(maxsize=512)
         self.stop = threading.Event()
         self.last_scan = 0
@@ -459,7 +466,10 @@ class Watch:
                 self.coverage[scope] = 'inventory_unavailable'
                 continue
             self.coverage[scope] = 'readable'
-            for row in json.loads(result.stdout):
+            rows = json.loads(result.stdout)
+            if scope == 'user':
+                self.loaded = {row['unit'] for row in rows}
+            for row in rows:
                 if unit_ok(row['unit']) and (row['active'] in ('active', 'failed', 'activating') or (scope, row['unit']) in units):
                     units.setdefault((scope, row['unit']), {'unit': row['unit'], 'scope': scope,
                                      'health_invariant': {'kind': 'systemd'}})
@@ -473,14 +483,37 @@ class Watch:
             if scope != 'user' or unit.startswith('service-watch-failure@'):
                 continue
             escaped = command(['systemd-escape', unit]).stdout.strip()
-            target = Path.home() / '.config/systemd/user' / (unit + '.d') / '90-service-watch.conf'
+            target = USER_UNIT_DIR / (unit + '.d') / HOOK_NAME
             body = '[Unit]\nOnFailure=service-watch-failure@' + escaped + '.service\n'
             if not target.exists() or target.read_text() != body:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(body)
                 changed = True
+        if self.coverage.get('user') == 'readable' and self.prune_hooks():
+            changed = True
         if changed:
             systemctl('user', 'daemon-reload')
+
+    def prune_hooks(self):
+        """Drop our hook for units systemd no longer has and no unit file defines (transient instances,
+        D-Bus activations, finished jobs). Without this they piled up (1964 dead dirs on 2026-11-16) and
+        every user daemon-reload re-parsed them. Only our exact generated body is removed."""
+        keep = self.loaded | {unit for scope, unit in self.units if scope == 'user'}
+        removed = 0
+        for hook in USER_UNIT_DIR.glob('*.d/' + HOOK_NAME):
+            unit = hook.parent.name[:-2]
+            if unit in keep or hook.is_symlink() or any((d / unit).exists() for d in USER_UNIT_PATHS):
+                continue
+            try:
+                if not HOOK_BODY.fullmatch(hook.read_text()):
+                    continue
+                hook.unlink()
+                removed += 1
+                with contextlib.suppress(OSError):
+                    hook.parent.rmdir()
+            except OSError:
+                continue
+        return removed
 
     def invariant(self, scope, unit, invariant, prop, now):
         kind = invariant.get('kind')
