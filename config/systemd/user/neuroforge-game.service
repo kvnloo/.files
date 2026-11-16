@@ -12,7 +12,9 @@ Restart=on-failure
 RestartSec=5
 UMask=0077
 LimitCORE=0
-MemoryMax=768M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=768M
+MemoryMax=1152M
 StandardOutput=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/game.log
 StandardError=append:/mnt/zer0models/sft-svlm/data/neuroforge/integration/logs/game.log
 

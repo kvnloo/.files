@@ -1,0 +1,23 @@
+[Unit]
+Description=Ensure z0intelligence Claude marketplace loads in every config dir; fail loudly on breakage
+Documentation=man:z0int-claude-marketplace(1)
+OnFailure=service-watch-failure@z0int\x2dclaude\x2dmarketplace.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.z0int
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+# z0int-claude-marketplace ensure && check: (re)seed from the local mirror of
+# git@github.com:kvnloo/z0intelligence.git, then verify every enabled plugin loads.
+ExecStart=/bin/sh -ec '%h/.local/bin/z0int-claude-marketplace ensure && %h/.local/bin/z0int-claude-marketplace check'
+UMask=0077
+Nice=15
+MemoryMax=192M
+MemorySwapMax=64M
+CPUQuota=10%
+TasksMax=16
+TimeoutStartSec=10min
+NoNewPrivileges=true

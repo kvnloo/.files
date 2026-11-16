@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the loc index hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

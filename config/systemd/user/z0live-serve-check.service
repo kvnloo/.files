@@ -1,0 +1,9 @@
+[Unit]
+Description=Re-apply the z0live tailnet route (:8791 -> 127.0.0.1:8791) if Tailscale Serve lost it
+# 2026-11-06 06:24 an agent ran `tailscale serve reset` and wiped every route; :8791 stayed
+# gone until a hand restore on 11-07. Logs one line only when it had to heal.
+After=tailscaled.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/bin/tailscale serve status --json | /usr/bin/jq -e 'any((.Web // {}) | to_entries[]; (.key | endswith(\":8791\")) and .value.Handlers[\"/\"].Proxy == \"http://127.0.0.1:8791\")' >/dev/null && exit 0; /usr/bin/tailscale serve --bg --https=8791 http://127.0.0.1:8791 >/dev/null && echo 'z0live-serve-check: healed: :8791 route was missing; re-applied tailscale serve --https=8791 http://127.0.0.1:8791'"

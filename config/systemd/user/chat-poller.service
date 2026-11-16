@@ -6,7 +6,9 @@ After=network-online.target
 Type=simple
 ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/chatgpt-driver/bin/chat-poller.py
 Slice=agent.slice
-MemoryMax=300M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=300M
+MemoryMax=450M
 Nice=5
 IOWeight=10
 Restart=always

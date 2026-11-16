@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""failed-unit-watch: keep one 'FAILED UNITS' block in a lane status file listing every
+user unit that has stayed failed for more than --min minutes (ayo 2026-11-05: nine groot
+guards sat failed unnoticed). Rewrites only its own block; stays silent otherwise."""
+import argparse, json, os, re, subprocess, time
+from pathlib import Path
+
+BEGIN, END = "<!-- failed-unit-watch:start -->", "<!-- failed-unit-watch:end -->"
+
+
+def failed_units(run=subprocess.run):
+    out = run(["systemctl", "--user", "--failed", "--no-legend", "--plain"], capture_output=True, text=True).stdout
+    units = [l.split()[0] for l in out.splitlines() if l.strip()]
+    rows = []
+    for u in units:
+        show = run(["systemctl", "--user", "show", u, "-p", "StateChangeTimestampMonotonic", "-p", "Result",
+                    "-p", "ExecMainStatus"], capture_output=True, text=True).stdout
+        kv = dict(l.split("=", 1) for l in show.splitlines() if "=" in l)
+        rows.append((u, int(kv.get("StateChangeTimestampMonotonic") or 0) / 1e6,
+                     kv.get("Result", "?"), kv.get("ExecMainStatus", "?")))
+    return rows
+
+
+def track(state, rows, result_of, now_mono):
+    """Carry each unit's first failure and consecutive-failure count across watcher runs, so a unit
+    that fails anew on every timer run (its own clock resets) still ages. Cleared only by success."""
+    new = {}
+    for u, t, _r, _s in rows:
+        e = dict(state.get(u) or {"first": t or now_mono, "last": t, "streak": 1})
+        if t and t != e["last"]:
+            e["last"], e["streak"] = t, e["streak"] + 1
+        new[u] = e
+    for u, e in state.items():
+        if u not in new and result_of(u) not in ("success", ""):
+            new[u] = e  # seen mid-restart (activating): not a success, keep the streak
+    return new
+
+
+WT = re.compile(r"(/mnt/zer0models/worktrees/[^/\s\"';:]+)")
+
+
+def missing_paths(unit, run=subprocess.run):
+    """Worktree roots a unit's files reference that no longer exist (11-15: a cleanup deleted
+    oss-factory-integrate-20261020 and silently killed z0-ghcache plus every GitHub reader)."""
+    text = run(["systemctl", "--user", "cat", unit], capture_output=True, text=True).stdout
+    live = "\n".join(l for l in text.splitlines() if not l.startswith(("#", "Documentation=")))
+    return sorted({m for m in WT.findall(live) if not os.path.exists(m)})
+
+
+def block(rows, now_mono, min_minutes, stamp, state=None, missing=missing_paths):
+    state = state or {}
+    stale = []
+    for u, t, r, s in rows:
+        e = state.get(u, {"first": t, "streak": 1})
+        m = (now_mono - e["first"]) / 60 if e["first"] else 0
+        if m > min_minutes or e["streak"] >= 3:
+            stale.append((u, m, r, s, e["streak"]))
+    if not stale:
+        return ""
+    lines = [BEGIN, f"- FAILED UNITS >{min_minutes} min or failing every run, on groot (failed-unit-watch, {stamp}):"]
+    for u, m, r, s, n in sorted(stale, key=lambda x: -x[1]):
+        gone = missing(u)
+        lines.append(f"  - {u}: failed {m:.0f} min, {n} consecutive failures, result={r} status={s}"
+                     + (f" -- MISSING PATH {', '.join(gone)} (unit or drop-in points at a deleted worktree)" if gone else ""))
+    return "\n".join(lines + [END])
+
+
+def update(path: Path, new_block: str) -> bool:
+    text = path.read_text() if path.exists() else ""
+    pat = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", re.S)
+    base = pat.sub("", text).rstrip("\n") + "\n"
+    out = base + (new_block + "\n" if new_block else "")
+    if out != text:
+        path.write_text(out)
+        return True
+    return False
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--status", type=Path, required=True)
+    ap.add_argument("--min", type=int, default=30)
+    ap.add_argument("--state", type=Path,  # runtime dir: monotonic clocks reset at boot, so does this
+                    default=Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "failed-unit-watch.json")
+    a = ap.parse_args()
+    now = time.clock_gettime(time.CLOCK_MONOTONIC)
+    rows = failed_units()
+    old = json.loads(a.state.read_text()) if a.state.exists() else {}
+
+    def result_of(u):
+        return subprocess.run(["systemctl", "--user", "show", u, "-p", "Result", "--value"],
+                              capture_output=True, text=True).stdout.strip()
+    state = track(old, rows, result_of, now)
+    a.state.write_text(json.dumps(state))
+    update(a.status, block(rows, now, a.min, time.strftime("%Y-%m-%d %H:%M %Z"), state))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,9 @@
+[Unit]
+Description=Run failed-unit-watch every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

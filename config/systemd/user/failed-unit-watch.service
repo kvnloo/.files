@@ -1,0 +1,7 @@
+[Unit]
+Description=List user units failed >30 min in the reliability lane status file
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/bin/python3 %h/.local/bin/failed-unit-watch --status /mnt/zer0models/workspace/zer0/data/operations/lane-status/reliability.md --min 30

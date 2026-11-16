@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+"""action-escalate: close the loop on routed actions (failed units the owning lane never picks up).
+
+Gap it closes (2026-11-13..15): network-model flagged unii-memexp-feed dead 2 h after it broke and
+routed it to a lane; nobody claimed it for two days. The cause, a worktree-reap tier-3 removal, was
+already on disk as a reap receipt. This tool does two deterministic things and nothing else:
+
+1. fix_for_unit(): when a failed unit (its unit file, drop-ins, the scripts its Exec lines run, or
+   the local Python modules those import, or a unit it Requires=/BindsTo=) references a worktree a
+   reap receipt removed, emit the restore command from the receipt, e.g.
+   `git --git-dir=<commondir> worktree add <path> <branch>` (or `-b <branch> <path> <snapshot_ref>`
+   when the branch is gone). Missing worktree paths without a receipt are still named.
+2. escalate(): an open action (from network-model's append-only actions.jsonl) whose owner lane has
+   shown no claim or progress for --hours (default 6) becomes ONE decision line for kevin-push:
+   `<lane> | <unit> | open <age> h, no claim | fix: <proposed fix>`. Pushed once per action key
+   per episode (state file); a clear that does not last --grace hours keeps the episode open, so a
+   flapping unit still ages.
+
+Claim/progress = a Kanban task (any board) whose title/body/comment names the subject, created or
+touched after the action opened; or the owner's lane-status file naming it outside generated
+<!-- ... --> blocks with an `as of` line after the action opened. Read-only on every source.
+
+  action-escalate --actions actions.jsonl --state escalate-state.json [--push]
+  action-escalate --actions actions.jsonl --replay 2026-11-13T00:00 2026-11-15T23:59 [--step 30]
+"""
+import argparse, glob, json, os, re, shutil, sqlite3, subprocess, sys, time
+from datetime import datetime
+from pathlib import Path
+
+HOME = Path.home()
+OPS = Path(os.environ.get("OPS_ROOT", "/mnt/zer0models/workspace/zer0/data/operations"))
+RECEIPTS = str(OPS / "storage-maintenance/runs/worktree-reap-*/receipts.jsonl")
+LANES = OPS / "lane-status"
+KANBAN = [str(HOME / ".hermes/kanban/boards/*/kanban.db"), str(HOME / ".hermes/kanban.db")]
+WT = re.compile(r"(/mnt/zer0models/worktrees/[^/\s\"';:]+)")
+PATHTOK = re.compile(r"(?:%h|~|/)[^\s\"';]*")
+IMPORT = re.compile(r"^\s*(?:from\s+([A-Za-z_]\w*)|import\s+([A-Za-z_]\w*))", re.M)
+SKIP = ("#", "Documentation=", "Description=")
+
+
+# ---------- 1. failed unit -> missing worktree -> reap receipt -> restore command ----------
+
+def load_receipts(pattern=RECEIPTS):
+    """Every applied reap receipt that removed a worktree, oldest first."""
+    out = []
+    for f in sorted(glob.glob(pattern)):
+        for line in open(f, errors="replace"):
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("worktree") and r.get("applied") and (r.get("worktree_removed") or r.get("action") == "worktree"):
+                r["_at"] = _ts(r.get("ts"))
+                r["_src"] = f
+                out.append(r)
+    return sorted(out, key=lambda r: r["_at"] or 0)
+
+
+def _ts(s):
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        try:
+            return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z").timestamp()
+        except ValueError:
+            return None
+
+
+EFFECTIVE = "WorkingDirectory,ExecStart,ExecStartPre,ExecStartPost,Environment,EnvironmentFiles,Requires,BindsTo"
+ARGV = re.compile(r"argv\[\]=([^;]*)")
+
+
+def unit_text(unit, run=subprocess.run):
+    """Effective unit settings (drop-ins applied, so an overridden WorkingDirectory is not a false hit),
+    rendered as unit-file lines; Exec* reduced to their argv."""
+    out = run(["systemctl", "--user", "show", "-p", EFFECTIVE, unit], capture_output=True, text=True).stdout
+    lines = []
+    for l in out.splitlines():
+        k, _, v = l.partition("=")
+        if not v:
+            continue
+        if k.startswith("Exec"):
+            lines += [f"{k}={a.strip()}" for a in ARGV.findall(v)]
+        else:
+            lines.append(f"{k}={v}")
+    return "\n".join(lines) + "\n"
+
+
+def referenced_texts(text, depth=1, read=None):
+    """The unit text, plus the text of every non-binary file its live lines name (scripts run by
+    Exec*, EnvironmentFile, ...), plus same-directory Python modules those import (one level)."""
+    read = read or _read_small
+    live = "\n".join(l for l in text.splitlines() if not l.startswith(SKIP))
+    texts, seen = [live], set()
+    for tok in PATHTOK.findall(live):
+        p = tok.replace("%h", str(HOME)).replace("~", str(HOME), 1).split("=")[-1]
+        if p in seen or not p.startswith("/"):
+            continue
+        seen.add(p)
+        body = read(p)
+        if body is None:
+            continue
+        texts.append(body)
+        if depth and p.endswith(".py"):
+            d = os.path.dirname(p)
+            for a, b in IMPORT.findall(body):
+                mod = os.path.join(d, (a or b) + ".py")
+                if mod not in seen:
+                    seen.add(mod)
+                    sub = read(mod)
+                    if sub is not None:
+                        texts.append(sub)
+    return texts
+
+
+def _read_small(p, limit=2 << 20):
+    try:
+        if not os.path.isfile(p) or os.path.getsize(p) > limit:
+            return None
+        b = open(p, "rb").read()
+        return None if b"\0" in b[:4096] else b.decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+def deps(text):
+    out = []
+    for l in text.splitlines():
+        if l.startswith(("Requires=", "BindsTo=")):
+            out += [u for u in l.split("=", 1)[1].split() if u.endswith(".service")]
+    return out
+
+
+def restore_cmd(r, branch_exists=None):
+    gd, path, br, snap = r.get("commondir"), r["worktree"], r.get("branch"), r.get("snapshot_ref")
+    if branch_exists is None:
+        branch_exists = not r.get("branch_deleted")
+    if br and branch_exists:
+        return f"git --git-dir={gd} worktree add {path} {br}"
+    if br and snap:
+        return f"git --git-dir={gd} worktree add -b {br} {path} {snap}"
+    return f"git --git-dir={gd} worktree add {path} {snap or r.get('head')}"
+
+
+def _branch_exists(gd, br, run=subprocess.run):
+    if not gd or not br or not os.path.isdir(gd):
+        return None
+    return run(["git", "--git-dir", gd, "show-ref", "--verify", "--quiet", f"refs/heads/{br}"]).returncode == 0
+
+
+def fix_for_unit(unit, receipts, at=None, cat=unit_text, exists=os.path.exists, branch_exists=_branch_exists):
+    """{'missing': [paths], 'receipt': r|None, 'fix': cmd|None}. `at` (replay): a path counts as
+    missing when a receipt removed it before `at`, whatever the disk says now."""
+    text = cat(unit)
+    texts = referenced_texts(text)
+    for d in deps(text):
+        texts += referenced_texts(cat(d), depth=0)
+    blob = "\n".join(texts)
+    removed = {}
+    for r in receipts:
+        if at is None or (r["_at"] or 0) <= at:
+            removed[r["worktree"]] = r  # latest removal wins
+    hits = [(p, r) for p, r in removed.items() if p in blob and (at is not None or not exists(p))]
+    missing = sorted({p for p, _ in hits} | ({m for m in WT.findall(blob) if not exists(m)} if at is None else set()))
+    if not hits:
+        return {"missing": missing, "receipt": None, "fix": None}
+    p, r = sorted(hits)[0]
+    be = None if at is not None else branch_exists(r.get("commondir"), r.get("branch"))
+    return {"missing": missing, "receipt": r, "fix": restore_cmd(r, be),
+            "evidence": f"{r['_src']} ts={r.get('ts')} snapshot_ref={r.get('snapshot_ref')}"}
+
+
+# ---------- 2. open actions -> no claim for N hours -> one decision line ----------
+
+def episodes(actions_path, now, grace_s):
+    """Open actions at `now` from the append-only log: key -> {start, owner, line}. A clear that is
+    followed by a relapse within grace_s does not end the episode (flapping units still age)."""
+    open_, cleared = {}, {}
+    for line in open(actions_path, errors="replace"):
+        try:
+            a = json.loads(line)
+        except ValueError:
+            continue
+        t = a.get("at", 0)
+        if t > now:
+            break
+        k = a.get("key")
+        if not k:
+            continue
+        if a.get("cleared"):
+            if k in open_:
+                cleared[k] = (t, open_.pop(k))
+            continue
+        prev = cleared.pop(k, None)
+        start = prev[1]["start"] if prev and t - prev[0] < grace_s else t
+        owner = re.sub(r"-archive.*$", "", a.get("owner") or "?")  # never route to an archived lane file
+        open_[k] = {"start": start, "owner": owner, "line": a.get("line", ""), "key": k}
+    return open_
+
+
+def subject(key):
+    """'dead:os_service:foo.service' -> 'foo.service'; 'stale:lane:x' -> 'x'; 'ask:ask:UF2' -> 'UF2'."""
+    return key.rsplit(":", 1)[-1]
+
+
+def kanban_progress(subj, since, now, lane=None, dbs=None):
+    """Latest ts in (since, now] of a Kanban claim on `subj` being created, getting an event or a
+    comment. A claim is a card whose TITLE names the subject (a dedicated card, any assignee), or a
+    card assigned to the owner lane whose body names it; comments count only when the lane wrote them.
+    An observer card that merely lists many units in its body is not a claim. Read-only."""
+    best = None
+    stem = subj[:-8] if subj.endswith(".service") else subj
+    like = f"%{stem}%"
+    claim = "(t.title like ?1 or (t.assignee = ?4 and t.body like ?1))"
+    for pat in (dbs or KANBAN):
+        for db in glob.glob(pat):
+            try:
+                c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+                q = ("select max(ts) from ("
+                     f" select t.created_at ts from tasks t where {claim}"
+                     " union all select e.created_at from task_events e join tasks t on t.id=e.task_id"
+                     f"  where {claim}"
+                     " union all select m.created_at from task_comments m where m.body like ?1 and m.author = ?4"
+                     ") where ts > ?2 and ts <= ?3")
+                v = c.execute(q, (like, since, now, lane or "")).fetchone()[0]
+                c.close()
+            except sqlite3.Error:
+                continue
+            if v and (best is None or v > best):
+                best = v
+    return best
+
+
+AS_OF = re.compile(r"as of (\d{4}-\d{2}-\d{2} \d{2}:\d{2})")
+
+
+def lane_progress(lane, subj, since, now, lanes=LANES):
+    """The lane's own status file names the subject (outside generated <!-- --> blocks) and its
+    `as of` stamp is inside (since, now]."""
+    f = Path(lanes) / f"{lane}.md"
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return None
+    m = AS_OF.search(text.splitlines()[0] if text else "")
+    if not m:
+        return None
+    t = time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M"))
+    body = re.sub(r"<!--\s*([\w-]+):start\s*-->.*?<!--\s*\1:end\s*-->", "", text, flags=re.S)
+    stem = subj[:-8] if subj.endswith(".service") else subj
+    return t if since < t <= now and stem in body else None
+
+
+def proposed_fix(key, at, receipts, replay):
+    if key.startswith("dead:os_service:"):
+        u = subject(key)
+        try:
+            f = fix_for_unit(u, receipts, at=at if replay else None)
+        except Exception as e:  # never let one unit break the run
+            f = {"missing": [], "fix": None, "err": str(e)}
+        if f.get("fix"):
+            return f"restore reaped worktree: {f['fix']}", f
+        if f.get("missing"):
+            return f"MISSING PATH {', '.join(f['missing'])} (no reap receipt); restore or repoint the unit", f
+        return f"triage: journalctl --user -u {u} -n 40; fix or disable, then reset-failed", f
+    if key.startswith("stale:lane:"):
+        return "lane silent: re-arm or retire it", {}
+    return "answer or close", {}
+
+
+def escalate(actions, now, hours=6.0, grace_h=6.0, kinds=("dead:",), receipts=(), replay=False,
+             progress=None):
+    """Decision rows for every open action of `kinds` with no claim/progress for `hours`."""
+    progress = progress or (lambda o, s, since, t: max(filter(None, [
+        kanban_progress(s, since, t, o), None if replay else lane_progress(o, s, since, t)]), default=None))
+    rows = []
+    for k, e in sorted(episodes(actions, now, grace_h * 3600).items()):
+        if not k.startswith(tuple(kinds)):
+            continue
+        last = progress(e["owner"], subject(k), e["start"], now) or e["start"]
+        idle = (now - last) / 3600
+        if idle < hours:
+            continue
+        fix, detail = proposed_fix(k, now, receipts, replay)
+        rows.append({"key": k, "lane": e["owner"], "unit": subject(k), "opened": e["start"],
+                     "age_h": round((now - e["start"]) / 3600, 1), "idle_h": round(idle, 1), "fix": fix,
+                     "evidence": detail.get("evidence"),
+                     "line": f"{e['owner']} | {subject(k)} | open {(now - e['start']) / 3600:.1f} h, "
+                             f"no claim/progress {idle:.1f} h | fix: {fix}"})
+    return rows
+
+
+def new_pushes(rows, state, now, grace_h=6.0, per_day=5, generic_per_day=3, gap_h=4.0):
+    """Rows to send now. Drops keys already pushed this episode (forgotten once the action is gone for
+    > grace). Rate: at most `per_day` push calls per rolling 24 h. A row carrying a concrete restore
+    command goes out at once (any free slot); generic triage rows alone may use only `generic_per_day`
+    slots, one per `gap_h`, so they cannot starve a real fix. Every call carries all pending rows."""
+    sent = state.setdefault("sent", {})
+    calls = [t for t in state.get("calls", []) if now - t < 86400]
+    live = {r["key"] for r in rows}
+    for k in list(sent):
+        if k not in live and now - sent[k].get("seen", 0) > grace_h * 3600:
+            del sent[k]
+    pending = []
+    for r in rows:
+        if r["key"] in sent:
+            sent[r["key"]]["seen"] = now
+        else:
+            pending.append(r)
+    urgent = any(r["fix"].startswith("restore") for r in pending)
+    generic = [t for t in state.get("generic", []) if now - t < 86400]
+    hold = not pending or len(calls) >= per_day or (not urgent and (
+        len(generic) >= generic_per_day or (calls and now - calls[-1] < gap_h * 3600)))
+    state["generic"] = generic + ([] if hold or urgent else [now])
+    if hold:
+        state["calls"] = calls
+        return []
+    for r in pending:
+        sent[r["key"]] = {"at": now, "seen": now, "opened": r["opened"]}
+    state["calls"] = calls + [now]
+    return pending
+
+
+def push(rows, run=subprocess.run):
+    """kevin-push rc; 127 when it cannot be launched (timer units run without ~/.local/bin on PATH)."""
+    if not rows:
+        return None
+    title = f"{len(rows)} routed action(s) unclaimed > 6 h"
+    body = "\n".join(r["line"] for r in rows)
+    env = dict(os.environ, CIRCADIAN_CLASS="decision")
+    exe = os.environ.get("KEVIN_PUSH") or shutil.which("kevin-push") or str(HOME / ".local/bin/kevin-push")
+    try:
+        return run([exe, "action-escalate", title, body], env=env, capture_output=True, text=True).returncode
+    except OSError:
+        return 127
+
+
+def _stamp(t):
+    return time.strftime("%m-%d %H:%M", time.localtime(t))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--actions", required=True, type=Path)
+    ap.add_argument("--state", type=Path, help="pushed keys (dedupe); required with --push")
+    ap.add_argument("--receipts", default=RECEIPTS)
+    ap.add_argument("--hours", type=float, default=6.0)
+    ap.add_argument("--grace", type=float, default=6.0, help="hours a clear must last to end an episode")
+    ap.add_argument("--kinds", default="dead:", help="comma list of action-key prefixes to escalate")
+    ap.add_argument("--push", action="store_true", help="send new escalations via kevin-push (decision)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--replay", nargs=2, metavar=("FROM", "TO"), help="ISO local times; simulate refreshes")
+    ap.add_argument("--step", type=int, default=30, help="replay tick minutes")
+    ap.add_argument("--only", help="replay: print only rows whose unit contains this")
+    a = ap.parse_args(argv)
+    kinds = tuple(k for k in a.kinds.split(",") if k)
+    receipts = load_receipts(a.receipts)
+    if a.replay:
+        t0, t1 = (time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M")) for s in a.replay)
+        # ticks = the real refresh times the log recorded, plus grid points where the log is silent
+        logged = sorted({x["at"] for x in map(json.loads, filter(str.strip, open(a.actions, errors="replace")))
+                         if t0 <= x.get("at", 0) <= t1})
+        ticks, prev = [], t0
+        for t in logged + [t1]:
+            while t - prev > a.step * 60:
+                prev += a.step * 60
+                ticks.append(prev)
+            ticks.append(t); prev = t
+        state, calls = {}, 0
+        for t in sorted(set(ticks)):
+            rows = escalate(a.actions, t, a.hours, a.grace, kinds, receipts, replay=True)
+            out = new_pushes(rows, state, t, a.grace)
+            calls += bool(out)
+            for r in out:
+                if not a.only or a.only in r["unit"]:
+                    print(json.dumps({"tick": _stamp(t), **r}) if a.json else
+                          f"{_stamp(t)} PUSH#{calls} {r['line']}  [opened {_stamp(r['opened'])}]")
+        print(f"# push calls: {calls}; keys pushed: {len(state.get('sent', {}))}")
+        return 0
+    if a.push and not a.state:
+        ap.error("--push needs --state")
+    now = time.time()
+    rows = escalate(a.actions, now, a.hours, a.grace, kinds, receipts)
+    old = a.state.read_text() if a.state and a.state.exists() else "{}"
+    state = json.loads(old)
+    fresh = new_pushes(rows, state, now, a.grace)
+    if a.push:
+        rc = push(fresh)
+        if fresh and rc != 0:  # not delivered: keep keys unsent and the call budget unspent
+            state = json.loads(old)
+            fresh = []
+        state["last_push"] = {"at": int(now), "n": len(fresh), "rc": rc}
+    if a.state and a.push:  # a dry run never marks keys as sent
+        tmp = a.state.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state, indent=1, sort_keys=True))
+        os.replace(tmp, a.state)
+    for r in rows:
+        tag = "NEW  " if r in fresh else "SENT " if r["key"] in state.get("sent", {}) else "HELD "
+        print(json.dumps(r) if a.json else tag + r["line"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

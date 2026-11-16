@@ -141,7 +141,7 @@ def main():
         os.execvp(argv[0], argv)
     unit = 'hermes-worker-local-'+uuid.uuid4().hex
     command = ['systemd-run','--user','--scope','--quiet','--collect','--unit='+unit,
-               '--property=Slice=agent.slice','--property=CPUQuota=100%',
+               '--property=Slice=agent.slice',
                '--property=IOWeight=1','--property=MemoryMax=4G',
                '--property=MemorySwapMax=512M','--',*argv]
     # A failed bus/scope is an admission hold, NEVER a direct-exec fallback.

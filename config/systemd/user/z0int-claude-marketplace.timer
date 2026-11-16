@@ -1,0 +1,12 @@
+[Unit]
+Description=Run z0int Claude marketplace ensure+check every 15 minutes
+Documentation=man:z0int-claude-marketplace(1)
+
+[Timer]
+OnCalendar=*-*-* *:00/15:00
+Persistent=true
+AccuracySec=30s
+Unit=z0int-claude-marketplace.service
+
+[Install]
+WantedBy=timers.target

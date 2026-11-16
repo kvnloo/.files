@@ -13,7 +13,9 @@ UMask=0077
 LimitCORE=0
 Nice=10
 CPUQuota=10%
-MemoryMax=128M
+# X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
+MemoryHigh=128M
+MemoryMax=192M
 NoNewPrivileges=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX AF_INET
