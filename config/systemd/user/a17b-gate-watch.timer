@@ -1,8 +1,0 @@
-[Unit]
-Description=A17b live gate watcher every 10 min
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=10min
-Persistent=true
-[Install]
-WantedBy=timers.target

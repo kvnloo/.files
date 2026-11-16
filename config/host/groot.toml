@@ -108,6 +108,11 @@ user_retired_files = [
   { live = "~/.config/systemd/user/agent-resource-classify.timer.d/90-service-watch.conf", sha256 = "196498249d86b529e8f82ae245890e85afae15777f482798ed9a51fd1f055e0c", reason = "Retired 2026-11-16 (F16): agent-resource-classify runs as a resident --loop service; the 10 s timer cost ~340 interpreter starts per hour." },
   { live = "~/.config/systemd/user/fettl-shadow-summary-final-20261025.service.d/90-service-watch.conf", sha256 = "c07a5c3795b9e872d6388cf4ff1612a0c43f723f2bc5f8db7dfc3fe196581a6c", reason = "Retired 2026-11-16: drop-ins for fettl-shadow-summary-final-20261025, a one-shot whose unit no longer exists (not-found); they were plain live copies no release reached." },
   { live = "~/.config/systemd/user/fettl-shadow-summary-final-20261025.timer.d/90-service-watch.conf", sha256 = "db5320a8d28c6148349f85bce3f5143a60a9a1110740fcd3490708ed86bf4fa1", reason = "Retired 2026-11-16: drop-ins for fettl-shadow-summary-final-20261025, a one-shot whose unit no longer exists (not-found); they were plain live copies no release reached." },
+  { live = "~/.config/systemd/user/a17b-gate-watch.service", sha256 = "e20561aa719a927ec74b85992f486ef498219156eafc4287db8faea647490e29", reason = "Retired 2026-11-16: finished one-shot gate (A17b SENT 2026-11-05 rc 0, FINAL-REPORT.md written) whose watcher kept scanning every Hermes state.db every 10 min: 3.1 GB read and 2.1 GB RSS per run (~450 GB/day). Backup retire-a17b-<ts>" },
+  { live = "~/.config/systemd/user/a17b-gate-watch.service.d/90-service-watch.conf", sha256 = "d7e7843c6c61f280844bc2b1ac5b4df3e1f7486b743ca1b50228f0a222711dbf", reason = "Retired 2026-11-16: finished one-shot gate (A17b SENT 2026-11-05 rc 0, FINAL-REPORT.md written) whose watcher kept scanning every Hermes state.db every 10 min: 3.1 GB read and 2.1 GB RSS per run (~450 GB/day). Backup retire-a17b-<ts>" },
+  { live = "~/.config/systemd/user/a17b-gate-watch.timer", sha256 = "660ecb65f93d92fc3eda06c145c860e774b6b6318ef7cfb10cf56b62f626209d", reason = "Retired 2026-11-16: finished one-shot gate (A17b SENT 2026-11-05 rc 0, FINAL-REPORT.md written) whose watcher kept scanning every Hermes state.db every 10 min: 3.1 GB read and 2.1 GB RSS per run (~450 GB/day). Backup retire-a17b-<ts>" },
+  { live = "~/.config/systemd/user/a17b-gate-watch.timer.d/90-service-watch.conf", sha256 = "5004d0d8c0bb435ebd1a4e3e5c910c14fca13e087bdb0b0da03f2ae2b6e277dd", reason = "Retired 2026-11-16: finished one-shot gate (A17b SENT 2026-11-05 rc 0, FINAL-REPORT.md written) whose watcher kept scanning every Hermes state.db every 10 min: 3.1 GB read and 2.1 GB RSS per run (~450 GB/day). Backup retire-a17b-<ts>" },
+  { live = "~/.local/bin/a17b-gate-watch", sha256 = "66e5481efb267054f9dd873afdfe05ff8a7d79506479e9e2739e85927b24e8fc", reason = "Retired 2026-11-16: finished one-shot gate (A17b SENT 2026-11-05 rc 0, FINAL-REPORT.md written) whose watcher kept scanning every Hermes state.db every 10 min: 3.1 GB read and 2.1 GB RSS per run (~450 GB/day). Backup retire-a17b-<ts>" },
 ]
 user_control_cleanup = [
   { live = "/run/user/1000/systemd/user.control/agent.slice.d/50-MemoryMax.conf", sha256 = "9db1736dffd3ed050d30d8fa374befe52fe05961c1746b8eb086c9de5f4dab59" },
@@ -3705,15 +3710,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Adopted 2026-11-16 (F16): live copy had no row, so its cadence could drift from dev unseen."
 migration_sha256 = "07bc92f082474b5be6cd05703bd86c0d2ead881df987e66392faf9306755db4c"
-
-[[user]]
-live = "~/.config/systemd/user/a17b-gate-watch.timer"
-source = "config/systemd/user/a17b-gate-watch.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
-migration_sha256 = "660ecb65f93d92fc3eda06c145c860e774b6b6318ef7cfb10cf56b62f626209d"
 
 [[user]]
 live = "~/.config/systemd/user/agent-overview.service"
