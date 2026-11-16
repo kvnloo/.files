@@ -18,6 +18,14 @@ attempts=${OFFSITE_BLOBS_ATTEMPTS:-6}
 ops=${OFFSITE_OPS:-/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance}
 runs=$ops/runs/offsite-$(date +%Y%m%d)
 mkdir -p "$runs"
+# One run at a time (2026-11-16: a manual start overlapped a running backup; two restics split Drive's
+# per-minute quota and both failed). A skipped run is logged, not an error: the holder is doing the work.
+exec 9>"$ops/offsite-blobs.lock"
+if ! flock -n 9; then
+  echo "offsite-blobs: another offsite-blobs run holds $ops/offsite-blobs.lock; skipping" | tee -a "$runs/blobs.log"
+  printf '{"time":"%s","snapshot":"","exit":0,"skipped":"locked"}\n' "$(date -Is)" >> "$runs/blobs.jsonl"
+  exit 0
+fi
 if [[ -n ${OFFSITE_BLOBS_SRC:-} ]]; then read -ra src <<<"$OFFSITE_BLOBS_SRC"
 else src=(/mnt/zer0models/project-artifacts /mnt/zer0models/quarantine/worktree-reap); fi
 start=$(date +%s)
