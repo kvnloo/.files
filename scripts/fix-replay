@@ -58,7 +58,9 @@ def run():
     regressions = []
     with LOG.open("a") as log:
         for t in tapes():
+            t0 = time.monotonic()
             rc, out = sh(t["tape"], t.get("env"))
+            ms = int((time.monotonic() - t0) * 1000)  # the run reads 5-14 GB/h; per-tape cost finds the readers
             ok = rc == 0
             s = st.setdefault(t["id"], {"since": now, "ok": ok, "uses": 0, "passes": 0, "fails": 0})
             before = status(s, now)
@@ -80,7 +82,7 @@ def run():
             if ok:
                 s["uses"] += uses
             s.update(cls=t.get("class", ""), what=t.get("what", ""), checked=now)
-            log.write(json.dumps({"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses,
+            log.write(json.dumps({"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses, "ms": ms,
                                   "out": "" if ok else out}) + "\n")
     STATE.write_text(json.dumps(st, indent=1))
     for t, before, out in regressions:

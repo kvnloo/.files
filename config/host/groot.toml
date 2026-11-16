@@ -822,15 +822,6 @@ reason = "Preserve existing declaration and enablement without restart; host-hyg
 migration_sha256 = "df7a728abb507ab79bcd90796d7e3ca4864c4ef7c94c6ccf5e7ed723c44df8f3"
 
 [[user]]
-live = "~/.config/systemd/user/t3code.service"
-source = "config/systemd/user/t3code.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "59123dc767f1a9e92cceced2ea6c2bf77160e4c33e1af73551a51109cc46f530"
-
-[[user]]
 live = "~/.config/systemd/user/taildrop-portal.service"
 source = "config/systemd/user/taildrop-portal.service"
 scope = "user"
@@ -1741,15 +1732,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "df7a728abb507ab79bcd90796d7e3ca4864c4ef7c94c6ccf5e7ed723c44df8f3"
-
-[[user]]
-live = "~/.config/systemd/user/default.target.wants/t3code.service"
-source = "config/systemd/user/t3code.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "59123dc767f1a9e92cceced2ea6c2bf77160e4c33e1af73551a51109cc46f530"
 
 [[user]]
 live = "~/.config/systemd/user/default.target.wants/tencentdb-memory.service"
@@ -4651,6 +4633,14 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Run the Astra drain when its queue changes instead of polling an empty queue."
+
+[[user]]
+live = "~/.config/systemd/user/t3code.service.d/50-agent-memory-policy.conf"
+source = "config/systemd/user/t3code.service.d/50-agent-memory-policy.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "t3 update rewrites t3code.service each release (live_drift replaced, 2026-11-16); .files owns only its drop-in, tests/test_t3code_unit_ownership.py."
 
 [[user]]
 live = "~/.config/environment.d/hermes-home.conf"
