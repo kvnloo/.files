@@ -161,16 +161,22 @@ def t3_rows(root=T3):
     return rows
 
 
-def scan_rows(roots=None):
-    """Every linked worktree of every repo that has one under a scan root. No proof: tier 3 decides."""
+def scan_rows(roots=None, skipped=None):
+    """Every linked worktree of every repo that has one under a scan root. No proof: tier 3 decides.
+    A root whose walk times out (busy disk) is appended to `skipped` and the rest still run."""
     commons = set()
     for root in roots if roots is not None else SCAN_ROOTS:
         if not root.is_dir():
             continue
-        out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
+        try:
+            out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
                               ")", "-prune", "-o", "-name", ".git", "-type", "d", "-prune",  # never walk a repo's own .git/
                               "-o", "-name", ".git", "-type", "f", "-print"],
                              capture_output=True, text=True, timeout=600).stdout.split("\n")
+        except subprocess.TimeoutExpired:
+            if skipped is not None:
+                skipped.append(str(root))
+            continue
         for dotgit in filter(None, out):
             common = git(Path(dotgit).parent, "rev-parse", "--path-format=absolute", "--git-common-dir", timeout=30)
             if common.returncode == 0:
@@ -369,8 +375,8 @@ def main():
     net = json.loads(a.network.read_text())
     if time.time() - float(net.get("generated_at", 0)) > a.max_age_h * 3600:
         raise SystemExit(f"network proofs older than {a.max_age_h} h; refusing")
-    rows, seen = [], set()
-    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows() + scan_rows():
+    rows, seen, skipped = [], set(), []
+    for r in [r for r in net["rows"] if r.get("finished") or r.get("worktree")] + t3_rows() + scan_rows(skipped=skipped):
         key = os.path.realpath(r["worktree"]) if r.get("worktree") else (r["commondir"], r["branch"])
         if key not in seen:
             seen.add(key)
@@ -398,7 +404,7 @@ def main():
             if action != "keep":
                 f.write(json.dumps(rec) + "\n")
     summary = {"ts": time.strftime("%FT%T%z"), "apply": a.apply, "rows": len(rows), "counts": counts,
-               "reclaimed_kib": reclaimed}
+               "reclaimed_kib": reclaimed, "scan_roots_timed_out": skipped}
     with open(a.out / "runs.jsonl", "a") as f:
         f.write(json.dumps(summary) + "\n")
     print(json.dumps(summary))

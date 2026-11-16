@@ -348,3 +348,25 @@ class LazyFacts(unittest.TestCase):
         (action, why), calls = self.run_decide(["ancestor:main"])
         self.assertIn("status", calls)
         self.assertEqual(action, "worktree")
+
+
+class SlowScanRoot(unittest.TestCase):
+    def test_one_slow_root_is_skipped_and_recorded_not_fatal(self):
+        td = Path(tempfile.mkdtemp()); slow, ok = td / "slow", td / "ok"
+        repo, wt = ok / "r", ok / "wt"
+        slow.mkdir(); g(td, "init", "-q", str(repo)); (repo / "f").write_text("x")
+        g(repo, "add", "f"); g(repo, "commit", "-qm", "i"); g(repo, "worktree", "add", "-q", "-b", "side", str(wt))
+        real = wtr.subprocess.run
+
+        def run(cmd, *a, **k):
+            if cmd[:2] == ["find", str(slow)]:
+                raise subprocess.TimeoutExpired(cmd, 600)
+            return real(cmd, *a, **k)
+        wtr.subprocess.run, skipped = run, []
+        try:
+            rows = wtr.scan_rows([slow, ok], skipped=skipped)
+        finally:
+            wtr.subprocess.run = real
+        self.assertEqual([os.path.realpath(r["worktree"]) for r in rows], [os.path.realpath(wt)])
+        self.assertEqual(skipped, [str(slow)])
+
