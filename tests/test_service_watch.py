@@ -974,7 +974,10 @@ class Contracts(unittest.TestCase):
             self.watch.triage(ident, ['synthetic error'])
             notify.assert_called_once()
         argv, kw, cwd_entries = calls[0]
-        self.assertEqual(argv[1:4], ['ask', '--model', 'gpt-6-luna'])
+        fx_at = argv.index(str(sw.FX))
+        # Own scope: fx's threads and RSS broke the watcher's TasksMax=32 / MemoryHigh (live 2026-11-16).
+        self.assertEqual(argv[:3], ['systemd-run', '--user', '--scope'])
+        self.assertEqual(argv[fx_at + 1:fx_at + 4], ['ask', '--model', 'gpt-6-luna'])
         self.assertFalse({'--auto', '--full-access', '--yolo'} & set(argv))
         self.assertNotIn('synthetic error', argv[-1])
         self.assertEqual(cwd_entries, [])  # no project context for fx to read
@@ -982,6 +985,21 @@ class Contracts(unittest.TestCase):
         data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
         self.assertTrue(data['severe_confirmed'])
         self.assertEqual(data['tiers'][-1]['model'], 'openai-codex/gpt-6-luna')
+
+    def test_deterministic_severe_incident_skips_subscription_confirmation(self):
+        # 85% of confirmations (1684/1987 over 3 days) were for already-proven failures, where the
+        # model cannot change severity or notification.
+        ident = self.watch.record('user', 'fixture.service', [sw.event('failed')], ['synthetic error'])
+        decision = {'severity': 'severe', 'cause': 'Unit failed', 'fix': 'Inspect manually', 'evidence': [0], 'confidence': .9}
+        remote = {'ok': True, 'provider': 'groq', 'model': 'openai/gpt-oss-20b', 'output': json.dumps(decision)}
+        with patch.object(sw, 'post', lambda url, body, timeout=40: remote if url != sw.LOCAL_URL else {}), \
+                patch.object(sw.subprocess, 'run') as run, patch.object(self.watch.store, 'notify') as notify:
+            self.watch.triage(ident, ['synthetic error'])
+            run.assert_not_called()
+            notify.assert_called_once()
+        data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        self.assertTrue(data['severe_confirmed'])
+        self.assertNotIn('openai-codex/gpt-6-luna', [t['model'] for t in data['tiers']])
 
     def test_raw_route_fails_closed_if_host_does_not_own_address(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '[{\"addr_info\":[{\"local\":\"127.0.0.1\"}]}]', '')), patch.object(sw.urllib.request, 'build_opener') as opener:

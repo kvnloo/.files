@@ -1205,14 +1205,18 @@ class Watch:
         except Exception:
             tiers.append({'model': 'free-router', 'ok': False, 'latency_ms': (time.monotonic() - start) * 1000})
         severe = data['decision']['severity'] == 'severe' or (selected and selected['severity'] == 'severe') or (local and local['severity'] == 'severe')
-        if severe:
+        # A proven failure is already severe and notifies; confirmation only matters for model-only severity.
+        if severe and not deterministic_severe:
             start = time.monotonic()
             try:
                 # Owner rule: subscription GPT runs only via fx. `window` is project()'s finite projection
                 # (never summaries, unit names, paths or logs). Without --auto/--full-access fx denies
-                # every tool request, and an empty cwd leaves it no project context to read.
+                # every tool request, and an empty cwd leaves it no project context to read. Its own scope
+                # keeps fx's threads and memory out of this daemon's TasksMax/MemoryHigh.
                 with tempfile.TemporaryDirectory() as cwd:
-                    proc = subprocess.run([str(FX), 'ask', '--model', CONFIRM_MODEL, '--effort', 'low', '--json',
+                    proc = subprocess.run(['systemd-run', '--user', '--scope', '--quiet', '--collect',
+                                           '-p', 'MemoryMax=1G', '-p', 'TasksMax=256', '--',
+                                           str(FX), 'ask', '--model', CONFIRM_MODEL, '--effort', 'low', '--json',
                                            '--no-save', '--no-color', '--', CONFIRM_PROMPT + json.dumps(window)],
                                           cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                           stderr=subprocess.DEVNULL, text=True, timeout=55)
