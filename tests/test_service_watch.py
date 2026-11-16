@@ -637,6 +637,46 @@ class Contracts(unittest.TestCase):
             holder.execute('ROLLBACK'); holder.close()
         self.assertEqual(self.watch.store.db.execute('SELECT count(*) FROM incidents').fetchone()[0], 1)
 
+    def test_first_failure_hook_under_held_lock_spools_and_daemon_records_it(self):
+        # Boot storm 2026-11-15 06:16: a dozen units failed at once and every new report
+        # died with 'database is locked' after the busy timeout, so none reached the digest.
+        holder = sqlite3.connect(self.root / 'state/state.sqlite', isolation_level=None)
+        holder.execute('BEGIN IMMEDIATE')
+        call = {'scope': 'user', 'unit': 'storm.service', 'events': [sw.event('failed')]}
+        try:
+            with patch.object(sw, 'BUSY_TIMEOUT', 0.05):
+                result = sw.hook_report(lambda: sw.Watch(self.root / 'state', self.root / 'inventory.json'),
+                                        self.root / 'state', call)
+        finally:
+            holder.execute('ROLLBACK'); holder.close()
+        self.assertEqual(result, 'spooled')
+        self.assertEqual(len(list((self.root / 'state/spool').glob('*.json'))), 1)
+        with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')):
+            self.assertEqual(self.watch.drain_spool(), 1)
+        units = [row[0] for row in self.watch.store.db.execute('SELECT unit FROM incidents')]
+        self.assertEqual(units, ['storm.service'])
+        self.assertEqual(list((self.root / 'state/spool').glob('*.json')), [])
+
+    def test_unreadable_spool_entry_is_set_aside_not_fatal(self):
+        spool = self.root / 'state/spool'
+        spool.mkdir()
+        (spool / 'bad.json').write_text('{not json')
+        self.assertEqual(self.watch.drain_spool(), 0)
+        self.assertTrue((spool / 'bad/bad.json').exists())
+
+    def test_daemon_scan_survives_a_locked_database(self):
+        calls = []
+        def scan():
+            calls.append(1)
+            if len(calls) == 1:
+                raise sqlite3.OperationalError('database is locked')
+            self.watch.stop.set()
+        with patch.object(self.watch, 'scan', side_effect=scan), \
+                patch.object(self.watch, 'worker'), patch.object(self.watch, 'watchdog'), \
+                patch.object(self.watch, 'checkout_worker'):
+            self.watch.serve(scan_interval=0)
+        self.assertEqual(len(calls), 2)
+
     def test_unattributed_legacy_notifications_share_conservative_routine_budget(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:
             results = [self.watch.store.notify(str(i), 'fixture.service', 'failed', str(i), now=100000) for i in range(6)]

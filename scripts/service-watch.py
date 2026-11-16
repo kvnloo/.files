@@ -45,6 +45,8 @@ OPERATIONS = operations_root()
 DEFAULT = OPERATIONS / 'service-watch'
 INVENTORY = OPERATIONS / 'host-hygiene/units.json'
 REAPER_STATUS = OPERATIONS / 'worktree-reaper/latest.json'
+BUSY_TIMEOUT = 30
+LOCKED = re.compile(r'database is (locked|busy)')
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
          'receipt_error_share', 'error_file_growth', 'timer_stale', 'timer_failed',
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',
@@ -263,13 +265,37 @@ def journal_lines(proc, timeout):
                 yield line
 
 
+def spool(state, call):
+    """Leave a hook's exact record() call for the daemon: tmp + rename, so a reader never sees half a file."""
+    directory = Path(state) / 'spool'
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    name = '%.6f-%s.json' % (time.time(), uuid.uuid4().hex[:8])
+    temporary = directory / ('.' + name + '.tmp')
+    temporary.write_text(json.dumps(call, sort_keys=True))
+    os.replace(temporary, directory / name)
+    return directory / name
+
+
+def hook_report(make_watch, state, call):
+    """An OnFailure/heartbeat/drift hook that cannot get the write lock spools its report instead of
+    failing: during a boot storm every first report died after the busy timeout and was lost."""
+    try:
+        return make_watch().record(**call)
+    except sqlite3.OperationalError as error:
+        if not LOCKED.search(str(error)):
+            raise
+        path = spool(state, call)
+        print('SERVICE_WATCH_SPOOLED ' + json.dumps({'unit': call.get('unit'), 'path': str(path)}), flush=True)
+        return 'spooled'
+
+
 class Store:
     def __init__(self, root):
         self.root = Path(root)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
         self.lock = threading.RLock()
-        self.db = sqlite3.connect(self.root / 'state.sqlite', timeout=30, check_same_thread=False)
+        self.db = sqlite3.connect(self.root / 'state.sqlite', timeout=BUSY_TIMEOUT, check_same_thread=False)
         self.db.executescript('''PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY,v TEXT);
             CREATE TABLE IF NOT EXISTS incidents(id TEXT PRIMARY KEY, fingerprint TEXT, ts REAL, unit TEXT, scope TEXT, data TEXT);
@@ -592,8 +618,27 @@ class Watch:
             pass  # Persistent pending table is drained by the worker after memory backlog.
         return ident
 
+    def drain_spool(self):
+        """Record reports hooks spooled under a held lock; an unreadable entry is set aside, never fatal."""
+        directory = self.store.root / 'spool'
+        done = 0
+        for path in sorted(directory.glob('*.json')) if directory.is_dir() else []:
+            try:
+                call = json.loads(path.read_text())
+                if not isinstance(call, dict) or not isinstance(call.get('events'), list):
+                    raise ValueError('not a record call')
+            except (OSError, ValueError):
+                (directory / 'bad').mkdir(mode=0o700, exist_ok=True)
+                os.replace(path, directory / 'bad' / path.name)
+                continue
+            self.record(**call)
+            path.unlink()
+            done += 1
+        return done
+
     def scan(self):
         check_stop()
+        self.drain_spool()
         now = time.time()
         if now - self.last_scan > 60:
             self.discover()
@@ -1121,8 +1166,15 @@ class Watch:
         COMMAND_CONTEXT.stop = self.stop
         try:
             while not self.stop.is_set():
-                self.scan()
-                self.scan_watchdog_at = time.monotonic()
+                try:
+                    self.scan()
+                except sqlite3.OperationalError as error:
+                    # A lock held past the busy timeout skips this scan; the next one retries.
+                    if not LOCKED.search(str(error)):
+                        raise
+                    print('SERVICE_WATCH_SCAN_SKIPPED database locked', flush=True)
+                else:
+                    self.scan_watchdog_at = time.monotonic()
                 self.stop.wait(scan_interval)
         except ShutdownRequested:
             pass
@@ -1202,8 +1254,9 @@ def main():
         return 0
     if args.action == 'heartbeat' and not heartbeat_stale(args.state / 'status.json'):
         return 0
-    watch = Watch(args.state, args.inventory, args.checkout_threshold,
-                  args.checkout_roots, args.reaper_status)
+    def make_watch():
+        return Watch(args.state, args.inventory, args.checkout_threshold,
+                     args.checkout_roots, args.reaper_status)
     if args.action == 'host-drift':
         receipt = Path.home() / '.local/state/host-drift/latest.json'
         try:
@@ -1230,16 +1283,20 @@ def main():
             identity, action = 'receipt_unavailable', []
         # One incident/notification for the exact canonical drift set, regardless
         # of receipt timestamps, item order, hook cadence or daemon restarts.
-        watch.record('user', 'host-drift.service', events,
-                     identity=identity, action=action, triage=False)
+        hook_report(make_watch, args.state, {'scope': 'user', 'unit': 'host-drift.service', 'events': events,
+                                             'identity': identity, 'action': action, 'triage': False})
         return 0
     if args.action == 'failure':
         if not unit_ok(args.target):
             raise SystemExit('Invalid unit')
-        watch.record(args.scope, args.target, [event('failed')])
-    elif args.action == 'heartbeat':
-        watch.record('user', 'service-watch.service', [event('heartbeat_stale')])
-    elif args.action == 'seed':
+        hook_report(make_watch, args.state, {'scope': args.scope, 'unit': args.target, 'events': [event('failed')]})
+        return 0
+    if args.action == 'heartbeat':
+        hook_report(make_watch, args.state,
+                    {'scope': 'user', 'unit': 'service-watch.service', 'events': [event('heartbeat_stale')]})
+        return 0
+    watch = make_watch()
+    if args.action == 'seed':
         watch.discover()
         watch.loop_invariants(seed=True)
         watch.journals(seed=True)
