@@ -169,6 +169,14 @@ class PhoneFeeder(unittest.TestCase):
         self.assertEqual(argv[i + 1:i + 6], ["chrt", "-i", "0", "taskset", "f0"])
         self.assertIn("18432", argv)
 
+    def test_phone_crash_still_runs_mbp_half_but_fails_the_unit(self):
+        from unittest import mock
+        absent = subprocess.CalledProcessError(1, "kubectl", stderr='error: the server doesn\'t have a resource type "clusterqueue"\n')
+        with mock.patch.object(bf, "phone_tick", side_effect=ValueError("torn")), \
+                mock.patch.object(bf, "sh", side_effect=absent) as sh:
+            self.assertEqual(bf.tick(CFG, dry_run=True), 1)
+            self.assertEqual(sh.call_count, 1)
+
     def test_torn_phone_state_is_dropped_and_writes_are_atomic(self):
         with tempfile.TemporaryDirectory() as d:
             p = pathlib.Path(d) / "galaxy-s22plus.json"
