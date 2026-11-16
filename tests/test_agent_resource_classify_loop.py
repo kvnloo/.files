@@ -52,7 +52,9 @@ def test_former_subminute_timers_stay_at_two_minutes_or_slower():
     import re
     # F16: the 1-min group moved to 2 min too (jepa-host-sampler and service-watch-heartbeat stay).
     names = ('quackles-arbiter', 'dash-turbo-follow', 'z0-guard-gateway-watch', 'reset-grant', 'free-pace',
-             'gh-feedback-watch', 'o8-phone-reverse', 'network-optimizer')
+             'gh-feedback-watch', 'o8-phone-reverse', 'network-optimizer',
+             # landed after F16 at 1 min; service-envelope stays at 1 min (it caps runaway transient units)
+             'hermes-skew-restart', 'z0-capacity-snapshot')
     assert 'OnCalendar=*-*-* *:0/2:00' in (ROOT / 'config/systemd/user/neuroforge-import.timer').read_text()
     for name in (n + '.timer' for n in names):
         text = (ROOT / 'config/systemd/user' / name).read_text()
