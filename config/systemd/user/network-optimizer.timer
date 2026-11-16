@@ -1,9 +1,10 @@
 [Unit]
-Description=Run the z0 network meta-optimizer cycle every 2 min (jittered)
+Description=Run the z0 network meta-optimizer cycle every 5 min (jittered)
 
 [Timer]
 OnBootSec=90s
-OnUnitActiveSec=2min
+# F16 start budget (2026-11-16): low-urgency, 2 min -> 5 min.
+OnUnitActiveSec=5min
 # Avoid the :00/:15/:30 timer pile-up that coincided with the 13:43 OOM storm.
 RandomizedDelaySec=20s
 AccuracySec=5s

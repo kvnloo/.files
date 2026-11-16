@@ -2,6 +2,7 @@
 Description=Keep the Tern host list in sync with Tailscale
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=2min
+# F16 start budget (2026-11-16): low-urgency, 2 min -> 5 min.
+OnUnitActiveSec=5min
 [Install]
 WantedBy=timers.target

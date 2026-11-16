@@ -55,7 +55,11 @@ def test_former_subminute_timers_stay_at_two_minutes_or_slower():
              'gh-feedback-watch', 'o8-phone-reverse', 'network-optimizer',
              # landed after F16 at 1 min; service-envelope stays at 1 min (it caps runaway transient units)
              'hermes-skew-restart', 'z0-capacity-snapshot')
-    assert 'OnCalendar=*-*-* *:0/2:00' in (ROOT / 'config/systemd/user/neuroforge-import.timer').read_text()
+    assert 'OnCalendar=*-*-* *:0/5:00' in (ROOT / 'config/systemd/user/neuroforge-import.timer').read_text()
+    slow = ('tern-hosts-sync', 'gh-pace', 'network-optimizer', 'z0-capacity-snapshot', 'gh-feedback-watch')
+    for name in (n + '.timer' for n in slow):  # 2026-11-16 F16 tail: low-urgency samplers at 5 min
+        text = (ROOT / 'config/systemd/user' / name).read_text()
+        assert re.findall(r'^OnUnit(?:Active|Inactive)Sec=(\S+)', text, re.M) == ['5min'], name
     for name in (n + '.timer' for n in names):
         text = (ROOT / 'config/systemd/user' / name).read_text()
         for value in re.findall(r'^OnUnit(?:Active|Inactive)Sec=(\S+)', text, re.M):

@@ -1,9 +1,10 @@
 [Unit]
-Description=Poll GitHub notifications every 2 min (above the 60 s X-Poll-Interval; 304s are free)
+Description=Poll GitHub notifications every 5 min (above the 60 s X-Poll-Interval; 304s are free)
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=2min
+# F16 start budget (2026-11-16): low-urgency, 2 min -> 5 min.
+OnUnitInactiveSec=5min
 AccuracySec=10s
 
 [Install]

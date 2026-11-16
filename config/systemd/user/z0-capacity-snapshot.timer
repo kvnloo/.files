@@ -1,10 +1,10 @@
 [Unit]
-Description=Refresh z0.capacity.snapshot.v1 every 2 min
+Description=Refresh z0.capacity.snapshot.v1 every 5 min
 
 [Timer]
 OnBootSec=30s
-# F16 start budget; the only reader (mesh-healer) wants it under 600 s old.
-OnUnitActiveSec=2min
+# F16 start budget; the only reader (mesh-healer) wants it under 600 s old, so 5 min keeps margin.
+OnUnitActiveSec=5min
 AccuracySec=10s
 Unit=z0-capacity-snapshot.service
 
