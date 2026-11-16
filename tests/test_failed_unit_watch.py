@@ -31,7 +31,7 @@ class FakeSystemctl:
         self.calls.append(cmd)
         out = ""
         if "list-units" in cmd:
-            out = "fork.timer loaded active elapsed x\ndated.timer loaded active elapsed y\nok.timer loaded active waiting z\noff.timer l a e w\nbusy.timer l a e w\n"
+            out = "fork.timer loaded active elapsed fork.timer\ndated.timer loaded active elapsed y\nok.timer loaded active waiting z\noff.timer l a e w\nbusy.timer l a e w\n"
         elif "show" in cmd:
             out = SHOW if any(c.endswith(".timer") for c in cmd) else SERVICES
         return subprocess.CompletedProcess(cmd, 0, out, "")
@@ -39,7 +39,10 @@ class FakeSystemctl:
 
 def test_only_enabled_repeating_timers_left_elapsed_with_an_idle_service_are_stalled():
     """busy.timer is elapsed only because its OnUnitInactiveSec service is mid-run: not stalled."""
-    assert fuw.stalled_timers(FakeSystemctl()) == [("fork.timer", "fork.service")]
+    run = FakeSystemctl()
+    assert fuw.stalled_timers(run) == [("fork.timer", "fork.service")]
+    asked = [c for c in run.calls if "show" in c][0]
+    assert asked.count("fork.timer") == 1  # a timer without Description must not be listed twice
 
 
 def test_rearm_starts_the_service_once_without_blocking():

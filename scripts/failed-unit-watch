@@ -55,9 +55,9 @@ def stalled_timers(run=subprocess.run):
     """Enabled timers that repeat (OnUnit*Sec) but sit `elapsed` with nothing armed: they never fire again and
     never fail. 11-15: kvnloo-fork-sync, n722bd-collector, zer0-storage-autotier dead since boot, all `success`.
     systemd drops an already-past OnBootSec on (re)start, and OnUnit*Sec has no base until the service has run."""
-    names = run(["systemctl", "--user", "list-units", "--type=timer", "--all", "--plain", "--no-legend"],
-                capture_output=True, text=True).stdout.split()
-    timers = [n for n in names if n.endswith(".timer")]
+    out = run(["systemctl", "--user", "list-units", "--type=timer", "--all", "--plain", "--no-legend"],
+              capture_output=True, text=True).stdout
+    timers = [l.split()[0] for l in out.splitlines() if l.strip()]  # column 1: a bare Description repeats the name
     if not timers:
         return []
     show = run(["systemctl", "--user", "show", "-p", "Id,Unit,SubState,UnitFileState,TimersMonotonic", *timers],
