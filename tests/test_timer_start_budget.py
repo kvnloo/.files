@@ -11,7 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = ROOT / 'config/systemd/user'
-BUDGET = 843  # starts/h over every tracked .timer (+ timer.d drop-ins); untracked live timers: home sysgraph timer_starts_h
+# 843 -> 848 (2026-11-16): adopting astra-drain.timer.d/pace.conf, a live untracked 2 min poll (30/h), at 10 min (6/h).
+BUDGET = 848  # starts/h over every tracked .timer (+ timer.d drop-ins); untracked live timers: home sysgraph timer_starts_h
 SPAN = {'us': 1e-6, 'ms': 1e-3, 's': 1, 'sec': 1, 'm': 60, 'min': 60, 'h': 3600, 'hr': 3600, 'd': 86400, 'w': 604800}
 REPEAT = re.compile(r'^(OnUnit(?:Active|Inactive)Sec|OnCalendar)=(.*)$', re.M)
 

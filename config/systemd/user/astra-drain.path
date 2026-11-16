@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Astra drain when its queue changes (enqueue pickup without polling)
+ConditionPathIsMountPoint=/mnt/zer0models
+
+[Path]
+# F16 2026-11-16: pace.conf polled an empty queue every 2 min (30 starts/h, 3 days without a job).
+# fable-ingest's update() skips no-op writes, so an empty drain run does not re-trigger itself.
+# A write made while the drain runs is not seen here; the timer's 10 min backstop picks up the next job.
+PathChanged=/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109/astra-queue.json
+Unit=astra-drain.service
+
+[Install]
+WantedBy=default.target

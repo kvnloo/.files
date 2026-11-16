@@ -28,7 +28,12 @@ def update(path, fn, default=None):
     with open(f"{path}.lock", "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
         data = json.loads(path.read_text()) if path.exists() else default
+        before = json.dumps(data, sort_keys=True)
         ret = fn(data)
+        # No-op updates leave the file alone: astra-drain.path fires on queue writes, and an empty
+        # poll that rewrote 150 KB would re-trigger itself.
+        if path.exists() and json.dumps(data, sort_keys=True) == before:
+            return ret
         tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(data, indent=1))
         tmp.replace(path)

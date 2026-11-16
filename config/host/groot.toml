@@ -4636,6 +4636,23 @@ owner = "scripts/apply-agent-oom"
 reason = "Keep the unit's declared RestartSec=10min: the global 52-restart-backoff cap (2 min) otherwise clips it."
 
 [[user]]
+live = "~/.config/systemd/user/astra-drain.timer.d/pace.conf"
+source = "config/systemd/user/astra-drain.timer.d/pace.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: an untracked live drop-in turned the hourly repo timer into a 2 min poll; now a 10 min backstop behind astra-drain.path."
+migration_sha256 = "b3859b165b507c16d31fec1bd023ff94fb04403e2a471db48cb7dc0821ea0972"
+
+[[user]]
+live = "~/.config/systemd/user/astra-drain.path"
+source = "config/systemd/user/astra-drain.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Run the Astra drain when its queue changes instead of polling an empty queue."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"

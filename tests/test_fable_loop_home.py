@@ -32,6 +32,27 @@ class FableLoopHome(unittest.TestCase):
         self.assertEqual(fable.BIN, Path("/nonexistent/u/.local/bin"))
         self.assertIn(Path("/nonexistent/u/.hermes/hermes-agent"), astra.REPO_ROOTS)
 
+    def test_noop_queue_update_leaves_the_file_alone(self):
+        """astra-drain.path fires on queue writes; a drain run that changed nothing must not write."""
+        import tempfile
+        ingest = load("fable-ingest")
+        with tempfile.TemporaryDirectory() as d:
+            q = Path(d, "astra-queue.json")
+            q.write_text(json.dumps({"jobs": [{"id": "a", "status": "applied"}]}))
+            before = os.stat(q)
+            self.assertEqual(ingest.update(q, lambda data: 0), 0)
+            after = os.stat(q)
+            self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+            ingest.update(q, lambda data: data["jobs"].append({"id": "b", "status": "pending"}))
+            self.assertEqual([j["id"] for j in json.loads(q.read_text())["jobs"]], ["a", "b"])
+
+    def test_drain_path_unit_watches_the_queue_the_drain_reads(self):
+        unit = (SCRIPTS.parent / "config/systemd/user/astra-drain.path").read_text()
+        watched = re.findall(r"^PathChanged=(.+)$", unit, re.M)
+        default = re.search(r'"ASTRA_OPS", "([^"]+)"', (SCRIPTS / "astra-drain").read_text()).group(1)
+        self.assertEqual(watched, [f"{default}/astra-queue.json"])
+        self.assertIn("Unit=astra-drain.service", unit)
+
     def test_fix_replay_keeps_failure_evidence_out_of_the_journal(self):
         """Its stdout lands in the journal. Printing the board there quoted each tape's failure text,
         so tapes grepping the journal for 'Failed with result' matched fix-replay itself and stayed red."""
