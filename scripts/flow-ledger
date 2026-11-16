@@ -27,22 +27,53 @@ OOB = re.compile(r"^\s*\[OUT-OF-BAND USER MESSAGE[^\]]*\]\s*(.*?)\s*\[/OUT-OF-BA
 IMG = "[The user attached an image"
 
 
-def owner_msgs(since):
+def is_owner(s):
+    s = (s or "").lstrip()
+    m = OOB.match(s)
+    s = m.group(1) if m else s
+    return bool(s) and len(s) <= 3000 and (s.startswith(IMG) or not NOT_OWNER.match(s))
+
+
+KEEP_DAYS = 31
+
+
+def owner_msgs(since, cache_path=None):
+    """Owner message timestamps after `since`. Messages are append-only by id, so each profile db is read
+    only past the last id seen (idx_messages_session_id). Rereading 14 days of every owner session each
+    15-min run read ~0.85 GB and swapped limitless-sync's 256 MB cgroup."""
+    cache_path = cache_path or f"{ST}/owner-msgs-cache.json"
+    try:
+        cache = json.load(open(cache_path))
+    except (OSError, ValueError):
+        cache = {}
+    horizon = time.time() - KEEP_DAYS * 86400
+    src = f"({','.join('?' * len(OWNER_SOURCES))})"
     ts = set()
     for db in glob.glob(os.path.expanduser("~/.hermes/profiles/*/state.db")):
         try:
             c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
-            rows = c.execute("select m.timestamp, m.content from messages m join sessions s on s.id=m.session_id "
-                             "where m.role='user' and m.timestamp>? and s.source in "
-                             f"({','.join('?' * len(OWNER_SOURCES))})", (since, *OWNER_SOURCES)).fetchall()
+            top = c.execute("select max(id) from messages").fetchone()[0] or 0
+            ent = cache.get(db)
+            if ent and ent["max_id"] <= top and since >= ent["from"]:
+                rows = c.execute("select m.timestamp, m.content from messages m join sessions s on s.id=m.session_id "
+                                 f"where m.id>? and m.role='user' and s.source in {src}", (ent["max_id"], *OWNER_SOURCES))
+                got = ent["ts"] + [round(t) for t, s in rows if is_owner(s)]
+            else:  # new db, a db whose ids went backwards (restore), or a wider window than cached
+                start = min(since, horizon)
+                rows = c.execute("select m.timestamp, m.content from messages m join sessions s on s.id=m.session_id "
+                                 f"where m.role='user' and m.timestamp>? and s.source in {src}", (start, *OWNER_SOURCES))
+                got, ent = [round(t) for t, s in rows if is_owner(s)], {"from": start}
+            c.close()
         except sqlite3.Error:
             continue
-        for t, s in rows:
-            s = (s or "").lstrip()
-            m = OOB.match(s)
-            s = m.group(1) if m else s
-            if s and len(s) <= 3000 and (s.startswith(IMG) or not NOT_OWNER.match(s)):
-                ts.add(round(t))
+        keep = sorted({t for t in got if t > horizon})
+        cache[db] = {"max_id": top, "from": max(ent["from"], horizon), "ts": keep}
+        ts.update(t for t in keep if t > since)
+    tmp = cache_path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(cache, f)
+    os.replace(tmp, cache_path)
     return sorted(ts)
 
 
