@@ -1,0 +1,12 @@
+# reuse-checked: same command as the transient ani-review unit (review.py canvas, 127.0.0.1:8740 -> tailscale serve 18740); made persistent after the 11-14 19:56 reset dropped all transient units.
+[Unit]
+Description=Ani likeness review canvas (127.0.0.1:8740)
+
+[Service]
+ExecStart=/usr/bin/env -i HOME=%h PATH=/usr/bin:/bin /mnt/zer0models/comfyui/.venv/bin/python -I /mnt/zer0models/project-artifacts/content-factory/ani-tennis/likeness/review.py /mnt/zer0models/sft-svlm/data/private-receipts/ani-scan/likeness /mnt/zer0models/sft-svlm/data/private-receipts/ani-scan/id/set/img 8740
+Restart=always
+RestartSec=10
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

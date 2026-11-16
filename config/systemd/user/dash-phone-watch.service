@@ -1,0 +1,11 @@
+[Unit]
+Description=Dash S25 app-log watcher: incidents + re-sync missed hot updates (dash-turbo/phone-watch)
+After=network-online.target
+[Service]
+Environment=DASH_SEED_RUNNING=b259732
+ExecStart=/usr/bin/python3 %h/.local/bin/dash-phone-watch
+Restart=always
+RestartSec=10
+Nice=10
+[Install]
+WantedBy=default.target

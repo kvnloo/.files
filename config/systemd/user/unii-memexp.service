@@ -1,0 +1,18 @@
+[Unit]
+Description=UniiChat memexp: add-on memory lane on Haiku (copy of luna's state; never the live chat), :8782
+After=network.target
+
+[Service]
+MemoryHigh=1500M
+MemoryMax=2250M
+Nice=5
+Restart=on-failure
+RestartSec=10
+Slice=agent.slice
+WorkingDirectory=%h/.local/state/uniichat-memexp
+Environment="UNII_DIR=%h/.local/state/uniichat-memexp" "UNII_NO_TELEMETRY=1" "HOME=%h/.local/state/uniichat-memexp/server-home" "OMP_AGENT_DIR=%h/.local/state/uniichat-memexp/omp-auth" "PATH=%h/.local/share/tern/omp/bin:%h/.actual/bin:%h/.empryo/bin:%h/.local/bin:%h/.local/bin:%h/.grok/bin:%h/.local/bin:%h/.kimi-code/bin:%h/.local/share/../bin:/run/user/1000/fnm_multishells/2423128_1771438712342/bin:%h/.bun/bin:%h/.hermes/tools/bws-2.0.0-linux-x64:%h/Library/Python/3.9/bin:~/.npm-global/bin:%h/.local/bin:/usr/local/sbin:%h/.elan/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin:/opt/cuda/bin:%h/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/usr/lib/jvm/default/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:%h/.rvm/bin:%h/android/sdk/cmdline-tools/latest/bin:%h/android/sdk/platform-tools:%h/android/sdk/emulator:%h/android/sdk/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin:%h/.maestro/bin"
+ExecStartPre=/usr/bin/env HOME=%h /usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/unified-memory/unii-experiment-20261102/memexp_auth_sync.py
+ExecStart=%h/.local/bin/unii serve 8782
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=o8 headless control plane (o8 serve) (loopback; S25 reaches it via adb reverse)
+After=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/mnt/zer0models/workspace/zer0/oss/o8
+Environment=PATH=%h/.local/share/fnm/node-versions/v22.23.2/installation/bin:%h/.local/bin:/usr/local/bin:/usr/bin
+Environment=O8_SERVE_ROOT=/mnt/zer0models/workspace/zer0/oss/o8
+Environment=O8_REVIEW_MODE=manual
+ExecStart=%h/.local/share/fnm/node-versions/v22.23.2/installation/bin/node cli/dist/o8.mjs serve
+ExecStop=%h/.local/share/fnm/node-versions/v22.23.2/installation/bin/node cli/dist/o8.mjs serve stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target

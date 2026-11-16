@@ -1,0 +1,16 @@
+[Unit]
+Description=AgentsView server (keeps z0int-memory MCP search available; 2026-10-25 memory repair)
+Documentation=file:///mnt/zer0models/workspace/zer0/data/operations/memory-repair-20261025/REPORT.md
+After=network.target
+
+[Service]
+Type=simple
+Environment=AGENTSVIEW_DATA_DIR=/mnt/zer0models/sft-svlm/data/agentsview
+ExecStart=%h/.local/bin/agentsview serve --no-browser
+Restart=on-failure
+RestartSec=30
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

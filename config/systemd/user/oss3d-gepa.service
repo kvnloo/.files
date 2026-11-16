@@ -1,0 +1,13 @@
+[Unit]
+Description=oss3d GEPA climb supervisor (boat.dev arms, self-healing; exits 0 when every arm is collected)
+
+[Service]
+ExecStart=/bin/bash /mnt/zer0models/workspace/zer0/data/operations/oss3d-gepa-20261114/boat/supervise.sh
+Restart=always
+RestartSec=60
+Environment=HOME=%h PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin TMPDIR=%h/.cache/oss3d-sup
+StandardOutput=append:/mnt/zer0models/workspace/zer0/data/operations/oss3d-gepa-20261114/boat/supervise.log
+StandardError=append:/mnt/zer0models/workspace/zer0/data/operations/oss3d-gepa-20261114/boat/supervise.log
+
+[Install]
+WantedBy=default.target
