@@ -1,0 +1,10 @@
+[Unit]
+Description=Going Home share (127.0.0.1:8762; tailnet HTTPS via tailscale serve :18762)
+[Service]
+ExecStart=/usr/bin/npx -y http-server /mnt/zer0models/sft-svlm/data/private-receipts/going-home/share -a 127.0.0.1 -p 8762 -c-1 --silent
+Restart=always
+RestartSec=3
+MemoryMax=400M
+Slice=agent.slice
+[Install]
+WantedBy=default.target

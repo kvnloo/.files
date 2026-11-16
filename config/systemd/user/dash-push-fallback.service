@@ -1,0 +1,11 @@
+[Unit]
+Description=Dash push fallback: native S25 notification over tailnet ADB when Dash isn't connected
+After=dash-bridge.service adb.service
+
+[Service]
+ExecStart=/usr/bin/python3 /mnt/zer0models/workspace/zer0/data/operations/dash-push/dash_push.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target
