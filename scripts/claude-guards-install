@@ -10,6 +10,8 @@
 #   model = claude-opus-5-5, switchModelsOnFlag = false   (no silent model downgrade)
 #   SessionStart/UserPromptSubmit/Stop -> model-guard.py   (loud warning + receipt)
 #   PreToolUse(Bash)                   -> pane-guard.py    (never kill tern/tmux/desktop)
+#   PreToolUse(Bash) -> kvnloo/home tools/sysgraph.py guard (never delete code live services
+#           run from), when $Z0_SYSGRAPH exists (default /workspace/repos/home/tools/sysgraph.py)
 #   Stop -> z0 keepworking hook, when kvnloo/z0 scripts/keepworking-install has
 #           installed ~/.local/share/z0-keepworking/current
 # Override the pinned model with Z0_EXPECTED_MODEL.
@@ -20,6 +22,7 @@ base=${Z0_GUARD_HOME:-$HOME/.local/lib/z0-guard}
 settings=${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}
 model=${Z0_EXPECTED_MODEL:-claude-opus-5-5}
 kw_hook=${Z0_KEEPWORKING_HOOK:-$HOME/.local/share/z0-keepworking/current/lib/z0/keepworking/hook.py}
+sysgraph=${Z0_SYSGRAPH:-/workspace/repos/home/tools/sysgraph.py}
 mode=${1:-install}
 
 if [ "$mode" = --rollback ]; then
@@ -43,14 +46,14 @@ fi
 
 mkdir -p "$(dirname "$settings")"
 [ -e "$settings" ] || printf '{}\n' > "$settings"
-new=$(python3 - "$settings" "$base/current" "$model" "$kw_hook" <<'PY'
+new=$(python3 - "$settings" "$base/current" "$model" "$kw_hook" "$sysgraph" <<'PY'
 import json, os, sys
-path, cur, model, kw = sys.argv[1:5]
+path, cur, model, kw, sg = sys.argv[1:6]
 data = json.load(open(path))
 data["model"] = model
 data["switchModelsOnFlag"] = False
 hooks = data.setdefault("hooks", {})
-ours = ("/z0-guard/", "keepworking/hook.py")
+ours = ("/z0-guard/", "keepworking/hook.py", "sysgraph.py guard")
 
 def strip(event):
     groups = hooks.get(event, [])
@@ -75,6 +78,8 @@ add("SessionStart", mg)
 add("UserPromptSubmit", mg)
 add("Stop", mg)
 add("PreToolUse", f"python3 -I {cur}/pane-guard.py", matcher="Bash")
+if os.path.isfile(sg):
+    add("PreToolUse", f"python3 -I {sg} guard --claude-hook", matcher="Bash")
 if os.path.isfile(kw):
     add("Stop", f"python3 -I {kw}", timeout=20)
 for ev in list(hooks):
