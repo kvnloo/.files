@@ -84,6 +84,19 @@ class FixReplayCost(unittest.TestCase):
             self.assertTrue(state["mutating"]["use_refused"])
             self.assertIn("use refused", mod.board(state, 0))
 
+    def test_a_retired_tape_leaves_the_board(self):
+        # 2026-11-16: F12/F10/F21 were retired as superseded, but fix-state.json kept them, so the board
+        # listed them "open" forever and the open count never fell.
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Path(tmp) / "ops"
+            ops.mkdir()
+            (ops / "fix-state.json").write_text(json.dumps({"retired": {"since": 0, "ok": False, "uses": 0,
+                                                                        "passes": 0, "fails": 9}}))
+            (ops / "fix-tapes.json").write_text(json.dumps({"tapes": [{"id": "kept", "tape": "true"}]}))
+            load(ops).run()
+            self.assertEqual(list(json.loads((ops / "fix-state.json").read_text())), ["kept"])
+            self.assertNotIn("retired", (ops / "BOARD.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -72,8 +72,10 @@ def run():
     now = time.time()
     st = json.loads(STATE.read_text()) if STATE.exists() else {}
     regressions = []
+    rows = tapes()
+    st = {k: s for k, s in st.items() if k in {t.get("id") for t in rows}}  # a retired tape leaves the board
     with LOG.open("a") as log:
-        for t in tapes():
+        for t in rows:
             t0 = time.monotonic()
             bad = malformed(t)
             rc, out = (2, bad) if bad else sh(t["tape"], t.get("env"))
