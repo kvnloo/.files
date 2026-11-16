@@ -5,22 +5,47 @@
 # 581 SIGTERMs in 3 days to adj-900 tools while the hog survived).
 # Runtime-only (set-property --runtime): nothing persists across reboot, units that set
 # their own MemoryMax are left alone, roots get a larger envelope and keep OOMPolicy=continue.
+# --loop: resident, one pass every PERIOD s (F16: the 60 s timer was 60 unit starts/h).
 set -euo pipefail
 DEFAULT_MAX=${DEFAULT_MAX:-4G} DEFAULT_SWAP=${DEFAULT_SWAP:-1G}
 ROOT_MAX=${ROOT_MAX:-10G} ROOT_SWAP=${ROOT_SWAP:-3G}
 ROOTS=${ROOTS:-'^(hermes-web|hermes-gateway|hermes-gateway-.*)\.service$'}
 SKIP=${SKIP:-'^(pipewire.*|wireplumber|dbus.*|xdg-.*|at-spi.*|gnome-keyring.*|earlyoom|agent-oom-guard)\.service$'}
-DRY=${DRY:-0}
+DRY=${DRY:-0} PERIOD=${PERIOD:-60}
 
-systemctl --user list-units --type=service --state=running --no-legend --plain \
-  | awk '{print $1}' | grep -E "${ONLY:-.}" | while read -r unit; do
-  [[ $unit =~ $SKIP ]] && continue
-  [[ $(systemctl --user show -P MemoryMax "$unit") == infinity ]] || continue
+cap() {  # unit MemoryMax MemorySwapMax
+  local unit=$1 max swap props
+  [[ $2 == infinity ]] || return 0
   if [[ $unit =~ $ROOTS ]]; then max=$ROOT_MAX swap=$ROOT_SWAP; else max=$DEFAULT_MAX swap=$DEFAULT_SWAP; fi
   # Never overwrite a swap bound the unit already declares (UF3 2026-11-15: agentsview's IaC
   # 62-swap-bound.conf says 3G; the runtime 1G override failed memory-drift every run).
   props=(MemoryMax="$max")
-  [[ $(systemctl --user show -P MemorySwapMax "$unit") == infinity ]] && props+=(MemorySwapMax="$swap")
+  [[ $3 == infinity ]] && props+=(MemorySwapMax="$swap")
   echo "cap $unit ${props[*]}"
-  [[ $DRY == 1 ]] || systemctl --user set-property --runtime "$unit" "${props[@]}"
-done
+  # A unit can stop between listing and capping; that must not end the pass.
+  [[ $DRY == 1 ]] || systemctl --user set-property --runtime "$unit" "${props[@]}" || echo "cap skipped: $unit"
+}
+
+once() {
+  local units id="" max="" swap="" line
+  mapfile -t units < <(systemctl --user list-units --type=service --state=running --no-legend --plain \
+    | awk '{print $1}' | grep -E "${ONLY:-.}" | grep -Ev "$SKIP" || true)
+  ((${#units[@]})) || return 0
+  # One show for all units (was two per unit): blocks are separated by blank lines.
+  while IFS= read -r line; do
+    case $line in
+      Id=*) id=${line#Id=} ;;
+      MemoryMax=*) max=${line#MemoryMax=} ;;
+      MemorySwapMax=*) swap=${line#MemorySwapMax=} ;;
+      "") [[ -z $id ]] || cap "$id" "$max" "$swap"; id="" max="" swap="" ;;
+    esac
+  done < <(systemctl --user show -p Id,MemoryMax,MemorySwapMax "${units[@]}"; echo)
+}
+
+if [[ ${1:-} == --loop ]]; then
+  while :; do
+    once || echo "pass failed rc=$?"
+    sleep "$PERIOD"
+  done
+fi
+once
