@@ -1,10 +1,11 @@
 [Unit]
-Description=Dash turbo follower tick (30 s after the previous tick ends)
+Description=Dash turbo follower tick (2 min after the previous tick ends)
 
 [Timer]
 OnBootSec=1min
-OnUnitInactiveSec=30s
-AccuracySec=5s
+# F16: 30 s cost ~114 starts/h for a ref check; 2 min keeps promotion latency short.
+OnUnitInactiveSec=2min
+AccuracySec=10s
 
 [Install]
 WantedBy=timers.target

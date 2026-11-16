@@ -46,3 +46,12 @@ def test_unit_is_resident_and_has_no_timer():
     assert 'Type=simple' in unit and '--loop' in unit and 'Restart=always' in unit
     assert not (ROOT / 'config/systemd/user/agent-resource-classify.timer').exists()
     assert '"~/.config/systemd/user/agent-resource-classify.timer"' in (ROOT / 'config/host/groot.toml').read_text()
+
+
+def test_former_subminute_timers_stay_at_two_minutes_or_slower():
+    import re
+    for name in ('quackles-arbiter.timer', 'dash-turbo-follow.timer'):
+        text = (ROOT / 'config/systemd/user' / name).read_text()
+        for value in re.findall(r'^OnUnit(?:Active|Inactive)Sec=(\S+)', text, re.M):
+            assert value.endswith('min') and int(value[:-3]) >= 2, (name, value)
+    assert '"~/.config/systemd/user/dash-turbo-follow.timer"' in (ROOT / 'config/host/groot.toml').read_text()

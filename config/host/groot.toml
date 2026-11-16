@@ -3714,6 +3714,15 @@ owner = "scripts/apply-agent-oom"
 reason = "Bot Screen private bus must not start a second document portal: it remounted /run/user/UID/doc and killed xdg-document-portal.service on every screen start."
 
 [[user]]
+live = "~/.config/systemd/user/dash-turbo-follow.timer"
+source = "config/systemd/user/dash-turbo-follow.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16 (F16): live copy had no row, so its cadence could drift from dev unseen."
+migration_sha256 = "07bc92f082474b5be6cd05703bd86c0d2ead881df987e66392faf9306755db4c"
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
