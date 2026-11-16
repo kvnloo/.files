@@ -709,13 +709,22 @@ class Watch:
             done += 1
         # OnFailure hooks only touch an empty file named after the escaped unit (no Python, no DB):
         # 5,956 hook runs in 24 h each loaded this script and queued on the write lock (F14).
-        for path in sorted(self.intake.iterdir()) if self.intake.is_dir() else []:
-            unit = failure_target(re.sub(r'\\x([0-9a-fA-F]{2})', lambda m: chr(int(m.group(1), 16)), path.name))
+        # The hook names the file with %I: systemd strips the backslash from %i's \\x2d, and %I
+        # turns an unescaped '-' into '/', so a nested path maps back with '/' -> '-' (no unit
+        # name contains '/').
+        paths = sorted(self.intake.rglob('*'), key=lambda p: -len(p.parts)) if self.intake.is_dir() else []
+        for path in paths:
+            if path.is_dir():
+                with contextlib.suppress(OSError):
+                    path.rmdir()
+                continue
+            name = str(path.relative_to(self.intake)).replace('/', '-')
+            unit = failure_target(name)
             if unit:
                 self.record('user', unit, [event('failed')])
                 done += 1
             else:
-                print('SERVICE_WATCH_BAD_INTAKE ' + json.dumps(path.name), flush=True)
+                print('SERVICE_WATCH_BAD_INTAKE ' + json.dumps(name), flush=True)
             path.unlink()
         return done
 

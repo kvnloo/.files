@@ -6,7 +6,7 @@ OnFailure=
 Type=oneshot
 # Spool, not report: the daemon drains %t/service-watch/intake each scan and stays the only DB
 # writer. `service-watch failure <unit>` remains for manual reports.
-ExecStart=/usr/bin/install -D -m 0600 /dev/null %t/service-watch/intake/%i
+ExecStart=/usr/bin/install -D -m 0600 /dev/null %t/service-watch/intake/%I
 UMask=0077
 Nice=15
 MemoryMax=96M

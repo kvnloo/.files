@@ -84,12 +84,14 @@ class Contracts(unittest.TestCase):
         self.assertNotIn('service-watch failure', [l for l in unit_file.splitlines() if l.startswith('ExecStart=')][0])
         self.watch.intake = self.root / 'intake'
         self.watch.intake.mkdir()
-        for name in ('host\\x2ddrift.service', 'bare\\x2dinstance', 'bad;name'):
+        # What `install -D … intake/%I` leaves: escaped dashes arrive as '-', bare dashes as '/'.
+        (self.watch.intake / 'plain').mkdir()
+        for name in ('host-drift.service', 'bare-instance', 'plain/dash.service', 'bad;name'):
             (self.watch.intake / name).touch()
         with patch.object(self.watch.store, 'notify', return_value='deduplicated'):
-            self.assertEqual(self.watch.drain_spool(), 2)
+            self.assertEqual(self.watch.drain_spool(), 3)
         units = sorted(r[0] for r in self.watch.store.db.execute('SELECT unit FROM incidents'))
-        self.assertEqual(units, ['bare-instance.service', 'host-drift.service'])
+        self.assertEqual(units, ['bare-instance.service', 'host-drift.service', 'plain-dash.service'])
         self.assertEqual(list(self.watch.intake.iterdir()), [])
 
     def test_hooks_for_vanished_transient_units_are_pruned(self):
