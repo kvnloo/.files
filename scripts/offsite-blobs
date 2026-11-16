@@ -11,17 +11,26 @@ set -euo pipefail
 export RESTIC_REPOSITORY=${RESTIC_REPOSITORY:-rclone:gdrive:groot-offsite/restic}
 export RESTIC_PASSWORD_FILE=${RESTIC_PASSWORD_FILE:-$HOME/.config/restic/offsite.pass}
 export RCLONE_BWLIMIT=${RCLONE_BWLIMIT:-08:00,25M 23:00,off} RCLONE_DRIVE_CHUNK_SIZE=64M
+# Drive throttles file creates (rateLimitExceeded, then 500s killed the 11-16 first runs): few big
+# packs, 2 connections, a request-rate cap, deep retries; restic keeps indexed packs between attempts.
+export RCLONE_TPSLIMIT=${RCLONE_TPSLIMIT:-4} RCLONE_LOW_LEVEL_RETRIES=30 RESTIC_PACK_SIZE=${RESTIC_PACK_SIZE:-128}
+attempts=${OFFSITE_BLOBS_ATTEMPTS:-6}
 ops=${OFFSITE_OPS:-/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance}
 runs=$ops/runs/offsite-$(date +%Y%m%d)
 mkdir -p "$runs"
 if [[ -n ${OFFSITE_BLOBS_SRC:-} ]]; then read -ra src <<<"$OFFSITE_BLOBS_SRC"
 else src=(/mnt/zer0models/project-artifacts /mnt/zer0models/quarantine/worktree-reap); fi
 start=$(date +%s)
-rc=0
-nice -n 19 ionice -c 3 restic backup "${src[@]}" --one-file-system --exclude-caches \
-  --exclude node_modules --exclude .venv --exclude venv --exclude __pycache__ --exclude .next \
-  --exclude uv-cache --exclude .cache --tag offsite-blobs --json 2>>"$runs/blobs.log" \
-  | grep '"message_type":"summary"' > "$runs/blobs-summary.json" || rc=$?
+for ((i = 1; i <= attempts; i++)); do
+  rc=0
+  nice -n 19 ionice -c 3 restic backup "${src[@]}" --one-file-system --exclude-caches -o rclone.connections=2 \
+    --exclude node_modules --exclude .venv --exclude venv --exclude __pycache__ --exclude .next \
+    --exclude uv-cache --exclude .cache --tag offsite-blobs --json 2>>"$runs/blobs.log" \
+    | grep '"message_type":"summary"' > "$runs/blobs-summary.json" || rc=$?
+  [[ $rc -eq 0 ]] && break
+  echo "offsite-blobs: attempt $i failed (rc=$rc)" >>"$runs/blobs.log"
+  ((i < attempts)) && sleep $((60 * i * i))
+done
 snap=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('snapshot_id',''))" "$runs/blobs-summary.json" 2>/dev/null || true)
 if [[ $rc -eq 0 && -n $snap ]]; then
   python3 - "$ops/offsite-latest.json" "$start" "$snap" "$RESTIC_REPOSITORY" "${src[@]}" <<'PY'
