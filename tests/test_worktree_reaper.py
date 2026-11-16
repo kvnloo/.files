@@ -67,12 +67,14 @@ class ReaperBehavior(unittest.TestCase):
         linked = {str(self.root / f'wt{i}') for i in range(12)}
         for i, path in enumerate(sorted(linked)):
             self.git(self.repo, 'worktree', 'add', '-q', '-b', f'b{i}', path)
-        calls = []
-        real = os.path.realpath
-        with patch.object(reaper.os.path, 'realpath', side_effect=lambda p, *a, **k: calls.append(p) or real(p, *a, **k)):
+        calls, lists = [], []
+        real, real_git = os.path.realpath, reaper.git
+        with patch.object(reaper.os.path, 'realpath', side_effect=lambda p, *a, **k: calls.append(p) or real(p, *a, **k)), \
+             patch.object(reaper, 'git', side_effect=lambda path, *a, **k: (a[:1] == ('worktree',) and lists.append(path)) or real_git(path, *a, **k)):
             found = set(reaper.discover([str(self.root)]))
         self.assertEqual(found, linked | {str(self.repo)})
         self.assertLess(len(calls), 4 * len(found), f'{len(calls)} realpath calls for {len(found)} checkouts')
+        self.assertEqual(len(lists), 1, f'{len(lists)} worktree lists for one repository')
 
     def test_discovery_excludes_generated_fixture_worktrees(self):
         for index, name in enumerate(('runs', 'artifacts', 'wiring', 'tmp', '_check', 'pytest-of-test')):

@@ -95,18 +95,23 @@ def discover(roots):
     # recursively stat'ing every dependency/build artifact in each repository.
     pending = list(found)
     visited = set()
-    # Every linked worktree reports its repository's full list, so a repo with
-    # N worktrees yields N^2 targets; resolve roots once and judge each target once.
+    # Every worktree of a repository reports the same full list, so listing from
+    # each of N worktrees costs N^2; list once per repository (a path already
+    # named by a list) and judge each target once against pre-resolved roots.
     real_roots = [os.path.realpath(r) for r in roots if os.path.isdir(r)]
     seen = set()
+    listed = set()
     while pending:
         path = pending.pop()
         if path in visited:
             continue
         visited.add(path)
         targets = []
-        p = git(path, 'worktree', 'list', '--porcelain', check=False)
-        targets.extend(line[9:] for line in p.stdout.decode(errors='replace').splitlines() if line.startswith('worktree '))
+        if path not in listed:
+            p = git(path, 'worktree', 'list', '--porcelain', check=False)
+            names = [line[9:] for line in p.stdout.decode(errors='replace').splitlines() if line.startswith('worktree ')]
+            listed.update(os.path.realpath(n) for n in names)
+            targets.extend(names)
         if os.path.isfile(os.path.join(path, '.gitmodules')):
             p = git(path, 'config', '--file', '.gitmodules', '--get-regexp', r'^submodule\..*\.path$', check=False)
             targets.extend(os.path.join(path, line.split(None, 1)[1]) for line in p.stdout.decode(errors='replace').splitlines() if len(line.split(None, 1)) == 2)
