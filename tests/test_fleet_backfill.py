@@ -177,6 +177,31 @@ class PhoneFeeder(unittest.TestCase):
             self.assertEqual(bf.tick(CFG, dry_run=True), 1)
             self.assertEqual(sh.call_count, 1)
 
+    def test_bad_or_stale_node_state_heals_without_starving_others(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            corpus = d / "c.jsonl"
+            corpus.write_text("".join(json.dumps({"id": i, "text": "t"}) + "\n" for i in range(40)))
+            cfg = {"phones": {**CFG["phones"], "corpus": str(corpus), "shard": 10, "timeout": 60,
+                              "nodes": {"a": {"mask": "0f", "threads": 4}, "b": {"mask": "0f", "threads": 4},
+                                        "c": {"mask": "0f", "threads": 4}}}}
+            st = d / "cache" / "phones"
+            st.mkdir(parents=True)
+            (st / "a.json").write_text(json.dumps({"job": "old", "shard": 0, "started": 0, "tag": "x"}))
+            (st / "b.json").write_text(json.dumps({"job": "j", "started": 0}))  # no shard key: KeyError
+            def fake_sh(*cmd, **kw):
+                raise subprocess.CalledProcessError(1, cmd)
+            def fake_run(argv, **kw):
+                return subprocess.CompletedProcess(argv, 0, stdout="job-new\n", stderr="")
+            with mock.patch.object(bf, "CACHE", d / "cache"), mock.patch.object(bf, "RUNS", d / "runs"), \
+                    mock.patch.object(bf, "sh", side_effect=fake_sh), \
+                    mock.patch.object(bf.subprocess, "run", side_effect=fake_run):
+                rep = bf.phone_tick(cfg, 10_000)
+            self.assertTrue(rep["a"].startswith("launched"), rep)  # stale unreachable hold released
+            self.assertTrue(rep["c"].startswith("launched"), rep)  # healthy node unaffected
+            self.assertTrue(list(st.glob("a.json.stale-*")))
+
     def test_torn_phone_state_is_dropped_and_writes_are_atomic(self):
         with tempfile.TemporaryDirectory() as d:
             p = pathlib.Path(d) / "galaxy-s22plus.json"
@@ -191,10 +216,10 @@ class PhoneFeeder(unittest.TestCase):
         from unittest import mock
         absent = subprocess.CalledProcessError(1, "kubectl", stderr='error: the server doesn\'t have a resource type "clusterqueue"\n')
         down = subprocess.CalledProcessError(1, "kubectl", stderr="The connection to the server was refused\n")
-        with mock.patch.object(bf, "phone_tick", return_value=[]), mock.patch.object(bf, "sh", side_effect=absent) as sh:
+        with mock.patch.object(bf, "phone_tick", return_value={}), mock.patch.object(bf, "sh", side_effect=absent) as sh:
             self.assertEqual(bf.tick(CFG, dry_run=True), 0)
             self.assertEqual(sh.call_count, 1)  # Boat limits never asked: nothing can be admitted
-        with mock.patch.object(bf, "phone_tick", return_value=[]), mock.patch.object(bf, "sh", side_effect=down):
+        with mock.patch.object(bf, "phone_tick", return_value={}), mock.patch.object(bf, "sh", side_effect=down):
             with self.assertRaises(subprocess.CalledProcessError):
                 bf.tick(CFG, dry_run=True)
 
