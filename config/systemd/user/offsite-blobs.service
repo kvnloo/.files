@@ -1,0 +1,12 @@
+[Unit]
+Description=Off-machine copies: non-git work product (blends, renders, dream-loop runs) to Drive via restic (canon #16)
+# Own unit, not a second ExecStart of offsite.service: a killed or failed multi-hour git sync
+# must not skip the blob backup (11-16: Drive held 0 bytes of project-artifacts).
+After=network-online.target
+
+[Service]
+Type=oneshot
+Nice=19
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/offsite-blobs
+TimeoutStartSec=23h
