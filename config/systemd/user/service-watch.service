@@ -18,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ReadOnlyPaths=%h/.omp/agent
-ReadWritePaths=%h/.config/systemd/user /mnt/zer0models/workspace/zer0/data/operations/service-watch
+ReadWritePaths=%h/.config/systemd/user %h/.local/state/service-watch /mnt/zer0models/workspace/zer0/data/operations/service-watch
 Environment=PATH=/home/kvn/.bun/bin:/home/kvn/.local/bin:/usr/local/bin:/usr/bin:/bin
 WorkingDirectory=%h
 MemoryHigh=infinity
