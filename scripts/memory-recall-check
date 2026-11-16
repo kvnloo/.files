@@ -95,13 +95,19 @@ Z0INT = HOME / ".local/lib/z0int-shadow/current"
 def source_coverage() -> dict:
     env = {**os.environ, "PYTHONPATH": str(Z0INT / "src"),
            "CTX_DATA_ROOT": os.environ.get("CTX_DATA_ROOT", "/mnt/zer0models/host-offload/home_kvn_.ctx"),
-           "AGENTSVIEW_DATA_DIR": os.environ.get("AGENTSVIEW_DATA_DIR", "/mnt/zer0models/sft-svlm/data/agentsview")}
+           "AGENTSVIEW_DATA_DIR": os.environ.get("AGENTSVIEW_DATA_DIR", "/mnt/zer0models/sft-svlm/data/agentsview"),
+           # z0int finds ctx via PATH; the user manager's PATH once lacked ~/.local/bin and the check passed blind.
+           "PATH": os.pathsep.join([str(HOME / ".local/bin"), os.environ.get("PATH", "/usr/bin")])}
     try:
         p = subprocess.run([str(Z0INT / ".venv/bin/python"), "-m", "z0int.memory.sources", "--apply", "--json"],
                            capture_output=True, text=True, timeout=180, env=env)
-        return json.loads(p.stdout)
+        out = json.loads(p.stdout)
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
         return {"ok": False, "unresolved": [f"sources check did not run: {type(e).__name__}"]}
+    if out.get("ctx") == "unavailable":  # every ctx coverage check was skipped, so a PASS would be silent
+        out["ok"] = False
+        out["unresolved"] = [*out.get("unresolved", []), "ctx unavailable: ctx root coverage was not checked"]
+    return out
 
 
 def main() -> int:
