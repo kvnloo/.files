@@ -1,0 +1,12 @@
+[Unit]
+Description=Off-machine copies: push local-only git work, copy non-git work product to Drive (canon #16)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+Environment=PATH=%h/.local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 -I %h/.local/bin/offsite-sync --apply
+ExecStart=%h/.local/bin/offsite-blobs
+TimeoutStartSec=20h
