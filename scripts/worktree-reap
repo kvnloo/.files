@@ -67,6 +67,19 @@ _UNIT_LINES = None
 SCRIPT_EXT = (".py", ".sh", ".ts", ".js", ".mjs")
 
 
+def is_script(p):
+    """Code a unit runs: a known suffix, or a small shebang file with none (noop-channel)."""
+    if not os.path.isfile(p):
+        return False
+    if p.endswith(SCRIPT_EXT):
+        return True
+    try:
+        with open(p, "rb") as f:
+            return "." not in os.path.basename(p) and f.read(2) == b"#!"
+    except OSError:
+        return False
+
+
 def unit_lines():
     """(file, line) for every user systemd unit and drop-in, read once per run."""
     global _UNIT_LINES
@@ -94,15 +107,24 @@ def unit_lines():
                 for tok in re.findall(r"(?<![\w.])(/[^\s'\"]+)", l):
                     try:
                         p = os.path.realpath(tok.replace("%h", str(base.parents[2])))
-                        if p.startswith(("/usr/", "/bin/")) or not p.endswith(SCRIPT_EXT) or not os.path.isfile(p):
+                        if p.startswith(("/usr/", "/bin/")) or not is_script(p):
                             continue
                         # the script plus its siblings: it may import the file that names the worktree
-                        for q in [p] + sorted(str(x) for x in Path(p).parent.iterdir() if str(x).endswith(SCRIPT_EXT)):
+                        sibs = [str(x) for x in Path(p).parent.iterdir() if str(x).endswith(SCRIPT_EXT)]
+                        for q in [p] + sorted(sibs):
                             if q in seen or not os.path.isfile(q) or os.path.getsize(q) > (1 << 20):
                                 continue
                             seen.add(q)
-                            _UNIT_LINES += [(f"{name} -> {q}", s.rstrip())
-                                            for s in Path(q).read_text(errors="replace").splitlines() if "/" in s]
+                            text_q = Path(q).read_text(errors="replace")
+                            _UNIT_LINES += [(f"{name} -> {q}", s.rstrip()) for s in text_q.splitlines() if "/" in s]
+                            # and the sibling JSON configs it names (11-13: noop-channels' worktree
+                            # was named only in channels.json); unnamed receipts stay unread
+                            for cfg in sorted(set(re.findall(r"[\w.-]+\.json\b", text_q))):
+                                c = os.path.join(os.path.dirname(q), cfg)
+                                if c not in seen and os.path.isfile(c) and os.path.getsize(c) < (1 << 20):
+                                    seen.add(c)
+                                    _UNIT_LINES += [(f"{name} -> {q} -> {cfg}", s.rstrip())
+                                                    for s in Path(c).read_text(errors="replace").splitlines() if "/" in s]
                     except (OSError, ValueError):
                         continue
     return _UNIT_LINES
@@ -113,7 +135,7 @@ def unit_ref(path):
     process has its cwd there (11-15: reaping one killed z0-ghcache)."""
     names = {str(path).rstrip("/"), os.path.realpath(path)}
     for f, line in unit_lines():
-        if any(n + "/" in line or n + " " in line or line.endswith(n) for n in names):
+        if any(n in line and re.search(re.escape(n) + r"""(?:[/\s"',]|$)""", line) for n in names):  # JSON quotes too
             return f
     return None
 

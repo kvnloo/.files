@@ -300,5 +300,22 @@ class Reap(unittest.TestCase):
         self.assertEqual(self.snapshots(), [])
 
 
+    def test_worktree_named_only_by_a_config_an_extensionless_script_reads_is_kept(self):
+        # 11-13: noop-channels ran `noop-channel` (shebang, no suffix), which reads channels.json;
+        # only that JSON named the worktree, so it was reaped and the timer failed for two days.
+        wt = self.add_idle("config-dep", lambda wt: None)
+        ops = self.tmp / "ops"
+        ops.mkdir()
+        script = ops / "noop-channel"
+        script.write_text("#!/usr/bin/env python3\nCONFIG = HERE / 'channels.json'\n")
+        (ops / "channels.json").write_text(f'{{"worktree": "{wt}"}}')
+        units = self.tmp / ".config/systemd/user"
+        units.mkdir(parents=True)
+        (units / "noop.service").write_text(
+            f"[Service]\nExecStart=/usr/bin/flock -n {ops}/tick.lock /usr/bin/python3 {script} tick\n")
+        self.run_reap("--apply")
+        self.assertTrue(wt.exists())
+        self.assertEqual(self.snapshots(), [])
+
 if __name__ == "__main__":
     unittest.main()
