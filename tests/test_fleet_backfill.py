@@ -169,6 +169,16 @@ class PhoneFeeder(unittest.TestCase):
         self.assertEqual(argv[i + 1:i + 6], ["chrt", "-i", "0", "taskset", "f0"])
         self.assertIn("18432", argv)
 
+    def test_torn_phone_state_is_dropped_and_writes_are_atomic(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / "galaxy-s22plus.json"
+            p.write_text("")  # a tick killed mid-write once left this and every later tick crashed
+            self.assertIsNone(bf.phone_state(p))
+            self.assertFalse(p.exists())
+            bf.write_json(p, {"job": "j1"})
+            self.assertEqual(bf.phone_state(p), {"job": "j1"})
+            self.assertEqual(sorted(x.name for x in pathlib.Path(d).iterdir()), [p.name])
+
     def test_tick_without_kueue_skips_mbp_boat_but_other_kubectl_errors_fail(self):
         from unittest import mock
         absent = subprocess.CalledProcessError(1, "kubectl", stderr='error: the server doesn\'t have a resource type "clusterqueue"\n')

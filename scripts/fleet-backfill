@@ -292,6 +292,25 @@ def job(cfg, node, name, commit, piece):
     return 0 if rc == 0 else 1
 
 
+def write_json(path, obj):
+    """Replace path in one rename so a killed tick never leaves a torn file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj))
+    os.replace(tmp, path)
+
+
+def phone_state(path):
+    """A phone's in-flight job, or None. A torn file is dropped: the phone then gets a fresh shard."""
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+    except ValueError:
+        print(f"dropping unreadable phone state {path}", file=sys.stderr)
+        path.unlink()
+        return None
+
+
 def phone_tick(cfg, now, dry_run=False):
     """Collect finished phone jobs, then give each idle phone the next shard."""
     phones = cfg.get("phones")
@@ -306,7 +325,7 @@ def phone_tick(cfg, now, dry_run=False):
     report, held, held_tag = {}, {}, {}
     for node in phones["nodes"]:
         path = state_dir / f"{node}.json"
-        st = json.loads(path.read_text()) if path.exists() else None
+        st = phone_state(path)
         if not st:
             continue
         try:
@@ -392,8 +411,8 @@ def phone_tick(cfg, now, dry_run=False):
         if not job:
             report[node] = f"launch failed rc={r.returncode}: {(r.stderr.strip().splitlines() or [''])[-1][:200]}"
             continue
-        (state_dir / f"{node}.json").write_text(json.dumps(
-            {"job": job, "shard": ks[0], "shards": ks, "started": now, "tag": tag}))
+        write_json(state_dir / f"{node}.json",
+                   {"job": job, "shard": ks[0], "shards": ks, "started": now, "tag": tag})
         busy.update(ks)
         report[node] = f"launched shards {ks} job {job}"
     return report
