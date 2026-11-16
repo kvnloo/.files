@@ -1,6 +1,9 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
 user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
 user_retired_files = [
+  { live = "~/.config/systemd/user/whisperflow.service", sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
+  { live = "~/.config/systemd/user/whisperflow-kind-bridge.service", sha256 = "9f9782e7d33e127baf54e4b593f1cace628ae6a7aac97e997ac0d2453f9d7d40", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
+  { live = "~/.config/systemd/user/whisperflow.service.d/90-service-watch.conf", sha256 = "7ea10a6d2dca108d80f6f37318e631aa5832544abc7b0c3bfb55b05c019d6645", reason = "Retired 2026-11-15: whisperflow is the desktop STT runtime; the owner works phone-only, no product calls :8766, and the hermes-lab kind cluster its bridge fed no longer exists. Code stays on zerOS feat/whisperflow-runtime." },
   { live = "~/.config/systemd/user/agentweb-ad-arena.service", sha256 = "d03555a8858a28748ddf63de7e9bd751154933bdfdbbb8f008565750cd6bbe22", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/clients/agentweb/product/ad-arena/src/server.mjs is gone (sysgraph missing); recover from git history if revived." },
   { live = "~/.config/systemd/user/cardtwin-8462.service", sha256 = "0a37c7ceab5c2b2b790126970c5327c3add80aa5202e46edfefcc683f398e432", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/zer0/deployments/cardtwin-8462 is gone (sysgraph missing); recover from git history if revived." },
   { live = "~/.config/systemd/user/hermes-community-review-factory.service", sha256 = "7028eeeda5af167e592f248b31dd58308b2711d4426956a739ad7cc45014c41b", reason = "Disabled, never run in the retained journal, no unit depends on it, and its code /workspace/hermes-home/profiles/community-manager/community-factory/v2-src/tick.py is gone (sysgraph missing); recover from git history if revived." },
@@ -835,24 +838,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "8018e1017d8297f5bb48a3055bba8d94e4b85398bb5a97b565311fbceaf100ab"
-
-[[user]]
-live = "~/.config/systemd/user/whisperflow-kind-bridge.service"
-source = "config/systemd/user/whisperflow-kind-bridge.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "9f9782e7d33e127baf54e4b593f1cace628ae6a7aac97e997ac0d2453f9d7d40"
-
-[[user]]
-live = "~/.config/systemd/user/whisperflow.service"
-source = "config/systemd/user/whisperflow.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0"
 
 [[user]]
 live = "~/.config/systemd/user/workspace-copilot-rerank.service"
@@ -1711,15 +1696,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "8018e1017d8297f5bb48a3055bba8d94e4b85398bb5a97b565311fbceaf100ab"
-
-[[user]]
-live = "~/.config/systemd/user/default.target.wants/whisperflow.service"
-source = "config/systemd/user/whisperflow.service"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "fe8121706200909c11fadb3cf0b53a56bc134f9f228357a9f0ea798c9daf07c0"
 
 [[user]]
 live = "~/.config/systemd/user/default.target.wants/z0-farm-llama.service"
@@ -2855,15 +2831,6 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
 migration_sha256 = "742b94a3295f7a5e073979bcab073f35f8dc41f4c75cdaeffdffabe3d5cb5a05"
-
-[[user]]
-live = "~/.config/systemd/user/whisperflow.service.d/90-service-watch.conf"
-source = "config/systemd/user/whisperflow.service.d/90-service-watch.conf"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "7ea10a6d2dca108d80f6f37318e631aa5832544abc7b0c3bfb55b05c019d6645"
 
 [[user]]
 live = "~/.config/systemd/user/wireplumber.service.d/90-service-watch.conf"
