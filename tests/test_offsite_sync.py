@@ -75,6 +75,23 @@ class Offsite(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotEqual(self.remote("refs/heads/feat/y"), "")
 
+    def test_diverged_branch_is_parked_not_lost(self):
+        # 11-16 apply run: 21 repos failed whole pushes because one branch was behind its remote
+        g(self.repo, "switch", "-q", "-c", "feat/d"); g(self.repo, "commit", "-q", "--allow-empty", "-m", "d")
+        g(self.repo, "push", "-q", "origin", "feat/d")
+        other = self.tmp / "other"
+        subprocess.run(["git", "clone", "-q", "-b", "feat/d", str(self.bare), str(other)], check=True, capture_output=True)
+        g(other, "commit", "-q", "--allow-empty", "-m", "remote-side"); g(other, "push", "-q", "origin", "feat/d")
+        g(self.repo, "commit", "-q", "--allow-empty", "-m", "local-only")
+        g(self.repo, "switch", "-q", "-c", "feat/e"); g(self.repo, "commit", "-q", "--allow-empty", "-m", "e")
+        r = self.run_sync("--apply")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        host = __import__("socket").gethostname().split(".")[0]
+        self.assertEqual(self.remote(f"refs/offsite/{host}/heads/feat/d"), g(self.repo, "rev-parse", "feat/d"))
+        self.assertNotEqual(self.remote("refs/heads/feat/e"), "")
+        self.assertNotIn("no kvnloo remote", (self.tmp / "run/summary.json").read_text())
+        self.assertEqual(__import__("json").loads((self.tmp / "run/summary.json").read_text())["sole_copies"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

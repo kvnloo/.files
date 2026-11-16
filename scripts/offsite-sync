@@ -112,10 +112,22 @@ def sync(common, wt, apply):
         return rec
     if apply:
         r = git(wt, "push", "--no-verify", rec["remote"], *specs, timeout=1800)
-        rec["pushed"] = r.returncode == 0
-        if r.returncode:
-            rec["sole_copy"] = "push failed: " + r.stderr.strip()[-300:]
+        failed = [] if r.returncode == 0 else [s for s in specs if not push_one(wt, rec["remote"], s)]
+        rec["pushed"] = not failed
+        if failed:
+            rec["sole_copy"] = f"push failed ({len(failed)}/{len(specs)} refs): " + r.stderr.strip()[-300:]
     return rec
+
+
+def push_one(wt, remote, spec):
+    """Push one ref; if the remote branch/tag diverged or rejects it, park it under refs/offsite instead."""
+    if git(wt, "push", "--no-verify", remote, spec, timeout=1800).returncode == 0:
+        return True
+    src, dst = spec.lstrip("+").split(":", 1)
+    if dst.startswith(f"refs/offsite/{HOST}/"):
+        return False
+    park = f"+{src}:refs/offsite/{HOST}/{dst.removeprefix('refs/')}"
+    return git(wt, "push", "--no-verify", remote, park, timeout=1800).returncode == 0
 
 
 def main():
