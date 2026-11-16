@@ -84,6 +84,22 @@ class ReaperBehavior(unittest.TestCase):
             self.git(self.repo, 'worktree', 'add', '-b', f'fixture-{index}', str(linked))
         self.assertEqual(reaper.discover([str(self.root)]), [str(self.repo)])
 
+    def test_discovery_skips_sandbox_package_caches(self):
+        # 11-16: z0-wt discovery took 371 s (22 s in git): 101 agent sandboxes carry their own
+        # caches (one bun-cache held 94k files; bun caches git deps as clones), and one out/ held 166k dirs.
+        for cache in ('bun-cache', 'xdg-cache', 'natives-dl', '.uvcache', 'gomod', 'out'):
+            dep = self.root / 'wf-sandbox' / cache / 'git' / 'dep'
+            dep.mkdir(parents=True)
+            self.git(dep, 'init', '-q', '-b', 'main')
+        visited, real_walk = [], os.walk
+        def walk(top, *a, **k):
+            for row in real_walk(top, *a, **k):
+                visited.append(row[0])
+                yield row
+        with patch.object(reaper.os, 'walk', walk):
+            self.assertEqual(reaper.discover([str(self.root)]), [str(self.repo)])
+        self.assertFalse([v for v in visited if 'wf-sandbox/' in v], visited)
+
     def test_recent_files_are_live(self):
         self.assertEqual(self.inspect()['class'], 'LIVE')
 

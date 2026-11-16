@@ -27,8 +27,10 @@ DEFAULT_ROOTS = ROOTS
 OUTPUT = Path('/mnt/zer0models/workspace/zer0/data/operations/worktree-reaper')
 ARCHIVE = Path('/mnt/zer0models/wt-archive')
 DAY = 86400
-SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', '.gradle', '.build', 'target', '.next', '.pnpm-store'}
-OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', '.cache', 'test-output', 'test-outputs', 'test-results', 'wiring', '_check', 'bytes_N', 'bytes_R', 'tmp'}
+SKIP_DISCOVERY = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache', '.gradle', '.build', 'target', '.next', '.pnpm-store',
+                  # Per-sandbox package caches (11-16: z0-wt walk 371 s, 22 s of it git; 166k dirs in one out/).
+                  'bun-cache', 'xdg-cache', 'natives-dl', '.uvcache', 'gomod'}
+OUTPUT_CONTAINERS = {'runs', 'artifacts', 'cache', '.cache', 'test-output', 'test-outputs', 'test-results', 'wiring', '_check', 'bytes_N', 'bytes_R', 'tmp', 'out'}
 PATH_PATTERN = re.compile(r'(?:/mnt/zer0models|/home/kvn|/workspace)(?:/[^\s\x00\"\'`;<>|(){}\[\],:=]*)?')
 HOOK_REFERENCES = {}
 BASE_BUNDLES = {}
