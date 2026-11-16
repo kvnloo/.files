@@ -37,6 +37,48 @@ class Contracts(unittest.TestCase):
         self.watch.store.db.close()
         self.temp.cleanup()
 
+    def test_old_incidents_are_pruned_but_each_latest_is_kept(self):
+        db, now = self.watch.store.db, time.time()
+        rows = [('a1', 'fa', now - 40 * 86400), ('a2', 'fa', now - 20 * 86400), ('a3', 'fa', now - 60),
+                ('b1', 'fb', now - 30 * 86400), ('p1', 'fp', now - 50 * 86400), ('p2', 'fp', now - 10)]
+        for ident, fp, ts in rows:
+            db.execute('INSERT INTO incidents VALUES (?,?,?,?,?,?)', (ident, fp, ts, 'u.service', 'user', '{}'))
+        db.execute('INSERT INTO pending VALUES (?,?)', ('p1', '{}'))
+        db.commit()
+        self.assertEqual(self.watch.store.prune(now), 2)
+        left = {r[0] for r in db.execute('SELECT id FROM incidents')}
+        # a1/a2 aged out; b1 is fb's only row; p1 is still pending triage.
+        self.assertEqual(left, {'a3', 'b1', 'p1', 'p2'})
+
+    def test_inactive_unit_nothing_starts_is_not_unexpected(self):
+        inv = {'kind': 'systemd', 'expected_active_state': 'active'}
+        for state, flagged in (('enabled', True), ('static', True), ('disabled', False), ('linked', False), ('', False)):
+            prop = {'ActiveState': 'inactive', 'UnitFileState': state}
+            codes = [e['code'] for e in self.watch.invariant('user', 'x.service', inv, prop, time.time())]
+            self.assertEqual('unexpected_state' in codes, flagged, state)
+
+    def test_persistent_warning_is_recorded_once_a_day_and_severe_hourly(self):
+        with patch.object(self.watch.store, 'notify', return_value='deduplicated'):
+            warn = self.watch.record('user', 'w.service', [sw.event('unexpected_state')], triage=False)
+            severe = self.watch.record('user', 's.service', [sw.event('failed')], triage=False)
+            db = self.watch.store.db
+            db.execute('UPDATE incidents SET ts=ts-7200')
+            db.commit()
+            self.assertEqual(self.watch.record('user', 'w.service', [sw.event('unexpected_state')], triage=False)
+                             == warn, time.time() - 7200 >= datetime.datetime.combine(
+                                 datetime.date.today(), datetime.time.min).timestamp())
+            self.assertNotEqual(self.watch.record('user', 's.service', [sw.event('failed')], triage=False), severe)
+
+    def test_reaper_snapshot_keeps_scalars_only(self):
+        big = {f'/repo/{i}': i for i in range(5000)}
+        self.watch.reaper_status.write_text(json.dumps({'mode': 'apply', 'removed_count': 2, 'errors': list(range(9)),
+                                                        'before_counts': big, 'after_counts': big}))
+        with patch.object(self.watch, 'record'):
+            self.watch.checkout_invariants()
+        stored = self.watch.store.get('worktree-reaper')
+        self.assertEqual(stored['latest'], {'mode': 'apply', 'removed_count': 2, 'errors': [0, 1, 2, 3, 4]})
+        self.assertLess(len(json.dumps(stored)), 20000)
+
     def test_hooks_for_vanished_transient_units_are_pruned(self):
         # 2026-11-16: 1964 hook dirs for gone instances/D-Bus activations, re-parsed by every daemon-reload.
         ud = self.root / 'units'

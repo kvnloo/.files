@@ -47,6 +47,7 @@ DEFAULT = OPERATIONS / 'service-watch'
 INVENTORY = OPERATIONS / 'host-hygiene/units.json'
 REAPER_STATUS = OPERATIONS / 'worktree-reaper/latest.json'
 BUSY_TIMEOUT = 30
+RETAIN_DAYS = 14
 LOCKED = re.compile(r'database is (locked|busy)')
 USER_UNIT_DIR = Path.home() / '.config/systemd/user'
 USER_UNIT_PATHS = (USER_UNIT_DIR, Path.home() / '.local/share/systemd/user', Path('/etc/systemd/user'),
@@ -136,7 +137,7 @@ def systemctl(scope, *args):
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,UnitFileState')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -176,6 +177,14 @@ def receipt_error(row):
         if isinstance(value, dict) and receipt_error(value):
             return True
     return row.get('status') in ('error', 'failed', 'transport_error', 'unavailable') or row.get('execution') == 'transport_error'
+
+
+def stopped_on_purpose(prop):
+    """Enablement is the declaration of intent: an inactive unit nothing starts at boot
+    (disabled, linked but not enabled, masked, or no unit file) was stopped on purpose.
+    The 2026-10-24 inventory still expected units stopped on 2026-11-11 to be active, which
+    re-recorded each one every hour (about 2,500 rows a day) and buried real failures."""
+    return prop.get('ActiveState') == 'inactive' and prop.get('UnitFileState', 'enabled') in ('disabled', 'linked', 'masked', '')
 
 
 def event(code, severity=None, **metrics):
@@ -317,7 +326,19 @@ class Store:
             CREATE TABLE IF NOT EXISTS notifications(fingerprint TEXT,ts REAL,delivered INTEGER);
             CREATE TABLE IF NOT EXISTS pending(id TEXT PRIMARY KEY,data TEXT);
             CREATE INDEX IF NOT EXISTS incident_fingerprint ON incidents(fingerprint,ts);
+            CREATE INDEX IF NOT EXISTS incident_ts ON incidents(ts);
         ''')
+
+    def prune(self, now, days=RETAIN_DAYS):
+        """Drop incidents older than `days`, keeping each fingerprint's latest row (once-only host
+        facts dedupe on it) and anything still pending triage. Unbounded, the table reached 40k
+        rows (98 MB) by 2026-11-16 and every hook's dedupe read scanned it."""
+        with self.lock:
+            cur = self.db.execute('DELETE FROM incidents WHERE ts<? AND id NOT IN (SELECT id FROM pending) '
+                                  'AND ts<(SELECT max(ts) FROM incidents j WHERE j.fingerprint=incidents.fingerprint)',
+                                  (now - days * 86400,))
+            self.db.commit()
+        return cur.rowcount
 
     def get(self, key, default=None):
         with self.lock:
@@ -336,6 +357,9 @@ class Store:
     def digest(self):
         day = datetime.datetime.now().astimezone().date().isoformat()
         cutoff = datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time.min).astimezone().timestamp()
+        if self.get('pruned_day') != day:
+            self.prune(time.time())
+            self.set('pruned_day', day)
         with self.lock:
             rows = self.db.execute('SELECT id,ts,unit,scope,data FROM incidents WHERE ts>=? ORDER BY ts', (cutoff,)).fetchall()
             lines = [f'# Service watch — {day}', '', 'Report and notify only. No watched service is restarted or changed.',
@@ -535,7 +559,8 @@ class Watch:
                     events.append(event('unexpected_state'))
             elif kind == 'systemd':
                 expected = invariant.get('expected_active_state')
-                if expected and prop.get('ActiveState') != expected and prop.get('ActiveState') != 'failed':
+                if expected and prop.get('ActiveState') != expected and prop.get('ActiveState') != 'failed' \
+                        and not stopped_on_purpose(prop):
                     events.append(event('unexpected_state'))
             elif kind == 'phone_caps':
                 # Fixed argv, no shell and no log-derived commands. Force enforcement
@@ -610,19 +635,23 @@ class Watch:
             fingerprint = hashlib.sha256(json.dumps([scope, unit, identity],
                                         sort_keys=True).encode()).hexdigest()
         now = time.time()
+        # Severe conditions re-record hourly; a persistent warn once per local day (it still
+        # reaches each day's digest) instead of every hour.
+        since = now - 3600 if any(e['severity'] == 'severe' for e in events) else min(now - 3600, datetime.datetime.combine(
+            datetime.date.today(), datetime.time.min).astimezone().timestamp())
         if identity is None and not force:
             # Duplicate fast path: a WAL read is never blocked by a writer, so a
             # crash-looping unit's per-restart hooks never queue on the write lock.
             with self.store.lock:
                 previous = self.store.db.execute('SELECT id FROM incidents WHERE fingerprint=? AND ts>?',
-                                                 (fingerprint, now - 3600)).fetchone()
+                                                 (fingerprint, since)).fetchone()
             if previous:
                 return previous[0]
         with self.store.lock:
             self.store.db.execute('BEGIN IMMEDIATE')
             if identity is None:
                 previous = self.store.db.execute('SELECT id FROM incidents WHERE fingerprint=? AND ts>?',
-                                                 (fingerprint, now - 3600)).fetchone()
+                                                 (fingerprint, since)).fetchone()
             else:
                 # Stable host facts are reported once, across hooks and restarts.
                 previous = self.store.db.execute('SELECT id FROM incidents WHERE fingerprint=?',
@@ -791,7 +820,10 @@ class Watch:
             latest = json.loads(self.reaper_status.read_text())
             if not isinstance(latest, dict):
                 raise ValueError('invalid_reaper_status')
-            status.update(status='available', latest=latest)
+            # No maps, lists capped: before/after_counts are per-checkout maps (165 KB on 2026-11-16)
+            # that were rewritten into meta every refresh and pasted into each digest; latest.json keeps them.
+            status.update(status='available', latest={k: v[:5] if isinstance(v, list) else v
+                                                      for k, v in latest.items() if not isinstance(v, dict)})
         except (OSError, ValueError):
             pass
         self.store.set('worktree-reaper', status)
