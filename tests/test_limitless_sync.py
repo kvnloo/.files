@@ -109,5 +109,36 @@ class SyncNoop(unittest.TestCase):
         self.assertFalse((self.st / "noop" / "incoming").exists())
 
 
+class LastThread(unittest.TestCase):
+    def test_owner_turn_wins_over_agent_turns_and_uses_indexes(self):
+        home = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home)
+        db = home / ".hermes/profiles/p/state.db"
+        db.parent.mkdir(parents=True)
+        con = sqlite3.connect(db)
+        con.executescript("""
+            create table sessions(id text primary key, source text, title text, display_name text, cwd text);
+            create index idx_sessions_source_id on sessions(source, id);
+            create table messages(id integer primary key, session_id text, role text, timestamp real, content text);
+            create index idx_messages_session on messages(session_id, timestamp);
+            insert into sessions values ('own', 'tui', 'garden', null, null), ('bot', 'cron', 'cron job', null, null);
+            insert into messages(session_id, role, timestamp, content) values
+              ('own', 'user', 1000, 'old idea'), ('own', 'user', 5000, 'ship the planter'),
+              ('bot', 'user', 6000, 'agent relay'), ('own', 'user', 9000, 'after the nap');""")
+        con.commit()
+        plan = " ".join(r[3] for r in con.execute(
+            "explain query plan select m.timestamp from messages m join sessions s on s.id=m.session_id "
+            "where m.role='user' and m.timestamp<? and m.timestamp>? and s.source in ('tui') order by m.timestamp desc limit 1", (1, 0)))
+        con.close()
+        self.assertNotIn("SCAN m", plan)
+        old = ls.Path.home
+        ls.Path.home = staticmethod(lambda: home)
+        try:
+            self.assertEqual(ls.last_thread(8000), ("garden", "ship the planter"))
+            self.assertIsNone(ls.last_thread(5000 + 4 * 86400))
+        finally:
+            ls.Path.home = old
+
+
 if __name__ == "__main__":
     unittest.main()

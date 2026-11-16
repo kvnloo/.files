@@ -209,15 +209,18 @@ def first_owner_msg_after(after: float) -> float | None:
 
 
 def last_thread(before: float) -> tuple[str, str] | None:
-    """Kevin's last own message (any Hermes profile) before `before`: (session title, text)."""
+    """Kevin's last own message (any Hermes profile) in the 3 days before `before`: (session title, text).
+    The source filter and lower bound let SQLite seek idx_sessions_source_id + idx_messages_session;
+    without them it scanned every message (5.9 GB in clean) and counted agent-sent user turns."""
     best = None
     for db in glob.glob(str(Path.home() / ".hermes/profiles/*/state.db")):
         try:
             c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
             row = c.execute("select m.timestamp, coalesce(s.title, s.display_name, s.cwd, s.id), m.content from messages m join sessions s "
-                            "on s.id=m.session_id where m.role='user' and m.timestamp<? and m.content not like '[%' "
+                            "on s.id=m.session_id where m.role='user' and m.timestamp<? and m.timestamp>? "
+                            "and s.source in ('gui','local','acp','cli','tui','telegram','discord') and m.content not like '[%' "
                             "and m.content not like '<%' and length(m.content) between 2 and 3000 "
-                            "order by m.timestamp desc limit 1", (before,)).fetchone()
+                            "order by m.timestamp desc limit 1", (before, before - 3 * 86400)).fetchone()
         except sqlite3.Error:
             continue
         if row and (best is None or row[0] > best[0]):
