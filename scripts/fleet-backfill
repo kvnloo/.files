@@ -422,8 +422,10 @@ def tick(cfg, dry_run=False):
     now = time.time()
     try:
         print(json.dumps({"phones": phone_tick(cfg, now, dry_run)}))
-    except Exception as exc:  # phones must never stall the MBP/Boat half of the tick
+        rc = 0
+    except Exception as exc:  # phones must never stall the MBP/Boat half of the tick, but the unit fails
         print(json.dumps({"phones": f"error {type(exc).__name__}: {exc}"[:300]}))
+        rc = 1
     env = {**os.environ, "KUBECONFIG": KUBECONFIG}
     try:
         queues = json.loads(sh("kubectl", "get", "clusterqueue", "lanes", "bench-lanes", "-o", "json", env=env))["items"]
@@ -432,7 +434,7 @@ def tick(cfg, dry_run=False):
             raise
         # MBP and Boat work is admitted only through Kueue; with no Kueue there is nothing to launch.
         print(json.dumps({"mbp_boat": "skipped: Kueue is not installed on this cluster"}))
-        return 0
+        return rc
     free, pending = cohort_free(queues)
     limits = json.loads(sh(boat_pool.BOAT, "--no-update", "--json", "limits", timeout=90) or "{}")
     active = active_units()
@@ -445,7 +447,7 @@ def tick(cfg, dry_run=False):
                       "boat_last24h": limits.get("last24hUsageSeconds"),
                       "boat_credit": limits.get("creditBalanceSeconds")}))
     if not want:
-        return 0
+        return rc
     by_suite = {s["name"]: commits(s, cfg.get("history", 30)) for s in cfg["suites"]}
     taken = taken_units() | set(active)
     for node in want:
@@ -464,7 +466,7 @@ def tick(cfg, dry_run=False):
         print(f"launched {unit} -> {receipt}")
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_text(json.dumps(last))
-    return 0
+    return rc
 
 
 def main():
