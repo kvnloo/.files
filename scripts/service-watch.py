@@ -116,6 +116,22 @@ def check_stop():
         raise ShutdownRequested()
 
 
+PHONE_CAPS_REPROOF = 3600
+
+
+def phone_caps_key(root, checked):
+    """Identity of one O10 proof: guard binary plus (mtime, size) of every file it read."""
+    def sig(path):
+        try:
+            st = os.stat(path)
+            return (path, st.st_mtime_ns, st.st_size)
+        except OSError:
+            return (path, None, None)
+    guard = shutil.which('z0-guard')
+    return (root, sig(os.path.realpath(guard)) if guard else None, tuple(checked),
+            tuple(sig(c) for c in checked if os.path.isabs(c)))
+
+
 def command(argv, timeout=15, **kwargs):
     check_stop()
     deadline = time.monotonic() + timeout
@@ -506,6 +522,7 @@ class Watch:
         self.checkout_threshold = checkout_threshold
         self.checkout_roots = checkout_roots
         self.reaper_status = Path(reaper_status)
+        self.phone_caps_memo = None  # (key, proved_at) of the last clean O10 verdict
         self.intake = Path(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()) / 'service-watch/intake'
         self.store = Store(root)
         self.inventory = Path(inventory)
@@ -608,9 +625,14 @@ class Watch:
                 # Fixed argv, no shell and no log-derived commands. Force enforcement
                 # so a user's report-mode override cannot conceal policy regression.
                 root = invariant.get('root', str(ROOT.parent))
+                memo = self.phone_caps_memo
+                if memo and memo[0][0] == root and now - memo[1] < PHONE_CAPS_REPROOF \
+                        and phone_caps_key(root, memo[0][2]) == memo[0]:
+                    return events  # same guard, same inputs, proved clean within the hour
                 result = command(['z0-guard', 'phone-caps', '--root', str(root)], timeout=30,
                                  env={**os.environ, 'Z0_GUARD_O10': 'enforce'})
                 report = json.loads(result.stdout)
+                self.phone_caps_memo = None
                 if not isinstance(report, dict):
                     return [event('invariant_unavailable')]
                 findings = report.get('findings')
@@ -622,6 +644,9 @@ class Watch:
                     events.append(event('phone_resource_caps', count=len(findings)))
                 elif result.returncode != 0 or findings or report.get('status') != 'ok':
                     events.append(event('invariant_unavailable'))
+                elif all(isinstance(c, str) for c in report['checked']):
+                    # Only a clean verdict is reused; red or unavailable re-runs on every scan.
+                    self.phone_caps_memo = (phone_caps_key(root, report['checked']), now)
             elif kind == 'file_freshness':
                 age = now - Path(invariant['path']).expanduser().stat().st_mtime
                 if age > invariant['max_age_seconds']:

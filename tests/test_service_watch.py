@@ -772,12 +772,39 @@ class Contracts(unittest.TestCase):
             (3, {'gate': 'O10', 'checked': ['fleet'], 'status': 'refused', 'findings': [{'rule': 'scan-unavailable'}]}, ['invariant_unavailable']),
         ]
         for code, report, expected in cases:
+            self.watch.phone_caps_memo = None
             result = subprocess.CompletedProcess([], code, json.dumps(report), '')
             with patch.object(sw, 'command', return_value=result) as run:
                 events = self.watch.invariant('user', 'fixture.service', invariant, {}, time.time())
             self.assertEqual([e['code'] for e in events], expected)
             self.assertEqual(run.call_args[0][0], ['z0-guard', 'phone-caps', '--root', str(self.root)])
             self.assertEqual(run.call_args.kwargs['env']['Z0_GUARD_O10'], 'enforce')
+
+    def test_phone_caps_clean_verdict_is_reused_until_a_checked_file_changes(self):
+        # 11-16 audit: 0.33 CPU-s per scan x 171 scans/h re-proving an immutable release root
+        skill = self.root / 'SKILL.md'
+        skill.write_text('caps')
+        invariant = {'kind': 'phone_caps', 'root': str(self.root)}
+        ok = subprocess.CompletedProcess([], 0, json.dumps(
+            {'gate': 'O10', 'checked': [str(skill), 'fleet'], 'status': 'ok', 'findings': []}), '')
+        refused = subprocess.CompletedProcess([], 3, json.dumps(
+            {'gate': 'O10', 'checked': [str(skill)], 'status': 'refused', 'findings': [{'rule': 'registry-phone-cap'}]}), '')
+        now = time.time()
+        with patch.object(sw, 'command', return_value=ok) as run:
+            for _ in range(3):
+                self.assertEqual(self.watch.invariant('user', 'x.service', invariant, {}, now), [])
+            self.assertEqual(run.call_count, 1)
+            os.utime(skill, ns=(1, 1))                      # the mutable input changed: prove again
+            self.watch.invariant('user', 'x.service', invariant, {}, now)
+            self.assertEqual(run.call_count, 2)
+            self.watch.invariant('user', 'x.service', invariant, {}, now + 3601)   # hourly re-proof anyway
+            self.assertEqual(run.call_count, 3)
+        self.watch.phone_caps_memo = None
+        with patch.object(sw, 'command', return_value=refused) as run:
+            for _ in range(2):                              # a red verdict is never cached
+                self.assertEqual([e['code'] for e in self.watch.invariant('user', 'x.service', invariant, {}, now)],
+                                 ['phone_resource_caps'])
+            self.assertEqual(run.call_count, 2)
 
     def test_phone_caps_recurring_root_follows_installed_fleet(self):
         with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
