@@ -3723,6 +3723,906 @@ reason = "Adopted 2026-11-16 (F16): live copy had no row, so its cadence could d
 migration_sha256 = "07bc92f082474b5be6cd05703bd86c0d2ead881df987e66392faf9306755db4c"
 
 [[user]]
+live = "~/.config/systemd/user/a17b-gate-watch.timer"
+source = "config/systemd/user/a17b-gate-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "660ecb65f93d92fc3eda06c145c860e774b6b6318ef7cfb10cf56b62f626209d"
+
+[[user]]
+live = "~/.config/systemd/user/agent-overview.service"
+source = "config/systemd/user/agent-overview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "0856b323a4940c3a195cc875a542864417f4ceb78e91eb6d3fdee55f7270e256"
+
+[[user]]
+live = "~/.config/systemd/user/agentsview.service"
+source = "config/systemd/user/agentsview.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "ac68719e5830a44fac6d249efb498a813067cc803d026009ad1e702c4ad9d5da"
+
+[[user]]
+live = "~/.config/systemd/user/ani-dream.service"
+source = "config/systemd/user/ani-dream.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "4045d9b53310d361ac59e6b8d1a396a9cc81e83a76c2265947de7935de80cdaf"
+
+[[user]]
+live = "~/.config/systemd/user/ani-review.service"
+source = "config/systemd/user/ani-review.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "51f04fb30c8f3d15a23f84743ada482a7fc3f0d5b1b1545b4cae9f6ef5104540"
+
+[[user]]
+live = "~/.config/systemd/user/anki-syncserver.service"
+source = "config/systemd/user/anki-syncserver.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "7e6e106c832e3987503404c55c68f7ffc8bf83a686ce417f4572c2a5925d946b"
+
+[[user]]
+live = "~/.config/systemd/user/astra-drain.service"
+source = "config/systemd/user/astra-drain.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "17e4e495164c8e269cbfa49c15dd2f3c2eeec81b64310bc7a1e4b4436943ca32"
+
+[[user]]
+live = "~/.config/systemd/user/astra-drain.timer"
+source = "config/systemd/user/astra-drain.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "765b4dd4fe82ade90c82cc4bd0b24e8ffa726f33ab081eca9636319a9b022c86"
+
+[[user]]
+live = "~/.config/systemd/user/ayo-ledger-reverify.timer"
+source = "config/systemd/user/ayo-ledger-reverify.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "c8199d9639a3d8acfcd42685091ebdf30d309f6f4a5c652570252db29e565e43"
+
+[[user]]
+live = "~/.config/systemd/user/ayo-pacer.timer"
+source = "config/systemd/user/ayo-pacer.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "f5da7eb9474f87219df3af6407c39c702064e299bdea93b769c0b1cf7a687e20"
+
+[[user]]
+live = "~/.config/systemd/user/best-way-map-refresh.timer"
+source = "config/systemd/user/best-way-map-refresh.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "d8133e25872316b4c8bd792554dc867d78a8703db2fcaf11d76bf9a4e56b3872"
+
+[[user]]
+live = "~/.config/systemd/user/burn-pace.timer"
+source = "config/systemd/user/burn-pace.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "e9e9e0f18856d1417668c59de265799adfb93ac66c3d099d21ec5d11ff2c047c"
+
+[[user]]
+live = "~/.config/systemd/user/dash-channel-metro.service"
+source = "config/systemd/user/dash-channel-metro.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "8d970cde57c3a2553eb2937b3d19aefd3a5c0120fde9bb927ed2b2a1979dfe88"
+
+[[user]]
+live = "~/.config/systemd/user/dash-channel-nightly.timer"
+source = "config/systemd/user/dash-channel-nightly.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "d74604ce4c14c17e4da221ca556a22cd2c2f6802b04cd2d71adaf8a6e9b272d2"
+
+[[user]]
+live = "~/.config/systemd/user/dash-channel-relay.service"
+source = "config/systemd/user/dash-channel-relay.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "accf3bd730a5f9a51776c5a9236bdea54097a07cf19eed8b16616cd18125907a"
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-turbo-relay.service"
+source = "config/systemd/user/dash-metro-turbo-relay.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6b24fc2ce2f9eb331de7be9e9bf98529a984c15386a2fa77fbac68a2b3ef801c"
+
+[[user]]
+live = "~/.config/systemd/user/dash-metro-turbo.service"
+source = "config/systemd/user/dash-metro-turbo.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "882ba9959c879faf732ec6a6270f78fc58242a7c1090cf95bab09883b5cd58f9"
+
+[[user]]
+live = "~/.config/systemd/user/dash-phone-watch.service"
+source = "config/systemd/user/dash-phone-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "611faeee7cc122517d17c8f469336fd66131b681a6a4d2ddac388c726d3ef423"
+
+[[user]]
+live = "~/.config/systemd/user/dash-push-fallback.service"
+source = "config/systemd/user/dash-push-fallback.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "b935a036825f42c69f63ee22905f77f35405e33aec403e3622fd74a467af56e8"
+
+[[user]]
+live = "~/.config/systemd/user/decide-v2.service"
+source = "config/systemd/user/decide-v2.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "77aae8d74abb821a90aebbd3dfff7e6460066677534731045c95cb92c193eba3"
+
+[[user]]
+live = "~/.config/systemd/user/detent-sync-colors.path"
+source = "config/systemd/user/detent-sync-colors.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "1bec4cf3fbb904e934d9cf47095123220c7f93424498e8386fe07b06914f9db3"
+
+[[user]]
+live = "~/.config/systemd/user/detent-sync-colors.service"
+source = "config/systemd/user/detent-sync-colors.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "68ab5d8e87efd5b28012e33ae76dbaed10701262e8c294262e6fee4d535d198b"
+
+[[user]]
+live = "~/.config/systemd/user/dossier-delta.path"
+source = "config/systemd/user/dossier-delta.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "af1464bcc2d54192def7d47ff95aa36152bcaa633a3eb01b269200178b0d7e04"
+
+[[user]]
+live = "~/.config/systemd/user/dossier-delta.timer"
+source = "config/systemd/user/dossier-delta.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "a3602669845f59dbeae3db499fdbf48e0351608d7a94d2ec0618779563182a6d"
+
+[[user]]
+live = "~/.config/systemd/user/fable-advisor-guard.timer"
+source = "config/systemd/user/fable-advisor-guard.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "17057a8dacde97ab3609d2c5d62af3610d20d8156dbae269e0a2cf213f1c819d"
+
+[[user]]
+live = "~/.config/systemd/user/fable-drain.service"
+source = "config/systemd/user/fable-drain.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "25f3edd34dea825d8f778716ebcbec12360e06404e8a2ee0f3d0fb6b68e8aa69"
+
+[[user]]
+live = "~/.config/systemd/user/fable-drain.timer"
+source = "config/systemd/user/fable-drain.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "47a4fd1187c99aab683adece5ff5232b89322d17b972aa1f776046b9b9f4caf6"
+
+[[user]]
+live = "~/.config/systemd/user/fable-phase-watch.service"
+source = "config/systemd/user/fable-phase-watch.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "5d00f410f55dee4bc1e51a76eb9b0e3ac05fd1857abb58ec78588fddec9440b9"
+
+[[user]]
+live = "~/.config/systemd/user/fable-phase-watch.timer"
+source = "config/systemd/user/fable-phase-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "e4d2b4035a43ebd55c4c2c0787ca0cfeaca893d2b104ad2a274f6c7d75df0088"
+
+[[user]]
+live = "~/.config/systemd/user/factory-loop-1102.timer"
+source = "config/systemd/user/factory-loop-1102.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "760000e3e158fa78fe4c2d3476c0c316d7fd5ba135734892b54d28141b64d325"
+
+[[user]]
+live = "~/.config/systemd/user/fix-replay.service"
+source = "config/systemd/user/fix-replay.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "247d67247b84c0767a6d9a8b3cd86fb737b95ee1c67b6abbcaee5360252c25b9"
+
+[[user]]
+live = "~/.config/systemd/user/fix-replay.timer"
+source = "config/systemd/user/fix-replay.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "f0d1eb344443c0d9a16bcbed9ad19a3910ebbe9373bc7fa44e727d0a238bc8af"
+
+[[user]]
+live = "~/.config/systemd/user/free-pace.timer"
+source = "config/systemd/user/free-pace.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "d54b4ec6466ea45a3c287e2276cb9da8530539b1ae270d1273843643a0f6b003"
+
+[[user]]
+live = "~/.config/systemd/user/free-scout.timer"
+source = "config/systemd/user/free-scout.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "567a743998135f3a2e420ea959686b342443bb3dbafffc54553067faf4241616"
+
+[[user]]
+live = "~/.config/systemd/user/gardencam-snap.timer"
+source = "config/systemd/user/gardencam-snap.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "c03031d1d2629edd7031463576ad463edce733b02454d4a61704c46a0792de95"
+
+[[user]]
+live = "~/.config/systemd/user/gardencam.service"
+source = "config/systemd/user/gardencam.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "5b7d70693873a92de401c19f598fd40c08b166650fa6f7a6888544a4c008cdf7"
+
+[[user]]
+live = "~/.config/systemd/user/gev-oss-loop.timer"
+source = "config/systemd/user/gev-oss-loop.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "41d939cbef9919e47c692d6a5d0d28983b8cc29df4cc9651cf308450955e90cc"
+
+[[user]]
+live = "~/.config/systemd/user/gh-feedback-watch.timer"
+source = "config/systemd/user/gh-feedback-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "e63474d5c97f13794c454000f285f6d5cc884ba463d5a698348bb97a48aaf68e"
+
+[[user]]
+live = "~/.config/systemd/user/gh-pace.timer"
+source = "config/systemd/user/gh-pace.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6ad6a386469b6dd265b42351f198bee170a3cdd2c164e1f4e9377d320101429b"
+
+[[user]]
+live = "~/.config/systemd/user/gh-share.service"
+source = "config/systemd/user/gh-share.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "c7952724d31564c2b01aa62dfbeac1876d785be234376cc90d9800b04618edf2"
+
+[[user]]
+live = "~/.config/systemd/user/git-maintenance@daily.timer"
+source = "config/systemd/user/git-maintenance@daily.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "42fae681838e4c948bc50a1730c5639eae03422585c204af2db3373713d8afb4"
+
+[[user]]
+live = "~/.config/systemd/user/git-maintenance@hourly.timer"
+source = "config/systemd/user/git-maintenance@hourly.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "2d9e73bdf5240bb9dac477c005550a16ca388c25f27ea991300c75cefb2c005d"
+
+[[user]]
+live = "~/.config/systemd/user/git-maintenance@weekly.timer"
+source = "config/systemd/user/git-maintenance@weekly.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "a0534bf2596bc7994a51cce49aa54ff27b112319f36031d7350e33d8c846321c"
+
+[[user]]
+live = "~/.config/systemd/user/glide-dist-sync.timer"
+source = "config/systemd/user/glide-dist-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "cc2b79feeedbd4e8305f68a8e83b911e0d506b48f04327f72d5bc6985f4ee1fc"
+
+[[user]]
+live = "~/.config/systemd/user/gnome-keyring-daemon.service.d/20-nofile.conf"
+source = "config/systemd/user/gnome-keyring-daemon.service.d/20-nofile.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6a7c38f51377c07577b27405c5bad7fc2b7f508cb359466e5e08983a394c31c1"
+
+[[user]]
+live = "~/.config/systemd/user/hc-overnight-off.timer"
+source = "config/systemd/user/hc-overnight-off.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "f1e24d360debd95cb77ce9d0fa158051dfe3e7612fda706e7747b92258d9fec3"
+
+[[user]]
+live = "~/.config/systemd/user/hc-turbo.service"
+source = "config/systemd/user/hc-turbo.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "66bf800f9b1314eb0e8343eecde56f4fd6b8368645823cd2c25f0777f75197a6"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-factory-watchdog.timer"
+source = "config/systemd/user/hermes-factory-watchdog.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "0f7e252baf77f7ad5e24ee01fb897265a9a1bc21dc90e074e7893386c70419d3"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-gateway-rss-restart.timer"
+source = "config/systemd/user/hermes-gateway-rss-restart.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "8e44d49add9452c256b1781ddf8c0e56ff1e7ee047d97c9217648428de0ecab6"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-upstream-inbox-full.timer"
+source = "config/systemd/user/hermes-upstream-inbox-full.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "5f235d43f81cce2a4e81552164c6419dd5e7f5b101bef5302927443fa9e6b8af"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-upstream-inbox-week.timer"
+source = "config/systemd/user/hermes-upstream-inbox-week.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "006fac9d5ddb99e47334e7b77ce9ac9e8911c6e4078fb92fd33d9bdac69a2b1d"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-upstream-inbox.timer"
+source = "config/systemd/user/hermes-upstream-inbox.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "33c631b0da7618d8f727faff1a4653f3a82f38b41367cb937a027146e3f0de65"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-upstream-loop.timer"
+source = "config/systemd/user/hermes-upstream-loop.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "0e7c46aabffd7a1e474332227739d19a328c1ce72b8e2a169bb15bef88bff63f"
+
+[[user]]
+live = "~/.config/systemd/user/hermes-upstream-watch.timer"
+source = "config/systemd/user/hermes-upstream-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "382edf5e2ce4c0fae411b04e49837e146022d28ec1153d2a419dba603c9f673b"
+
+[[user]]
+live = "~/.config/systemd/user/jepa-host-sampler.timer"
+source = "config/systemd/user/jepa-host-sampler.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "2f495ce997415eef1c3a776c419bd39ccf2f47f1634c3ba9f92b9a7a669f3d61"
+
+[[user]]
+live = "~/.config/systemd/user/keyring-autounlock.service"
+source = "config/systemd/user/keyring-autounlock.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "acb33d5444cf904f9a939935e335e4a9a40400dbdf64e2086b44fdcd76545e65"
+
+[[user]]
+live = "~/.config/systemd/user/label-drift-doctor.timer"
+source = "config/systemd/user/label-drift-doctor.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "88e30354f438fb9916e30f7f18fb44c5edb2b337295f6f86402524ad57f1a996"
+
+[[user]]
+live = "~/.config/systemd/user/limitless-sleepmode.timer"
+source = "config/systemd/user/limitless-sleepmode.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "acdc920a3e3ec62b5100530bdfac73ec199a68886185940f656fb97e53d4236c"
+
+[[user]]
+live = "~/.config/systemd/user/limitless-sync.timer"
+source = "config/systemd/user/limitless-sync.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "58653f02a246e4e5ecc6d10fd574bb96c6ba3ad69173c4a5c789402470471b28"
+
+[[user]]
+live = "~/.config/systemd/user/makefun-heartbeat.timer"
+source = "config/systemd/user/makefun-heartbeat.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6b36d5bfb81488a59fb20fbe2134397dbfa6e88f20225e34fa035a29a58cf083"
+
+[[user]]
+live = "~/.config/systemd/user/memory-lane-watch.timer"
+source = "config/systemd/user/memory-lane-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "144cec1d305808d174006e20fd3dc66b94a6815e2c6c0c5f94aa3aa343221c70"
+
+[[user]]
+live = "~/.config/systemd/user/merch-studio.service"
+source = "config/systemd/user/merch-studio.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "356cf49d022d4003f02fc9ab3ea45a7fca85f680ba2aeef0007bdaa8e1efc1bd"
+
+[[user]]
+live = "~/.config/systemd/user/network-model-refresh.timer"
+source = "config/systemd/user/network-model-refresh.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "b2f3380e823e939ab1f92c049fa5c0841c35d6315ac991128c5cf62bebc14956"
+
+[[user]]
+live = "~/.config/systemd/user/network-optimizer.timer"
+source = "config/systemd/user/network-optimizer.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "c2f7dcee89a211abeb442422fcbf3df47a26a553118472bf211f7c68da015914"
+
+[[user]]
+live = "~/.config/systemd/user/neuroskill-bridge.service"
+source = "config/systemd/user/neuroskill-bridge.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "2934786380b85da157cc4dea8b5d814447d2d2ac2b38287121e9cdc0ceb9455c"
+
+[[user]]
+live = "~/.config/systemd/user/noop-channels.timer"
+source = "config/systemd/user/noop-channels.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "5f98cab7bd6b92269096691a473987a07489b50e87a6d58fd8ed6d079cab833e"
+
+[[user]]
+live = "~/.config/systemd/user/noop-ow-import.path"
+source = "config/systemd/user/noop-ow-import.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "8cbd92baccebbd0bd792b44e7fc0eb3dcf5f65ba3637f1f6850dddca80c810b4"
+
+[[user]]
+live = "~/.config/systemd/user/o8-phone-reverse.timer"
+source = "config/systemd/user/o8-phone-reverse.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "415054a9bfb16affbd7b813b23825d1766a2ccecc2fa4c6df5fb5b37e1413f18"
+
+[[user]]
+live = "~/.config/systemd/user/o8-serve.service"
+source = "config/systemd/user/o8-serve.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "bdc2ec782a52d239a77bf2ddb15568236ec7910878b2346b27fbc16084f22524"
+
+[[user]]
+live = "~/.config/systemd/user/openpencil-web.service"
+source = "config/systemd/user/openpencil-web.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "9116e126b7c3f0c93b49b9f20b8735e62b7d0f0189fd1af1c5f08f03712c81a3"
+
+[[user]]
+live = "~/.config/systemd/user/oss3d-gepa.service"
+source = "config/systemd/user/oss3d-gepa.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "a97930954401ba20f28bf1d381ef6d0b9740259176a1b0054ddd68e91063364a"
+
+[[user]]
+live = "~/.config/systemd/user/oss3d-triage.timer"
+source = "config/systemd/user/oss3d-triage.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6ee716b46a5f35a3da6fd01eaa9b3701982a6134a560f5781f3cd77e3b4dcfef"
+
+[[user]]
+live = "~/.config/systemd/user/owner-canon-sync.path"
+source = "config/systemd/user/owner-canon-sync.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "7793b9a1b6a85911f367e7b69ca28836f7a824cc41a992fe99db1b88090a3497"
+
+[[user]]
+live = "~/.config/systemd/user/p1103-review.timer"
+source = "config/systemd/user/p1103-review.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "aec94a2d9fc906c68cb828203cb9f604378e622c8355883b1076a78006241aa5"
+
+[[user]]
+live = "~/.config/systemd/user/phone-adb-keeper.service"
+source = "config/systemd/user/phone-adb-keeper.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "a2eb5356bd87729ac17aecde8a8cd1b7e4bbb3338bae1bbfe8da7a169dee1b32"
+
+[[user]]
+live = "~/.config/systemd/user/phone-adb-keeper.timer"
+source = "config/systemd/user/phone-adb-keeper.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "b7b70f6224594de466c4923fda1e114d81287ecd6920601fe774570f8313ecbd"
+
+[[user]]
+live = "~/.config/systemd/user/phone-worker.timer"
+source = "config/systemd/user/phone-worker.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "de59994e841fdd9794767d9afd0df29099abc03d37b7b844744de74f1ef5e891"
+
+[[user]]
+live = "~/.config/systemd/user/rehit-ow-import.timer"
+source = "config/systemd/user/rehit-ow-import.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "85a38b42a18abb3f4ed266a9deb388bf73f7e8dd3eb2bfafdda177f63aacf18b"
+
+[[user]]
+live = "~/.config/systemd/user/reset-grant.timer"
+source = "config/systemd/user/reset-grant.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "ae9daaa32cf5f70fed20b33ad3a5e53a6933c55224f7bc193ed9632431c63067"
+
+[[user]]
+live = "~/.config/systemd/user/s22-stall-alarm.timer"
+source = "config/systemd/user/s22-stall-alarm.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "938f40390a412815d42db0c9593c714dd6dd6349bda387fb524d2ede1d147718"
+
+[[user]]
+live = "~/.config/systemd/user/siq-union-dev.service"
+source = "config/systemd/user/siq-union-dev.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "baad745965bd35508878b236ceb0d17706faf2596bb7fce51e08bbcdab8e76f0"
+
+[[user]]
+live = "~/.config/systemd/user/sr-decision-shim.service"
+source = "config/systemd/user/sr-decision-shim.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "21ed3233241fc3d7fadaf5ac9e6f3b71cbd0ecaa86dbe1dd658199146070c82a"
+
+[[user]]
+live = "~/.config/systemd/user/srfree-v3-a0.service"
+source = "config/systemd/user/srfree-v3-a0.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "44e77a317584823fb160154a4bbe87534204e382cfea16c226297232e0593a28"
+
+[[user]]
+live = "~/.config/systemd/user/srfree-v3-a0eval.service"
+source = "config/systemd/user/srfree-v3-a0eval.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "14cbeded269eb2b3f22bb33e080a0d6811810d709b5e866bdd86c457fb4da930"
+
+[[user]]
+live = "~/.config/systemd/user/streetiq-ideate.service"
+source = "config/systemd/user/streetiq-ideate.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "17ca2dd3743c637988e3da413fef8c6e95edd35bdbd05c4ec240939b5a6fde16"
+
+[[user]]
+live = "~/.config/systemd/user/t3-auto-update.timer"
+source = "config/systemd/user/t3-auto-update.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "0825766706476ca34335d38e83d8bc34e1ba97627e0afdea4424d98c9c2764a2"
+
+[[user]]
+live = "~/.config/systemd/user/t3-nightly.service"
+source = "config/systemd/user/t3-nightly.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "fd2adcbbfede353dee76ceb4ac8b9e4d29cdd16a557e4d4bb13f61ed25595793"
+
+[[user]]
+live = "~/.config/systemd/user/t3-tool-failures.timer"
+source = "config/systemd/user/t3-tool-failures.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "b4c44f40e8587206544f5afe3fa1546e41faaed4b0d0e0751f18f28e631c8d42"
+
+[[user]]
+live = "~/.config/systemd/user/t3code-sync-colors.path"
+source = "config/systemd/user/t3code-sync-colors.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "b29e0c5184dfa1b585fd6645b14a0aae147923a4aa0f69296c55b267486fe598"
+
+[[user]]
+live = "~/.config/systemd/user/taste-board.service"
+source = "config/systemd/user/taste-board.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "25fa5e1f98667a93378b828605dd00e7a550fe85994f34820296cde9a9ff3c75"
+
+[[user]]
+live = "~/.config/systemd/user/tern-privacy-scan.timer"
+source = "config/systemd/user/tern-privacy-scan.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "68dddc885178fbd2668443c361afa32800adc214b3d927f9ca872a6563c02d02"
+
+[[user]]
+live = "~/.config/systemd/user/traffic-gitops-watch.timer"
+source = "config/systemd/user/traffic-gitops-watch.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6c654015ef80955bef0005202f7c1babd40b432b97a8db714376d588de0d6ffe"
+
+[[user]]
+live = "~/.config/systemd/user/unii-memexp-auth.timer"
+source = "config/systemd/user/unii-memexp-auth.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "6adec7e10796393e1e80068fb6449f27ec3b872a6a1cfbde15c3bf1e953af036"
+
+[[user]]
+live = "~/.config/systemd/user/unii-memexp-feed.timer"
+source = "config/systemd/user/unii-memexp-feed.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "c943a9da6a86652149cada36cadd6aee998a4511b0f3aaab7f697d926a7215e1"
+
+[[user]]
+live = "~/.config/systemd/user/unii-memexp.service"
+source = "config/systemd/user/unii-memexp.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "f4653370173e9698c669a717ec93c784ae2098d0e81298a3f13381c01301df35"
+
+[[user]]
+live = "~/.config/systemd/user/unit-allowlist.timer"
+source = "config/systemd/user/unit-allowlist.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "500fbd6c4f473cbd1a3ddf1a8f95b7f114e3ae5134b4da3f13a5fc6c071d6b77"
+
+[[user]]
+live = "~/.config/systemd/user/us-hc-collect-daily.timer"
+source = "config/systemd/user/us-hc-collect-daily.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "e87b12410d6b1a2bae3b59ddfead78211d1c8a4278445a0528814ed637eb578c"
+
+[[user]]
+live = "~/.config/systemd/user/us-hc-scorer.timer"
+source = "config/systemd/user/us-hc-scorer.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "f5606804cf517662781ede9676b5379be1b1fb4041a853c25ef920f2b544bac4"
+
+[[user]]
+live = "~/.config/systemd/user/z0-capacity-snapshot.timer"
+source = "config/systemd/user/z0-capacity-snapshot.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "e3d56ab650b801400aa17f064312b6806d78c7f8e469ef4b7bcea0fc4f08d3dd"
+
+[[user]]
+live = "~/.config/systemd/user/z0bridge-identity.service"
+source = "config/systemd/user/z0bridge-identity.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
+migration_sha256 = "99f7a8a3f1d6f2d28a858c9a2610b50a7b5a457de74bb2ae2128ad0841969b87"
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
