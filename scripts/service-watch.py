@@ -186,7 +186,7 @@ def systemctl(scope, *args):
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,UnitFileState')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,Restart,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,UnitFileState')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -195,6 +195,19 @@ def properties(scope, units):
         if row.get('Id'):
             values[row['Id']] = row
     return values
+
+
+# A bulk `show` of ~420 units costs the user manager (PID 1149, which every systemctl call queues
+# behind) ~0.5 CPU-s; list-units costs 0.004 s. Scans re-show only what can have moved; every Nth
+# scan re-shows all, which picks up UnitFileState and Restart= edits.
+FULL_SHOW_EVERY = 10
+
+
+def unit_states(scope):
+    result = systemctl(scope, 'list-units', '--all', '--output=json')
+    if result.returncode:
+        raise RuntimeError('systemd_read_failed')
+    return {row['unit']: (row['active'], row['sub']) for row in json.loads(result.stdout)}
 
 
 def tail_rows(path, count=1000):
@@ -523,6 +536,7 @@ class Watch:
         self.checkout_roots = checkout_roots
         self.reaper_status = Path(reaper_status)
         self.phone_caps_memo = None  # (key, proved_at) of the last clean O10 verdict
+        self.prop_cache, self.scans = {}, 0
         self.intake = Path(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()) / 'service-watch/intake'
         self.store = Store(root)
         self.inventory = Path(inventory)
@@ -796,6 +810,27 @@ class Watch:
             path.unlink()
         return done
 
+    def unit_properties(self, scope, names):
+        """Same properties as a full `show`, re-read only where they can differ: NRestarts moves
+        only for units with Restart=, and any other change moves ActiveState/SubState first."""
+        cache = self.prop_cache.setdefault(scope, {})
+        stale = names
+        if self.scans % FULL_SHOW_EVERY:
+            try:
+                states = unit_states(scope)
+            except (RuntimeError, subprocess.SubprocessError, ValueError, KeyError):
+                states = None  # cannot tell what moved: re-read everything
+            if states is not None:
+                stale = [u for u in names if u not in cache or cache[u].get('Restart', 'no') != 'no'
+                         or states.get(u, ('inactive', 'dead')) != (cache[u].get('ActiveState'), cache[u].get('SubState'))]
+        fresh = properties(scope, stale)
+        for unit in stale:
+            cache.pop(unit, None)  # a unit show no longer returns must not keep stale properties
+        cache.update(fresh)
+        for unit in set(cache) - set(names):
+            del cache[unit]
+        return cache
+
     def scan(self):
         check_stop()
         self.drain_spool()
@@ -808,7 +843,7 @@ class Watch:
             check_stop()
             names = [unit for s, unit in self.units if s == scope]
             try:
-                props = properties(scope, names)
+                props = self.unit_properties(scope, names)
             except (RuntimeError, subprocess.SubprocessError):
                 self.record('user', 'service-watch.service', [event('invariant_unavailable')])
                 continue
@@ -843,6 +878,7 @@ class Watch:
                 if invariant.get('kind') != 'disabled':
                     events += self.invariant(scope, unit, invariant, prop, now)
                 self.record(scope, unit, events)
+        self.scans += 1
         check_stop()
         self.loop_invariants()
 

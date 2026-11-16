@@ -30,6 +30,9 @@ class Contracts(unittest.TestCase):
         # Tests never reach Kevin's real kevin-push log (one leaked fixture.service row on 11-16).
         kevin_push = patch.object(sw, 'KEVIN_PUSH', self.root / 'no-kevin-push')
         kevin_push.start(); self.addCleanup(kevin_push.stop)
+        # No real systemd in tests: the cheap state read fails, so scans fall back to a full show.
+        states = patch.object(sw, 'unit_states', side_effect=RuntimeError('systemd_read_failed'))
+        states.start(); self.addCleanup(states.stop)
         self.watch = sw.Watch(self.root / 'state', self.root / 'inventory.json')
         self.watch.checkout_roots = []
         self.watch.checkout_discover = lambda roots: []
@@ -978,6 +981,46 @@ class Contracts(unittest.TestCase):
         with patch.object(sw, 'properties', return_value={'fixture.service': {'ActiveState': 'active', 'NRestarts': '33'}}), patch.object(self.watch, 'journals'), patch.object(self.watch, 'loop_invariants'), patch.object(self.watch, 'phone_caps_invariant'), patch.object(self.watch, 'keyring_invariant'), patch.object(self.watch, 'checkout_invariants'), patch.object(self.watch, 'record') as record:
             self.watch.scan()
             self.assertEqual(record.call_args[0][2][0]['code'], 'restart_loop')
+
+    def test_steady_scans_show_only_restartable_or_changed_units(self):
+        # Audit 2026-11-16: a bulk `show` of ~420 units every ~21 s cost the user manager (PID 1149,
+        # which every systemctl call queues behind) ~0.5 CPU-s per scan. NRestarts only moves for
+        # units with Restart=, and state changes are visible in list-units (0.004 s).
+        self.watch.last_scan = time.time()
+        self.watch.units = {('user', u): {'health_invariant': {'kind': 'systemd'}} for u in ('a.service', 'b.service', 'c.timer')}
+        props = {'a.service': {'Id': 'a.service', 'ActiveState': 'active', 'SubState': 'running', 'Restart': 'always', 'NRestarts': '0'},
+                 'b.service': {'Id': 'b.service', 'ActiveState': 'active', 'SubState': 'running', 'Restart': 'no', 'NRestarts': '0'},
+                 'c.timer': {'Id': 'c.timer', 'ActiveState': 'active', 'SubState': 'waiting'}}
+        states = {u: (p['ActiveState'], p['SubState']) for u, p in props.items()}
+        shown = []
+        def show(scope, units):
+            shown.append(sorted(units) if scope == 'user' else None)
+            return {u: dict(props[u]) for u in units if u in props}
+        quiet = dict(journals=None, loop_invariants=None, phone_caps_invariant=None, checkout_invariants=None, keyring_invariant=None)
+        def scan(read=None):
+            with patch.object(sw, 'properties', side_effect=show), \
+                    patch.object(sw, 'unit_states', side_effect=read or (lambda scope: dict(states))), \
+                    patch.object(self.watch, 'record') as record, \
+                    patch.multiple(self.watch, **{k: unittest.mock.DEFAULT for k in quiet}):
+                self.watch.scan()
+                return {c.args[1]: [e['code'] for e in c.args[2]] for c in record.call_args_list if c.args[0] == 'user'}
+        scan()
+        self.assertEqual(shown[0], ['a.service', 'b.service', 'c.timer'])  # first scan: everything
+        props['a.service']['NRestarts'] = '4'
+        events = scan()
+        self.assertEqual(shown[2], ['a.service'])  # restart counter still read every scan
+        self.assertIn('restart_loop', events['a.service'])
+        props['b.service'].update(ActiveState='failed', SubState='failed'); states['b.service'] = ('failed', 'failed')
+        events = scan()
+        self.assertEqual(shown[4], ['a.service', 'b.service'])  # state moved: re-read at once
+        self.assertIn('failed', events['b.service'])
+        self.assertEqual(events['c.timer'], [])  # unchanged timer keeps its cached properties
+        scan(read=lambda scope: (_ for _ in ()).throw(RuntimeError('systemd_read_failed')))
+        self.assertEqual(shown[6], ['a.service', 'b.service', 'c.timer'])  # cheap read failed: full show
+        while self.watch.scans % sw.FULL_SHOW_EVERY:
+            scan()
+        scan()
+        self.assertEqual(shown[-2], ['a.service', 'b.service', 'c.timer'])  # periodic full re-read
 
     def test_steady_scan_writes_no_restart_rows(self):
         self.watch.last_scan = time.time()
