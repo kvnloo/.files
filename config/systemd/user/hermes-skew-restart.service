@@ -3,4 +3,6 @@ Description=Restart Hermes backends still running code from before the checkout 
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/hermes-skew-restart
+# --follow: re-check every 30 s while a backend waits for a quiet moment (bounded by GRACE_S + 300 s).
+ExecStart=%h/.local/bin/hermes-skew-restart --follow
+TimeoutStartSec=20min

@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-check Hermes backends when the live checkout's HEAD moves
+
+[Path]
+# git appends to the HEAD reflog on every checkout, pull, cherry-pick and reset of the live checkout.
+PathChanged=%h/.hermes/hermes-agent/.git/logs/HEAD
+Unit=hermes-skew-restart.service
+
+[Install]
+WantedBy=paths.target

@@ -43,9 +43,13 @@ esac""")
         path.chmod(0o755)
 
     def run_script(self, units, **env):
+        return self.run_script_args([], units, **env)
+
+    def run_script_args(self, args, units, **env):
         e = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}", "HERMES_CHECKOUT": str(self.repo),
              "HERMES_SKEW_UNITS": units, "XDG_STATE_HOME": str(self.tmp / "state"), **env}
-        return subprocess.run(["bash", str(SCRIPT)], env=e, capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["bash", str(SCRIPT), *args], env=e, capture_output=True, text=True, check=True,
+                              timeout=30).stdout
 
     def acted(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
@@ -67,6 +71,11 @@ esac""")
         self.run_script("hermes-web")
         self.assertEqual(self.acted(), ["--user restart hermes-web"])
 
+    def test_follow_rechecks_a_waiting_backend_until_it_acts(self):
+        out = self.run_script_args(["--follow"], "hermes-web", HERMES_SKEW_GRACE_S="4", HERMES_SKEW_POLL_S="0.5")
+        self.assertIn("waiting for a quiet moment", out)
+        self.assertEqual(self.acted(), ["--user restart hermes-web"])
+
     def test_backend_started_after_the_move_is_left_alone(self):
         self.assertIn("current", self.run_script("fresh", HERMES_SKEW_GRACE_S="0"))
         self.assertEqual(self.acted(), [])
@@ -81,6 +90,16 @@ class Upheld(unittest.TestCase):
                        "hermes-gateway.service.d/60-skew-restart.conf"):
             lines = (root / dropin).read_text().splitlines()
             self.assertIn("Upholds=hermes-skew-restart.timer", lines, dropin)
+            self.assertIn("Upholds=hermes-skew-restart.path", lines, dropin)
+
+    def test_a_head_move_triggers_the_check_and_the_timer_is_only_a_backstop(self):
+        root = Path(__file__).resolve().parents[1] / "config/systemd/user"
+        path = (root / "hermes-skew-restart.path").read_text().splitlines()
+        self.assertIn("PathChanged=%h/.hermes/hermes-agent/.git/logs/HEAD", path)
+        self.assertIn("Unit=hermes-skew-restart.service", path)
+        self.assertIn("ExecStart=%h/.local/bin/hermes-skew-restart --follow",
+                      (root / "hermes-skew-restart.service").read_text().splitlines())
+        self.assertIn("OnUnitActiveSec=60min", (root / "hermes-skew-restart.timer").read_text().splitlines())
 
 
 if __name__ == "__main__":

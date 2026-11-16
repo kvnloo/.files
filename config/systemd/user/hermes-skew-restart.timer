@@ -1,12 +1,13 @@
 [Unit]
-Description=Check every 2 min that Hermes backends run the code on disk
+Description=Hourly backstop: check that Hermes backends run the code on disk
 
 [Timer]
 # OnBootSec, not OnActiveSec: every user daemon-reload re-fires OnActiveSec (~7/h extra starts, 2026-11-16).
 OnBootSec=2min
-# F16 start budget: a backend left on stale code waits at most ~2 min more.
-OnUnitActiveSec=2min
-AccuracySec=10s
+# hermes-skew-restart.path fires on every HEAD move; this only catches a missed inotify event
+# (2026-11-16: the 2-min poll was 30 of ~810 user-manager starts an hour for an event a few times a day).
+OnUnitActiveSec=60min
+AccuracySec=1min
 
 [Install]
 WantedBy=timers.target

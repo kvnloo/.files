@@ -4360,6 +4360,24 @@ reason = "Keep Hermes backends on the code on disk after the live checkout moves
 migration_sha256 = "47aa0a33380c96e966ce370209761b3f2e5126d919bd8a15527899718da29455"
 
 [[user]]
+live = "~/.config/systemd/user/hermes-skew-restart.path"
+source = "config/systemd/user/hermes-skew-restart.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Run hermes-skew-restart when the live checkout HEAD moves instead of polling every 2 min (2026-11-16 start budget)."
+migration_sha256 = "05c8dcd45518c48819e60e02684dca2b602c13731e1d4537e36ec292c0e0e339"
+
+[[user]]
+live = "~/.config/systemd/user/paths.target.wants/hermes-skew-restart.path"
+source = "config/systemd/user/hermes-skew-restart.path"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Run hermes-skew-restart when the live checkout HEAD moves instead of polling every 2 min (2026-11-16 start budget)."
+migration_sha256 = "05c8dcd45518c48819e60e02684dca2b602c13731e1d4537e36ec292c0e0e339"
+
+[[user]]
 live = "~/.config/systemd/user/hermes-web.service.d/60-retire-on-code-skew.conf"
 source = "config/systemd/user/hermes-web.service.d/60-retire-on-code-skew.conf"
 scope = "user"
