@@ -416,6 +416,30 @@ class Contracts(unittest.TestCase):
             self.assertEqual(codes, ['keyring_locked', 'keyring_fd_pressure', 'keyring_fd_leak'])
             self.assertTrue(all(sw.event(c)['severity'] == 'severe' for c in codes))
 
+    def test_keyring_lock_is_asked_once_per_daemon_not_every_scan(self):
+        # A 15 s D-Bus probe from short-lived clients aborted gnome-keyring (2026-11-16);
+        # lock state only changes when the daemon restarts, so ask once per pid and hourly.
+        pid = [os.getpid()]
+        clock = [1000.0]
+
+        def run(argv, **kwargs):
+            out = str(pid[0]) if argv[0] == 'systemctl' else 'b false'
+            return subprocess.CompletedProcess(argv, 0, out + '\n', '')
+
+        with patch.object(sw, 'command', side_effect=run) as command, \
+                patch.object(sw.time, 'monotonic', side_effect=lambda: clock[0]):
+            asked = lambda: sum(c.args[0][0] == 'busctl' for c in command.call_args_list)
+            for _ in range(3):
+                locked, fds, limit = self.watch.keyring_probe()
+            self.assertEqual((locked, asked()), (False, 1))
+            self.assertGreater(fds, 0)
+            clock[0] += 3601
+            self.watch.keyring_probe()
+            self.assertEqual(asked(), 2)
+            pid[0] = os.getppid()
+            self.watch.keyring_probe()
+            self.assertEqual(asked(), 3)
+
     def test_keyring_probe_failure_is_not_healthy(self):
         with patch.object(self.watch, 'keyring_probe', side_effect=ValueError):
             event = self.watch.invariant('user', 'k', {'kind': 'keyring'}, {}, 1.0)[0]

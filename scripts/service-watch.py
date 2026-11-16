@@ -450,6 +450,7 @@ class Watch:
         self.policy_source_cache = {}
         self.checkout_lock = threading.Lock()
         self.checkout_interval = 300
+        self.keyring_seen = None
         self.checkout_cache = {'checkout_count': None, 'refreshed_at': None,
                                'refresh_started_at': None, 'inflight': False,
                                'count_errors': 0}
@@ -795,17 +796,27 @@ class Watch:
         if events:
             self.record('user', 'worktree-reaper.service', events)
     def keyring_probe(self):
-        """(locked, open fds, fd soft limit) of the GNOME login keyring daemon."""
-        env = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/%d/bus' % os.getuid()}
-        out = command(['busctl', '--user', 'get-property', 'org.freedesktop.secrets',
-                       '/org/freedesktop/secrets/collection/login',
-                       'org.freedesktop.Secret.Collection', 'Locked'], env=env).stdout.split()
-        if out[:1] != ['b']:
-            raise ValueError('keyring property unavailable')
+        """(locked, open fds, fd soft limit) of the GNOME login keyring daemon.
+
+        Lock state only changes when the daemon restarts or is told to lock, so
+        Secret Service is asked once per daemon pid, then hourly, and every scan
+        while locked. A 15 s probe from short-lived D-Bus clients aborted the
+        daemon (2026-11-16); fd counts come from /proc and stay per scan.
+        """
         pid = int(systemctl('user', 'show', '-p', 'MainPID', '--value', 'gnome-keyring-daemon.service').stdout.strip())
+        seen = self.keyring_seen
+        if not pid or not seen or seen[0] != pid or seen[1] or time.monotonic() - seen[2] > 3600:
+            env = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/%d/bus' % os.getuid()}
+            out = command(['busctl', '--user', 'get-property', 'org.freedesktop.secrets',
+                           '/org/freedesktop/secrets/collection/login',
+                           'org.freedesktop.Secret.Collection', 'Locked'], env=env).stdout.split()
+            if out[:1] != ['b']:
+                raise ValueError('keyring property unavailable')
+            pid = int(systemctl('user', 'show', '-p', 'MainPID', '--value', 'gnome-keyring-daemon.service').stdout.strip())
+            seen = self.keyring_seen = (pid, out[1] == 'true', time.monotonic())
         limit = next(int(line.split()[3]) for line in Path(f'/proc/{pid}/limits').read_text().splitlines()
                      if line.startswith('Max open files'))
-        return out[1] == 'true', len(os.listdir(f'/proc/{pid}/fd')), limit
+        return seen[1], len(os.listdir(f'/proc/{pid}/fd')), limit
 
     def keyring_events(self, invariant, now):
         """Login keyring stays unlocked; agents' headless prompts must not leak its fds."""
@@ -819,6 +830,7 @@ class Watch:
         if locked:
             # Self-heal with the owned TPM unlock unit, then judge the result.
             command(['systemctl', '--user', 'start', 'keyring-autounlock.service'], timeout=30)
+            self.keyring_seen = None
             locked, fds, limit = self.keyring_probe()
             if locked:
                 events.append(event('keyring_locked'))
