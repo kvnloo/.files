@@ -4603,6 +4603,15 @@ reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy w
 migration_sha256 = "99f7a8a3f1d6f2d28a858c9a2610b50a7b5a457de74bb2ae2128ad0841969b87"
 
 [[user]]
+live = "~/.local/bin/flow-ledger"
+source = "scripts/flow-ledger"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Exec'd by limitless-sync every 15 min but was a live-only copy that no graph saw (sysgraph tracks timer ExecStart only); sourced byte-identical so edits have history and tests."
+migration_sha256 = "06cb1c471841ccc11dc3abd4ca7cd4ef9edd8bca49f8054c300a89f39d46296e"
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"

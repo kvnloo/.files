@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""flow-ledger: one row per work block, built from data that already exists (no logging by Kevin).
+
+Block  = a run of Kevin's own Hermes messages (all profiles) with gaps <= 20 min, lasting >= 45 min.
+Leak   = minutes of feed apps (S25 ActivityWatch copy) inside the block.
+Writes <limitless state>/flow-ledger.jsonl (last 14 days, rewritten each run, 0600). PRIVATE.
+Usage: flow-ledger [days]   (prints a short summary)
+"""
+import glob, json, os, re, sqlite3, subprocess, sys, time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("America/Chicago")
+ST = "/mnt/zer0models/sft-svlm/data/limitless/state"
+FEEDS = {"X", "Instagram", "Reddit", "YouTube", "TikTok", "Chrome", "Threads", "Facebook"}
+GAP, MIN_BLOCK = 20 * 60, 45 * 60
+
+
+# Kevin's own typed/voiced turns. role='user' alone is wrong: >half are agents (cron, kanban, oneshot
+# workers, subagents, bot-room relays, background-process notices, benchmark probes). Same owner rule
+# as the owner-corrections plugin minus its top-level check: compression continuations (and every
+# Telegram chat) are child sessions, 2,317 + 216 of his messages in 14 d; subagents are source=subagent.
+OWNER_SOURCES = ("local", "acp", "gui", "cli", "tui", "telegram", "discord")
+NOT_OWNER = re.compile(r"^\s*(Update on pull request|Delegated task|Heads-up from|Message from |\[|<|\{|#|"
+                       r"You are |Reply (exactly|with only)|What is \d)", re.I)
+OOB = re.compile(r"^\s*\[OUT-OF-BAND USER MESSAGE[^\]]*\]\s*(.*?)\s*\[/OUT-OF-BAND", re.S)
+IMG = "[The user attached an image"
+
+
+def owner_msgs(since):
+    ts = set()
+    for db in glob.glob(os.path.expanduser("~/.hermes/profiles/*/state.db")):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            rows = c.execute("select m.timestamp, m.content from messages m join sessions s on s.id=m.session_id "
+                             "where m.role='user' and m.timestamp>? and s.source in "
+                             f"({','.join('?' * len(OWNER_SOURCES))})", (since, *OWNER_SOURCES)).fetchall()
+        except sqlite3.Error:
+            continue
+        for t, s in rows:
+            s = (s or "").lstrip()
+            m = OOB.match(s)
+            s = m.group(1) if m else s
+            if s and len(s) <= 3000 and (s.startswith(IMG) or not NOT_OWNER.match(s)):
+                ts.add(round(t))
+    return sorted(ts)
+
+
+def feeds(since):
+    db = f"{ST}/aw-s25.db"
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    rows = c.execute("select e.starttime, e.endtime, e.data from events e join buckets b on b.id=e.bucketrow "
+                     "where b.name='aw-watcher-android' and e.starttime>?", (int(since * 1e9),))
+    return [(s / 1e9, e / 1e9) for s, e, d in rows if json.loads(d).get("app") in FEEDS]
+
+
+def body(a, z):
+    """Mean HR and RMSSD from the NOOP copy (any wearable) inside [a, z]; None when not worn."""
+    try:
+        c = sqlite3.connect(f"file:{ST}/noop/noop_whoop.db?mode=ro", uri=True)
+        hr = [b for (b,) in c.execute("select bpm from hrSample where ts between ? and ? and bpm>30", (a, z))]
+        rr = [r for (r,) in c.execute("select rrMs from rrInterval where ts between ? and ? and coalesce(tsSuspect,0)=0 "
+                                      "and rrMs between 300 and 2000 order by ts, ord", (a, z))]
+    except sqlite3.Error:
+        return {}
+    out = {}
+    if len(hr) >= 10:
+        out["hrMean"] = round(sum(hr) / len(hr))
+    d = [(y - x) ** 2 for x, y in zip(rr, rr[1:]) if abs(y - x) < 250]
+    if len(d) >= 100:
+        out["rmssdMs"] = round((sum(d) / len(d)) ** 0.5, 1)
+    return out
+
+
+def merged_prs(since):
+    """kvnloo PR merge times (mostly agent work), cached hourly: GitHub search caps at 1000."""
+    cache = f"{ST}/merged-prs.json"
+    if os.path.exists(cache) and time.time() - os.path.getmtime(cache) < 3600:
+        return json.load(open(cache))
+    day = datetime.fromtimestamp(since, TZ).date().isoformat()
+    out = []
+    for page in range(1, 11):
+        r = subprocess.run(["gh", "api", "-X", "GET", "search/issues", "-f", f"q=author:kvnloo is:pr is:merged merged:>={day}",
+                            "-f", "per_page=100", "-f", f"page={page}", "--jq", "[.items[].pull_request.merged_at]"],
+                           capture_output=True, text=True, timeout=30)
+        got = json.loads(r.stdout or "[]") if r.returncode == 0 else []
+        out += [datetime.fromisoformat(m.replace("Z", "+00:00")).timestamp() for m in got if m]
+        if len(got) < 100:
+            break
+    fdw = os.open(cache + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fdw, "w") as f:
+        json.dump(out, f)
+    os.replace(cache + ".tmp", cache)
+    return out
+
+
+def build(days=14):
+    since = time.time() - days * 86400
+    ts, fd = owner_msgs(since), feeds(since)
+    try:
+        prs = merged_prs(since)
+    except Exception:  # noqa: BLE001 - GitHub down never blocks the ledger
+        prs = []
+    out, cur = [], ts[:1]
+    for t in ts[1:] + [float("inf")]:
+        if t - cur[-1] <= GAP:
+            cur.append(t)
+            continue
+        a, z = cur[0], cur[-1]
+        if z - a >= MIN_BLOCK:
+            leak = sum(max(0, min(e, z) - max(s, a)) for s, e in fd) / 60
+            out.append({"start": datetime.fromtimestamp(a, TZ).isoformat(timespec="minutes"),
+                        "minutes": round((z - a) / 60), "messages": len(cur), "feedLeakMin": round(leak, 1),
+                        "prsMerged": sum(a <= m <= z for m in prs), **body(a, z)})
+        cur = [t]
+    write(f"{ST}/flow-ledger.jsonl", out)
+    write(f"{ST}/naps.jsonl", naps(since, ts, fd, out))
+    return out
+
+
+def naps(since, ts, fd, blocks):
+    """Phone Sleep-mode spans of 5-150 min (Kevin's naps). Measures the return: minutes to his first
+    message after waking (reentryMin) and feed minutes in that gap."""
+    try:
+        sm = [json.loads(l) for l in open(f"{ST}/sleepmode.jsonl")]
+    except OSError:
+        return []
+    t = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    ends = [datetime.fromisoformat(b["start"]).timestamp() + b["minutes"] * 60 for b in blocks]
+    out = []
+    for on, off in zip(sm, sm[1:]):
+        if not (on.get("on") and not off.get("on")):
+            continue
+        a, z = t(on["at"]), t(off["at"])
+        if a < since or not 5 * 60 <= z - a <= 150 * 60:
+            continue
+        nxt = next((m for m in ts if m > z), None)
+        row = {"start": datetime.fromtimestamp(a, TZ).isoformat(timespec="minutes"), "minutes": round((z - a) / 60),
+               "afterBlock": any(0 <= a - e <= 45 * 60 for e in ends)}
+        if nxt and nxt - z < 6 * 3600:
+            row["reentryMin"] = round((nxt - z) / 60)
+            row["feedMinBeforeReentry"] = round(sum(max(0, min(e, nxt) - max(s, z)) for s, e in fd) / 60, 1)
+        out.append(row)
+    return out
+
+
+def write(path, rows):
+    fdw = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fdw, "w") as f:
+        f.writelines(json.dumps(r) + "\n" for r in rows)
+    os.replace(path + ".tmp", path)
+
+
+if __name__ == "__main__":
+    rows = build(int(sys.argv[1]) if len(sys.argv) > 1 else 14)
+    mins = sorted(r["minutes"] for r in rows)
+    leak = sum(r["feedLeakMin"] for r in rows) / max(1, sum(mins)) * 60
+    print(json.dumps({"blocks": len(rows), "medianMin": mins[len(mins) // 2] if mins else 0,
+                      "feedLeakMinPerHour": round(leak, 1), "last": rows[-3:]}))
