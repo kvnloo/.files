@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily off-machine work-product snapshot (offsite-blobs)
+
+[Timer]
+OnCalendar=*-*-* 03:00
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
