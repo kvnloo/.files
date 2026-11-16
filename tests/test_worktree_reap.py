@@ -274,6 +274,23 @@ class Reap(unittest.TestCase):
         self.assertIn("timed out", next(x for x in recs if x["branch"] == "slow-wt")["error"])
         self.assertTrue((self.out / "runs.jsonl").exists())
 
+    def test_timed_out_scan_root_fails_the_run_after_finishing_it(self):
+        # 11-16: /mnt/zer0models/worktrees timed out at 02:02 and only a JSON field said so; the unit "succeeded"
+        (self.tmp / "scan").mkdir()
+        real = subprocess.run(["sh", "-c", "command -v find"], capture_output=True, text=True).stdout.strip()
+        fake = self.tmp / "bin"; fake.mkdir()
+        (fake / "find").write_text(f'#!/bin/sh\ncase "$*" in *-maxdepth*) sleep 5;; esac\nexec {real} "$@"\n')
+        (fake / "find").chmod(0o755)
+        env = dict(os.environ, HOME=str(self.tmp), WORKTREE_REAP_ARCHIVE=str(self.tmp / "archive"),
+                   WORKTREE_REAP_ROOTS=str(self.tmp / "scan"), WORKTREE_REAP_SCAN_TIMEOUT="1",
+                   WORKTREE_REAP_REMOTE_RE=self.remote_re, PATH=f"{fake}:{os.environ['PATH']}")
+        r = subprocess.run([sys.executable, str(SCRIPT), "--network", str(self.net), "--out", str(self.out)],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("timed out", r.stderr)
+        run = json.loads((self.out / "runs.jsonl").read_text().splitlines()[-1])
+        self.assertEqual(run["scan_roots_timed_out"], [str(self.tmp / "scan")])
+
     def test_worktree_a_systemd_unit_runs_from_is_kept(self):
         # 11-15: an idle worktree held z0-ghcache's ExecStart path (via a drop-in); reaping it silently
         # killed the GitHub proxy and every factory reader behind it. No pid had its cwd there.
@@ -384,4 +401,17 @@ class SlowScanRoot(unittest.TestCase):
             wtr.subprocess.run = real
         self.assertEqual([os.path.realpath(r["worktree"]) for r in rows], [os.path.realpath(wt)])
         self.assertEqual(skipped, [str(slow)])
+
+    def test_agent_package_caches_are_not_walked(self):
+        # 11-16: per-sandbox bun-cache/xdg-cache/.uvcache/gomod/out trees pushed the nightly walk past its timeout
+        td = Path(tempfile.mkdtemp()); root, other = td / "scan", td / "elsewhere/r"
+        g(td, "init", "-q", str(other)); (other / "f").write_text("x")
+        g(other, "add", "f"); g(other, "commit", "-qm", "i")
+        for cache in ("bun-cache", "xdg-cache", "natives-dl", ".uvcache", "gomod", "out"):
+            g(other, "worktree", "add", "-q", "-b", "c" + cache, str(root / "sb" / cache / "dep"))
+        g(other, "worktree", "add", "-q", "-b", "agent", str(root / "agent"))
+        found = [os.path.basename(r["worktree"]) for r in wtr.scan_rows([root / "sb"])]
+        self.assertEqual(found, [])
+        found = sorted(os.path.basename(r["worktree"]) for r in wtr.scan_rows([root]))
+        self.assertIn("agent", found)
 

@@ -18,7 +18,7 @@ Deletes only:
 Every item is re-checked live (head unchanged, no process inside, not locked) and gets one
 receipt line. Anything else is kept and never touched.
 """
-import argparse, json, os, re, subprocess, tempfile, time
+import argparse, json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
 NETWORK = Path("/mnt/zer0models/workspace/zer0/data/operations/network-model/work/branches.json")
@@ -36,6 +36,9 @@ MERGED = ("ancestor:", "tree:", "patch:", "pr:")
 IDLE_DAYS = 3.0
 BIG = 50 << 20
 PRUNE = (".git", "node_modules", ".venv", "venv", "target", "dist", "build", ".next", "__pycache__")
+# Discovery only (not idle/archive checks): agent sandboxes' package caches and output trees hold 100k+ dirs.
+SCAN_SKIP = PRUNE[1:] + ("bun-cache", "xdg-cache", "natives-dl", ".uvcache", "gomod", "out")
+SCAN_TIMEOUT = int(os.environ.get("WORKTREE_REAP_SCAN_TIMEOUT", "600"))
 
 
 GIT_TIMEOUT = float(os.environ.get("WORKTREE_REAP_GIT_TIMEOUT", 120))
@@ -169,10 +172,10 @@ def scan_rows(roots=None, skipped=None):
         if not root.is_dir():
             continue
         try:
-            out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
+            out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in SCAN_SKIP], [])[:-1],
                               ")", "-prune", "-o", "-name", ".git", "-type", "d", "-prune",  # never walk a repo's own .git/
                               "-o", "-name", ".git", "-type", "f", "-print"],
-                             capture_output=True, text=True, timeout=600).stdout.split("\n")
+                             capture_output=True, text=True, timeout=SCAN_TIMEOUT).stdout.split("\n")
         except subprocess.TimeoutExpired:
             if skipped is not None:
                 skipped.append(str(root))
@@ -426,6 +429,9 @@ def main():
     with open(a.out / "runs.jsonl", "a") as f:
         f.write(json.dumps(summary) + "\n")
     print(json.dumps(summary))
+    if skipped:   # a skipped root leaves its worktrees unreaped: fail the unit so OnFailure reports it
+        print(f"scan timed out after {SCAN_TIMEOUT}s on: {' '.join(skipped)}", file=sys.stderr)
+        return 2
     return 0
 
 
