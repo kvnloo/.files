@@ -1,22 +1,35 @@
 #!/usr/bin/env bash
-# offsite-blobs: work product that is not in git (blends, renders, dream-loop runs, footage) gets an
-# off-machine copy in Kevin's Google Drive (canon #16, 2026-11-16). `rclone copy` only: it never
-# deletes or overwrites newer files on Drive, so a local delete can't propagate. Daily timer.
-# Restore: rclone copy gdrive:groot-offsite/<host>/<path> <path>
+# offsite-blobs: work product that is not in git (blends, renders, dream-loop runs, footage, reap
+# tarballs) gets an off-machine copy in Kevin's Google Drive (canon #16, 2026-11-16).
+# restic over rclone: packed (480k small files would take days as single Drive uploads), deduped,
+# encrypted (personal-data trees and .env tarballs are safe to include), snapshot-based, so a local
+# delete never propagates. Password: ~/.config/restic/offsite.pass, copy in bws OFFSITE_RESTIC_PASSWORD.
+# Restore: restic -r rclone:gdrive:groot-offsite/restic restore latest --include <path> --target /
+# On success it writes offsite-latest.json; sysgraph guard allows deleting a path only if it sits
+# under a backed-up root and nothing in it changed after that snapshot started.
 set -euo pipefail
-remote=${OFFSITE_BLOBS_REMOTE:-gdrive:groot-offsite/$(hostname -s)}
-runs=/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/runs/offsite-$(date +%Y%m%d)
+export RESTIC_REPOSITORY=${RESTIC_REPOSITORY:-rclone:gdrive:groot-offsite/restic}
+export RESTIC_PASSWORD_FILE=${RESTIC_PASSWORD_FILE:-$HOME/.config/restic/offsite.pass}
+export RCLONE_BWLIMIT=${RCLONE_BWLIMIT:-08:00,25M 23:00,off} RCLONE_DRIVE_CHUNK_SIZE=64M
+ops=${OFFSITE_OPS:-/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance}
+runs=$ops/runs/offsite-$(date +%Y%m%d)
 mkdir -p "$runs"
-# Personal-data trees (taste, memory-reclaim) and the reap tarballs (.env secrets) wait for an
-# rclone crypt remote; they are listed as sole copies in the summary instead of uploaded in plaintext.
-src=(/mnt/zer0models/project-artifacts)
-excl=(--exclude 'taste/**' --exclude 'memory-reclaim/**' --exclude 'node_modules/**' --exclude '.venv/**'
-      --exclude '__pycache__/**' --exclude '.next/**' --exclude '.cache/**')
+if [[ -n ${OFFSITE_BLOBS_SRC:-} ]]; then read -ra src <<<"$OFFSITE_BLOBS_SRC"
+else src=(/mnt/zer0models/project-artifacts /mnt/zer0models/quarantine/worktree-reap); fi
+start=$(date +%s)
 rc=0
-for s in "${src[@]}"; do
-  nice -n 19 ionice -c 3 rclone copy "$s" "$remote$s" "${excl[@]}" \
-    --transfers 4 --checkers 8 --drive-chunk-size 64M --bwlimit "08:00,25M 23:00,off" \
-    --log-level NOTICE --stats 10m --stats-log-level NOTICE --log-file "$runs/blobs.log" || rc=$?
-done
-printf '{"time":"%s","remote":"%s","sources":"%s","exit":%d}\n' "$(date -Is)" "$remote" "${src[*]}" "$rc" >> "$runs/blobs.jsonl"
+nice -n 19 ionice -c 3 restic backup "${src[@]}" --one-file-system --exclude-caches \
+  --exclude node_modules --exclude .venv --exclude venv --exclude __pycache__ --exclude .next \
+  --exclude uv-cache --exclude .cache --tag offsite-blobs --json 2>>"$runs/blobs.log" \
+  | grep '"message_type":"summary"' > "$runs/blobs-summary.json" || rc=$?
+snap=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('snapshot_id',''))" "$runs/blobs-summary.json" 2>/dev/null || true)
+if [[ $rc -eq 0 && -n $snap ]]; then
+  python3 - "$ops/offsite-latest.json" "$start" "$snap" "$RESTIC_REPOSITORY" "${src[@]}" <<'PY'
+import json, sys
+out, start, snap, repo, *paths = sys.argv[1:]
+json.dump({"time": int(start), "snapshot": snap, "repo": repo, "paths": paths}, open(out + ".tmp", "w"), indent=1)
+__import__("os").replace(out + ".tmp", out)
+PY
+fi
+printf '{"time":"%s","snapshot":"%s","exit":%d}\n' "$(date -Is)" "$snap" "$rc" >> "$runs/blobs.jsonl"
 exit $rc
