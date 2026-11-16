@@ -1,5 +1,6 @@
 [Unit]
 Description=sr-decision llama-server (d1-3B Q8)
+# --fit sizes GPU layers to free VRAM; --sleep-idle-seconds unloads weights after 5 idle min (t_249687a4).
 After=network.target
 
 [Service]
@@ -8,7 +9,7 @@ ExecStart=/workspace/z0-farm/llama.cpp-b11270/build/bin/llama-server \
   -m /mnt/zer0models/zer0-models/gguf/LiquidAI/d1-3B-Q8_0.gguf \
   --host 127.0.0.1 --port 11531 \
   --ctx-size 8192 --fit on --batch-size 512 --ubatch-size 512 \
-  --parallel 4 --cont-batching --flash-attn auto
+  --parallel 4 --cont-batching --flash-attn auto --sleep-idle-seconds 300
 Restart=on-failure
 RestartSec=5
 Environment=CUDA_VISIBLE_DEVICES=0

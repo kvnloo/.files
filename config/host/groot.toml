@@ -30,6 +30,7 @@ user_retired_files = [
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/identity.conf", sha256 = "3c14351fadd4ec58551677f2c608a2dbcba87e0b04903245dd3e40374a4f48ea", reason = "Superseded by canonical dash-bridge.service." },
   { live = "~/.config/systemd/user/dash-bridge-4747.service.d/runtime-source.conf", sha256 = "bdac16c8e3cf2b102d9056adfb77855cfcdb76b776b4e2bbf5b4c02105098c76", reason = "Superseded by canonical dash-bridge.service; captured environment retired." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service.d/clear-stale-filemap.conf", sha256 = "0449d9e7bf78696f83ef367ff4f38e3ca0f2fc3fc0ca15bfc09a13a18c80577d", reason = "Superseded by canonical dash-metro.service." },
+  { live = "~/.config/systemd/user/sr-decision-llama.service.d/80-sleep-idle.conf", sha256 = "b45ba0cbbefedfb51d76c5e63d4a43c7ac0c2ce63e513566ed5df4d91ae998ff", reason = "Retired 2026-11-16: live-only drop-in that replaced ExecStart to add --sleep-idle-seconds 300 but re-pinned --n-gpu-layers 99, which disabled --fit; the unit OOM crash-looped whenever ComfyUI held VRAM. The flag now lives in the dev unit with --fit on (tests/test_unit_llama_fit.py)." },
 ]
 user_control_cleanup = [
   { live = "/run/user/1000/systemd/user.control/agent.slice.d/50-MemoryMax.conf", sha256 = "9db1736dffd3ed050d30d8fa374befe52fe05961c1746b8eb086c9de5f4dab59" },
