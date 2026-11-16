@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""fable-phase-watch: Kevin 2026-11-09 plan. Each week, per Claude account: spend Fable first up to
+~47-50% of the Fable cap, press the Fable reset (Settings > Usage, browser/desktop only), then Opus
+gets the whole week. Reads burn-pace, logs phases, phone-notifies Kevin on transitions.
+FBL1 (ayo 2026-11-09): re-pages every 3 h while an account waits on 'press-fable-reset'; detects a
+pressed Fable reset (fable_used drops >= 25 points with no weekly reset), writes a ledger row to
+token-allocation-20261109/fable-ledger.jsonl and decrements resets_left; guards Pro accounts past
+pro_fable_expires against a persisted Fable model in their Claude CLI settings (credits)."""
+import json, subprocess, time
+from datetime import datetime, timezone
+from pathlib import Path
+S = Path.home() / ".z0int/state/posture"
+LAST, LOG, CFG = S / "fable-phase-last.json", S / "fable-phase.jsonl", S / "fable-resets.json"
+OPS = Path("/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109")
+LEDGER, DRAIN = OPS / "fable-ledger.jsonl", OPS / "fable-drain.jsonl"
+LANES = Path.home() / ".config/burn-gate/lanes.json"
+REPAGE_S = 3 * 3600
+MSG = {"fable-first": "{a}: weekly reset done, Fable-first phase. Hard jobs go to Fable on this account.",
+       "press-fable-reset": "{a}: Fable bar at {f}%. Press 'Reset for free' (claude.ai Settings > Usage) on this account now; Opus then has the full week.",
+       "opus": "{a}: Opus phase (Fable reset used, on hold, or not enough weekly room)."}
+
+
+def notify(title, text):
+    subprocess.run([str(Path.home() / ".local/bin/z0-phone-notify"), "fable-phase", title, text], timeout=60)
+
+
+def jobs_since(acct, since):
+    try:
+        rows = [json.loads(l) for l in DRAIN.read_text().splitlines() if l.strip()]
+    except OSError:
+        return []
+    return [r["job"] for r in rows if r.get("lane") == acct and r.get("event") in ("done", "failed") and r["ts"] >= since]
+
+
+def credits_guard(acct, l, cfg):
+    """Pro account past its free-Fable date: no Claude CLI settings may persist a Fable model."""
+    exp = cfg.get("pro_fable_expires")
+    if not (l.get("fable_pro") and exp and datetime.now(timezone.utc) >= datetime.fromisoformat(exp)):
+        return
+    try:
+        dirs = [d for d, lane in json.loads(LANES.read_text()).items() if lane == acct]
+    except (OSError, ValueError):
+        dirs = []
+    for d in dirs:
+        p = Path(d) / "settings.json"
+        try:
+            s = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if "fable" in str(s.get("model", "")).lower():
+            p.with_name("settings.json.bak-fable-guard").write_text(p.read_text())
+            s["model"] = "claude-opus-5-5"
+            p.write_text(json.dumps(s, indent=2))
+            notify(f"Fable plan: {acct}", f"{acct} is still Pro after its free-Fable date; switched {p} model from Fable to Opus to avoid credits.")
+
+
+d = json.loads(subprocess.run([str(Path.home() / ".local/bin/burn-pace"), "--json"], capture_output=True, text=True, timeout=120).stdout)["lanes"]
+try:
+    last = json.loads(LAST.read_text())
+except (OSError, ValueError):
+    last = {}
+cfg_all = json.loads(CFG.read_text())
+now, cfg_dirty = {}, False
+for a in ("claude", "claude2", "claude3"):
+    l = d.get(a) or {}
+    ph, fab, h = l.get("fable_phase", "unknown"), l.get("fable_used_pct"), l.get("hours_to_reset")
+    prev = last.get(a)
+    prev = prev if isinstance(prev, dict) else {"phase": prev}
+    st = {"phase": ph, "fable": fab, "h": h, "paged": prev.get("paged", 0), "since": prev.get("since") or time.strftime("%FT%T")}
+    with LOG.open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%FT%T"), "acct": a, "phase": ph, "fable": fab,
+                            "weekly": l.get("weekly_used_pct"), "h_to_reset": h}) + "\n")
+    # Pressed Fable reset: Fable share fell sharply while the weekly window did not roll over.
+    weekly_rolled = prev.get("h") is not None and h is not None and h > prev["h"] + 1
+    if prev.get("fable") is not None and fab is not None and prev["fable"] - fab >= 25 and not weekly_rolled:
+        c = cfg_all.get(a, {})
+        before = c.get("resets_left")
+        if isinstance(before, int) and before > 0:
+            c["resets_left"] = before - 1; cfg_dirty = True
+        row = {"ts": time.strftime("%FT%T"), "acct": a, "event": "fable-reset", "fable_before": prev["fable"],
+               "fable_after": fab, "weekly_used_pct": l.get("weekly_used_pct"), "resets_left_before": before,
+               "resets_left_after": c.get("resets_left"), "jobs_run": jobs_since(a, st["since"])}
+        with LEDGER.open("a") as f:
+            f.write(json.dumps(row) + "\n")
+        st["since"] = time.strftime("%FT%T")
+        notify(f"Fable plan: {a}", f"{a}: Fable reset seen ({prev['fable']}% -> {fab}%). Logged; resets left {c.get('resets_left')}.")
+    if weekly_rolled:
+        with LEDGER.open("a") as f:
+            f.write(json.dumps({"ts": time.strftime("%FT%T"), "acct": a, "event": "weekly-reset", "phase": ph,
+                                "fable": fab, "jobs_run": jobs_since(a, st["since"])}) + "\n")
+        st["since"] = time.strftime("%FT%T")
+    if ph != prev.get("phase") and ph in MSG and prev.get("phase") is not None:
+        notify(f"Fable plan: {a}", MSG[ph].format(a=a, f=fab))
+        st["paged"] = time.time()
+    elif ph == "press-fable-reset" and time.time() - st["paged"] > REPAGE_S:
+        notify(f"Fable plan: {a} (reminder)", MSG[ph].format(a=a, f=fab))
+        st["paged"] = time.time()
+    credits_guard(a, l, cfg_all.get(a, {}))
+    now[a] = st
+if cfg_dirty:
+    CFG.write_text(json.dumps(cfg_all, indent=1))
+LAST.write_text(json.dumps(now))
+print({a: s["phase"] for a, s in now.items()})

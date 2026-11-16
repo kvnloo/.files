@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""fable-ingest <job-id>: turn a Fable REPORT.md into work.
+- ```json tapes``` -> fix-tapes.json (only read-only commands pass the allowlist; the rest go to rejected-tapes.jsonl)
+- ```json astra``` -> astra-queue.json (bounded contracts for fx; a test is required)
+- ```json next```  -> fable-queue.json as pending, max 2 per report, deduped by title, never kill-listed topics
+Idempotent: re-ingesting the same report adds nothing new.
+Also the shared queue library: update()/set_job() are the only safe way to write the queue files (other
+scripts load this file with SourceFileLoader), and test_problem() rejects Astra tests that cannot run.
+"""
+import fcntl, json, os, re, shlex, subprocess, sys, time
+from pathlib import Path
+
+OPS = Path(os.environ.get("FABLE_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
+OK_CMD = re.compile(r"^(!\s*)?(systemctl --user (is-active|show|status)|journalctl --user|grep|rg|jq|test|\[|wc|awk|"
+                    r"sqlite3 ['\"]?file:[^ ]*mode=ro|burn-pace --json|cat|head|tail|true|exit|for|do|done|then|fi|if|sort|uniq|cut)\b")
+BAD = re.compile(r"(>\s*[^&=/]|\brm\b|\bmv\b|\bcp\b|\bcurl\b|\bwget\b|\bsudo\b|\bsystemctl --user (start|stop|restart|enable|disable)|"
+                 r"\bkill\b|\bdd\b|\bchmod\b|\btee\b|\bpython|\bbash -c|`)")
+# inside quotes '>' is a comparison unless awk prints into it; system()/getline run commands
+BAD_QUOTED = re.compile(r"\bsystem\s*\(|\bgetline\b|\bprintf?\b[^;}|]*>|\|\s*\"")
+_SUBST = re.compile(r"\$\(([^()]*)\)")
+KILL = re.compile(r"a17b|tiny-slm|weight-space|ux polish|film|cleanup|reconcil", re.I)
+
+
+def update(path, fn, default=None):
+    """Locked read-modify-write: flock <file>.lock, re-read inside the lock, apply fn, write atomically.
+    Saving a snapshot held across slow work is what lost queued jobs L1-L4 on 11-10."""
+    path = Path(path)
+    with open(f"{path}.lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        data = json.loads(path.read_text()) if path.exists() else default
+        ret = fn(data)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(data, indent=1))
+        tmp.replace(path)
+        return ret
+
+
+def set_job(path, key, val, **fields):
+    def fn(q):
+        for j in q["jobs"]:
+            if j.get(key) == val:
+                j.update(fields)
+    update(path, fn)
+
+
+_SPLIT = re.compile(r"\|\||&&|;|\||\$\(|\)|\bthen\b|\bdo\b|\belse\b")
+_SKIP = {"!", "if", "fi", "for", "done", "while", "test", "[", "[[", "true", "false", "export", "time", "env", "timeout", "in"}
+
+
+def test_problem(cmd, cwd=None):
+    """None if cmd is a runnable shell test, else why not. Catches prose ('unit test: ...') and missing
+    commands (exit 127): 9 of 14 Astra failures on 11-10."""
+    if not cmd or not isinstance(cmd, str):
+        return "no test"
+    if subprocess.run(["bash", "-n", "-c", cmd], capture_output=True).returncode != 0:
+        return "not valid shell"
+    for seg in _SPLIT.split(cmd):
+        try:
+            w = shlex.split(seg)
+        except ValueError:
+            continue
+        while w and (w[0] in _SKIP or w[0].startswith("-") or w[0].isdigit() or re.match(r"^[A-Za-z_]\w*=", w[0]) or w[0] == "cd"):
+            w = w[2:] if w[0] == "cd" else w[1:]
+        if not w:
+            continue
+        c = os.path.expanduser(w[0])
+        if c.endswith(":"):
+            return f"prose, not a command: {w[0]!r}"
+        if "/" in c:
+            continue  # path: resolved at run time
+        if subprocess.run(["bash", "-c", f"command -v {shlex.quote(c)}"], capture_output=True, cwd=cwd).returncode:
+            return f"command not found: {w[0]!r}"
+    return None
+
+
+def blocks(text, tag):
+    out = []
+    for m in re.finditer(r"```json\s+" + tag + r"\s*\n(.*?)```", text, re.S):
+        try:
+            v = json.loads(m.group(1))
+            out += v if isinstance(v, list) else [v]
+        except ValueError:
+            pass
+    return out
+
+
+def _mask(cmd):
+    """cmd with shell operators inside quotes replaced by '_', so only real operators split or redirect.
+    "$(...)" inside double quotes stays visible: it is a command. 63 of 70 tapes were rejected on 11-10
+    because a '>' or '|' inside an awk/jq/sqlite/grep string was read as a redirect or a pipe."""
+    out, stack = [], []  # stack: "'" or '"' (in a quote) or "(" (in a $(...) inside a double quote)
+    i = 0
+    while i < len(cmd):
+        ch, top = cmd[i], stack[-1] if stack else ""
+        if top == "'":
+            if ch == "'":
+                stack.pop()
+            out.append("_" if ch in "|;&><$()`" else ch)
+        elif top == '"':
+            if ch == "\\" and i + 1 < len(cmd):
+                out.append("__"); i += 2; continue
+            if ch == '"':
+                stack.pop()
+            elif cmd.startswith("$(", i):
+                stack.append("("); out.append("$("); i += 2; continue
+            out.append("_" if ch in "|;&><()" else ch)
+        else:
+            if ch in "'\"":
+                stack.append(ch)
+            elif ch == "(":
+                stack.append("(")
+            elif ch == ")" and top == "(":
+                stack.pop()
+            out.append(ch)
+        i += 1
+    return None if stack else "".join(out)
+
+
+def safe(cmd):
+    m = _mask(cmd) if cmd else None
+    if not m or BAD.search(m) or BAD_QUOTED.search(cmd):
+        return False
+
+    def ok(part):
+        segs = [s.strip() for s in re.split(r"\|\||&&|\||;", part) if s.strip()]
+        return bool(segs) and all(OK_CMD.match(s) for s in segs)
+    while (sub := _SUBST.search(m)):  # innermost $(...) first: it must itself be an allowed command
+        if not ok(sub.group(1)):
+            return False
+        m = m[:sub.start()] + "X" + m[sub.end():]
+    return "(" not in m and ")" not in m and ok(m)
+
+
+def load(p, key):
+    return json.loads(p.read_text()) if p.exists() else {key: []}
+
+
+def main(jid):
+    rep = OPS / "fable-runs" / jid / "REPORT.md"
+    text = rep.read_text()
+    added = {"tapes": 0, "rejected": 0, "astra": 0, "astra_bad_test": 0, "next": 0}
+
+    def tapes(T):
+        have = {t["id"] for t in T["tapes"]}
+        for t in blocks(text, "tapes"):
+            tid = f"{jid}-{t.get('id', '')}"
+            if tid in have or not t.get("tape"):
+                continue
+            if safe(t["tape"]) and (not t.get("use") or safe(t["use"])):
+                T["tapes"].append({**t, "id": tid, "src": f"fable {jid}"}); have.add(tid); added["tapes"] += 1
+            else:
+                with (OPS / "rejected-tapes.jsonl").open("a") as f:
+                    f.write(json.dumps({"ts": time.strftime("%FT%T"), "job": jid, **t}) + "\n")
+                added["rejected"] += 1
+    update(OPS / "fix-tapes.json", tapes, {"tapes": []})
+
+    def astra(A):
+        titles = {j["title"] for j in A["jobs"]}
+        for a in blocks(text, "astra"):
+            if not a.get("title") or a["title"] in titles:
+                continue
+            why = test_problem(a.get("test"))
+            st = "pending" if why is None else "bad-test"
+            A["jobs"].append({**a, "src": f"fable {jid}", "status": st, "added": time.strftime("%FT%T"),
+                              **({"note": why} if why else {})})
+            titles.add(a["title"]); added["astra" if why is None else "astra_bad_test"] += 1
+    update(OPS / "astra-queue.json", astra, {"jobs": []})
+
+    def nxt(Q):
+        titles = {j["title"].lower() for j in Q["jobs"]}
+        n = 1 + max(int(m.group(1)) for j in Q["jobs"] if (m := re.match(r"F(\d+)$", j["id"])))
+        for x in blocks(text, "next")[:2]:
+            t = x.get("title", "")
+            if not t or t.lower() in titles or KILL.search(t + x.get("brief", "")):
+                continue
+            Q["jobs"].append({"id": f"F{n}", "title": t, "brief": x.get("brief", "")[:1200], "class": x.get("class", ""),
+                              "keywords": x.get("keywords", [])[:6], "status": "pending", "src": f"fable {jid}"})
+            n += 1; added["next"] += 1
+    update(OPS / "fable-queue.json", nxt)
+    print(json.dumps({"job": jid, **added}))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])

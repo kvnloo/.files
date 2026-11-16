@@ -1,0 +1,6 @@
+[Unit]
+Description=Fable-first weekly plan: read burn-pace, notify Kevin when to press the Fable reset
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/fable-phase-watch

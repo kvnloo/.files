@@ -1,0 +1,11 @@
+[Unit]
+Description=Astra queue: run one fx contract (gpt-6-astra) in its own worktree, test-gated, no push
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=BURN_GATE_WHO=bulk
+ExecStart=%h/.local/bin/astra-drain
+TimeoutStartSec=1h30min
+Nice=10
+IOSchedulingClass=idle
+OOMPolicy=continue

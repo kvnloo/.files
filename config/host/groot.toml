@@ -3659,6 +3659,60 @@ reason = "Was an unmanaged live-only file (sysgraph unsourced); poll lock split 
 migration_sha256 = "081244bdda673ad8e980d4813577c926749be3b40015f4b66a00169ba9f5649c"
 
 [[user]]
+live = "~/.local/bin/astra-drain"
+source = "scripts/astra-drain"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "27bc42cb5a9a9bda66a0eb0476dc5c138882f77dfbb946e95d9c9b221f671dbe"
+
+[[user]]
+live = "~/.local/bin/fable-drain"
+source = "scripts/fable-drain"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "6125fa42a148747e76f6ca21bc556859429f9e63a4436a5ffbbe7d27a63c9bd9"
+
+[[user]]
+live = "~/.local/bin/fable-phase-watch"
+source = "scripts/fable-phase-watch"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "3941ee605271c471fef4b8c02ad5f772d2ae47da19fc9559ba367711a46b03f3"
+
+[[user]]
+live = "~/.local/bin/fable-ingest"
+source = "scripts/fable-ingest"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "507427374f516d923cc3c8fb2e676fbcf8e3c56310714e5cfea2fcc0dd28f8f1"
+
+[[user]]
+live = "~/.local/bin/fable-packet"
+source = "scripts/fable-packet"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "c6efd8780018e14506eb1c5936b4244409a4eacb5ff60b45d2a19375c5aa11b5"
+
+[[user]]
+live = "~/.local/bin/fix-replay"
+source = "scripts/fix-replay"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Fix loop ran from a live-only copy no repo held (home sysgraph unhomed); per-user paths from $HOME, tests/test_fable_loop_home.py."
+migration_sha256 = "c6d10357f6369c6001e018320ea42ade4f0d9939759c5abf76b9d0773dbf75bf"
+
+[[user]]
 live = "~/.config/systemd/user/gh-feedback-watch.service"
 source = "config/systemd/user/gh-feedback-watch.service"
 scope = "user"
