@@ -643,15 +643,21 @@ class Contracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             sw.Watch(self.root / 'invalid', checkout_threshold=-1)
 
+    def test_checkout_walk_runs_at_most_hourly(self):
+        # One discovery walk reads ~0.8 GB from disk in ~60 s (741 checkouts, 2026-11-16);
+        # at 300 s it was the watcher's whole IO load. The count only feeds a threshold alert.
+        self.assertGreaterEqual(self.watch.checkout_interval, 3600)
+
     def test_checkout_cache_reports_staleness_and_preserves_last_count_on_failure(self):
         self.watch.checkout_threshold = 1
-        self.watch.checkout_cache.update(checkout_count=9, refreshed_at=time.time() - 700)
+        stale = self.watch.checkout_interval * 2 + 100
+        self.watch.checkout_cache.update(checkout_count=9, refreshed_at=time.time() - stale)
         with patch.object(self.watch, 'record') as record:
             self.watch.checkout_invariants()
         status = self.watch.store.get('worktree-reaper')
         self.assertEqual(status['checkout_count'], 9)
         self.assertEqual(status['count_status'], 'unavailable')
-        self.assertGreaterEqual(status['refresh_age_seconds'], 700)
+        self.assertGreaterEqual(status['refresh_age_seconds'], stale)
         self.assertEqual([item['code'] for item in record.call_args[0][2]],
                          ['invariant_unavailable'])
         with patch.object(self.watch, 'checkout_discover', side_effect=OSError('failed')):

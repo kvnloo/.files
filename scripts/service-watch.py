@@ -508,7 +508,8 @@ class Watch:
         self.coverage = {}
         self.policy_source_cache = {}
         self.checkout_lock = threading.Lock()
-        self.checkout_interval = 300
+        # Hourly: one discovery walk reads ~0.8 GB in ~60 s; it only feeds a threshold alert.
+        self.checkout_interval = 3600
         self.keyring_seen = None
         self.checkout_cache = {'checkout_count': None, 'refreshed_at': None,
                                'refresh_started_at': None, 'inflight': False,
