@@ -1,0 +1,6 @@
+[D-BUS Service]
+# Hermes Bot Screen private session bus only (its XDG_DATA_HOME). A second xdg-document-portal there
+# remounts the shared /run/user/$UID/doc and kills the real xdg-document-portal.service on every screen
+# start. Activation now fails and xdg-desktop-portal runs without the Documents backend.
+Name=org.freedesktop.portal.Documents
+Exec=/usr/bin/false

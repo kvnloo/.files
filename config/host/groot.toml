@@ -3711,6 +3711,14 @@ owner = "scripts/apply-agent-oom"
 reason = "Bot Screen companions (Kevin's Chrome, bot Chromium, cua-driver) start from one command and end cleanly with the screen's idle stop instead of failing on X loss."
 
 [[user]]
+live = "~/.hermes/profiles/clean/bot-desktop/xdg/.local-share/dbus-1/services/org.freedesktop.portal.Documents.service"
+source = "config/bot-desktop/dbus-1/services/org.freedesktop.portal.Documents.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Bot Screen private bus must not start a second document portal: it remounted /run/user/UID/doc and killed xdg-document-portal.service on every screen start."
+
+[[user]]
 live = "~/.config/environment.d/hermes-home.conf"
 source = "config/environment.d/hermes-home.conf"
 scope = "user"
