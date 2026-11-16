@@ -73,6 +73,11 @@ HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.servi
 TYPE_HOOK_BODY = '[Unit]\nOnFailure=service-watch-failure@%n.service\n'
 
 
+def transient(unit):
+    """Scopes exist only as transient units (systemd-run --scope, D-Bus); their file vanishes on exit."""
+    return unit.endswith('.scope') or (TRANSIENT_DIR / unit).exists()
+
+
 def type_hooked(unit):
     """True when the live type-level hook already covers this unit's type."""
     return (USER_UNIT_DIR / (unit.rsplit('.', 1)[-1] + '.d') / HOOK_NAME).exists()
@@ -541,8 +546,7 @@ class Watch:
     def install_hooks(self):
         changed = False
         for scope, unit in self.units:
-            if scope != 'user' or unit.startswith('service-watch-failure@') or (TRANSIENT_DIR / unit).exists() \
-                    or type_hooked(unit):
+            if scope != 'user' or unit.startswith('service-watch-failure@') or transient(unit) or type_hooked(unit):
                 continue
             escaped = command(['systemd-escape', unit]).stdout.strip()
             target = USER_UNIT_DIR / (unit + '.d') / HOOK_NAME
@@ -567,7 +571,7 @@ class Watch:
             if '.' not in unit:  # the type-level hook itself (service.d/...)
                 continue
             # Transients never get a hook, and a type-hooked unit needs none: drop leftovers even while loaded.
-            covered = (TRANSIENT_DIR / unit).exists() or type_hooked(unit)
+            covered = transient(unit) or type_hooked(unit)
             if hook.is_symlink() or (not covered and (unit in keep or any((d / unit).exists() for d in USER_UNIT_PATHS))):
                 continue
             try:

@@ -150,6 +150,24 @@ class Contracts(unittest.TestCase):
             self.watch.install_hooks()  # nothing new: no reload
             ctl.assert_not_called()
 
+    def test_scopes_get_no_hook_even_after_their_transient_file_is_gone(self):
+        # 2026-11-16: the 11-11 inventory still lists dead agent-*/tmux-spawn-* scopes; with no transient
+        # file left they looked persistent, so each got a hook that kept-by-inventory was never pruned.
+        ud = self.root / 'units'
+        dead = ud / 'agent-omp-1-2.scope.d' / sw.HOOK_NAME
+        dead.parent.mkdir(parents=True)
+        dead.write_text('[Unit]\nOnFailure=service-watch-failure@agent\\x2domp\\x2d1\\x2d2.scope.service\n')
+        self.watch.units = {('user', 'agent-omp-1-2.scope'): {}, ('user', 'tmux-spawn-x.scope'): {}}
+        self.watch.loaded, self.watch.coverage = set(), {'user': 'readable'}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'USER_UNIT_PATHS', (ud,)), \
+                patch.object(sw, 'TRANSIENT_DIR', self.root / 'transient'), \
+                patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, 'x\n', '')), \
+                patch.object(sw, 'systemctl') as ctl:
+            self.watch.install_hooks()
+        self.assertFalse(dead.exists())
+        self.assertFalse((ud / 'tmux-spawn-x.scope.d').exists())
+        ctl.assert_not_called()
+
     def test_hooks_written_for_still_loaded_transients_before_the_fix_are_pruned(self):
         # 2026-11-16: 4 pre-fix hooks (e.g. ani-comfy-next.service, a scope from 10-27) survived because
         # their transient units were still loaded, and prune keeps every loaded unit's hook.
