@@ -107,4 +107,9 @@ if __name__ == "__main__":
         print(BOARD.read_text() if BOARD.exists() else "no board yet")
     else:
         run()
-        print(BOARD.read_text())
+        # stdout goes to the journal: counts only. Quoting failure text there made journal-grepping tapes match us.
+        now, st = time.time(), json.loads(STATE.read_text())
+        counts = {}
+        for s in st.values():
+            counts[status(s, now)] = counts.get(status(s, now), 0) + 1
+        print(", ".join(f"{n} {k}" for k, n in sorted(counts.items())) + f"; board: {BOARD}")
