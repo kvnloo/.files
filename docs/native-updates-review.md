@@ -2,7 +2,25 @@
 
 This review preserves the existing native-updater proposal without activating it. R09 is not complete. No package refresh, installation, timer activation, service restart, or reboot ran in this execution. Evidence directory: `/mnt/zer0models/workspace/zer0/data/operations/intent-analyzer-20261104/ayo-runs/exec-R09`.
 
-## Latest observation, 2026-11-15 at 17:16 UTC
+## Latest observation, 2026-11-16 at 05:46 UTC
+
+The installed updater changed independently. SHA256 is now `7a0c303a137d89da30aae70c09eb75ebf7998afe07b96e48bcb4167b2a87e87e`. A new DKMS guard checks module availability before reboot. Its comment attributes a missing `/mnt/tier` after the previous maintenance reboot to `bcachefs-dkms`. That comment is incident attribution, not an independently verified cause. Sources: execution `logs/20261116-current/host.log:226-228,280-292`.
+
+The guard runs after `pacman -Su`. If it holds the reboot, installation already occurred. This permits installed reboot-class updates to wait without their intended immediate reboot. Daily classification still precedes a separate live database refresh and installation. Neither mode installs from the staged list. No workload-drain check precedes installation or reboot. These code paths do not meet the requested safety conditions. Source: execution `logs/20261116-current/host.log:255-294`; `ITEM.json:4-6`.
+
+Both custom timers remain active and enabled. The next maintenance deadline is November 22 at 04:00 CST, or 10:00 UTC. The installed timer still labels its window a placeholder requiring Kevin's choice. The supplied item and verdict do not establish approval. Sources: execution `logs/20261116-current/host.log:94-105,154-178,201-203`; `VERDICT.json:12-15`.
+
+The host now reports bcachefs and gpu-unlock installed for both listed kernels. `/mnt/tier` is mounted. The running kernel matches installed `linux-cachyos` at 7.3.4, and loaded NVIDIA matches userspace at 620.70.06. Three recorded boots occurred on November 15. These checks establish current module and mount state, not a tested recovery procedure or workload restoration. Source: execution `logs/20261116-current/boot.log:3-21,55-63`.
+
+The latest three update receipts still end with November 15's `applied-rebooting`, rc 0. The journal retains 6min 29.916s CPU, 4min 43.970s wall time, 5.9G peak memory, and 103M peak swap. No new transaction or guard execution was requested here. Foreground impact, network transfer, and disk IO remain unmeasured. Sources: execution `logs/20261116-current/host.log:181-199,297-301`; `logs/20261116-current/boot.log:23-53`.
+
+Root and cache share XFS with 9,596,356 KiB available, below the native proposal's 15 GiB floor. Native updater and queried snapshot packages remain absent. The installed units' recovery-document target remains missing. This does not prove that no backup exists. The read-only capture exits 1 because the staged file is absent. Missing-package query also exits 1. Sources: execution `logs/20261116-current/host.log:205-224,303-305,319-321`; `logs/20261116-current/boot.log:65-66`; `scripts/setup-native-updates:45-53`.
+
+Fleet admission tests did not start. Kueue's `lanes` lookup failed, exit 1. No local test-suite fallback ran. Native syntax and read-only commands completed, but diagnostic `check` masks missing packages and is not readiness proof. Sources: execution `logs/20261116-current/fleet.log:1-4`; `logs/20261116-current/host.log:11-25,90-92`.
+
+R09 remains incomplete. Reconcile the active implementation with the host-setup owner before deploying another updater. Privileged changes, reboot, restore, and package operations require a separately authorized execution. No installed configuration changed here.
+
+## Earlier observation, 2026-11-15 at 17:16 UTC
 
 The installed custom updater ran independently before this inspection. Its receipt reports `applied-rebooting`, rc 0, at 04:04:44 CST, or 10:04:44 UTC. The journal records successful maintenance completion and a new boot at 04:05 CST. This is an observed maintenance application and reboot, not an action requested by this execution. Sources: execution `logs/20261115-current/host.log:378-386`; `logs/20261115-current/boot.log:22-27,57-60`.
 
