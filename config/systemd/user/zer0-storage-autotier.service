@@ -9,8 +9,11 @@ Environment=ZER0_STORAGE_POLICY=%h/.config/zer0/storage.toml
 # every env generation (33 = 36 GiB on 11-11) until `pm gc`, and uv keeps every
 # wheel it ever fetched. Both collectors skip in-use entries; "-" = never fail the unit.
 ExecStartPre=-/usr/bin/env -C %h/.hermes/hermes-agent %h/.local/bin/hermes pm gc
-ExecStartPre=-%h/.local/bin/uv cache prune --cache-dir /workspace/cache/uv
-ExecStartPre=-%h/.local/bin/uv cache prune
+# uv prune holds the exclusive cache lock for its whole walk; other uv calls give up after
+# 300 s (UV_LOCK_TIMEOUT). At idle IO on a cold HDD cache it held the lock for 30+ min, so
+# kill it after 120 s. It deletes as it goes, so later runs finish the job.
+ExecStartPre=-/usr/bin/timeout -s INT -k 10 120 %h/.local/bin/uv cache prune --cache-dir /workspace/cache/uv
+ExecStartPre=-/usr/bin/timeout -s INT -k 10 120 %h/.local/bin/uv cache prune
 ExecStart=/usr/bin/python %h/.local/lib/host-storage/current/scripts/zer0_storage_autotier.py --apply
 Nice=19
 IOSchedulingClass=idle
