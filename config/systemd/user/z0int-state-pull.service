@@ -6,5 +6,8 @@ After=network-online.target
 Type=oneshot
 ExecStart=%h/.local/bin/z0int-state-pull
 Nice=10
-IOSchedulingClass=idle
+# Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
+# streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 TimeoutStartSec=120

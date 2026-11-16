@@ -5,5 +5,8 @@ Description=Keep coding-agent processes inside their resource budget
 Type=oneshot
 ExecStart=/usr/bin/python3 /home/kvn/.local/bin/agent-resource-classify
 Nice=15
-IOSchedulingClass=idle
+# Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
+# streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 TimeoutStartSec=20

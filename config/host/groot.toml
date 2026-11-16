@@ -4103,6 +4103,14 @@ owner = "scripts/apply-host-system"
 reason = "Preserve observed host configuration; docs/fleet/DESKTOP-ADMISSION.md system-layer audit"
 
 [[system]]
+live = "/etc/udev/rules.d/61-mq-deadline-prio-aging.rules"
+source = "config/host/etc/udev/rules.d/61-mq-deadline-prio-aging.rules"
+scope = "system"
+install = "copy"
+owner = "scripts/apply-host-system"
+reason = "Bound idle-class IO starvation on mq-deadline (10 s default aging); tests/test_idle_io_deadline.py"
+
+[[system]]
 live = "/etc/udev/rules.d/30-zram.rules"
 source = "config/host/etc/udev/rules.d/30-zram.rules"
 scope = "system"

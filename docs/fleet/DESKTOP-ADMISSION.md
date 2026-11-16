@@ -58,7 +58,11 @@ ceiling, not a guarantee that every corpus fits. Do not raise it without a
 measured refresh peak and host headroom.
 Refreshes run with `Nice=10` and `IOSchedulingClass=idle` so foreground work
 takes priority. The host's mq-deadline scheduler honors this I/O class;
-`IOWeight` alone does not provide that protection. After a policy restart,
+`IOWeight` alone does not provide that protection. Honoring it means an idle
+request waits up to `prio_aging_expire` (kernel default 10 s, bounded to 1 s by
+`61-mq-deadline-prio-aging.rules`) while best-effort IO is queued, so units with
+a deadline of 10 min or less run best-effort 7 instead
+(`tests/test_idle_io_deadline.py`). After a policy restart,
 check `ionice -p "$(systemctl --user show ctx -p MainPID --value)"` and confirm
 refresh `processed_bytes` still advances before accepting idle scheduling.
 

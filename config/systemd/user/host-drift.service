@@ -8,7 +8,10 @@ ExecStart=%h/.local/bin/host-drift --output %h/.local/state/host-drift/latest.js
 ExecStartPost=%h/.local/lib/files-host-drift/current/scripts/service-watch.py host-drift
 SuccessExitStatus=1 2
 Nice=19
-IOSchedulingClass=idle
+# Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
+# streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 MemoryMax=256M
 TimeoutStartSec=180
 NoNewPrivileges=yes

@@ -13,7 +13,10 @@ TimeoutStopSec=10
 KillMode=control-group
 UMask=0077
 Nice=15
-IOSchedulingClass=idle
+# Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
+# streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

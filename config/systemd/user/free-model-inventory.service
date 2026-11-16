@@ -8,5 +8,8 @@ ExecStart=python3 /mnt/zer0models/workspace/zer0/oss/tools/dsh-env-exec.py --all
 TimeoutStartSec=600
 Nice=19
 CPUSchedulingPolicy=idle
-IOSchedulingClass=idle
+# Best-effort, not idle: on mq-deadline an idle read waits ~10 s behind any
+# streaming job, which breaks this unit's short deadline (tests/test_idle_io_deadline.py).
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 Restart=no

@@ -1,0 +1,9 @@
+# Bound idle-class IO starvation on mq-deadline disks (sdb holds /mnt/zer0models).
+# The kernel default prio_aging_expire is 10000 ms: while any best-effort IO is
+# queued, each idle-class request waits up to 10 s. A GPU job streaming model
+# weights keeps the queue busy for hours, so idle units (retention, indexers,
+# uv cache prune) crawl at ~0.1 requests/s and die by timeout (measured 11-15:
+# 9.4 s for one 1 MB idle read vs 0.1 s best-effort). 1 s keeps idle work behind
+# foreground IO without starving it. Sorts after the vendor 60-ioschedulers.rules.
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/scheduler}=="*[mq-deadline]*", \
+    ATTR{queue/iosched/prio_aging_expire}="1000"
