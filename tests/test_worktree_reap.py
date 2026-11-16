@@ -319,3 +319,32 @@ class Reap(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class LazyFacts(unittest.TestCase):
+    """git status reads every file of a tree; only rows with a merge/done proof ever use its answer."""
+
+    def run_decide(self, finished):
+        td = tempfile.mkdtemp(); repo = Path(td) / "r"; wt = Path(td) / "wt"
+        g(td, "init", "-q", str(repo)); (repo / "f").write_text("x"); g(repo, "add", "f"); g(repo, "commit", "-qm", "i")
+        g(repo, "worktree", "add", "-q", "-b", "side", str(wt))
+        head = g(wt, "rev-parse", "HEAD").strip()
+        calls, real = [], wtr.git
+        wtr.git = lambda cd, *a, **k: (calls.append(a[0]), real(cd, *a, **k))[1]
+        try:
+            row = {"head": head[:12], "worktree": str(wt), "branch": "side", "finished": finished,
+                   "commondir": os.path.realpath(repo / ".git"), "_idle_days": 3}
+            return wtr.decide(row, wtr.live_check, 3), calls
+        finally:
+            wtr.git = real
+
+    def test_unproven_row_never_runs_git_status(self):
+        (action, why), calls = self.run_decide([])
+        self.assertEqual(action, "keep"); self.assertIn("no proof", why)
+        self.assertNotIn("status", calls)
+
+    def test_proven_row_still_checks_dirty(self):
+        (action, why), calls = self.run_decide(["ancestor:main"])
+        self.assertIn("status", calls)
+        self.assertEqual(action, "worktree")

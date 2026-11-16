@@ -168,7 +168,8 @@ def scan_rows(roots=None):
         if not root.is_dir():
             continue
         out = subprocess.run(["find", str(root), "-maxdepth", "4", "(", *sum([["-name", n, "-o"] for n in PRUNE[1:]], [])[:-1],
-                              ")", "-prune", "-o", "-name", ".git", "-type", "f", "-print"],
+                              ")", "-prune", "-o", "-name", ".git", "-type", "d", "-prune",  # never walk a repo's own .git/
+                              "-o", "-name", ".git", "-type", "f", "-print"],
                              capture_output=True, text=True, timeout=600).stdout.split("\n")
         for dotgit in filter(None, out):
             common = git(Path(dotgit).parent, "rev-parse", "--path-format=absolute", "--git-common-dir", timeout=30)
@@ -185,6 +186,14 @@ def scan_rows(roots=None):
                          "branch": kv.get("branch", "").removeprefix("refs/heads/"), "head": kv.get("HEAD", "")[:12],
                          "finished": [], "worktree": kv["worktree"], "task": None, "source": "scan"})
     return rows
+
+
+def fact(live, key):
+    """Expensive facts arrive as callables and are computed once, on first use."""
+    v = live.get(key)
+    if callable(v):
+        v = live[key] = v()
+    return v
 
 
 def decide(row, check, idle_days=IDLE_DAYS):
@@ -213,13 +222,13 @@ def decide(row, check, idle_days=IDLE_DAYS):
         why = "no proof"
     elif live["outside"]:
         why = "real path outside the repo's parent tree"
-    elif live["dirty"]:
+    elif fact(live, "dirty"):
         why = "dirty worktree"
-    elif not merged and live["unpushed"]:
-        why = f"{live['unpushed']} commit(s) on no remote"
+    elif not merged and fact(live, "unpushed"):
+        why = f"{fact(live, 'unpushed')} commit(s) on no remote"
     if why is None:
         return "worktree", "tier2 " + ",".join(merged or [p for p in proofs if p.startswith("task_done:")]) + " + clean tree"
-    idle = live["idle"]() if callable(live.get("idle")) else live.get("idle")
+    idle = fact(live, "idle")
     if idle is None or not live.get("registered"):
         return "keep", why
     if idle < idle_days:
@@ -236,11 +245,15 @@ def live_check(row):
         return {"head": head}
     if not Path(wt).exists():
         return {"head": None}
-    st = git(wt, "status", "--porcelain")
-    unpushed = git(wt, "rev-list", "--count", "HEAD", "--not", "--remotes").stdout.strip()
+    def dirty():  # reads every file of the tree, so only rows with a proof pay for it (decide)
+        st = git(wt, "status", "--porcelain")
+        return st.returncode != 0 or bool(st.stdout.strip())
+
+    def unpushed():
+        n = git(wt, "rev-list", "--count", "HEAD", "--not", "--remotes").stdout.strip()
+        return int(n) if n.isdigit() else 1
     gd = git(wt, "rev-parse", "--absolute-git-dir").stdout.strip()
-    return {"head": head, "dirty": st.returncode != 0 or bool(st.stdout.strip()),
-            "unpushed": int(unpushed) if unpushed.isdigit() else 1,
+    return {"head": head, "dirty": dirty, "unpushed": unpushed,
             "linked": os.path.islink(wt),
             "outside": not os.path.realpath(wt).startswith(
                 os.path.dirname(os.path.dirname(os.path.realpath(cd))) + os.sep),
