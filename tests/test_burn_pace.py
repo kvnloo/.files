@@ -25,8 +25,11 @@ class BurnPaceTests(unittest.TestCase):
             (posture / 'posture.py').write_text(
                 'def pools_from_codexbar(rows, now):\n    return rows\n'
                 'def evaluate(pools, now):\n    return {"factory": {"rule": "stub", "pools": len(pools)}}\n')
+            # XDG_RUNTIME_DIR too: burn-pace reads the live bws token file there and would probe for real.
             env = dict(os.environ, PATH=f'{base / "bin"}:{os.environ["PATH"]}', HOME=str(base),
-                       Z0INT_SRC=str(base / 'src'))
+                       Z0INT_SRC=str(base / 'src'), XDG_RUNTIME_DIR=str(base))
+            for name in [k for k in env if k.startswith(('ANTHROPIC', 'CLAUDE', 'CODEXBAR'))]:
+                env.pop(name)
             proc = subprocess.run([sys.executable, str(ROOT / 'scripts/burn-pace'), '--json'],
                                   capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -46,7 +49,8 @@ class BurnPaceTests(unittest.TestCase):
         row = {"provider": "claude", "usage": {"secondary": {"usedPercent": 50, "windowMinutes": 10080,
                                                             "resetsAt": "2099-01-01T00:00:00Z"}}}
         out = self.run_pace(json.dumps([row]))
-        self.assertNotIn('probe_errors', out)
+        # The extra subscriptions (claude2/claude3) have no token in this empty HOME: that stays loud.
+        self.assertEqual({e['provider'] for e in out.get('probe_errors', [])} - {'claude2', 'claude3'}, set())
         self.assertIn('claude', out['lanes'])
 
 
