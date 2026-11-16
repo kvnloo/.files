@@ -4491,6 +4491,14 @@ reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window;
 migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
 
 [[user]]
+live = "~/.local/bin/memory-unit-receipt"
+source = "scripts/memory-unit-receipt"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Durable per-run JSON receipts for the memory units (ExecStopPost); the user journal rotates within hours. memory-services-20261027 step 0b. Brought from master (ac5fe3a3) because ctx-import.service calls it."
+
+[[user]]
 live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
 source = "config/systemd/user/ctx-import.timer"
 scope = "user"

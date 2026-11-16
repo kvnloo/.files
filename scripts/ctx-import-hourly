@@ -6,7 +6,17 @@
 # window left one more queued request until the queue hit its 8-request cap ("queue is full").
 # Now: if a refresh is already queued/running, keep auto on and WAIT for it instead of enqueuing.
 # Success = a new generation was published in this window.
-C=/home/kvn/.local/bin/ctx; R=/mnt/zer0models/host-offload/home_kvn_.ctx; LOG=/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log
+C=${CTX_BIN:-/home/kvn/.local/bin/ctx}; R=/mnt/zer0models/host-offload/home_kvn_.ctx; LOG=${CTX_IMPORT_LOG:-/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log}
+# 2026-11-15: with the daemon switched off on purpose (ayo 11-06), every run still scanned the index
+# (~2 GB read, 2 GB RSS, once 60 GB) before auto mode was refused. Fail before touching ctx; the unit
+# stays red and is declared in kvnloo/home map/parked.json until Kevin decides. Absolute path: the
+# unit sets HOME to ctx-import-home.
+OFF=${CTX_DAEMON_OFF:-/home/kvn/.config/ctx-daemon-off}
+if [ -e "$OFF" ]; then
+  echo "$(date -Is) wait_rc=2 skipped: ctx daemon off by decision ($OFF); parked in kvnloo/home map/parked.json" >> $LOG
+  echo "ctx daemon is off ($OFF exists): nothing to import; parked in kvnloo/home map/parked.json" >&2
+  exit 2
+fi
 state() { $C --data-root $R index --format json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['lexical'].get('generation_id','')[:12], d.get('refresh',{}).get('physical_attempt_state','none'))"; }
 # 2026-11-02 memory-heal: the timer fires every 15 min so a refresh happens soon after memory frees up;
 # keep the hourly cadence by skipping when the last successful window is under 50 min old.

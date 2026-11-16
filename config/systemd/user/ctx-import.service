@@ -9,5 +9,9 @@ ExecCondition=/usr/bin/awk '/^MemAvailable:/ { exit !($2 > 4194304) }' /proc/mem
 ExecStart=/home/kvn/.local/bin/ctx-import-hourly
 # The script switches ctx to auto mode; if it is killed (OOM, 2026-10-26 00:01) ctx would stay in auto
 # (a full rebuild every ~5 min). Runs after any exit, including SIGKILL.
-ExecStopPost=/home/kvn/.local/bin/ctx --data-root /mnt/zer0models/host-offload/home_kvn_.ctx index mode manual
+# Restore manual mode after a killed run. Skipped while the daemon is off on purpose: there it hung the
+# 10 min stop timeout and turned every ExecCondition skip into a failure (2026-11-15).
+ExecStopPost=-/bin/sh -c '[ -e %h/.config/ctx-daemon-off ] || exec /usr/bin/timeout 120 /home/kvn/.local/bin/ctx --data-root /mnt/zer0models/host-offload/home_kvn_.ctx index mode manual'
 TimeoutStartSec=50min
+# Durable run receipt (journal rotates within hours): ~/.local/state/memory-services/receipts.jsonl
+ExecStopPost=-%h/.local/bin/memory-unit-receipt ctx-import.service
