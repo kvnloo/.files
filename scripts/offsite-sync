@@ -18,6 +18,10 @@ RUNS = Path("/mnt/zer0models/workspace/zer0/data/operations/storage-maintenance/
 BIG = 50 << 20
 HOST = socket.gethostname().split(".")[0]
 REMOTE_RE = os.environ.get("OFFSITE_REMOTE_RE", r"github\.com[:/]kvnloo/")
+# A backup only sends what is local. In a partial clone, push looks up every commit the remote
+# advertises; a shared fork advertises other clones' commits, and each miss lazy-fetched upstream
+# history (11-16: 415k objects in one push).
+os.environ["GIT_NO_LAZY_FETCH"] = "1"
 
 
 def git(cd, *a, env=None, timeout=600):

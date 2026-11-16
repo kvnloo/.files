@@ -93,5 +93,47 @@ class Offsite(unittest.TestCase):
         self.assertEqual(__import__("json").loads((self.tmp / "run/summary.json").read_text())["sole_copies"], 0)
 
 
+class PartialCloneFork(unittest.TestCase):
+    """11-16: offsite pushes from a blob:none clone of hermes-agent to the shared kvnloo fork ran
+    `git fetch --filter=blob:none --stdin` from upstream mid-push (one pull was 415k objects; the run
+    took 5.6 h, read 101 G, wrote 71 G). Other clones push to the same fork, so it advertises commits
+    this clone lacks, and every lookup lazy-fetches them. offsite-sync must never fetch."""
+
+    def setUp(self):
+        saved = os.environ.pop("GIT_NO_LAZY_FETCH", None)   # the fixture clone needs lazy fetch
+        if saved is not None:
+            self.addCleanup(os.environ.__setitem__, "GIT_NO_LAZY_FETCH", saved)
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.up, self.fork, self.repo = self.tmp / "up.git", self.tmp / "fork.git", self.tmp / "src/repo"
+        for bare in (self.up, self.fork):
+            subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+        g(self.up, "config", "uploadpack.allowFilter", "true"); g(self.up, "config", "uploadpack.allowAnySHA1InWant", "true")
+        seed = self.tmp / "seed"
+        subprocess.run(["git", "clone", "-q", str(self.up), str(seed)], check=True, capture_output=True)
+        (seed / "a.txt").write_text("base\n"); g(seed, "add", "a.txt"); g(seed, "commit", "-q", "-m", "base")
+        g(seed, "push", "-q", "origin", "HEAD:main"); g(seed, "push", "-q", str(self.fork), "HEAD:main")
+        subprocess.run(["git", "clone", "-q", "--filter=blob:none", f"file://{self.up}", str(self.repo)], check=True, capture_output=True)
+        # upstream moves on and another clone pushes a branch on the new upstream to the shared fork
+        (seed / "b.txt").write_text("later\n"); g(seed, "add", "b.txt"); g(seed, "commit", "-q", "-m", "later")
+        g(seed, "push", "-q", "origin", "HEAD:main"); g(seed, "push", "-q", str(self.fork), "HEAD:refs/heads/other-clone")
+        url = "https://github.com/kvnloo/fork.git"
+        g(self.repo, "remote", "add", "fork", url); g(self.repo, "config", f"url.file://{self.fork}.pushInsteadOf", url)
+        g(self.repo, "switch", "-q", "-c", "feat/x"); g(self.repo, "commit", "-q", "--allow-empty", "-m", "local work")
+
+    def promisor_packs(self):
+        return len(list((self.repo / ".git/objects/pack").glob("*.promisor")))
+
+    def test_push_to_a_shared_fork_never_lazy_fetches(self):
+        before = self.promisor_packs()
+        env = dict(os.environ, OFFSITE_ROOTS=f"{self.tmp / 'src'}:1", OFFSITE_REMOTE_RE=r"github\.com[:/]kvnloo/")
+        r = subprocess.run([sys.executable, str(SCRIPT), "--out", str(self.tmp / "run"), "--apply"],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        pushed = subprocess.run(["git", "-C", str(self.fork), "rev-parse", "--verify", "-q", "refs/heads/feat/x"],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertEqual(pushed, g(self.repo, "rev-parse", "feat/x"))
+        self.assertEqual(self.promisor_packs(), before)   # nothing fetched from upstream
+
+
 if __name__ == "__main__":
     unittest.main()
