@@ -55,6 +55,14 @@ class Contracts(unittest.TestCase):
             self.assertEqual(self.watch.prune_hooks(), 1)
         self.assertFalse(gone.exists() or gone.parent.exists())
         self.assertTrue(all(p.exists() for p in (loaded, watched, on_disk, mine)))
+        # systemd reads drop-ins only for loaded units, so pruning must not cost a daemon-reload.
+        hook('z0int-memory-mcp@0-5000-1000.service')
+        self.watch.units, self.watch.coverage = {}, {'user': 'readable'}
+        with patch.object(sw, 'USER_UNIT_DIR', ud), patch.object(sw, 'USER_UNIT_PATHS', (ud,)), \
+                patch.object(sw, 'systemctl') as ctl:
+            self.watch.install_hooks()
+        self.assertFalse((ud / 'z0int-memory-mcp@0-5000-1000.service.d').exists())
+        ctl.assert_not_called()
 
     def test_real_journal_oom_signature_can_use_reserved_capacity(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '', '')) as send:

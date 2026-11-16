@@ -489,8 +489,8 @@ class Watch:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(body)
                 changed = True
-        if self.coverage.get('user') == 'readable' and self.prune_hooks():
-            changed = True
+        if self.coverage.get('user') == 'readable':
+            self.prune_hooks()  # pruned units are not loaded, so systemd needs no reload for them
         if changed:
             systemctl('user', 'daemon-reload')
 
