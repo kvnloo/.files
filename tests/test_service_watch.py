@@ -26,6 +26,9 @@ class Contracts(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
+        # Tests never reach Kevin's real kevin-push log (one leaked fixture.service row on 11-16).
+        kevin_push = patch.object(sw, 'KEVIN_PUSH', self.root / 'no-kevin-push')
+        kevin_push.start(); self.addCleanup(kevin_push.stop)
         self.watch = sw.Watch(self.root / 'state', self.root / 'inventory.json')
         self.watch.checkout_roots = []
         self.watch.checkout_discover = lambda roots: []
@@ -809,7 +812,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(other.notify(fingerprint, 'fixture.service', 'failed', ident), 'deduplicated')
             other.db.close()
         self.assertEqual(len(delivered), 1)
-        self.assertEqual((Path(delivered[0][0]).name, delivered[0][1]), ('kevin-push', 'service-watch'))
+        self.assertEqual(delivered[0][:2], [str(sw.KEVIN_PUSH), 'service-watch'])
         digest = self.watch.store.digest().read_text()
         self.assertIn('fixture.service', digest)
         self.assertIn('severe', digest)

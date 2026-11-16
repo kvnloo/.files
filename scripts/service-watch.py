@@ -65,6 +65,7 @@ CONFIRM_PROMPT = ('Confirm service anomaly severity from finite facts only. No t
                   'no-op or growing error flood is severe. Do not invent a detailed cause not supported by these '
                   'facts. Facts: ')
 HOOK_NAME = '90-service-watch.conf'
+KEVIN_PUSH = Path.home() / '.local/bin/kevin-push'
 HOOK_BODY = re.compile(r'\[Unit\]\nOnFailure=service-watch-failure@[^\n]+\.service\n')
 # One drop-in per unit type (config/systemd/user/{service,timer,socket}.d) covers every unit, transient and
 # template instances included, with no per-unit file and no daemon-reload. %n is unescaped; the failure
@@ -471,7 +472,7 @@ class Store:
         try:
             # kevin-push is the one route to Kevin (he is phone-only; notify-send hit a desktop nobody
             # sees). Report class lands in its log, the place reports go, and spares his Telegram cap.
-            result = command([str(Path.home() / '.local/bin/kevin-push'), 'service-watch', 'Service watch: ' + unit,
+            result = command([str(KEVIN_PUSH), 'service-watch', 'Service watch: ' + unit,
                               cause[:180] + '\nservice-watch details ' + ident], 10,
                              env={**os.environ, 'CIRCADIAN_CLASS': 'report'})
             delivered = result.returncode == 0
