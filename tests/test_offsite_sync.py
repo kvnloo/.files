@@ -53,6 +53,15 @@ class Offsite(unittest.TestCase):
         self.assertEqual(self.remote("refs/heads/feat/x"), "")
         self.assertIn("no kvnloo remote", (self.tmp / "run/summary.json").read_text())
 
+    def test_remote_without_url_does_not_crash(self):
+        # 11-16 dry run died after 51 min: partial clones leave `remote.<url>.promisor` with no url,
+        # which `git remote -v` prints as a lone name
+        g(self.repo, "config", "remote.https://example.com/x.git.promisor", "true")
+        g(self.repo, "switch", "-q", "-c", "feat/y"); g(self.repo, "commit", "-q", "--allow-empty", "-m", "y")
+        r = self.run_sync("--apply")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotEqual(self.remote("refs/heads/feat/y"), "")
+
 
 if __name__ == "__main__":
     unittest.main()

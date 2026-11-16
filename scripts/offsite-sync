@@ -51,9 +51,9 @@ def repos():
 
 def kvn_remote(wt):
     for line in git(wt, "remote", "-v").stdout.splitlines():
-        name, url = line.split()[:2]
-        if re.search(REMOTE_RE, url):
-            return name
+        parts = line.split()  # a remote with an empty url prints just its name
+        if len(parts) >= 2 and re.search(REMOTE_RE, parts[1]):
+            return parts[0]
     return None
 
 
