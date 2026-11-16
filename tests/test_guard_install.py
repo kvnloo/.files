@@ -44,6 +44,43 @@ class GuardInstall(unittest.TestCase):
                 self.assertEqual((home / '.config/systemd/user' / unit).resolve().parent, installed)
             self.assertFalse((home / '.config/systemd/user/timers.target.wants').exists())
 
+    def test_reinstall_after_backend_checkout_is_reaped_keeps_pinned_backend(self):
+        # 11-16: the default backend worktree was reaped, so shipping a reaper fix died at `git rev-parse`
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            repo = base / 'files'
+            for rel in ('scripts/install-z0-guard.sh', 'scripts/z0-guard', 'scripts/worktree-reaper.py',
+                        'scripts/artifact-leases.py', 'config/systemd/user/worktree-reaper.service',
+                        'config/systemd/user/worktree-reaper.timer'):
+                (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(root / rel, repo / rel)
+            backend = base / 'backend'
+            module = backend / 'src/z0int/fsm/guard.py'
+            module.parent.mkdir(parents=True)
+            module.write_text("print('committed-backend')\n")
+            for args in (('init', '-q', '-b', 'main'), ('add', '.'),
+                         ('-c', 'user.name=T', '-c', 'user.email=t@t.invalid', 'commit', '-qm', 'b')):
+                subprocess.run(['git', '-C', str(backend), *args], check=True, capture_output=True)
+            home = base / 'home'
+            home.mkdir()
+            env = {**os.environ, 'HOME': str(home), 'Z0INT_BACKEND_REPO': str(backend)}
+            env.pop('Z0INT_SRC', None)
+            install = ['bash', str(repo / 'scripts/install-z0-guard.sh')]
+            subprocess.run(install, env=env, check=True, capture_output=True, text=True)
+            first = (home / '.local/bin/z0-guard').resolve().parent
+            shutil.rmtree(backend)
+            (repo / 'scripts/worktree-reaper.py').write_text('# reaper fix\n')
+            r = subprocess.run(install, env=env, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            second = (home / '.local/bin/z0-guard').resolve().parent
+            self.assertNotEqual(first, second)
+            self.assertEqual((second / 'worktree-reaper.py').read_text(), '# reaper fix\n')
+            self.assertEqual((second / 'backend-head').read_text(), (first / 'backend-head').read_text())
+            result = subprocess.run([str(home / '.local/bin/z0-guard'), 'check'], env=env, check=True,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.stdout.strip(), 'committed-backend')
+
     def test_stamped_hooks_scan_the_calling_repository(self):
         source = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as temp:
