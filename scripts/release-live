@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Plan, publish, or roll back the live branch without using checkout bytes.
+
+One step for every repository that serves the host: --family names the release family and
+--repo its clone. Only files-live owns managed links (its tree carries the host manifest);
+other families are reached through ~/.local/lib/<family>/current, so their release is
+archive, optional --build inside the final tree, stamp, then one atomic switch.
+"""
+import argparse
+from datetime import datetime, timezone
+import fcntl
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tarfile
+import tempfile
+import time
+import tomllib
+
+import host_layout
+
+
+LIVE = 'refs/heads/live'
+FILES = 'files-live'
+SELF = Path(__file__).resolve().parents[1]
+LOCK = '/tmp/files-live-deploy.lock'
+
+
+def git(repo, *args):
+    return subprocess.check_output(['git', '-C', str(repo), *args], stderr=subprocess.PIPE)
+
+
+def emit(value, code=0):
+    print(json.dumps(value, sort_keys=True))
+    return code
+
+
+def atomic_link(path, target):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f'.{path.name}.release-live-{os.getpid()}')
+    try:
+        temporary.symlink_to(target)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def pointer(path):
+    if path.is_symlink():
+        return path.resolve(strict=True)
+    if path.exists():
+        raise ValueError(f'not a release symlink: {path}')
+    return None
+
+
+def inside_tree(member, destination):
+    """tarfile 'data' filter, minus tracked symlinks that point out of the tree: a release
+    serves nothing outside itself, so such a link is left out instead of failing the cut."""
+    try:
+        return tarfile.data_filter(member, destination)
+    except tarfile.LinkOutsideDestinationError:
+        return None
+
+
+def inspect_links(release, home, current):
+    layout = host_layout.resolve(release, home=home)
+    manifest = tomllib.loads((release / layout.manifest).read_text())
+    links, changes = {}, []
+    for row in manifest.get('user', []):
+        if row['install'] != 'symlink-stamped':
+            continue
+        source = Path(row['source'])
+        original = release / source
+        if (source.is_absolute() or '..' in source.parts or not original.is_file()
+                or not original.resolve().is_relative_to(release.resolve())):
+            raise ValueError(f'missing or unsafe source: {source}')
+        value = row['live']
+        live = home / value[2:] if value.startswith('~/') else Path(value)
+        if not live.is_absolute() or not live.is_relative_to(home) or '..' in live.parts:
+            raise ValueError(f'live path is outside home: {live}')
+        if live in links:
+            raise ValueError(f'duplicate live path: {live}')
+        if host_layout.checkout_ancestor(live):
+            raise ValueError(f'live path resolves through checkout directory link: {live}')
+        if live.is_symlink() and os.readlink(live) == '/dev/null':
+            continue  # systemctl mask: the owner switched this unit off, a release keeps it off.
+        if live.exists() and not live.is_file():
+            raise ValueError(f'not a regular file: {live}')
+        data = live.read_bytes() if live.exists() else None
+        if data != original.read_bytes():
+            if live.exists() and not live.is_symlink():
+                raise ValueError(f'changed regular file: {live}')
+            changes.append(str(live))
+        links[live] = str(current / source)
+    return layout, links, changes
+
+
+def receipt(home, sha, previous, links, relinked, changes, status, family=FILES):
+    row = dict(at=time.time(), family=family, sha=sha, previous=previous.name if previous else None,
+               links=len(links), relinked=relinked, content_changes=len(changes), status=status)
+    path = home / '.local/state/files-live/releases.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a') as output:
+        output.write(json.dumps(row, sort_keys=True) + '\n')
+    return emit(row)
+
+
+def reload_user(home):
+    if home == Path.home().resolve():
+        subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True, stdout=subprocess.PIPE)
+
+
+def rollback(home, family):
+    library = home / '.local/lib' / family
+    current, previous = library / 'current', library / 'previous'
+    old, target = pointer(current), pointer(previous)
+    if old is None or target is None:
+        raise ValueError('rollback requires current and previous release links')
+    links, changes = inspect_links(target, home, current)[1:] if family == FILES else ({}, [])
+    stamp = json.loads((target / '.deployment-stamp.json').read_text())
+    atomic_link(previous, old)
+    atomic_link(current, target)
+    reload_user(home)
+    return receipt(home, stamp['source_sha'], old, links, 0, changes, 'rollback', family)
+
+
+def deploy(args):
+    repo, home = args.repo.resolve(), args.home.resolve()
+    if args.rollback:
+        return rollback(home, args.family)
+    ref = args.ref if args.plan else LIVE
+    try:
+        sha = git(repo, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}').decode().strip()
+    except subprocess.CalledProcessError:
+        return emit(dict(status='missing_live' if ref == LIVE else 'missing_ref', ref=ref), 3)
+    family = args.family
+    library = home / '.local/lib' / family
+    current, previous = library / 'current', library / 'previous'
+    # Preflight outside home and release storage, so refusals leave both untouched.
+    with tempfile.TemporaryDirectory(prefix='files-live-', dir='/tmp') as temporary:
+        staged = Path(temporary)
+        with tempfile.TemporaryFile() as archive:
+            subprocess.run(['git', '-C', str(repo), 'archive', sha], stdout=archive,
+                           stderr=subprocess.PIPE, check=True)
+            archive.seek(0)
+            with tarfile.open(fileobj=archive) as tree:
+                tree.extractall(staged, filter=inside_tree)
+        if family == FILES:
+            layout, links, changes = inspect_links(staged, home, current)
+        else:
+            layout, links, changes = host_layout.resolve(SELF, home=home), {}, []
+        old = pointer(current)
+        pointer(previous)
+        relink = {path: target for path, target in links.items()
+                  if not path.is_symlink() or os.readlink(path) != target}
+        plan = dict(status='plan', family=family, sha=sha, source_ref=ref, links=len(links),
+                    relinked=len(relink), content_changes=changes)
+        if args.plan:
+            return emit(plan, 5 if changes else 0)
+        if old is None and changes and not args.accept_changes:
+            return emit({**plan, 'status': 'content_changes'}, 5)
+        root = layout.release_root if home == Path.home().resolve() else None
+        release = (root or home / '.local/lib') / family / sha
+        marker = release / '.deployment-stamp.json'
+        if release.exists() and not marker.exists():
+            raise ValueError(f'incomplete release, build never finished: {release}')
+        if not release.exists():
+            if home == Path.home().resolve():
+                host_layout.require_release_mount(staged if family == FILES else SELF, home)
+            stamp = dict(name=family, source_sha=sha, source_ref=LIVE, source_repo=str(repo))
+            tracked = git(repo, 'ls-tree', '-rz', '--name-only', sha).decode().split('\0')[:-1]
+            (staged / '.deployment-stamp.json').unlink(missing_ok=True)
+            (staged / 'tracked-files.json').write_text(json.dumps(tracked, sort_keys=True) + '\n')
+            release.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix='.release-', dir=release.parent) as publishing:
+                tree = Path(publishing) / 'tree'
+                shutil.copytree(staged, tree, symlinks=True)
+                os.rename(tree, release)
+            if args.build:
+                # Built in place (virtualenvs pin absolute paths); the stamp below marks it complete.
+                try:
+                    subprocess.run(args.build, shell=True, cwd=release, check=True, timeout=1800,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                except subprocess.SubprocessError:
+                    shutil.rmtree(release)  # Never referenced: current moves only after the stamp.
+                    raise
+            marker.write_text(json.dumps(stamp, sort_keys=True) + '\n')
+        backup = home / '.local/state/files-live/backups' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        for path in relink:
+            if path.exists() or path.is_symlink():
+                saved = backup / path.relative_to(home)
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, saved, follow_symlinks=False)
+        if old is not None:
+            atomic_link(previous, old)
+        atomic_link(current, release)
+        for path, target in relink.items():
+            atomic_link(path, target)
+        reload_user(home)
+        return receipt(home, sha, old, links, len(relink), changes, 'applied', family)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    modes = parser.add_mutually_exclusive_group(required=True)
+    for mode in ('plan', 'apply', 'rollback'):
+        modes.add_argument('--' + mode, action='store_true')
+    parser.add_argument('--repo', type=Path, default=SELF)
+    parser.add_argument('--family', default=FILES, help='release family under ~/.local/lib')
+    parser.add_argument('--build', help='shell command run inside the new release before it is stamped')
+    parser.add_argument('--home', type=Path, default=Path.home())
+    parser.add_argument('--ref', default=LIVE, help='ref to inspect with --plan only')
+    parser.add_argument('--accept-changes', action='store_true')
+    args = parser.parse_args()
+    if not args.family.replace('-', '').isalnum() or args.family != args.family.lower():
+        parser.error('--family must be lowercase letters, digits and hyphens')
+    try:
+        # Reuse the install-host-storage transaction lock when inherited on fd 9.
+        try:
+            inherited = os.readlink('/proc/self/fd/9') == LOCK
+        except OSError:
+            inherited = False
+        with os.fdopen(os.dup(9), 'w') if inherited else open(LOCK, 'a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            return deploy(args)
+    except (OSError, ValueError, KeyError, tarfile.TarError, subprocess.SubprocessError) as exc:
+        return emit(dict(status='error', error=str(exc)), 4)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -369,6 +369,124 @@ class DriftTests(unittest.TestCase):
         self.assertEqual(audit()['status'], 'unknown')
 
 
+class ReleaseRegistryTests(unittest.TestCase):
+    """Served paths must sit in the current release of a registered repository."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.base = Path(self.temp.name).resolve()
+        self.home = self.base / 'home'
+        self.bin = self.home / '.local/bin'
+        self.units = self.home / '.config/systemd/user'
+        self.bin.mkdir(parents=True)
+        self.units.mkdir(parents=True)
+        self.repo = self.base / 'app'
+        self.repo.mkdir()
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.git('config', 'user.name', 'Fixture')
+        (self.repo / 'tool').write_text('one\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'one')
+        self.sha = self.git('rev-parse', 'HEAD')
+        self.git('update-ref', 'refs/heads/live', self.sha)
+        self.rows = []
+
+    def git(self, *args):
+        return drift.command(['git', '-C', str(self.repo), *args]).strip()
+
+    def release(self, sha, family='app'):
+        tree = self.home / '.local/lib' / family / sha
+        tree.mkdir(parents=True)
+        (tree / 'tool').write_text('one\n')
+        (tree / '.deployment-stamp.json').write_text(json.dumps(
+            dict(name=family, source_sha=sha, source_ref='refs/heads/live', source_repo=str(self.repo))))
+        return tree
+
+    def current(self, tree):
+        link = tree.parent / 'current'
+        if link.is_symlink():
+            link.unlink()
+        link.symlink_to(tree)
+        return link
+
+    def audit(self, mode='archive', **extra):
+        manifest = dict(release=[dict(family='app', repo=str(self.repo), mode=mode, **extra)])
+        self.rows = []
+        block = drift.release_audit(manifest, self.home, None,
+                                    lambda kind, path, detail: self.rows.append((kind, str(path))))
+        return block, {kind for kind, _ in self.rows}
+
+    def test_link_through_current_release_at_live_is_clean(self):
+        current = self.current(self.release(self.sha))
+        (self.bin / 'tool').symlink_to(current / 'tool')
+        (self.units / 'app.service').write_text('[Service]\nExecStart=%h/.local/lib/app/current/tool --serve\n')
+        block, kinds = self.audit()
+        self.assertEqual(kinds, set())
+        self.assertEqual((block['app']['links_checked'], block['app']['off_current']), (2, 0))
+        self.assertEqual(block['app']['current_sha'], block['app']['live_sha'])
+
+    def test_link_into_older_release_or_worktree_of_the_repo_is_not_current(self):
+        old = self.release('0' * 40)
+        self.current(self.release(self.sha))
+        (self.bin / 'old').symlink_to(old / 'tool')
+        (self.bin / 'tree').symlink_to(self.repo / 'tool')
+        worktree = self.base / 'wt'
+        self.git('worktree', 'add', '-q', '--detach', str(worktree))
+        (self.units / 'wt.service').write_text(f'[Service]\nWorkingDirectory={worktree}\nExecStart=/usr/bin/true\n')
+        block, kinds = self.audit()
+        self.assertEqual(kinds, {'release_not_current'})
+        self.assertEqual(block['app']['off_current'], 3)
+
+    def test_live_ahead_of_current_and_missing_live(self):
+        self.current(self.release(self.sha))
+        (self.repo / 'tool').write_text('two\n')
+        self.git('commit', '-qam', 'two')
+        self.git('update-ref', 'refs/heads/live', self.git('rev-parse', 'HEAD'))
+        self.assertEqual(self.audit()[1], {'release_behind_live'})
+        self.git('update-ref', '-d', 'refs/heads/live')
+        self.assertEqual(self.audit()[1], {'release_no_live'})
+
+    def test_unregistered_checkout_and_family_are_reported_once_per_source(self):
+        self.current(self.release(self.sha))
+        other = self.base / 'other'
+        (other / '.git').mkdir(parents=True)
+        for name in ('a', 'b'):
+            (other / name).write_text('x\n')
+            (self.bin / name).symlink_to(other / name)
+        stray = self.release('1' * 40, family='stray')
+        (self.bin / 'stray').symlink_to(stray / 'tool')
+        self.audit()
+        self.assertEqual(sorted(self.rows), [('release_unregistered', str(other)), ('release_unregistered', 'stray')])
+
+    def test_absorbed_family_counts_against_the_registered_release(self):
+        self.current(self.release(self.sha))
+        legacy = self.release('2' * 40, family='app-legacy')
+        (self.bin / 'legacy').symlink_to(legacy / 'tool')
+        self.assertEqual(self.audit(absorbs=['app-legacy'])[1], {'release_not_current'})
+
+    def test_checkout_mode_requires_clean_tree_on_live(self):
+        (self.bin / 'tool').symlink_to(self.repo / 'tool')
+        self.assertEqual(self.audit(mode='checkout')[1], set())
+        self.git('worktree', 'add', '-q', '--detach', str(self.repo / '.worktrees/side'))
+        (self.bin / 'side').symlink_to(self.repo / '.worktrees/side/tool')
+        self.assertEqual(self.audit(mode='checkout')[1], {'release_not_current'})
+        (self.bin / 'side').unlink()
+        (self.repo / 'tool').write_text('edited\n')
+        self.assertEqual(self.audit(mode='checkout')[1], {'release_dirty_checkout'})
+        self.git('commit', '-qam', 'local')
+        self.assertEqual(self.audit(mode='checkout')[1], {'release_behind_live'})
+
+    def test_no_registry_checks_nothing_and_hand_script_is_unmanaged(self):
+        (self.bin / 'loose').symlink_to(self.repo / 'tool')
+        self.assertEqual(drift.release_audit({}, self.home, None, None), {})
+        (self.bin / 'hand').write_text('#!/bin/sh\necho hi\n')
+        (self.bin / 'entry').write_text('#!/home/x/.local/share/uv/tools/t/bin/python\nimport sys\nsys.exit(main())\n')
+        (self.bin / 'blob').write_bytes(b'\x7fELF')
+        self.assertEqual([path.name for path in drift.unmanaged_executables(self.home)], ['hand'])
+
+
 class InstallerTests(unittest.TestCase):
     def test_dry_run_and_idempotent_content_stamped_install(self):
         with tempfile.TemporaryDirectory() as temporary:
