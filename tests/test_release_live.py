@@ -111,6 +111,15 @@ class ReleaseLiveTests(unittest.TestCase):
         for live, source in zip(self.paths, self.sources):
             self.assertEqual((backups[0] / live).read_bytes(), self.sources[source])
 
+    def test_tracked_symlink_leaving_the_tree_is_left_out_of_the_release(self):
+        (self.repo / 'config/outside').symlink_to('../../elsewhere')
+        (self.repo / 'config/inside').symlink_to('unit.service')
+        self.git('update-ref', 'refs/heads/live', self.commit())
+        self.run_cli('--apply')
+        release = (self.library / 'current').resolve()
+        self.assertFalse((release / 'config/outside').is_symlink())
+        self.assertEqual(os.readlink(release / 'config/inside'), 'unit.service')
+
     def test_plan_is_read_only_and_honors_ref(self):
         before = self.snapshot()
         result = self.run_cli('--plan')

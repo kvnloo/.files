@@ -55,6 +55,15 @@ def pointer(path):
     return None
 
 
+def inside_tree(member, destination):
+    """tarfile 'data' filter, minus tracked symlinks that point out of the tree: a release
+    serves nothing outside itself, so such a link is left out instead of failing the cut."""
+    try:
+        return tarfile.data_filter(member, destination)
+    except tarfile.LinkOutsideDestinationError:
+        return None
+
+
 def inspect_links(release, home, current):
     layout = host_layout.resolve(release, home=home)
     manifest = tomllib.loads((release / layout.manifest).read_text())
@@ -135,7 +144,7 @@ def deploy(args):
                            stderr=subprocess.PIPE, check=True)
             archive.seek(0)
             with tarfile.open(fileobj=archive) as tree:
-                tree.extractall(staged, filter='data')
+                tree.extractall(staged, filter=inside_tree)
         if family == FILES:
             layout, links, changes = inspect_links(staged, home, current)
         else:
