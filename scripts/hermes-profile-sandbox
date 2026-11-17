@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Per-profile sandbox for Hermes turns on groot (kernel-enforced via bubblewrap).
+#   hermes-profile-sandbox run PROFILE -- CMD...   run CMD inside PROFILE's sandbox
+#   hermes-profile-sandbox verify PROFILE          13+ escape attempts inside it; checks the HOST after
+# Why bwrap and not a unit drop-in: one hermes-gateway hosts every profile's turns, so the
+# per-profile boundary has to sit at the turn launch, not at the unit. The gateway puts the
+# turn in its systemd scope first (it has the bus), then execs this; inside, the bus is gone.
+# Writable: the profile's own dir, shared kanban DB, ~/.claude (direct-SDK sign-in), code
+# checkouts/worktrees, package caches, a private /tmp. Read-only: everything else, including
+# other profiles, the default profile's config/skills/memories, the live hermes-agent
+# checkout, .files and releases (shell rc, units, bin). Hidden: user bus, systemd socket,
+# docker, system bus, kubeconfig, /run/user. Everything inside dies with the sandbox.
+set -euo pipefail
+self=$(readlink -f "$0")
+cmd=${1:-}; shift || true
+H=${HERMES_DEFAULT_HOME:-/workspace/hermes-home}
+UIDN=$(id -u)
+
+args_for() {
+  local p=$1 pdir=$H/profiles/$1 e n
+  [[ $p == default ]] && pdir=$H  # the default profile's home is the shared root itself
+  [[ $p =~ ^[a-z0-9][a-z0-9_-]*$ && -d $pdir ]] || { echo "no such profile: $p" >&2; exit 2; }
+  local tmp=$HOME/.cache/agent-tmp/hermes-$p
+  mkdir -p "$tmp"
+  A=(--die-with-parent --unshare-pid --unshare-user --unshare-ipc --unshare-uts --unshare-cgroup-try
+     --ro-bind / / --dev-bind /dev /dev --proc /proc
+     --tmpfs /run/user/"$UIDN" --remount-ro /run/user/"$UIDN" --tmpfs /run/dbus --remount-ro /run/dbus --perms 1777 --size $((512<<20)) --tmpfs /dev/shm
+     --bind "$tmp" /tmp)
+  mkdir -p "$tmp/.empty"
+  for e in /run/docker.sock /var/run/docker.sock /run/k3s /etc/rancher "$HOME/.kube"; do
+    [[ -e $e ]] && A+=(--ro-bind "$( [[ -d $e ]] && echo "$tmp/.empty" || echo /dev/null)" "$e")
+  done
+  # Code checkouts and worktrees (~/workspace is /workspace on groot). Binds stack: the
+  # read-only and Hermes-home binds below sit on top of these.
+  for e in /workspace /mnt/zer0models/workspace/zer0; do [[ -d $e ]] && A+=(--bind "$e" "$e"); done
+  # Shared default home stays read-only (it sits under /workspace, bound rw above); only the
+  # kanban board and this profile are writable. The gateway holds kanban.db open in WAL mode,
+  # so its -wal/-shm already exist and binding them is enough for workers to write.
+  A+=(--ro-bind "$H" "$H")
+  for e in "$H"/kanban "$H"/kanban.db*; do [[ -e $e && ! -L $e ]] && A+=(--bind "$e" "$e"); done
+  A+=(--bind "$pdir" "$pdir")
+  # default owns the root: re-protect other profiles, code and the gateway's own config on top.
+  if [[ $p == default ]]; then
+    for e in "$H"/profiles "$H"/hermes-agent "$H"/installs "$H"/tools "$H"/config.yaml "$H"/.env; do
+      [[ -e $e ]] && A+=(--ro-bind "$e" "$e")
+    done
+  fi
+  # A read-only mount does not stop connect() on a unix socket: the gateway socket would let a
+  # sandboxed turn submit an unsandboxed turn as any profile. Cover every Hermes control socket.
+  while IFS= read -r e; do A+=(--ro-bind /dev/null "$e"); done < <(find "$H" "$H/state" "$H/profiles" \
+    -maxdepth 2 -type s 2>/dev/null)
+  # Hermes' launcher flocks these on every start and registers a lease (GC pin) on the
+  # generation it runs; leases hold no code. The runtime itself stays read-only so no
+  # profile can change code the gateway and other profiles run.
+  while IFS= read -r e; do A+=(--bind "$e" "$e"); done < <(find "$H/installs" -maxdepth 5 \
+    \( -name .install.lock -o -name .prepare.lock -o -path "*/bootstrap/$p.json*" -o -name .leases \) 2>/dev/null)
+  # Writable outside the Hermes home.
+  for e in "$HOME/.claude" "$HOME/.claude.json" "$HOME/.cache" "$HOME/.npm" "$HOME/.bun" "$HOME/.cargo" \
+           "$HOME/.local/share/uv" "$HOME/.local/state"; do
+    [[ -e $e ]] && A+=(--bind "$(readlink -f "$e")" "$(readlink -f "$e")")
+  done
+  # Read-only inside the code tree: dotfiles, the live Hermes checkout, release trees.
+  for e in /mnt/zer0models/workspace/zer0/.files /workspace/.files /workspace/hermes-home/hermes-agent /mnt/zer0models/releases; do
+    [[ -e $e ]] && A+=(--ro-bind "$(readlink -f "$e")" "$(readlink -f "$e")")
+  done
+  # In the user namespace root-owned files show as nobody and ssh refuses its system config
+  # ("Bad owner"), which would break git-over-ssh and fleet ssh. Same content, owned by us.
+  rm -rf "$tmp/.etc-ssh"; mkdir -p "$tmp/.etc-ssh"
+  cp -rL /etc/ssh/ssh_config /etc/ssh/ssh_config.d "$tmp/.etc-ssh/" 2>/dev/null || true
+  [[ -e $tmp/.etc-ssh/ssh_config ]] && A+=(--ro-bind "$tmp/.etc-ssh/ssh_config" /etc/ssh/ssh_config)
+  [[ -d $tmp/.etc-ssh/ssh_config.d ]] && A+=(--ro-bind "$tmp/.etc-ssh/ssh_config.d" /etc/ssh/ssh_config.d)
+  mkdir -p "$tmp/xdg-run" && chmod 700 "$tmp/xdg-run"
+  A+=(--setenv TMPDIR /tmp --setenv XDG_RUNTIME_DIR /tmp/xdg-run --setenv HERMES_PROFILE_SANDBOX "$p" --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv SSH_AUTH_SOCK)
+}
+
+# Runs INSIDE the sandbox. Each attempt is something an agent might do without thinking.
+probe() {
+  local t=$1 p=$2 other
+  other=$(ls "$H/profiles" | grep -vx "$p" | head -1)
+  try() { local n=$1; shift; if timeout 20 "$@" >/dev/null 2>&1; then echo "ESCAPED $n"; else echo "blocked $n"; fi; }
+  try home-file          touch "$HOME/.escape-$t"
+  try home-project       sh -c "mkdir -p $HOME/escape-$t && cd $HOME/escape-$t && git init -q"
+  try var-tmp            touch "/var/tmp/escape-$t"
+  try run-user           touch "/run/user/$UIDN/escape-$t"
+  try user-unit          touch "$HOME/.config/systemd/user/escape-$t.service"
+  try shell-rc           touch "$(readlink -f "$HOME/.config/fish/config.fish")"
+  try dotfiles-repo      touch "/mnt/zer0models/workspace/zer0/.files/escape-$t"
+  try dotfiles-live      touch "/workspace/.files/escape-$t"
+  try local-bin          touch "$HOME/.local/bin/escape-$t"
+  try dev-shm-600M       dd if=/dev/zero of="/dev/shm/escape-$t" bs=1M count=600
+  try systemd-run        systemd-run --user --unit="escape-$t" touch "$HOME/.escape-sdrun-$t"
+  try user-bus           busctl --user list
+  try system-bus         busctl --system list
+  try docker             docker ps
+  try kubectl            kubectl --request-timeout=5s get pods -A
+  try ssh-localhost      ssh -o BatchMode=yes -o ConnectTimeout=3 localhost true
+  # Two-hop: fleet ssh to the MBP is allowed (fleet-build), but nothing may come back to groot.
+  try ssh-hop-mbp-groot  ssh -o BatchMode=yes -o ConnectTimeout=5 mbp "ssh -o BatchMode=yes -o ConnectTimeout=4 groot true"
+  # Local control planes that execute things outside the sandbox.
+  try gateway-socket     python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('$H/gateway.sock')"
+  try hermes-api-8642    bash -c 'exec 3<>/dev/tcp/127.0.0.1/8642'
+  try adb-5037           bash -c 'exec 3<>/dev/tcp/127.0.0.1/5037'
+  try other-profile      touch "$H/profiles/$other/escape-$t"
+  try default-config     touch "$H/config.yaml"
+  try hermes-checkout    touch "$H/hermes-agent/escape-$t"
+  setsid bash -c "exec -a escape-$t sleep 300" </dev/null >/dev/null 2>&1 &
+  echo private > "/tmp/scratch-$t"
+  local own=$H/profiles/$p; [[ $p == default ]] && own=$H
+  echo "allowed own-profile: $(touch "$own/.canary-$t" && rm "$own/.canary-$t" && echo ok || echo FAIL)"
+  echo "allowed kanban-db: $(test -w "$H/kanban.db" && echo ok || echo FAIL)"
+  echo "allowed claude-home: $(test -w "$(readlink -f "$HOME/.claude")" && echo ok || echo FAIL)"
+  echo "allowed worktrees: $(mkdir -p /mnt/zer0models/workspace/zer0/worktrees/.canary-$t && rmdir /mnt/zer0models/workspace/zer0/worktrees/.canary-$t && echo ok || echo FAIL)"
+}
+
+verify() {
+  local p=$1 t bad=0 out log f other
+  t=$(date +%s)$$
+  log=$HOME/.cache/agent-tmp/hermes-escape-$p.log
+  args_for "$p"
+  bwrap "${A[@]}" -- /usr/bin/bash "$self" probe "$t" "$p" >"$log" 2>&1 || true
+  out=$(grep -E '^(ESCAPED|blocked|allowed)' "$log" || true)
+  echo "$out" | sed "s/^/  $p: /"
+  grep -q ESCAPED <<<"$out" && bad=1
+  grep -q '^blocked' <<<"$out" || { echo "FAIL probe produced no results"; bad=1; }
+  grep -q 'FAIL' <<<"$out" && { echo "FAIL an allowed path was not writable"; bad=1; }
+  # Host-side truth: nothing the probe tried may exist after the sandbox ended.
+  other=$(ls "$H/profiles" | grep -vx "$p" | head -1)
+  for f in "$HOME/.escape-$t" "$HOME/escape-$t" "/var/tmp/escape-$t" "/run/user/$UIDN/escape-$t" \
+           "$HOME/.config/systemd/user/escape-$t.service" "$HOME/.local/bin/escape-$t" "$HOME/.escape-sdrun-$t" \
+           "/mnt/zer0models/workspace/zer0/.files/escape-$t" "/workspace/.files/escape-$t" "/tmp/scratch-$t" \
+           "/dev/shm/escape-$t" "$H/profiles/$other/escape-$t" "$H/hermes-agent/escape-$t"; do
+    [[ -e $f ]] && { echo "FAIL leftover on host: $f"; rm -rf "$f"; bad=1; }
+  done
+  systemctl --user is-active -q "escape-$t" 2>/dev/null && { echo "FAIL unit escape-$t exists on host"; bad=1; }
+  sleep 1
+  pgrep -f "escape-$t" >/dev/null && { echo "FAIL process escape-$t outlived the sandbox"; pkill -f "escape-$t"; bad=1; }
+  [[ -e $HOME/.cache/agent-tmp/hermes-$p/scratch-$t ]] && rm -f "$HOME/.cache/agent-tmp/hermes-$p/scratch-$t" \
+    || { echo "FAIL sandbox /tmp was not the private dir"; bad=1; }
+  [[ $bad == 0 ]] && echo "PASS $p: no escapes (log $log)" || echo "FAIL $p: sandbox not enforced (log $log)"
+  return $bad
+}
+
+case $cmd in
+  probe) probe "$@" ;;
+  run) p=$1; shift; [[ ${1:-} == -- ]] && shift; args_for "$p"; exec bwrap "${A[@]}" -- "$@" ;;
+  verify) bad=0; for p in "${@:-clean}"; do verify "$p" || bad=1; done; exit $bad ;;
+  *) echo "usage: $0 run PROFILE -- CMD... | verify PROFILE..." >&2; exit 2 ;;
+esac
