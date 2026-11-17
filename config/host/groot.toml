@@ -4434,11 +4434,13 @@ family = "files-live"
 repo = "/workspace/.files"
 absorbs = ["files-bws", "files-master", "files-host-drift", "files-tern-omp", "files-units", "files-hooks",
            "host-storage", "mesh-healer", "artifact-leases", "phone-adb-keeper", "z0-guard", "z0int-units",
-           "z0int-model-identity-units", "dash-services", "quackles-services"]
+           "z0int-model-identity-units", "dash-services", "quackles-services", "burn-pace", "burn-gate",
+           "hermes-mobile-serve"]
 
 [[release]]
 family = "z0int"
-repo = "/mnt/zer0models/workspace/zer0/oss/.work/z0intelligence"
+repo = "/mnt/zer0models/z0-wt/z0intelligence"
+clones = ["/mnt/tier/zer0models/home-offload/kvn/offload-2026-10-03/tmp/openjev", "/mnt/zer0models/turbo-mode-20261019/z0intelligence", "/mnt/zer0models/z0-wt/z0int-vllm-sr-turbo"]
 absorbs = ["z0int-policy", "z0int-shadow", "z0int-capacity", "z0int-runtime", "z0-state-packet", "circadian"]
 
 [[release]]
@@ -4454,3 +4456,322 @@ mode = "checkout"
 family = "z0live"
 repo = "/mnt/zer0models/workspace/zer0/products/z0live"
 mode = "checkout"
+
+# F32 2026-11-17: hand-placed ~/.local/bin scripts whose bytes were already on a pushed branch of this
+# (public) repository. Never-published scripts live in the private home repository (family "home").
+
+[[user]]
+live = "~/.local/bin/ayo-telegram-relay"
+source = "scripts/ayo-telegram-relay"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/cred-flow"
+source = "scripts/cred-flow"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/detent-sync-colors"
+source = "scripts/detent-sync-colors"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand copy served an older variant than this tree; the copy is archived at the cut."
+
+[[user]]
+live = "~/.local/bin/gh-cached"
+source = "scripts/gh-cached"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/phoneq"
+source = "services/phone-queue/phoneq"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/research"
+source = "scripts/research"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/route-build"
+source = "network/optimizer/route-build"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/travel-check"
+source = "scripts/travel-check"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Hand-placed copy of bytes that only an unmerged branch held; adopted byte-identical."
+
+[[user]]
+live = "~/.local/bin/burn-pace"
+source = "scripts/burn-pace"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Served from a one-off content-stamped family; byte-identical to this tree."
+
+[[user]]
+live = "~/.local/bin/burn-gate"
+source = "scripts/burn-gate"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Served from a one-off named release; byte-identical to this tree."
+
+[[user]]
+live = "~/.local/bin/hermes-mobile-serve"
+source = "scripts/hermes-mobile-serve.py"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Served from a one-off content-stamped family cut from an unmerged branch; adopted byte-identical."
+
+[[user]]
+live = "~/.config/systemd/user/hermes-drive-web-proxy.service.d/80-tailnet-serve.conf"
+source = "config/systemd/user/hermes-drive-web-proxy.service.d/80-tailnet-serve.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/release-live"
+reason = "Served from a one-off content-stamped family cut from an unmerged branch; adopted byte-identical."
+
+# F32: every repository that serves this host is registered. A product served from its own clone is
+# mode "checkout": clean on refs/heads/live, or it shows as drift.
+
+[[release]]
+family = "oss-factory"
+repo = "/home/kvn/zer0/oss-factory"
+mode = "checkout"
+
+[[release]]
+family = "hermes-jev-skills"
+repo = "/home/kvn/zer0/oss/hermes-jev-skills"
+mode = "checkout"
+
+[[release]]
+family = "hermes-k8s-lab"
+repo = "/home/kvn/zer0/oss/hermes-k8s-lab"
+mode = "checkout"
+
+[[release]]
+family = "oh-my-pi"
+repo = "/mnt/tier/zer0models/home-offload/kvn/offload-2026-09-21/tmp/oh-my-pi"
+mode = "checkout"
+
+[[release]]
+family = "z0-hillclimb"
+repo = "/mnt/zer0models/github/autokernel"
+mode = "checkout"
+
+[[release]]
+family = "noop-oura"
+repo = "/mnt/zer0models/noop-oura"
+mode = "checkout"
+
+[[release]]
+family = "subscription-voice"
+repo = "/mnt/zer0models/project-artifacts/hermes-mobile/subscription-voice"
+mode = "checkout"
+
+[[release]]
+family = "sft-svlm"
+repo = "/mnt/zer0models/sft-svlm"
+mode = "checkout"
+
+[[release]]
+family = "hermes-keel"
+repo = "/mnt/zer0models/workspace/zer0/oss/hermes-keel"
+mode = "checkout"
+
+[[release]]
+family = "o8"
+repo = "/mnt/zer0models/workspace/zer0/oss/o8"
+mode = "checkout"
+
+[[release]]
+family = "taste-skill"
+repo = "/mnt/zer0models/workspace/zer0/oss/taste-skill"
+mode = "checkout"
+
+[[release]]
+family = "chief-of-staff"
+repo = "/mnt/zer0models/workspace/zer0/portfolios/chief-of-staff"
+mode = "checkout"
+
+[[release]]
+family = "hermes3d"
+repo = "/mnt/zer0models/workspace/zer0/products/content-creation/hermes3d-live/engine"
+mode = "checkout"
+
+[[release]]
+family = "factory-revenue"
+repo = "/mnt/zer0models/workspace/zer0/products/factory-revenue"
+mode = "checkout"
+
+[[release]]
+family = "garden-room"
+repo = "/mnt/zer0models/workspace/zer0/products/garden_room"
+mode = "checkout"
+
+[[release]]
+family = "hermes-merch-studio"
+repo = "/mnt/zer0models/workspace/zer0/products/hermes-merch-studio"
+mode = "checkout"
+
+[[release]]
+family = "launch-videos"
+repo = "/mnt/zer0models/workspace/zer0/products/launch-videos"
+mode = "checkout"
+
+[[release]]
+family = "n722bd-reconstruction"
+repo = "/mnt/zer0models/workspace/zer0/products/n722bd-reconstruction"
+mode = "checkout"
+
+[[release]]
+family = "neuroforge"
+repo = "/mnt/zer0models/workspace/zer0/products/neuroforge"
+mode = "checkout"
+
+[[release]]
+family = "pm"
+repo = "/mnt/zer0models/workspace/zer0/products/pm"
+mode = "checkout"
+
+[[release]]
+family = "streetiq"
+repo = "/mnt/zer0models/workspace/zer0/products/traffic-vision/streetiq"
+mode = "checkout"
+
+[[release]]
+family = "open-wearables"
+repo = "/mnt/zer0models/workspace/zer0/services/open-wearables"
+mode = "checkout"
+
+[[release]]
+family = "firstmate"
+repo = "/workspace/firstmate"
+mode = "checkout"
+
+[[release]]
+family = "frontier-kb"
+repo = "/workspace/frontier-kb"
+mode = "checkout"
+
+# Private host launchers and tools (never-published ~/.local/bin scripts): tools/bin/<name>, served through
+# ~/.local/lib/home/current by release-live --family home.
+[[release]]
+family = "home"
+repo = "/workspace/repos/home"
+
+# F32: out of the release path, each with its reason. A row with expires stops hiding its source on that day.
+
+[[release_ignore]]
+source = "/home/kvn/.tmux/plugins/tmux-resurrect"
+reason = "Third-party tmux plugin on upstream master, updated by tpm."
+
+[[release_ignore]]
+source = "/mnt/zer0models/workspace/zer0/oss/open-pencil"
+reason = "Third-party open-pencil upstream master; no local changes."
+
+[[release_ignore]]
+source = "/mnt/zer0models/workspace/zer0/oss/t3code"
+reason = "Third-party pingdotgg/t3code upstream main; t3-nightly builds from it, our changes go upstream by PR."
+
+[[release_ignore]]
+source = "/workspace/hermes-home/plugins/hermes-agent-cluster"
+reason = "Third-party Hermes plugin on upstream main, managed by the Hermes plugin installer."
+
+[[release_ignore]]
+source = "/workspace/z0-farm/llama.cpp-b11270"
+reason = "Third-party llama.cpp pinned at build b11270; the pin is the directory name."
+
+[[release_ignore]]
+source = "/mnt/zer0models/project-artifacts/quackles"
+reason = "Artifact store that commits itself (quackles-artifacts-autocommit); data, not served code."
+
+[[release_ignore]]
+source = "/mnt/zer0models/workspace/zer0/experiments/jedi_temple_guard"
+reason = "Experiment preview server over a 507-file dirty working tree; register it or retire the unit."
+expires = "2026-12-17"
+
+[[release_ignore]]
+source = "/mnt/zer0models/workspace/zer0/experiments/pokemon/game"
+reason = "Experiment preview server over a dirty working tree; register it or retire the unit."
+expires = "2026-12-17"
+
+[[release_ignore]]
+source = "/mnt/zer0models/zer0-worktrees/hermes3d-live/pokemon-card-exhibit-preview/private/cardtwin-card-materials"
+reason = "One-off A/B render job in a preview worktree with no remote; register it or retire the unit."
+expires = "2026-12-17"
+
+[[release_ignore]]
+script = "*"
+exec = "/workspace/hermes-home/hermes-agent/.hermes/bin/hermes -p {name} "
+reason = "Profile alias written by `hermes profile create`; hermes-agent is a registered release."
+
+[[release_ignore]]
+script = "hermes-acp"
+exec = "/workspace/hermes-home/hermes-agent/.hermes/bin/hermes-acp "
+reason = "Launcher written by the Hermes installer."
+
+[[release_ignore]]
+script = "t3"
+exec = "'/home/kvn/.t3/runtime/versions/"
+reason = "Launcher the T3 runtime rewrites on every nightly update."
+
+[[release_ignore]]
+script = "clean"
+sha256 = "85542a66dd88bae70de429c9085af96e24a1b24a80430e2feaa87167930bb090"
+reason = "Older Hermes profile alias (hermes -p clean); an edit shows as drift again."
+
+[[release_ignore]]
+script = "env"
+sha256 = "18fe5eac4f8553bbc22dbc3a87c23afe7b59e355baf6ebc46e1feff0e18aeb40"
+reason = "PATH snippet written by the uv/tool installer; an edit shows as drift again."
+
+[[release_ignore]]
+script = "paperclipai"
+sha256 = "c89cc07713def631247df343dcad91e77388d3843511e52a3b00623c30bf3113"
+reason = "Paperclipai managed install shim v1; an edit shows as drift again."
+
+[[release_ignore]]
+script = "tasks-axi"
+sha256 = "383b9181c64cf8fe88dff541dc9983edf3e6e2a4cb69529e6809a456f9255056"
+reason = "Tasks-axi npm launcher; an edit shows as drift again."
+
+[[release_ignore]]
+script = "vllm-sr"
+sha256 = "0a2670b2b02aaa39671612900c78c8934b29666dd5905325b925c91d8dff73fe"
+reason = "Vllm-sr installer launcher; an edit shows as drift again."
+
+[[release_ignore]]
+script = "prime-agent"
+sha256 = "fa8847b097d174766369952aaceee5898d17097a27efa37b43cbada0293f8c45"
+reason = "Launcher written by prime-agent install-rust.sh; an edit shows as drift again."
+
+[[release_ignore]]
+script = "o8"
+sha256 = "c5f1f615be28e154eeabf27c3d39b4b54d6cad25a938a0b4e9956fb199190615"
+reason = "Launcher written by the o8 installer (o8 scripts/linux/o8); an edit shows as drift again."

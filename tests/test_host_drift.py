@@ -486,6 +486,42 @@ class ReleaseRegistryTests(unittest.TestCase):
         (self.bin / 'blob').write_bytes(b'\x7fELF')
         self.assertEqual([path.name for path in drift.unmanaged_executables(self.home)], ['hand'])
 
+    def test_ignore_rows_take_a_source_or_an_unchanged_script_off_the_release_path(self):
+        self.current(self.release(self.sha))
+        other = self.base / 'other'
+        (other / '.git').mkdir(parents=True)
+        (other / 'a').write_text('x\n')
+        (self.bin / 'a').symlink_to(other / 'a')
+        (self.bin / 'pinned').write_text('#!/bin/sh\necho hi\n')
+        (self.bin / 'alias').write_text('#!/bin/sh\n# made by the installer\nexec /opt/app/bin/app -p alias "$@"\n')
+        pin = hashlib.sha256((self.bin / 'pinned').read_bytes()).hexdigest()
+        manifest = dict(release=[dict(family='app', repo=str(self.repo))], release_ignore=[
+            dict(source=str(other), reason='third party'),
+            dict(script='pinned', sha256=pin, reason='installer shim'),
+            dict(script='*', exec='/opt/app/bin/app -p {name} ', reason='profile alias')])
+        rows = []
+        drift.release_audit(manifest, self.home, None, lambda kind, path, detail: rows.append(kind))
+        self.assertEqual(rows, [])
+        scripts = drift.release_ignores(manifest, self.home)[1]
+        self.assertEqual(list(drift.unmanaged_executables(self.home, scripts)), [])
+        (self.bin / 'pinned').write_text('#!/bin/sh\necho edited\n')
+        (self.bin / 'alias').write_text('#!/bin/sh\nrm -rf "$1"\nexec /opt/app/bin/app -p alias "$@"\n')
+        self.assertEqual([path.name for path in drift.unmanaged_executables(self.home, scripts)], ['alias', 'pinned'])
+        manifest['release_ignore'][0]['expires'] = '2000-01-01'
+        drift.release_audit(manifest, self.home, None, lambda kind, path, detail: rows.append(kind))
+        self.assertEqual(rows, ['release_unregistered'])
+        for bad in (dict(source='x'), dict(script='x', reason='r'), dict(script='x', sha256='0', exec='y', reason='r')):
+            with self.assertRaises(ValueError):
+                drift.release_ignores(dict(release_ignore=[bad]), self.home)
+
+    def test_another_clone_of_a_registered_repository_is_off_current_not_unregistered(self):
+        self.current(self.release(self.sha))
+        clone = self.base / 'clone'
+        (clone / '.git').mkdir(parents=True)
+        (clone / 'tool').write_text('x\n')
+        (self.bin / 'tool').symlink_to(clone / 'tool')
+        self.assertEqual(self.audit(clones=[str(clone)])[1], {'release_not_current'})
+
 
 class InstallerTests(unittest.TestCase):
     def test_dry_run_and_idempotent_content_stamped_install(self):

@@ -172,6 +172,49 @@ def release_owner(resolved, home, releases):
     return ('checkout', str(main_repo(checkout)), checkout) if checkout else None
 
 
+def release_ignores(manifest, home, today=None):
+    """[[release_ignore]] rows put a served source or a ~/.local/bin script outside the release path.
+
+    source: a checkout or family name. script: a file name pattern, honoured only while the file
+    has the row's sha256, or is nothing but `exec <exec value>...` ({name} is the file name), so
+    an installer may rewrite its launcher but a hand edit shows again. expires: honoured before it.
+    """
+    today = today or datetime.date.today().isoformat()
+    sources, scripts = set(), []
+    for row in manifest.get('release_ignore', []):
+        kinds = [key for key in ('source', 'script') if isinstance(row.get(key), str) and row[key]]
+        if (len(kinds) != 1 or not isinstance(row.get('reason'), str) or not row['reason']
+                or not isinstance(row.get('expires', '-'), str)
+                or (kinds[0] == 'script') != (('sha256' in row) != ('exec' in row))):
+            raise ValueError(f'invalid release_ignore row: {row.get("source") or row.get("script")}')
+        if row.get('expires', '9999') <= today:
+            continue
+        if kinds[0] == 'script':
+            scripts.append(row)
+        elif row['source'].startswith('/'):
+            sources.add(str(Path(row['source']).resolve()))
+        else:
+            sources.add(row['source'])
+    return sources, scripts
+
+
+def ignored_script(path, rows):
+    data = None
+    for row in rows:
+        if not fnmatch.fnmatchcase(path.name, row['script']):
+            continue
+        data = path.read_bytes() if data is None else data
+        if 'sha256' in row:
+            if hashlib.sha256(data).hexdigest() == row['sha256']:
+                return True
+            continue
+        body = [line.strip() for line in data.decode(errors='replace').splitlines()[1:]
+                if line.strip() and not line.lstrip().startswith('#')]
+        if len(body) == 1 and body[0].startswith('exec ' + row['exec'].replace('{name}', path.name)):
+            return True
+    return False
+
+
 def release_audit(manifest, home, releases, problem):
     """Every served path must sit in the current release of a repository the manifest registers.
 
@@ -208,11 +251,12 @@ def release_audit(manifest, home, releases, problem):
             problem('release_behind_live', family, dict(current=info['current_sha'], live=info['live_sha']))
         for name in (family, *row.get('absorbs', [])):
             families[name] = (family, serving)
-        repos[str(repo.resolve())] = (family, serving)
+        for clone in (repo, *map(Path, row.get('clones', []))):  # clones: other checkouts of the repository
+            repos[str(clone.resolve())] = (family, serving)
         block[family] = info
     if not block:
         return block  # A host opts in by registering its first repository.
-    unregistered = {}
+    unregistered, ignored = {}, release_ignores(manifest, home)[0]
     for origin, path in served_paths(home):
         try:
             resolved = path.resolve()
@@ -223,7 +267,8 @@ def release_audit(manifest, home, releases, problem):
             continue
         known = (families if owner[0] == 'family' else repos).get(owner[1])
         if known is None:
-            unregistered.setdefault(owner[:2], []).append(str(origin))
+            if owner[1] not in ignored:
+                unregistered.setdefault(owner[:2], []).append(str(origin))
             continue
         family, serving = known
         block[family]['links_checked'] += 1
@@ -237,7 +282,7 @@ def release_audit(manifest, home, releases, problem):
     return block
 
 
-def unmanaged_executables(home):
+def unmanaged_executables(home, ignores=()):
     """Hand-written scripts placed in ~/.local/bin as regular files; package entry points are not ours."""
     directory = home / '.local/bin'
     for path in sorted(directory.iterdir()) if directory.is_dir() else ():
@@ -250,7 +295,7 @@ def unmanaged_executables(home):
             continue
         entry_point = (any(mark in first for mark in (b'/uv/tools/', b'/pipx/', b'/venv/', b'/.venv/', b'/site-packages/'))
                        or (path.stat().st_size < 500 and b'sys.exit(' in data))
-        if not entry_point:
+        if not entry_point and not ignored_script(path, ignores):
             yield path
 
 
@@ -607,7 +652,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
     release_block = {}
     try:
         release_block = release_audit(manifest, home, releases, problem)
-        for path in unmanaged_executables(home):
+        for path in unmanaged_executables(home, release_ignores(manifest, home)[1]):
             problem('unmanaged_executable', path, 'regular script in ~/.local/bin; serve it from a release')
     except (OSError, ValueError, KeyError, TypeError) as exc:
         add(unknown, 'release_unavailable', 'release', str(exc))

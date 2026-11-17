@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""cred-flow: at most one pending interactive credential flow per name (oss-factory #318).
+
+  cred-flow NAME [--ttl SECONDS] -- COMMAND...
+
+The first call starts COMMAND detached, under a pty (`script`), logging to
+~/.local/state/cred-flow/NAME/log, and prints the verification URL and user code once they
+appear. Any later call while that flow is still alive and younger than --ttl (default 900 s,
+the usual device-code lifetime) re-prints the same URL and code and starts nothing, so the
+code the owner already has stays valid. A finished or expired flow is replaced by a new one.
+Exit 0 = code printed, 3 = the flow printed no code within 60 s, 2 = usage.
+"""
+import fcntl, os, re, shlex, signal, subprocess, sys, time
+from pathlib import Path
+
+STATE = Path(os.environ.get("CRED_FLOW_STATE", Path.home() / ".local/state/cred-flow"))
+CODE = re.compile(r"\b[A-Z0-9]{4}-[A-Z0-9]{4}\b")
+URL = re.compile(r"https://[^\s\"'<>]+")
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    try:  # a zombie child of an exited cred-flow is not alive
+        return Path(f"/proc/{pid}/stat").read_text().split(")")[-1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+def found(log):
+    text = log.read_text(errors="replace") if log.exists() else ""
+    code, url = CODE.findall(text), URL.findall(text)
+    return (code[-1], url[-1]) if code and url else None
+
+
+def main(argv):
+    if "--" not in argv or argv.index("--") < 1 or not argv[argv.index("--") + 1:]:
+        print(__doc__.strip().splitlines()[2], file=sys.stderr)
+        return 2
+    sep = argv.index("--")
+    name, opts, cmd = argv[0], argv[1:sep], argv[sep + 1:]
+    ttl = int(opts[opts.index("--ttl") + 1]) if "--ttl" in opts else 900
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        print("cred-flow: NAME must be [A-Za-z0-9_.-]+", file=sys.stderr)
+        return 2
+    d = STATE / name
+    d.mkdir(parents=True, exist_ok=True)
+    log, pidf, lock = d / "log", d / "pid", open(d / "lock", "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)  # serialise concurrent callers
+    pid = int(pidf.read_text()) if pidf.exists() else 0
+    started = pidf.stat().st_mtime if pidf.exists() else 0
+    if pid and alive(pid) and time.time() - started < ttl and found(log):
+        code, url = found(log)
+        print(f"pending flow reused (started {int(time.time() - started)} s ago, pid {pid}): {url}  code {code}")
+        return 0
+    if pid and alive(pid):
+        os.killpg(pid, signal.SIGTERM)  # expired or codeless: its code is dead anyway
+    log.write_text("")
+    p = subprocess.Popen(["script", "-qfec", shlex.join(cmd), "/dev/null"], stdin=subprocess.DEVNULL,
+                         stdout=open(log, "a"), stderr=subprocess.STDOUT, start_new_session=True)
+    pidf.write_text(str(p.pid))
+    for _ in range(600):
+        if found(log):
+            code, url = found(log)
+            print(f"new flow (pid {p.pid}, valid ~{ttl // 60} min): {url}  code {code}")
+            return 0
+        if p.poll() is not None:
+            break
+        time.sleep(0.1)
+    print(f"cred-flow: no code yet; see {log}", file=sys.stderr)
+    return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

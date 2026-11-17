@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Forward ayo's final Bot Chat replies (finish_reason=stop) to Kevin's Telegram home channel.
+
+Stopgap while the Hermes Android app doesn't show ayo's replies (2026-11-04). Remove the timer once the app is
+fixed:  systemctl --user disable --now ayo-telegram-relay.timer
+Idempotent on message identity, not row id (oss-factory#317): a handoff/compaction re-inserts carried-forward
+rows with new ids and the same message_uid, so a row is sent only when it is the first row with its
+message_uid and neither its uid nor its body hash was forwarded before (sent.json).
+last_id is only the scan cursor.
+"""
+import hashlib
+import json
+import os
+import sqlite3
+import subprocess
+import tempfile
+from pathlib import Path
+
+DB = Path(os.environ.get("AYO_RELAY_DB", Path.home() / ".hermes/profiles/ayo/state.db"))
+STATE = Path(os.environ.get("AYO_RELAY_STATE", Path.home() / ".local/state/ayo-telegram-relay"))
+LAST = STATE / "last_id"
+SENT = STATE / "sent.json"
+HERMES = os.environ.get("AYO_RELAY_HERMES", str(Path.home() / ".local/bin/hermes"))
+
+
+def main() -> None:
+    STATE.mkdir(parents=True, exist_ok=True)
+    last = int(LAST.read_text()) if LAST.exists() else 306
+    sent = set(json.loads(SENT.read_text())) if SENT.exists() else set()
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=10)
+    rows = con.execute(
+        "select m.id, m.message_uid, m.content from messages m join sessions s on s.id = m.session_id "
+        "where s.title = 'Bot Chat' and m.role = 'assistant' and m.finish_reason = 'stop' "
+        "and length(m.content) > 40 and m.id > ? "
+        "and not exists (select 1 from messages p where p.message_uid = m.message_uid and p.id < m.id) "
+        "order by m.id limit 5", (last,)).fetchall()
+    for mid, uid, content in rows:
+        keys = {f"uid:{uid}" if uid else None, "sha:" + hashlib.sha256(content.encode()).hexdigest()} - {None}
+        if keys & sent:
+            print(f"skip duplicate {mid}")
+        else:
+            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+                f.write(content)
+                path = f.name
+            r = subprocess.run([HERMES, "-p", "intake", "send", "--to", "telegram", "--subject", "ayo:", "--file", path,
+                                "-q"], capture_output=True, text=True, timeout=60)
+            os.unlink(path)
+            if r.returncode != 0:
+                print(f"send failed for {mid}: {r.stderr[-300:]}")
+                break
+            sent |= keys
+            SENT.write_text(json.dumps(sorted(sent)))
+            print(f"forwarded {mid}")
+        LAST.write_text(str(mid))
+
+
+if __name__ == "__main__":
+    main()
