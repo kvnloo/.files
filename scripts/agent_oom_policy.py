@@ -52,9 +52,12 @@ BATCH_ADJ = 900
 # idle IO: z0int-loop-tick.service.d/40-relief-exempt.conf).
 # artifact-leases is absent too (2026-11-17, t_fc6ab9d4): its 10-30 MB report was the
 # first kill of a global OOM at adj 900, freed nothing and failed the unit (cf. TOOLING).
+# z0int-choice-<hash> likewise (2026-11-17, t_d7be963b): its 8-12 MB dispatch/groot-admit
+# waiters were the first 6 kills and lost up to 1.5 h of queued admission; size picks the
+# admitted measure child anyway.
 BATCH_UNIT = re.compile(r'^(agentsview-sync|ctx-import|worktree-reaper|z0-state-packet'
                         r'|dev\.cribble\.agent\.sync|agent-telemetry-refresh'
-                        r'|z0int-(policy|choice-[0-9a-f]+))\.service$')
+                        r'|z0int-policy)\.service$')
 HARNESSES = frozenset({'hermes', 'claude', 'omp', 'codex', 'pi', 'opencode'})
 # Services that host agent sessions under a generic interpreter name (the gateway,
 # dashboard, garden-room and z0live hosts): their unit's main process is a root.
