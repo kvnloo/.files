@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Test a detached merge before advancing an existing live branch."""
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+
+
+AUTHOR = ["-c", "user.name=Kevin Rajan", "-c", "user.email=7121943+kvnloo@users.noreply.github.com"]
+LIVE = "refs/heads/live"
+
+
+def git(repo, *args, check=True):
+    return subprocess.run(
+        ["git", "-C", str(repo), *AUTHOR, *args],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check,
+    )
+
+
+def test_command(command, cwd):
+    with subprocess.Popen(
+        command, shell=True, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr,
+        start_new_session=True,
+    ) as process:
+        try:
+            return process.wait(timeout=1200) == 0
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            return False
+
+
+def release_command(command, cwd, env):
+    with subprocess.Popen(
+        command, shell=True, cwd=cwd, env=env, text=True,
+        stdout=subprocess.PIPE, stderr=sys.stderr, start_new_session=True,
+    ) as process:
+        try:
+            output, _ = process.communicate(timeout=600)
+            return output, process.returncode == 0
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            output, _ = process.communicate()
+            return output, False
+
+
+def advance(args, result):
+    repo = Path(args.repo).resolve()
+    base = git(repo, "rev-parse", "--verify", LIVE, check=False)
+    if base.returncode:
+        result["status"] = "missing_live"
+        return 3
+    result["base"] = base.stdout.strip()
+    with tempfile.TemporaryDirectory(prefix="live-merge-") as directory:
+        worktree = Path(directory) / "tree"
+        try:
+            git(repo, "worktree", "add", "--detach", str(worktree), result["base"])
+            operation = "revert" if args.revert else "merge"
+            options = ["-m", "1", "--no-edit"] if args.revert else ["--no-ff", "--no-edit"]
+            merged = git(worktree, operation, *options, "--", args.target, check=False)
+            if merged.returncode:
+                git(worktree, operation, "--abort", check=False)
+                print(merged.stderr, file=sys.stderr, end="")
+                result["status"] = "conflict"
+                return 4
+            result["merge"] = git(worktree, "rev-parse", "HEAD").stdout.strip()
+            if args.test is not None and not test_command(args.test, worktree):
+                result["status"] = "test_failed"
+                return 5
+
+            serving = []
+            listing = git(repo, "worktree", "list", "--porcelain", "-z").stdout
+            for record in listing.split("\0\0"):
+                fields = record.split("\0")
+                if f"branch {LIVE}" in fields:
+                    serving.append(next(field[9:] for field in fields if field.startswith("worktree ")))
+            for checkout in serving:
+                if git(checkout, "status", "--porcelain", "--untracked-files=all").stdout:
+                    result["status"] = "dirty"
+                    return 6
+            if serving:
+                if git(repo, "rev-parse", LIVE).stdout.strip() != result["base"]:
+                    raise RuntimeError("live changed while tests were running")
+                for checkout in serving:
+                    git(checkout, "merge", "--ff-only", result["merge"])
+            else:
+                git(repo, "update-ref", LIVE, result["merge"], result["base"])
+            if args.release is not None:
+                output, released = release_command(args.release, worktree, {
+                    **os.environ, "LIVE_REPO": str(repo),
+                    "LIVE_SHA": result["merge"], "LIVE_BASE": result["base"],
+                })
+                try:
+                    result["release"] = json.loads(output)
+                except json.JSONDecodeError:
+                    result["release"] = output
+                if not released:
+                    git(repo, "update-ref", LIVE, result["base"], result["merge"])
+                    for checkout in serving:
+                        git(checkout, "update-ref", "--no-deref", "HEAD", result["merge"])
+                        try:
+                            git(checkout, "reset", "--keep", result["base"])
+                        finally:
+                            git(checkout, "symbolic-ref", "HEAD", LIVE)
+                    result["status"] = "release_failed"
+                    return 7
+            result["status"] = "ok"
+            return 0
+        finally:
+            if worktree.exists():
+                git(repo, "worktree", "remove", "--force", str(worktree))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--revert", action="store_true")
+    parser.add_argument("repo")
+    parser.add_argument("target", help="branch to merge, or merge SHA to revert")
+    parser.add_argument("--test", help="shell command run in the temporary worktree")
+    parser.add_argument("--release", help="shell command run after live advances")
+    args = parser.parse_args()
+    if not args.revert and args.test is None:
+        parser.error("--test is required when merging")
+    result = {"status": "error", "merge": None, "base": None}
+    try:
+        code = advance(args, result)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        print(getattr(error, "stderr", None) or str(error), file=sys.stderr)
+        result["status"] = "error"
+        code = 1
+    print(json.dumps(result))
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
