@@ -188,7 +188,8 @@ def systemctl(scope, *args):
 # while df showed 188G free; ~20 units failed and 4 state files were truncated before anyone noticed.
 # statfs lies in that state, so only a real fsynced write counts. The first refused write pauses
 # background work at once; two clean probes in a row resume exactly what was paused.
-STORAGE_PROBE_DIRS = (DEFAULT, Path.home() / '.local/state')  # bulk btrfs disk and /
+# Both are in the unit's ReadWritePaths (ProtectSystem=strict): bulk btrfs disk and /.
+STORAGE_PROBE_DIRS = (DEFAULT, Path.home() / '.local/state/service-watch')
 STORAGE_PROBE_BYTES = 256 * 1024
 STORAGE_FULL = {errno.ENOSPC, errno.EDQUOT, errno.EROFS, errno.EIO}
 # Work that can wait. Never Kevin's own turns, the gateway, or the watcher itself.
