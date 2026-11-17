@@ -15,8 +15,9 @@ spec.loader.exec_module(sw)
 
 
 class FakeSystemd:
-    def __init__(self, timers=(), scopes=(), slices=()):
+    def __init__(self, timers=(), scopes=(), slices=(), transient=()):
         self.timers, self.scopes, self.slices = list(timers), list(scopes), list(slices)
+        self.transient = set(transient)
         self.calls = []
 
     def __call__(self, *argv):
@@ -26,6 +27,8 @@ class FakeSystemd:
             out = ''.join(f'{t} loaded active waiting x\n' for t in self.timers)
         elif argv[:2] == ('list-units', '--type=scope'):
             out = ''.join(f'{s} loaded active running x\n' for s in self.scopes)
+        elif argv[:2] == ('show', '--property=Id,Transient'):
+            out = '\n\n'.join('Id=%s\nTransient=%s' % (u, 'yes' if u in self.transient else 'no') for u in argv[2:])
         elif argv[:2] == ('list-units', '--type=slice'):
             out = ''.join(f'{s} loaded active active x\n' for s in self.slices)
         return 0, out
@@ -43,7 +46,8 @@ class Guard(unittest.TestCase):
         probe = patch.object(sw, 'probe_write', lambda d, size=sw.STORAGE_PROBE_BYTES:
                              errno.ENOSPC if self.full else real(d, size))
         probe.start(); self.addCleanup(probe.stop)
-        self.systemd = FakeSystemd(timers=['factory-tick.timer', 'service-watch-heartbeat.timer'],
+        self.systemd = FakeSystemd(timers=['factory-tick.timer', 'service-watch-heartbeat.timer', 'run-r1.timer'],
+                                   transient=['run-r1.timer'],
                                    scopes=['hermes-worker-kanban-t_1-run-2.scope', 'hermes-turn-local-x.scope'],
                                    slices=['app-factory\\x2dlane.slice', 'session.slice'])
         self.pushes = []
@@ -63,7 +67,8 @@ class Guard(unittest.TestCase):
         self.assertFalse(self.guard.check(now=115))
         stops = [c for c in self.systemd.calls if c[0] == 'stop']
         freezes = [c for c in self.systemd.calls if c[0] == 'freeze']
-        self.assertEqual(stops, [('stop', 'factory-tick.timer')])  # alert/recovery timers stay live
+        # Alert/recovery timers stay live; transient timers are not stopped (stop would unload them).
+        self.assertEqual(stops, [('stop', 'factory-tick.timer')])
         self.assertEqual(sorted(c[1] for c in freezes),
                          ['app-factory\\x2dlane.slice', 'hermes-worker-kanban-t_1-run-2.scope'])  # never Kevin's turns
         self.assertEqual(self.pushes, ['blocked'])

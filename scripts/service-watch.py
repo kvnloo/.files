@@ -252,6 +252,14 @@ class StorageGuard:
         code, out = self.systemctl('list-units', '--type=' + kind, '--state=active', '--no-legend', '--plain')
         return [line.split()[0] for line in out.splitlines() if line.split()] if code == 0 else []
 
+    def persistent(self, units):
+        # A stopped transient timer (systemd-run --on-calendar) is unloaded and can never be restarted.
+        if not units:
+            return []
+        code, out = self.systemctl('show', '--property=Id,Transient', *units)
+        rows = [dict(l.split('=', 1) for l in b.splitlines() if '=' in l) for b in out.strip().split('\n\n')]
+        return [r['Id'] for r in rows if r.get('Id') and r.get('Transient') == 'no'] if code == 0 else []
+
     def check(self, now=None):
         """True when storage accepts writes and nothing is paused."""
         now = time.time() if now is None else now
@@ -260,7 +268,7 @@ class StorageGuard:
         if failed:
             self.state['good'] = 0
             if not self.state.get('paused'):
-                timers = [t for t in self.active('timer') if not STORAGE_KEEP_TIMERS.match(t)]
+                timers = self.persistent([t for t in self.active('timer') if not STORAGE_KEEP_TIMERS.match(t)])
                 frozen = [u for kind in ('scope', 'slice', 'service') for u in self.active(kind)
                           if STORAGE_FREEZE.match(u)]
                 for timer in timers:
