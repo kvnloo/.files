@@ -199,6 +199,41 @@ class ReleaseLiveTests(unittest.TestCase):
         self.assertEqual(result['content_changes'], 0)
         self.assertEqual(len(self.receipt.read_text().splitlines()), 2)
 
+    def test_other_family_is_archive_build_stamp_switch_with_no_links(self):
+        app = Path(self.tmp.name) / 'app'
+        app.mkdir()
+        def git(*args):
+            return subprocess.run(['git', '-C', str(app), *args], check=True,
+                                  capture_output=True, text=True).stdout.strip()
+
+        def managed():
+            return {key: value for key, value in self.snapshot().items() if key in self.paths}
+        git('init', '-q')
+        git('config', 'user.email', 'fixture@example.invalid')
+        git('config', 'user.name', 'Fixture')
+        (app / 'serve').write_text('one\n')
+        git('add', '.')
+        git('commit', '-qm', 'one')
+        git('update-ref', 'refs/heads/live', git('rev-parse', 'HEAD'))
+        (app / 'serve').write_text('dirty checkout bytes\n')
+        before = managed()
+        result = self.run_cli('--apply', '--repo', str(app), '--family', 'app', '--build', 'cp serve built')
+        current = self.home / '.local/lib/app/current'
+        self.assertEqual((result['family'], result['links'], result['status']), ('app', 0, 'applied'))
+        self.assertEqual((current / 'built').read_text(), 'one\n')
+        stamp = json.loads((current / '.deployment-stamp.json').read_text())
+        self.assertEqual((stamp['name'], stamp['source_ref'], stamp['source_sha']),
+                         ('app', 'refs/heads/live', git('rev-parse', 'refs/heads/live')))
+        self.assertEqual(managed(), before)
+        self.assertFalse((self.home / '.local/lib/files-live').exists())
+        git('commit', '-qam', 'two')
+        git('update-ref', 'refs/heads/live', git('rev-parse', 'HEAD'))
+        self.run_cli('--apply', '--repo', str(app), '--family', 'app', '--build', 'exit 3', code=4)
+        self.assertEqual(json.loads((current / '.deployment-stamp.json').read_text()), stamp)
+        self.assertEqual(len(list((self.home / '.local/lib/app').iterdir())), 2)  # one release + current
+        retried = self.run_cli('--apply', '--repo', str(app), '--family', 'app')
+        self.assertEqual((retried['sha'], retried['previous']), (git('rev-parse', 'refs/heads/live'), stamp['source_sha']))
+
 
 if __name__ == '__main__':
     unittest.main()
