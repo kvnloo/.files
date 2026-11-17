@@ -50,6 +50,13 @@ owner = "scripts/apply-agent-oom"
 reason = "Opt-in host optimization learner: private aggregate telemetry, existing fleet event triggers, known CPU-ceiling repair only. No model spend or arbitrary system mutation."
 
 [[user]]
+live = "~/.local/bin/o8-phone-reverse"
+source = "scripts/o8-phone-reverse"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+
+[[user]]
 live = "~/.local/bin/loc"
 source = "scripts/loc"
 scope = "user"
