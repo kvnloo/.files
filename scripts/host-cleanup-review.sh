@@ -58,8 +58,8 @@ fi
 
 section "4. References to non-master z0intelligence checkouts (report only)"
 echo "master checkout: $MASTER"
-targets=("$HOME/.config/systemd/user" "$HOME/.omp/agent/extensions" "$HOME/.omp/extensions" "$HOME/.claude-home/hooks")
-for f in "$HOME"/.claude-home/settings*.json; do [[ -e $f ]] && targets+=("$f"); done
+targets=("$HOME/.config/systemd/user" "$HOME/.omp/agent/extensions" "$HOME/.omp/extensions" "$HOME/.claude/hooks")
+for f in "$HOME"/.claude/settings*.json; do [[ -e $f ]] && targets+=("$f"); done
 existing=()
 for t in "${targets[@]}"; do [[ -e $t ]] && existing+=("$t"); done
 # Path tokens that name a z0int* checkout, minus the master checkout and the
