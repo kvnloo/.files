@@ -102,7 +102,8 @@ def reopen(t, s, out):
     body = (f"fix-replay: tape `{tid}` passed before and has now failed {s['fail_run']} runs in a row.\n\n"
             f"- what the fix promised: {t.get('what', '')}\n- class: {t.get('class', '')}  src: {t.get('src', '')}\n"
             f"- last pass: {when(last)}\n- first fail: {when(s.get('first_fail_at'))}\n"
-            f"- totals: {s['passes']} pass / {s['fails'] + 1} fail\n- tape: `{t['tape'][:400]}`\n\n"
+            f"- totals: {s['passes']} pass / {s['fails'] + 1} fail\n- tape: `{t['tape'][:400]}`\n"
+            f"- tape record: {TAPES} (state {STATE}); read these, do not grep -r the ops tree\n\n"
             f"Latest tape output:\n```\n{out}\n```\n\n{changed_between(t, last or s.get('first_fail_at') or time.time() - DAY)}\n\n"
             "Done = the root cause is fixed and the tape is green on the live system again (fix-replay --board).")
     # the ~/.local/bin/hermes wrapper sets up bws secrets and exits 1 under a timer's bare env; kanban needs none
