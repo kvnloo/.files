@@ -1,0 +1,70 @@
+#!/usr/bin/python3 -I
+"""Kernel-enforced connect allowlist for a sandboxed Hermes turn (Landlock ABI >= 9).
+
+  hermes-netguard --abi                       print the kernel's Landlock ABI
+  hermes-netguard PORT[,PORT...] -- CMD...    exec CMD so that it, and everything it starts, can
+                                              open TCP connections only to the listed ports, cannot
+                                              reach any unix socket (pathname or abstract) created
+                                              outside itself, and cannot signal processes outside.
+
+Landlock matches TCP ports, not addresses, so the allowlist must never name a port that a local
+control plane listens on. Fails closed: an old kernel or any syscall error aborts the exec.
+UDP is not covered by Landlock (DNS keeps working).
+"""
+import ctypes
+import os
+import struct
+import sys
+
+SYS_CREATE, SYS_ADD_RULE, SYS_RESTRICT = 444, 445, 446  # x86_64 and aarch64 share these numbers
+CREATE_VERSION, RULE_NET_PORT = 1, 2
+NET_BIND, NET_CONNECT = 1, 2
+FS_RESOLVE_UNIX = 1 << 16
+SCOPE_ABSTRACT_UNIX, SCOPE_SIGNAL = 1, 2
+PR_SET_NO_NEW_PRIVS = 38
+
+libc = ctypes.CDLL(None, use_errno=True)
+libc.syscall.restype = ctypes.c_long
+
+
+def die(msg):
+    sys.exit(f"hermes-netguard: {msg}")
+
+
+def abi():
+    return libc.syscall(SYS_CREATE, None, 0, CREATE_VERSION)
+
+
+def main(argv):
+    if argv == ["--abi"]:
+        print(abi())
+        return
+    if len(argv) < 3 or argv[1] != "--":
+        die("usage: hermes-netguard PORT[,PORT...] -- CMD...")
+    ports = sorted({int(p) for p in argv[0].split(",") if p})
+    if any(not 0 < p < 65536 for p in ports):
+        die(f"bad port list {argv[0]!r}")
+    if abi() < 9:
+        die(f"kernel Landlock ABI {abi()} < 9; refusing to run unguarded")
+
+    # RESOLVE_UNIX with no rules: no connect() to any pathname unix socket made outside the
+    # sandbox (gateway, buildkitd, tailscaled, keyd, ssh ControlMasters, agent daemons...).
+    attr = ctypes.create_string_buffer(struct.pack("=QQQ", FS_RESOLVE_UNIX, NET_BIND | NET_CONNECT,
+                                                   SCOPE_ABSTRACT_UNIX | SCOPE_SIGNAL))
+    fd = libc.syscall(SYS_CREATE, attr, len(attr.raw), 0)
+    if fd < 0:
+        die(f"create_ruleset: {os.strerror(ctypes.get_errno())}")
+    for port in ports:
+        rule = ctypes.create_string_buffer(struct.pack("=QQ", NET_CONNECT, port))
+        if libc.syscall(SYS_ADD_RULE, fd, RULE_NET_PORT, rule, 0) != 0:
+            die(f"add_rule {port}: {os.strerror(ctypes.get_errno())}")
+    if libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
+        die("no_new_privs failed")
+    if libc.syscall(SYS_RESTRICT, fd, 0) != 0:
+        die(f"restrict_self: {os.strerror(ctypes.get_errno())}")
+    os.close(fd)
+    os.execvp(argv[2], argv[2:])
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

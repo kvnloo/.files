@@ -27,7 +27,7 @@ args_for() {
      --tmpfs /run/user/"$UIDN" --remount-ro /run/user/"$UIDN" --tmpfs /run/dbus --remount-ro /run/dbus --perms 1777 --size $((512<<20)) --tmpfs /dev/shm
      --bind "$tmp" /tmp)
   mkdir -p "$tmp/.empty"
-  for e in /run/docker.sock /var/run/docker.sock /run/k3s /etc/rancher "$HOME/.kube"; do
+  for e in /run/k3s /etc/rancher "$HOME/.kube"; do
     [[ -e $e ]] && A+=(--ro-bind "$( [[ -d $e ]] && echo "$tmp/.empty" || echo /dev/null)" "$e")
   done
   # Code checkouts and worktrees (~/workspace is /workspace on groot). Binds stack: the
@@ -45,10 +45,6 @@ args_for() {
       [[ -e $e ]] && A+=(--ro-bind "$e" "$e")
     done
   fi
-  # A read-only mount does not stop connect() on a unix socket: the gateway socket would let a
-  # sandboxed turn submit an unsandboxed turn as any profile. Cover every Hermes control socket.
-  while IFS= read -r e; do A+=(--ro-bind /dev/null "$e"); done < <(find "$H" "$H/state" "$H/profiles" \
-    -maxdepth 2 -type s 2>/dev/null)
   # Hermes' launcher flocks these on every start and registers a lease (GC pin) on the
   # generation it runs; leases hold no code. The runtime itself stays read-only so no
   # profile can change code the gateway and other profiles run.
@@ -68,10 +64,22 @@ args_for() {
   rm -rf "$tmp/.etc-ssh"; mkdir -p "$tmp/.etc-ssh"
   cp -rL /etc/ssh/ssh_config /etc/ssh/ssh_config.d "$tmp/.etc-ssh/" 2>/dev/null || true
   [[ -e $tmp/.etc-ssh/ssh_config ]] && A+=(--ro-bind "$tmp/.etc-ssh/ssh_config" /etc/ssh/ssh_config)
-  [[ -d $tmp/.etc-ssh/ssh_config.d ]] && A+=(--ro-bind "$tmp/.etc-ssh/ssh_config.d" /etc/ssh/ssh_config.d)
+  # Port 22 is not on the connect allowlist (see run_guarded), so git reaches GitHub over 443.
+  mkdir -p "$tmp/.etc-ssh/ssh_config.d"
+  printf 'Host github.com\n  Hostname ssh.github.com\n  Port 443\n  HostKeyAlias github.com\n' > "$tmp/.etc-ssh/ssh_config.d/00-sandbox-github.conf"
+  A+=(--ro-bind "$tmp/.etc-ssh/ssh_config.d" /etc/ssh/ssh_config.d)
   mkdir -p "$tmp/xdg-run" && chmod 700 "$tmp/xdg-run"
   A+=(--setenv TMPDIR /tmp --setenv XDG_RUNTIME_DIR /tmp/xdg-run --setenv HERMES_PROFILE_SANDBOX "$p" --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv SSH_AUTH_SOCK)
 }
+
+# TCP connects are allowlisted by port (Landlock): web, the vllm-sr model router (30899) and
+# the z0int memory service (11501). Everything else on loopback/tailnet is a control plane
+# that runs work outside the sandbox (Hermes API 8642, hermes-cluster 8787, adb 5037, ...).
+# Port 22 stays shut: any fleet host we can ssh into can ssh back to groot unsandboxed.
+# HERMES_SANDBOX_PORTS adds ports (comma list) for a deliberate exception.
+PORTS=80,443,11501,30899${HERMES_SANDBOX_PORTS:+,$HERMES_SANDBOX_PORTS}
+guard=$(dirname "$self")/hermes-netguard
+run_guarded() { exec bwrap "${A[@]}" -- "$guard" "$PORTS" -- "$@"; }
 
 # Runs INSIDE the sandbox. Each attempt is something an agent might do without thinking.
 probe() {
@@ -89,6 +97,19 @@ probe() {
   try local-bin          touch "$HOME/.local/bin/escape-$t"
   try dev-shm-600M       dd if=/dev/zero of="/dev/shm/escape-$t" bs=1M count=600
   try systemd-run        systemd-run --user --unit="escape-$t" touch "$HOME/.escape-sdrun-$t"
+  try signal-outside     kill -0 1  # pid 1 here is bwrap's init, outside the Landlock domain
+  ipc_probes
+  try other-profile      touch "$H/profiles/$other/escape-$t"
+  try default-config     touch "$H/config.yaml"
+  try hermes-checkout    touch "$H/hermes-agent/escape-$t"
+  setsid bash -c "exec -a escape-$t sleep 300" </dev/null >/dev/null 2>&1 &
+  echo private > "/tmp/scratch-$t"
+  allowed_probes "$t" "$p"
+}
+
+# Side-effect free, so verify also runs them on the HOST: a "blocked" only counts as proof
+# when the same target is reachable from outside the sandbox.
+ipc_probes() {
   try user-bus           busctl --user list
   try system-bus         busctl --system list
   try docker             docker ps
@@ -100,15 +121,23 @@ probe() {
   try gateway-socket     python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('$H/gateway.sock')"
   try hermes-api-8642    bash -c 'exec 3<>/dev/tcp/127.0.0.1/8642'
   try adb-5037           bash -c 'exec 3<>/dev/tcp/127.0.0.1/5037'
-  try other-profile      touch "$H/profiles/$other/escape-$t"
-  try default-config     touch "$H/config.yaml"
-  try hermes-checkout    touch "$H/hermes-agent/escape-$t"
-  setsid bash -c "exec -a escape-$t sleep 300" </dev/null >/dev/null 2>&1 &
-  echo private > "/tmp/scratch-$t"
-  local own=$H/profiles/$p; [[ $p == default ]] && own=$H
+  try hermes-cluster-8787 bash -c 'exec 3<>/dev/tcp/100.113.138.100/8787'
+  try ssh-mbp            ssh -o BatchMode=yes -o ConnectTimeout=5 mbp true
+  try ssh-unix-local     ssh -o BatchMode=yes -o ConnectTimeout=5 .host true
+  try buildkitd-socket   python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('/workspace/buildkit/run/buildkitd.sock')"
+  try tailscaled-socket  python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('/run/tailscale/tailscaled.sock')"
+  try docker-socket      python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('/run/docker.sock')"
+  try abstract-x11       python3 -c "import socket; socket.socket(socket.AF_UNIX).connect('\0/tmp/.X11-unix/X0')"
+}
+
+allowed_probes() {
+  own=$H/profiles/$p; [[ $p == default ]] && own=$H
   echo "allowed own-profile: $(touch "$own/.canary-$t" && rm "$own/.canary-$t" && echo ok || echo FAIL)"
   echo "allowed kanban-db: $(test -w "$H/kanban.db" && echo ok || echo FAIL)"
   echo "allowed claude-home: $(test -w "$(readlink -f "$HOME/.claude")" && echo ok || echo FAIL)"
+  echo "allowed github-ssh: $(timeout 20 git ls-remote -q git@github.com:kvnloo/.files HEAD >/dev/null 2>&1 && echo ok || echo FAIL)"
+  echo "allowed github-https: $(curl -fsS -m 10 -o /dev/null https://api.github.com && echo ok || echo FAIL)"
+  echo "allowed model-router: $(curl -fsS -m 10 -o /dev/null http://100.113.138.100:30899/v1/models && echo ok || echo FAIL)"
   echo "allowed worktrees: $(mkdir -p /mnt/zer0models/workspace/zer0/worktrees/.canary-$t && rmdir /mnt/zer0models/workspace/zer0/worktrees/.canary-$t && echo ok || echo FAIL)"
 }
 
@@ -117,7 +146,7 @@ verify() {
   t=$(date +%s)$$
   log=$HOME/.cache/agent-tmp/hermes-escape-$p.log
   args_for "$p"
-  bwrap "${A[@]}" -- /usr/bin/bash "$self" probe "$t" "$p" >"$log" 2>&1 || true
+  (run_guarded /usr/bin/bash "$self" probe "$t" "$p") >"$log" 2>&1 || true
   out=$(grep -E '^(ESCAPED|blocked|allowed)' "$log" || true)
   echo "$out" | sed "s/^/  $p: /"
   grep -q ESCAPED <<<"$out" && bad=1
@@ -142,7 +171,10 @@ verify() {
 
 case $cmd in
   probe) probe "$@" ;;
-  run) p=$1; shift; [[ ${1:-} == -- ]] && shift; args_for "$p"; exec bwrap "${A[@]}" -- "$@" ;;
-  verify) bad=0; for p in "${@:-clean}"; do verify "$p" || bad=1; done; exit $bad ;;
+  run) p=$1; shift; [[ ${1:-} == -- ]] && shift; args_for "$p"; run_guarded "$@" ;;
+  verify) bad=0
+    try() { local n=$1; shift; if timeout 20 "$@" >/dev/null 2>&1; then echo "  host reaches $n"; else echo "  host cannot reach $n (its 'blocked' proves nothing)"; fi; }
+    echo "host control, same ipc probes run unsandboxed:"; ipc_probes
+    for p in "${@:-clean}"; do verify "$p" || bad=1; done; exit $bad ;;
   *) echo "usage: $0 run PROFILE -- CMD... | verify PROFILE..." >&2; exit 2 ;;
 esac
