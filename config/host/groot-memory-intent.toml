@@ -84,7 +84,35 @@ key = "vm.swappiness"
 equals = "180"
 why = "declared, not inherited: the CachyOS udev rule resets it at zram init"
 
-# ---- ui: no swap for the compositor unit and fixed-size UI leaves -----------------
+# ---- ui: no swap for the desktop subtree, shell and fixed-size UI leaves ----------
+[[unit]]
+group = "ui"
+unit = "session.slice"
+property = "MemorySwapMax"
+equals = "0"
+owner = "60-desktop-no-swap.conf"
+why = "desktop latency must not depend on zram swap-ins; children inherit this ceiling"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice"
+file = "memory.swap.max"
+equals = "0"
+
+[[unit]]
+group = "ui"
+unit = "noctalia-shell.service"
+property = "MemorySwapMax"
+equals = "0"
+owner = "60-desktop-no-swap.conf"
+why = "explicit shell guarantee even if launch placement changes"
+
+[[cgroup]]
+group = "ui"
+path = "user.slice/user-1000.slice/user@1000.service/session.slice/noctalia-shell.service"
+file = "memory.swap.max"
+equals = "0"
+
 [[unit]]
 group = "ui"
 unit = "wayland-wm@hyprland.desktop.service"

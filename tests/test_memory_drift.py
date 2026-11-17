@@ -134,5 +134,32 @@ class MemoryDriftLaw(unittest.TestCase):
                 self.assertIn(row['owner'], dropins, row)
 
 
+    def test_desktop_no_swap_is_declared_installed_and_audited(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        manifest = tomllib.loads((ROOT / 'config/host/groot.toml').read_text())
+        for unit, section in [('session.slice', 'Slice'), ('noctalia-shell.service', 'Service')]:
+            relative = f'config/systemd/user/{unit}.d/60-desktop-no-swap.conf'
+            text = (ROOT / relative).read_text()
+            self.assertIn(f'[{section}]', text)
+            self.assertIn('MemorySwapMax=0', text)
+            self.assertTrue(any(r['source'] == relative for r in manifest['user']))
+            declaration = next(r for r in intent['unit']
+                               if r['unit'] == unit and r['property'] == 'MemorySwapMax')
+            self.assertEqual(declaration['equals'], '0')
+            self.assertEqual(declaration['owner'], '60-desktop-no-swap.conf')
+            with tempfile.TemporaryDirectory() as tmp:
+                files = {f'/d/{unit}.d/60-desktop-no-swap.conf': text}
+                for live, expected in [('0', True), ('infinity', False)]:
+                    host = FakeHost(tmp, {(unit, 'MemorySwapMax'): live}, files, {})
+                    rows = law.audit({'unit': [declaration]}, host)
+                    self.assertEqual(rows[0]['ok'], expected, rows)
+
+    def test_desktop_no_swap_does_not_blanket_unswap_background_apps(self):
+        intent = tomllib.loads((ROOT / 'config/host/groot-memory-intent.toml').read_text())
+        self.assertFalse(any(r['unit'] in {'app.slice', 'agent.slice'}
+                             and r['property'] == 'MemorySwapMax' and r['equals'] == '0'
+                             for r in intent['unit']))
+
+
 if __name__ == '__main__':
     unittest.main()

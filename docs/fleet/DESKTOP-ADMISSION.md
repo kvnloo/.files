@@ -558,3 +558,37 @@ The five obsolete Dash preview/bridge overrides are explicitly hash-retired
 after the PR88 canonical bridge/Metro cutover; their exact live files are backed
 up and removed, never reinstalled from the earlier inventory snapshot.
 
+## T3 Hermes ACP recovery (2026-10-30 UTC)
+
+A reachable T3 tunnel does not prove provider health. Groot's kernel recorded
+global OOM kills of the Hermes and credential-bootstrap processes inside
+`t3code-acp-*.scope`. The packaged T3 launcher assigned them `oom_score_adj=800`.
+These were host-wide kills, not evidence of a k3s container memory limit.
+
+RAM-backed `/tmp` held about 11 GiB of files. The repair moved 187 inactive
+render chunks (1,910,645,123 bytes) to
+`/home/kvn/workspace/cache/tmpfs-relief-20261030`. Each copy passed SHA-256
+verification before a symlink replaced its original path. The receipt is
+`receipt.json` in that directory. No live session was stopped.
+
+After memory relief, ACP still failed with
+`bws-env-exec: credential setup failed (TimeoutExpired)`. The launcher waited
+for the graphical keyring on every start, despite existing private credentials
+from `bws-secrets-sync`. `bws-env-exec` now consumes that same scoped runtime
+cache first. Its directory and regular file must belong to the current user
+and exclude group/other access. Symlinks, malformed records, duplicate names
+and missing required keys fail closed. No cache means the existing vault
+bootstrap still applies. Refresh remains the sync service's responsibility.
+This does not guarantee cold-boot access when the keyring is locked.
+
+T3's `hermes-clean-acp` and `hermes-chiefstaff-acp` commands now use
+`/usr/bin/env HERMES_HOME=/home/kvn/.hermes/profiles/PROFILE` before the Hermes
+launcher. Keep the matching `-p PROFILE acp` arguments. The credential wrapper
+must know the profile before Hermes parses its own arguments. No secret value
+belongs in T3 settings, arguments, logs or this receipt.
+
+Verification: all 12 `test_bws_scopes.py` tests passed. A real message through
+the previously failed thread `f6046c36-b221-4391-9845-250462242309` completed
+as run ordinal 14 and returned `ACP_OK`. T3 did not restart. This proves the
+provider message path, not a phone UI interaction or whole-host OOM immunity.
+

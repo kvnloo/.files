@@ -62,6 +62,84 @@ class VaultScopes(unittest.TestCase):
             self.assertEqual((runtime / 'omp.env').stat().st_mode & 0o777, 0o600)
             self.assertEqual((runtime / 'omp.env').read_text(), 'KEY="fixture\\"\\\\value"\n')
 
+    def test_headless_launch_uses_selected_profile_cache_without_keyring(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / 'bws-secrets'
+            runtime.mkdir(mode=0o700)
+            cache = runtime / 'hermes-clean.env'
+            cache.write_text('ANTHROPIC_TOKEN="clean-fixture"\nUNRELATED="not-allowed"\n')
+            cache.chmod(0o600)
+            config = root / 'map.json'
+            config.write_text(json.dumps({'scopes': {
+                'hermes-clean': {'ANTHROPIC_TOKEN': 'CLEAN_TOKEN'},
+                'hermes-root': {'ANTHROPIC_TOKEN': 'ROOT_TOKEN'},
+            }}))
+            marker = root / 'keyring-called'
+            bootstrap = root / 'bootstrap'
+            bootstrap.write_text('#!/bin/sh\ntouch "' + str(marker) + '"\nexit 99\n')
+            bootstrap.chmod(0o700)
+            env = dict(os.environ, XDG_RUNTIME_DIR=directory,
+                       HERMES_HOME=str(root / 'profiles/clean'),
+                       HERMES_KEYRING_BOOTSTRAP=str(bootstrap),
+                       BWS_ACCESS_TOKEN='must-not-reach-consumer')
+            env.pop('UNRELATED', None)
+            consumer = (
+                'import os,sys; sys.exit(0 if '
+                'os.environ.get("ANTHROPIC_TOKEN") == "clean-fixture" and '
+                '"BWS_ACCESS_TOKEN" not in os.environ and '
+                '"UNRELATED" not in os.environ else 23)'
+            )
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'scripts/bws-env-exec'),
+                 '--scope', 'hermes', '--config', str(config), '--',
+                 sys.executable, '-c', consumer],
+                env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists())
+            self.assertNotIn('clean-fixture', result.stdout + result.stderr)
+
+    def test_cache_round_trip_preserves_literal_secret_characters(self):
+        exe = module('bws-env-exec')
+        secret = 'space "quote" \\\\ $dollar `literal` #hash'
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'map.json'
+            mappings = {'KEY': 'VAULT_KEY'}
+            config.write_text(json.dumps({'scopes': {'fixture': mappings}}))
+            with mock.patch.object(exe, 'vault', return_value={'VAULT_KEY': secret}), \
+                 mock.patch.dict(os.environ, {'XDG_RUNTIME_DIR': directory}, clear=True), \
+                 mock.patch('sys.argv', ['bws-env-exec', '--refresh', '--config', str(config)]), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                exe.main()
+            self.assertEqual(exe.cached_values({'XDG_RUNTIME_DIR': directory}, 'fixture', mappings),
+                             {'VAULT_KEY': secret})
+
+    def test_unsafe_or_incomplete_cache_fails_closed(self):
+        exe = module('bws-env-exec')
+        for fault in ('directory-mode', 'file-mode', 'symlink', 'missing-key', 'duplicate-key'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                runtime = Path(directory) / 'bws-secrets'
+                runtime.mkdir(mode=0o700)
+                cache = runtime / 'fixture.env'
+                cache.write_text('KEY="fixture"\n')
+                cache.chmod(0o600)
+                if fault == 'directory-mode':
+                    runtime.chmod(0o755)
+                elif fault == 'file-mode':
+                    cache.chmod(0o644)
+                elif fault == 'symlink':
+                    target = runtime / 'other.env'
+                    cache.rename(target)
+                    cache.symlink_to(target)
+                elif fault == 'missing-key':
+                    cache.write_text('OTHER="fixture"\n')
+                else:
+                    cache.write_text('KEY="fixture"\nKEY="second"\n')
+                with self.assertRaises((RuntimeError, OSError)):
+                    exe.cached_values({'XDG_RUNTIME_DIR': directory}, 'fixture', {'KEY': 'VAULT_KEY'})
+
     def test_migration_preserves_nonsecret_and_backup_is_private(self):
         installer = module('install-bws-secrets')
         with tempfile.TemporaryDirectory() as directory:

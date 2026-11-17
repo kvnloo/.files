@@ -4845,3 +4845,19 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.config/systemd/user/session.slice.d/60-desktop-no-swap.conf"
+source = "config/systemd/user/session.slice.d/60-desktop-no-swap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Interactive desktop subtree never enters swap; enforced by memory-drift group ui. No restart or global swapoff."
+
+[[user]]
+live = "~/.config/systemd/user/noctalia-shell.service.d/60-desktop-no-swap.conf"
+source = "config/systemd/user/noctalia-shell.service.d/60-desktop-no-swap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Explicit Noctalia no-swap guarantee survives placement changes; enforced by memory-drift group ui."
