@@ -316,7 +316,7 @@ class StorageGuard:
 def properties(scope, units):
     if not units:
         return {}
-    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,Restart,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,UnitFileState')
+    result = systemctl(scope, 'show', *units, '--property=Id,ActiveState,SubState,Result,NRestarts,Restart,ExecMainExitTimestampMonotonic,ExecMainStatus,ActiveEnterTimestampMonotonic,LastTriggerUSec,UnitFileState,TriggeredBy')
     if result.returncode:
         raise RuntimeError('systemd_read_failed')
     values = {}
@@ -377,6 +377,15 @@ def stopped_on_purpose(prop):
     The 2026-10-24 inventory still expected units stopped on 2026-11-11 to be active, which
     re-recorded each one every hour (about 2,500 rows a day) and buried real failures."""
     return prop.get('ActiveState') == 'inactive' and prop.get('UnitFileState', 'enabled') in ('disabled', 'linked', 'masked', '')
+
+
+def not_steady(prop):
+    """A unit mid-transition or run by a timer has no steady state to compare with an expected one.
+    A start that hangs reaches 'failed' via its timeout; a timer's runs are judged by the timer's own
+    invariant. The 10-24 inventory expects the timer-run oneshot zer0-storage-autotier 'active', so
+    each multi-minute run ('activating') was recorded as unexpected_state (11-17)."""
+    return prop.get('ActiveState') in ('activating', 'deactivating', 'reloading', 'refreshing') \
+        or any(t.endswith('.timer') for t in prop.get('TriggeredBy', '').split())
 
 
 def event(code, severity=None, **metrics):
@@ -764,7 +773,7 @@ class Watch:
             elif kind == 'systemd':
                 expected = invariant.get('expected_active_state')
                 if expected and prop.get('ActiveState') != expected and prop.get('ActiveState') != 'failed' \
-                        and not stopped_on_purpose(prop):
+                        and not stopped_on_purpose(prop) and not not_steady(prop):
                     events.append(event('unexpected_state'))
             elif kind == 'phone_caps':
                 # Fixed argv, no shell and no log-derived commands. Force enforcement

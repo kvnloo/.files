@@ -66,6 +66,19 @@ class Contracts(unittest.TestCase):
             codes = [e['code'] for e in self.watch.invariant('user', 'x.service', inv, prop, time.time())]
             self.assertEqual('unexpected_state' in codes, flagged, state)
 
+    def test_timer_run_and_transitions_are_not_unexpected(self):
+        # 11-17: the 10-24 inventory expects the timer-run oneshot zer0-storage-autotier 'active';
+        # each run sat in 'activating' for minutes and was recorded as unexpected_state.
+        inv = {'kind': 'systemd', 'expected_active_state': 'active'}
+        for prop, flagged in (({'ActiveState': 'activating', 'UnitFileState': 'static'}, False),
+                              ({'ActiveState': 'deactivating', 'UnitFileState': 'enabled'}, False),
+                              ({'ActiveState': 'reloading', 'UnitFileState': 'enabled'}, False),
+                              ({'ActiveState': 'inactive', 'UnitFileState': 'static', 'TriggeredBy': 'a.timer'}, False),
+                              ({'ActiveState': 'inactive', 'UnitFileState': 'static', 'TriggeredBy': 'a.socket'}, True),
+                              ({'ActiveState': 'inactive', 'UnitFileState': 'enabled', 'TriggeredBy': ''}, True)):
+            codes = [e['code'] for e in self.watch.invariant('user', 'x.service', inv, prop, time.time())]
+            self.assertEqual('unexpected_state' in codes, flagged, prop)
+
     def test_identity_records_are_flagged_report_once(self):
         with patch.object(self.watch.store, 'notify', return_value='deduplicated'):
             self.watch.record('user', 'host-drift.service', [sw.event('host_config_drift')], identity={'k': 1}, triage=False)
