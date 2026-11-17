@@ -1,0 +1,11 @@
+[Unit]
+Description=Storage hold: wait until real writes succeed, then resume paused work
+# Started only by `service-watch storage-hold` after a unit died on a refused write; exits on resume.
+OnFailure=
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/service-watch storage-wait
+Nice=10
+MemoryMax=96M
+NoNewPrivileges=true

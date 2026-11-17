@@ -184,18 +184,21 @@ def systemctl(scope, *args):
     return command(['systemctl'] + (['--user'] if scope == 'user' else ['--system']) + list(args))
 
 
-# Storage guard (11-16): a failed btrfs shrink left /mnt/zer0models refusing new data chunks for ~3 h
+# Storage hold (11-16): a failed btrfs shrink left /mnt/zer0models refusing new data chunks for ~3 h
 # while df showed 188G free; ~20 units failed and 4 state files were truncated before anyone noticed.
-# statfs lies in that state, so only a real fsynced write counts. The first refused write pauses
-# background work at once; two clean probes in a row resume exactly what was paused.
-# Both are in the unit's ReadWritePaths (ProtectSystem=strict): bulk btrfs disk and /.
-STORAGE_PROBE_DIRS = (DEFAULT, Path.home() / '.local/state/service-watch')
-STORAGE_PROBE_BYTES = 256 * 1024
-STORAGE_FULL = {errno.ENOSPC, errno.EDQUOT, errno.EROFS, errno.EIO}
+# No polling: service-watch-failure@ runs `storage-hold <unit>` the moment any unit fails. If that
+# unit died on a refused write, background work is paused right then, and a waiter (alive only
+# while held) resumes exactly that set once real writes succeed again. Boot needs nothing: frozen
+# units and stopped timers do not survive a reboot, and remount resets the allocator.
+STORAGE_PROBE_DIRS = (DEFAULT, Path.home() / '.local/state/service-watch')  # bulk btrfs disk and /
+STORAGE_PROBE_BYTES = 64 * 1024 * 1024  # big enough to need a fresh data chunk
+STORAGE_FULL = {errno.ENOSPC, errno.EDQUOT, errno.EROFS}
+STORAGE_ERROR = re.compile(r'No space left on device|Errno 28|ENOSPC|Disk quota exceeded|Read-only file system')
 # Work that can wait. Never Kevin's own turns, the gateway, or the watcher itself.
 STORAGE_FREEZE = re.compile(r'^(hermes-worker-.*\.scope|hc-turbo-.*\.scope|app-factory\\x2dlane\.slice'
                             r'|background\.slice|bench-.*\.service)$')
 STORAGE_KEEP_TIMERS = re.compile(r'^service-watch')
+STORAGE_HOLD = Path(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()) / 'service-watch/storage-hold.json'
 
 
 def probe_write(directory, size=STORAGE_PROBE_BYTES):
@@ -206,7 +209,8 @@ def probe_write(directory, size=STORAGE_PROBE_BYTES):
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
-            os.write(fd, os.urandom(size))
+            for _ in range(max(1, size // (1 << 20))):
+                os.write(fd, os.urandom(min(size, 1 << 20)))
             os.fsync(fd)
         finally:
             os.close(fd)
@@ -223,29 +227,39 @@ def _user_systemctl(*args):
     return result.returncode, result.stdout
 
 
-def _push_critical(kind, title, body):
+def _push_critical(title, body):
     try:
-        return command([str(KEVIN_PUSH), 'storage-guard', title, body], 60,
+        return command([str(KEVIN_PUSH), 'storage-hold', title, body], 60,
                        env={**os.environ, 'CIRCADIAN_CLASS': 'critical'}).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
 
-class StorageGuard:
-    def __init__(self, state_path, dirs=None, systemctl=_user_systemctl, push=_push_critical):
-        self.path = Path(state_path)
-        self.dirs = STORAGE_PROBE_DIRS if dirs is None else tuple(dirs)
-        self.systemctl, self.push = systemctl, push
-        try:
-            self.state = json.loads(self.path.read_text())
-        except (OSError, ValueError):
-            self.state = {}
+def _journal(unit):
+    try:
+        return command(['journalctl', '--user', '-u', unit, '-n', '60', '-o', 'cat', '--no-pager'], 10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ''
 
-    def save(self):
+
+class StorageHold:
+    def __init__(self, path=None, dirs=None, systemctl=_user_systemctl, push=_push_critical,
+                 journal=_journal, sleep=time.sleep):
+        self.path = Path(path or STORAGE_HOLD)
+        self.dirs = STORAGE_PROBE_DIRS if dirs is None else tuple(dirs)
+        self.systemctl, self.push, self.journal, self.sleep = systemctl, push, journal, sleep
+
+    def state(self):
+        try:
+            return json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def save(self, state):
         # Runtime dir is tmpfs: it stays writable when the disks are not.
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix('.tmp')
-        tmp.write_text(json.dumps(self.state))
+        tmp.write_text(json.dumps(state))
         os.replace(tmp, self.path)
 
     def active(self, kind):
@@ -260,55 +274,49 @@ class StorageGuard:
         rows = [dict(l.split('=', 1) for l in b.splitlines() if '=' in l) for b in out.strip().split('\n\n')]
         return [r['Id'] for r in rows if r.get('Id') and r.get('Transient') == 'no'] if code == 0 else []
 
-    def check(self, now=None):
-        """True when storage accepts writes and nothing is paused."""
-        now = time.time() if now is None else now
-        failed = {str(d): errno.errorcode.get(code, str(code))
-                  for d in self.dirs if (code := probe_write(d))}
-        if failed:
-            self.state['good'] = 0
-            if not self.state.get('paused'):
-                timers = self.persistent([t for t in self.active('timer') if not STORAGE_KEEP_TIMERS.match(t)])
-                frozen = [u for kind in ('scope', 'slice', 'service') for u in self.active(kind)
-                          if STORAGE_FREEZE.match(u)]
-                for timer in timers:
-                    self.systemctl('stop', timer)
-                for unit in frozen:
-                    self.systemctl('freeze', unit)
-                self.state.update(paused=True, since=now, timers=timers, frozen=frozen, pushed_at=None, pushed=False)
-                print('SERVICE_WATCH_STORAGE_BLOCKED %s paused %d timers %d units'
-                      % (json.dumps(failed), len(timers), len(frozen)), flush=True)
-            self.state['failed'] = failed
-            last = self.state.get('pushed_at')
-            if not self.state.get('pushed') and (last is None or now - last >= 600):  # first one at once
-                self.state['pushed_at'] = now
-                self.state['pushed'] = bool(self.push(
-                    'blocked', 'CRITICAL: disk refusing writes - background work paused',
-                    'Real write probe failed: %s\nPaused %d timers, froze %d units. Resumes by itself after '
-                    'two clean probes. df can look fine here; check btrfs filesystem usage (unallocated) and '
-                    'operations/bcachefs-migration-20261107/RUNBOOK-20261109.md.'
-                    % (', '.join('%s=%s' % kv for kv in failed.items()),
-                       len(self.state['timers']), len(self.state['frozen']))))
-            self.save()
+    def on_failure(self, unit, now=None):
+        """Called once per unit failure. True when it paused work."""
+        match = STORAGE_ERROR.search(self.journal(unit) or '')
+        if not match or self.state().get('held'):
             return False
-        if not self.state.get('paused'):
-            return True
-        self.state['good'] = self.state.get('good', 0) + 1
-        if self.state['good'] < 2:
-            self.save()
-            return False
-        for unit in self.state.get('frozen', []):
-            self.systemctl('thaw', unit)
-        for timer in self.state.get('timers', []):
-            self.systemctl('start', timer)
-        print('SERVICE_WATCH_STORAGE_RESUMED after %ds' % (now - self.state.get('since', now)), flush=True)
-        self.push('resolved', 'Disk accepts writes again - work resumed',
-                  'Paused %ds; restarted %d timers, thawed %d units.'
-                  % (now - self.state.get('since', now), len(self.state.get('timers', [])),
-                     len(self.state.get('frozen', []))))
-        self.state = {'paused': False, 'resumed_at': now}
-        self.save()
+        timers = self.persistent([t for t in self.active('timer') if not STORAGE_KEEP_TIMERS.match(t)])
+        frozen = [u for kind in ('scope', 'slice', 'service') for u in self.active(kind) if STORAGE_FREEZE.match(u)]
+        for timer in timers:
+            self.systemctl('stop', timer)
+        for unit_ in frozen:
+            self.systemctl('freeze', unit_)
+        self.save({'held': True, 'since': time.time() if now is None else now, 'unit': unit,
+                   'error': match.group(0), 'timers': timers, 'frozen': frozen})
+        print('SERVICE_WATCH_STORAGE_HELD %s (%s): stopped %d timers, froze %d units'
+              % (unit, match.group(0), len(timers), len(frozen)), flush=True)
+        # The waiter pushes and resumes; this hook must finish inside its 15 s start timeout.
+        self.systemctl('start', '--no-block', 'service-watch-storage-wait.service')
         return True
+
+    def wait(self, interval=30, needed=3):
+        """Runs only while held: push once, then resume after `needed` clean probes in a row."""
+        state = self.state()
+        if not state.get('held'):
+            return 0
+        self.push('CRITICAL: disk refusing writes - background work paused',
+                  '%s failed with "%s". Stopped %d timers, froze %d units. Resumes by itself once real '
+                  'writes work. df can look fine; check `btrfs filesystem usage` unallocated and '
+                  'operations/bcachefs-migration-20261107/RUNBOOK-20261109.md.'
+                  % (state['unit'], state['error'], len(state['timers']), len(state['frozen'])))
+        good = 0
+        while good < needed:
+            self.sleep(interval)
+            good = good + 1 if not any(probe_write(d) for d in self.dirs) else 0
+        for unit in state['frozen']:
+            self.systemctl('thaw', unit)
+        for timer in state['timers']:
+            self.systemctl('start', timer)
+        held = int(time.time() - state['since'])
+        self.save({'held': False, 'resumed_after': held})
+        print('SERVICE_WATCH_STORAGE_RESUMED after %ds' % held, flush=True)
+        self.push('Disk accepts writes again - work resumed',
+                  'Held %ds; restarted %d timers, thawed %d units.' % (held, len(state['timers']), len(state['frozen'])))
+        return 0
 
 
 def properties(scope, units):
@@ -666,7 +674,6 @@ class Watch:
         self.phone_caps_memo = None  # (key, proved_at) of the last clean O10 verdict
         self.prop_cache, self.scans = {}, 0
         self.intake = Path(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()) / 'service-watch/intake'
-        self.storage = StorageGuard(self.intake.parent / 'storage-pause.json')
         self.store = Store(root)
         self.inventory = Path(inventory)
         self.units = {}
@@ -962,10 +969,6 @@ class Watch:
 
     def scan(self):
         check_stop()
-        # First, before any database write: on a disk refusing writes the rest of the scan would
-        # crash the daemon in a loop instead of pausing work.
-        if not self.storage.check():
-            return
         self.drain_spool()
         now = time.time()
         if now - self.last_scan > 60:
@@ -1586,7 +1589,8 @@ def main():
     parser.add_argument('--checkout-threshold', type=int, default=200)
     parser.add_argument('--checkout-root', type=Path, action='append', dest='checkout_roots')
     parser.add_argument('--reaper-status', type=Path, default=REAPER_STATUS)
-    parser.add_argument('action', choices=['run', 'seed', 'status', 'details', 'failure', 'heartbeat', 'host-drift'])
+    parser.add_argument('action', choices=['run', 'seed', 'status', 'details', 'failure', 'heartbeat', 'host-drift',
+                                           'storage-hold', 'storage-wait'])
     parser.add_argument('target', nargs='?')
     parser.add_argument('--scope', choices=['user', 'system'], default='user')
     args = parser.parse_args()
@@ -1603,6 +1607,11 @@ def main():
             raise SystemExit('Unknown incident ID')
         print(json.dumps({'unit': row[0], 'scope': row[1], **json.loads(row[2])}, indent=2))
         return 0
+    if args.action == 'storage-hold':
+        StorageHold().on_failure(args.target)
+        return 0
+    if args.action == 'storage-wait':
+        return StorageHold().wait()
     if args.action == 'heartbeat' and not heartbeat_stale(args.state / 'status.json'):
         return 0
     def make_watch():

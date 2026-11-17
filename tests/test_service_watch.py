@@ -34,7 +34,6 @@ class Contracts(unittest.TestCase):
         states = patch.object(sw, 'unit_states', side_effect=RuntimeError('systemd_read_failed'))
         states.start(); self.addCleanup(states.stop)
         self.watch = sw.Watch(self.root / 'state', self.root / 'inventory.json')
-        self.watch.storage = sw.StorageGuard(self.root / 'storage-pause.json', dirs=())
         self.watch.checkout_roots = []
         self.watch.checkout_discover = lambda roots: []
         self.watch.reaper_status = self.root / 'latest.json'
