@@ -2,11 +2,6 @@ name: Oura BLE gestures (offline)
 
 on:
   pull_request:
-    paths:
-      - "scripts/oura-gestures.py"
-      - "tests/test_oura_gestures.py"
-      - "config/oura-gestures/**"
-      - ".github/workflows/oura-gestures.yml"
   push:
     branches: [dev]
     paths:
@@ -22,9 +17,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check for relevant changes
+        id: changed
+        run: |
+          changed_files="$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} 2>/dev/null || echo '')"
+          if echo "$changed_files" | grep -qE '^scripts/oura-gestures\.py$|^tests/test_oura_gestures\.py$|^config/oura-gestures/|^/.github/workflows/oura-gestures\.yml$'; then
+            echo "relevant=true" >> $GITHUB_OUTPUT
+          else
+            echo "relevant=false" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m pip install --disable-pip-version-check pytest cryptography
-      - run: python -m py_compile scripts/oura-gestures.py
-      - run: python -m pytest -q tests/test_oura_gestures.py
+
+      - name: Install dependencies
+        if: steps.changed.outputs.relevant == 'true'
+        run: python -m pip install --disable-pip-version-check pytest cryptography
+
+      - name: Compile gestures script
+        if: steps.changed.outputs.relevant == 'true'
+        run: python -m py_compile scripts/oura-gestures.py
+
+      - name: Run tests
+        if: steps.changed.outputs.relevant == 'true'
+        run: python -m pytest -q tests/test_oura_gestures.py
+
+      - name: Report result
+        run: echo "offline-tests done"

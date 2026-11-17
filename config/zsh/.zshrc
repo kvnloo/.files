@@ -109,3 +109,7 @@ export PATH="$HOME/.actual/bin:$PATH"
 
 # vllm-sr shell completion
 eval "$(vllm-sr completion show zsh)"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"

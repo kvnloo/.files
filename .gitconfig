@@ -2,6 +2,9 @@
 	random = !"git add -A; git commit -am \"$(echo $(curl -s https://whatthecommit.com/index.txt))\"; git push"
 [core]
 	pager = delta
+	# Git's default skips fsync for loose objects; three unclean shutdowns (11-07..11-11) left
+	# 124 empty objects in z0intelligence. Harden loose objects and refs as well.
+	fsync = loose-object,reference
 [interactive]
 	diffFilter = delta --color-only
 [delta]
@@ -47,5 +50,8 @@
 [credential "https://gist.github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
+[user]
+	email = kvnloo@users.noreply.github.com
+	name = Kevin Rajan
 [maintenance]
 	repo = /workspace/hermes-home/hermes-agent
