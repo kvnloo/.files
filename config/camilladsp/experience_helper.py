@@ -117,3 +117,17 @@ def add_stereo_filter_before_limiter(config, filter_name_l, filter_name_r=None):
             pipeline.insert(i, {"type": "Filter", "channels": [1], "names": [filter_name_r]})
             pipeline.insert(i, {"type": "Filter", "channels": [0], "names": [filter_name_l]})
             return
+
+
+def add_tonal_tilt(config, name, gain):
+    """Tilt around 1 kHz using opposite low and high shelving gains."""
+    for suffix, kind, shelf_gain in (
+        ("low", "Lowshelf", -gain / 2),
+        ("high", "Highshelf", gain / 2),
+    ):
+        filter_name = f"{name}_{suffix}"
+        config["filters"][filter_name] = {
+            "type": "Biquad",
+            "parameters": {"type": kind, "freq": 1000, "gain": shelf_gain, "slope": 6.0},
+        }
+        add_stereo_filter_before_limiter(config, filter_name)

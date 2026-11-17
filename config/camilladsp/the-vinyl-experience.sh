@@ -38,12 +38,6 @@ config['filters']['vinyl_lf_rise'] = {
     'parameters': {'type': 'Lowshelf', 'freq': 100, 'gain': 2.0, 'slope': 6.0}
 }
 
-# Warm tonal tilt
-config['filters']['vinyl_tilt'] = {
-    'type': 'Biquad',
-    'parameters': {'type': 'Tilt', 'gain': -1.5}
-}
-
 # Rumble filter — subsonic protection
 config['filters']['vinyl_rumble'] = {
     'type': 'Biquad',
@@ -53,7 +47,7 @@ config['filters']['vinyl_rumble'] = {
 add_stereo_filter_before_limiter(config, 'vinyl_rumble')
 add_stereo_filter_before_limiter(config, 'vinyl_lf_rise')
 add_stereo_filter_before_limiter(config, 'vinyl_hf_rolloff')
-add_stereo_filter_before_limiter(config, 'vinyl_tilt')
+add_tonal_tilt(config, 'vinyl_tilt', -1.5)
 
 apply_config(config, f'Vinyl simulation ({profile} @ {rate}Hz)')
 "

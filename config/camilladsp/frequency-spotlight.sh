@@ -21,22 +21,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
 
-# Band definitions: name low_hz high_hz
-declare -A BAND_LOW=(
-    [sub]=20 [bass]=60 [lowmid]=250 [mid]=500
-    [uppermid]=2000 [presence]=4000 [air]=8000
-)
-declare -A BAND_HIGH=(
-    [sub]=60 [bass]=250 [lowmid]=500 [mid]=2000
-    [uppermid]=4000 [presence]=8000 [air]=20000
-)
 BAND_ORDER=(sub bass lowmid mid uppermid presence air)
 
 apply_band() {
-    local band="$1"
-    local lo="${BAND_LOW[$band]}"
-    local hi="${BAND_HIGH[$band]}"
+    local band="$1" lo hi
+    case "$band" in
+        sub)      lo=20;   hi=60 ;;
+        bass)     lo=60;   hi=250 ;;
+        lowmid)   lo=250;  hi=500 ;;
+        mid)      lo=500;  hi=2000 ;;
+        uppermid) lo=2000; hi=4000 ;;
+        presence) lo=4000; hi=8000 ;;
+        air)      lo=8000; hi=20000 ;;
+    esac
 
+    echo "Frequency Spotlight: $band (${lo}-${hi} Hz)"
     "$VENV_PYTHON" -c "
 import sys
 sys.path.insert(0, '$SCRIPT_DIR')
@@ -71,9 +70,6 @@ apply_config(config, '$band ($lo-${hi} Hz)')
 
 case "${1:-sweep}" in
     sub|bass|lowmid|mid|uppermid|presence|air)
-        lo="${BAND_LOW[$1]}"
-        hi="${BAND_HIGH[$1]}"
-        echo "Frequency Spotlight: ${1^^} (${lo}-${hi} Hz)"
         apply_band "$1"
         ;;
     sweep)
@@ -81,9 +77,6 @@ case "${1:-sweep}" in
         echo "Frequency Spotlight: SWEEP (${interval}s per band)"
         echo ""
         for band in "${BAND_ORDER[@]}"; do
-            lo="${BAND_LOW[$band]}"
-            hi="${BAND_HIGH[$band]}"
-            echo "$(date '+%H:%M:%S')  ${band^^} (${lo}-${hi} Hz)"
             apply_band "$band"
             sleep "$interval"
         done

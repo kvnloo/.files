@@ -2,7 +2,7 @@
 # the-tilt-shifter — tonal balance explorer
 #
 # Smoothly shifts the overall tonal balance from warm (bass-heavy) to
-# bright (treble-forward) using CamillaDSP's Tilt filter.
+# bright (treble-forward) using a pair of shelving filters.
 #
 # Usage:
 #   the-tilt-shifter.sh warm          -3 dB tilt (warmer)
@@ -27,15 +27,7 @@ from experience_helper import *
 
 config, profile, rate = load_base_config()
 
-config['filters']['tilt'] = {
-    'type': 'Biquad',
-    'parameters': {
-        'type': 'Tilt',
-        'gain': $gain,
-    }
-}
-
-add_stereo_filter_before_limiter(config, 'tilt')
+add_tonal_tilt(config, 'tilt', $gain)
 
 apply_config(config, '$label')
 "

@@ -8,9 +8,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$SCRIPT_DIR/configs"
+CONFIG_DIR="${1:-$SCRIPT_DIR/configs}"
+PLAYBACK_DEVICE="${2:-Moonriver 2}"
 
 mkdir -p "$CONFIG_DIR"
+# Escape the YAML double-quoted value, then the sed replacement.
+device=$(printf '%s' "$PLAYBACK_DEVICE" | sed 's/[\"]/\\&/g; s/[\&|]/\\&/g')
 
 RATES=(44100 48000 96000 192000 384000)
 PROFILES=(camilladsp camilladsp-crossfeed camilladsp-room)
@@ -23,6 +26,7 @@ for rate in "${RATES[@]}"; do
         sed \
             -e "s/samplerate: 96000/samplerate: ${rate}/" \
             -e "s|coeffs/active_96000Hz.wav|coeffs/active_${rate}Hz.wav|g" \
+            -e "s|device: \"Moonriver 2\"|device: \"$device\"|" \
             "$src" > "$dst"
 
         echo "Generated: ${profile}-${rate}.yml"
