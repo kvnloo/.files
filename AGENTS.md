@@ -46,6 +46,10 @@ If onboarding is already complete (`offer_onboarding: false`), do not re-offer u
 
 Supported labels include `cursor`, `claude`, `codex`, `opencode`, `gemini`, `omp`, `hermes`, `kimi`, `grok`, or `unknown`. Behavior is the same for every harness: status → ask → guided module runs.
 
+## External reference gate (required)
+
+For a linked `x.com`/`twitter.com` post or other media demo, **read the installed Agent Reach skill and try its diagnosed backend first**. Inspect the actual post, thread and attached video/images **before** describing the demo or creating implementation-ready GitHub issues. A plain X 403 is not proof that Agent Reach cannot read it. Use authorized fallback sources if required, and explicitly label any post/media facts that remain unverified. Record the source, method, creator credit, observed behavior and verification gaps in the issue **body**. Do not leak social cookies or private media. Read [docs/REFERENCE-RESEARCH.md](docs/REFERENCE-RESEARCH.md) for the exact process, alternatives, regression cases and 2026-10-19 failure example.
+
 ## Safety rules for public clones
 
 - Never commit Sunshine credentials, Tailscale auth keys, API tokens, or `~/.agent-reach` state.
@@ -56,6 +60,7 @@ Supported labels include `cursor`, `claude`, `codex`, `opencode`, `gemini`, `omp
 ## Canonical docs
 
 - [docs/SETUP.md](docs/SETUP.md) — full setup guide (both methods)
+- [docs/REFERENCE-RESEARCH.md](docs/REFERENCE-RESEARCH.md) — Agent Reach-first reference inspection gate
 - [README.md](README.md) — short entry point
 - [config/nix/README.md](config/nix/README.md) — Home Manager on CachyOS
 
