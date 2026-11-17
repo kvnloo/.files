@@ -114,6 +114,11 @@ three consecutive zero ticks, not a misleading success log line. Cognition-shado
 checks include `shadow[].error`/`parse_error`; an error-dominated file over 32MiB or
 growing by over 64KiB in a sample is severe. File samples are bounded to 2MiB/1000
 rows. Unknown/missing invariant evidence is warning/unavailable, never healthy.
+The loop unit accepts exit 3 as a degraded measurement, not an execution failure.
+`loop/last-tick.json` and the structured journal receipt preserve that distinction:
+ServiceWatch records `loop_degraded` warnings without converting them into healthy
+quality evidence. The shadow-learning drop-in must not clear `SuccessExitStatus=3`;
+actual step exceptions still exit 1 and remain service failures.
 First-start journal lookback is two minutes; `service-watch seed` streams the
 last seven days (bounded to three minutes per journal) and historical tick
 receipts, recording partial/unavailable coverage explicitly.

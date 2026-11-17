@@ -21,6 +21,28 @@ spec.loader.exec_module(sw)
 
 
 class Contracts(unittest.TestCase):
+    def test_effective_loop_unit_accepts_degraded_exit(self):
+        """Apply systemd's list reset/append semantics across tracked drop-ins."""
+        unit = ROOT / 'config/systemd/user/z0int-loop-tick.service'
+        files = [unit, *sorted(unit.with_name(unit.name + '.d').glob('*.conf'))]
+        accepted = set()
+        for path in files:
+            section = None
+            for raw in path.read_text().splitlines():
+                line = raw.strip()
+                if not line or line.startswith(('#', ';')):
+                    continue
+                if line.startswith('['):
+                    section = line
+                    continue
+                key, separator, value = line.partition('=')
+                if section == '[Service]' and separator and key.strip() == 'SuccessExitStatus':
+                    if not value.strip():
+                        accepted.clear()
+                    else:
+                        accepted.update(value.split())
+        self.assertIn('3', accepted)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
