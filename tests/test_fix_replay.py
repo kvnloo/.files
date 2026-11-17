@@ -160,6 +160,9 @@ class FixReplayRegressionReopen(unittest.TestCase):
             self.assertIn("unit-x", argv[argv.index("create") + 1])
             for want in ("last pass", "first fail", "boom", "pacman.log"):
                 self.assertIn(want, body)
+            # without the tape's file every worker grep -r'd the whole ops tree at once and the
+            # concurrent walks alone pinned the data SSD (F20-io-psi red, 2026-11-16)
+            self.assertIn(str(ops / "fix-tapes.json"), body)
             self.assertEqual(json.loads((ops / "fix-state.json").read_text())["unit-x"]["reopened"], "t_stub")
 
     def test_a_single_flaky_fail_and_a_born_red_tape_open_nothing(self):
