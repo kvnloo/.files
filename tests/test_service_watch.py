@@ -813,7 +813,7 @@ class Contracts(unittest.TestCase):
     def test_phone_caps_recurring_root_follows_installed_fleet(self):
         with patch.object(sw.shutil, 'which', return_value=str(self.root / 'scripts/fleet')), patch.object(self.watch, 'invariant', return_value=[]) as invariant, patch.object(self.watch, 'record') as record:
             self.watch.phone_caps_invariant()
-        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root)})
+        self.assertEqual(invariant.call_args[0][2], {'kind': 'phone_caps', 'root': str(self.root.resolve())})
         record.assert_called_once_with('user', 'service-watch.service', [])
 
 
@@ -1308,6 +1308,49 @@ class Contracts(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join()
+
+    def test_remote_triage_reuses_a_decision_for_the_same_facts(self):
+        # 2026-11-16: one finite window was sent to groq 124 times in 24 h (unit names are never
+        # sent, so the model saw identical input); repeats drained the 200k free daily tokens and
+        # left every triage tier dead until the rolling reset.
+        decision = {'severity': 'warn', 'cause': 'Error rate elevated', 'fix': 'Inspect manually', 'evidence': [0], 'confidence': .8}
+        remote = {'ok': True, 'provider': 'groq', 'model': 'openai/gpt-oss-20b', 'output': json.dumps(decision)}
+        sent = []
+        def routed(url, body, timeout=40):
+            if url == sw.LOCAL_URL:
+                raise OSError('local paused')
+            sent.append(body)
+            return remote
+        def triage(unit, event, raw):
+            ident = self.watch.record('user', unit, [event], raw)
+            with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 1, '', '')), \
+                    patch.object(sw, 'post', routed), patch.object(sw.subprocess, 'run'), \
+                    patch.object(self.watch.store, 'notify'):
+                self.watch.triage(ident, raw)
+            return json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
+        first = triage('a.service', sw.event('journal_error_rate', count=10), ['synthetic error one'])
+        # Same facts, other unit and other raw line text (only per-line hashes differ): no new call.
+        again = triage('b.service', sw.event('journal_error_rate', count=10), ['synthetic error two'])
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(first['tiers'][-1], {**first['tiers'][-1], 'ok': True, 'model': 'groq/openai/gpt-oss-20b'})
+        self.assertTrue(again['tiers'][-1]['ok'] and again['tiers'][-1]['cached'])
+        self.assertEqual(again['decision']['cause'], 'Error rate elevated')
+        # Different metrics are different facts.
+        triage('c.service', sw.event('journal_error_rate', count=11), ['synthetic error'])
+        self.assertEqual(len(sent), 2)
+        # Proven failures are severe whatever the model says: their evidence codes are the key.
+        triage('d.service', sw.event('failed'), [])
+        triage('e.service', sw.event('failed'), ['other'])
+        self.assertEqual(len(sent), 3)
+        # A failed call is never cached, and an entry expires.
+        remote['ok'] = False
+        triage('f.service', sw.event('journal_error_rate', count=12), [])
+        remote['ok'] = True
+        triage('g.service', sw.event('journal_error_rate', count=12), [])
+        self.assertEqual(len(sent), 5)
+        with patch.object(sw.time, 'time', return_value=time.time() + sw.TRIAGE_CACHE_SECONDS + 1):
+            triage('h.service', sw.event('journal_error_rate', count=10), ['synthetic error one'])
+        self.assertEqual(len(sent), 6)
 
 
 if __name__ == '__main__':
