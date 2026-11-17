@@ -52,6 +52,23 @@ class CreatorTests(unittest.TestCase):
             subprocess.run(['sh', '-c', artifact_lease.shell_create(artifact_lease.shlex.quote(directory), 'other', 's25', 'other')], check=True)
             self.assertEqual(sidecar.read_bytes(), first)
 
+    def test_portable_shell_publishes_when_hard_links_are_denied(self):
+        # Android /data/local/tmp refuses hard links for the shell uid.
+        with tempfile.TemporaryDirectory(prefix='lease space ') as directory, \
+                tempfile.TemporaryDirectory() as bin_dir:
+            fake = Path(bin_dir) / 'ln'
+            fake.write_text('#!/bin/sh\necho "ln: Permission denied" >&2\nexit 1\n')
+            fake.chmod(0o755)
+            env = {'PATH': f'{bin_dir}:/usr/bin:/bin'}
+            command = artifact_lease.shell_create(artifact_lease.shlex.quote(directory), 'job', 's25', 'fleet-adb')
+            subprocess.run(['sh', '-c', command], check=True, env=env)
+            sidecar = Path(directory) / '.artifact-lease.json'
+            first = sidecar.read_bytes()
+            self.assertEqual(json.loads(first)['owner'], 'job')
+            subprocess.run(['sh', '-c', artifact_lease.shell_create(artifact_lease.shlex.quote(directory), 'other', 's25', 'other')], check=True, env=env)
+            self.assertEqual(sidecar.read_bytes(), first)
+            self.assertEqual(sorted(p.name for p in Path(directory).iterdir()), ['.artifact-lease.json'])
+
     def test_terminal_receipt_contains_actual_return_code(self):
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(['sh', '-c', artifact_lease.terminal_command('(exit 17)', artifact_lease.shlex.quote(directory))])
