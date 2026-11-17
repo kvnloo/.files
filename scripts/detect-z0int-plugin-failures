@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# detect-z0int-plugin-failures — loud failure when enabled plugins report "failed to load"
+# Runs claude plugin list per config dir and checks for cache-miss / failed-to-load on enabled plugins.
+# Exits 0 if all enabled plugins load cleanly; exits 1 with detailed error output otherwise.
+# Only fails on explicit "failed to load" status; warns on enabled-but-not-installed plugins.
+
+set -euo pipefail
+
+CONFIG_DIRS=(
+    "$HOME/.claude"
+    "$HOME/.claude-sub2"
+    "$HOME/.claude-ultra"
+    "$HOME/.claude-work"
+)
+
+log() { printf '[detect-z0int-plugin-failures] %s\n' "$*" >&2; }
+warn() { printf '[detect-z0int-plugin-failures] WARNING: %s\n' "$*" >&2; }
+err() { printf '[detect-z0int-plugin-failures] ERROR: %s\n' "$*" >&2; }
+
+# Check one config dir for plugin load failures
+check_one_dir() {
+    local config_dir="$1"
+    local settings_file="$config_dir/settings.json"
+    local tmp_output
+    tmp_output="$(mktemp)"
+    local failed=0
+
+    if [[ ! -f "$settings_file" ]]; then
+        log "No settings.json in $config_dir, skipping"
+        return 0
+    fi
+
+    # Get enabled plugins from settings.json
+    local enabled_plugins
+    enabled_plugins="$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' "$settings_file" 2>/dev/null || true)"
+
+    if [[ -z "$enabled_plugins" ]]; then
+        log "No enabled plugins in $config_dir"
+        return 0
+    fi
+
+    # Run claude plugin list for this config dir
+    CLAUDE_CONFIG_DIR="$config_dir" claude plugin list > "$tmp_output" 2>&1 || true
+
+    # Check each enabled plugin for failure status
+    while IFS= read -r plugin; do
+        [[ -z "$plugin" ]] && continue
+        # Look for the plugin in output and check status
+        # Output format: "  ❯ plugin@marketplace\n    Version: x.y.z\n    Scope: user\n    Status: ✘ failed to load\n    Error: Marketplace marketplace failed to load: cache-miss"
+        if grep -q "^  ❯ $plugin$" "$tmp_output"; then
+            # Found the plugin entry, now check its status (next few lines)
+            local status
+            status="$(awk -v p="$plugin" '
+                $0 ~ "^  ❯ " p "$" { in_block=1; next }
+                in_block && /^  ❯ / { in_block=0 }
+                in_block && /Status:/ { print $2; exit }
+            ' "$tmp_output")"
+
+            if [[ "$status" == "✘" ]] || [[ "$status" == "failed" ]]; then
+                # Get the error message
+                local error_msg
+                error_msg="$(awk -v p="$plugin" '
+                    $0 ~ "^  ❯ " p "$" { in_block=1; next }
+                    in_block && /^  ❯ / { in_block=0 }
+                    in_block && /Error:/ { $1=""; print substr($0,2); exit }
+                ' "$tmp_output")"
+                err "Plugin $plugin in $config_dir failed to load: ${error_msg:-unknown error}"
+                failed=1
+            elif [[ "$status" == "✔" ]] || [[ "$status" == "enabled" ]]; then
+                log "Plugin $plugin in $config_dir: OK (enabled)"
+            else
+                warn "Plugin $plugin in $config_dir: status='$status' (unexpected)"
+            fi
+        else
+            # Plugin not listed at all — marketplace not installed for this plugin
+            warn "Plugin $plugin in $config_dir enabled but not installed (marketplace missing)"
+            # Don't fail on missing marketplace; only fail on explicit load failure
+        fi
+    done <<< "$enabled_plugins"
+
+    rm -f "$tmp_output"
+    return $failed
+}
+
+main() {
+    log "Checking plugin load status in ${#CONFIG_DIRS[@]} config dirs"
+    local any_failed=0
+
+    for dir in "${CONFIG_DIRS[@]}"; do
+        if [[ -d "$dir" ]]; then
+            check_one_dir "$dir" || any_failed=1
+        else
+            log "Config dir $dir does not exist, skipping"
+        fi
+    done
+
+    if [[ $any_failed -eq 0 ]]; then
+        log "All enabled plugins load successfully in all config dirs"
+        exit 0
+    else
+        err "PLUGIN LOAD FAILURE DETECTED — capture will be silent until fixed"
+        exit 1
+    fi
+}
+
+main "$@"

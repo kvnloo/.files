@@ -1,0 +1,13 @@
+[Unit]
+Description=Detect z0intelligence plugin load failures in Claude config dirs
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=%h
+ExecStart=%h/.local/bin/detect-z0int-plugin-failures
+Nice=19
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+# Exit 1 = plugin load failure detected -> service marked failed (loud)

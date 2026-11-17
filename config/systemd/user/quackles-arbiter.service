@@ -9,4 +9,5 @@ ExecStart=%h/zer0/oss/hermes-k8s-lab/quackles/arbiter/qk-arbiter --once
 Nice=10
 # backstop for the script's own --deadline-s (60 s): a stalled tick must not block later ones
 TimeoutStartSec=90
+MemoryHigh=100M
 MemoryMax=128M

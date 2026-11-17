@@ -84,6 +84,22 @@ class Host:
         return [Path(f'/etc/systemd/system.control/{unit}.d'),
                 Path(f'/run/systemd/system.control/{unit}.d')]
 
+    def graphical(self) -> bool:
+        """True when logind has a wayland/x11 session for this user (the greeter is sddm's, not ours)."""
+        def ask(*args):
+            return subprocess.run(['loginctl', *args], capture_output=True, text=True, timeout=10)
+        try:
+            out = ask('show-user', str(self.uid), '-p', 'Sessions', '--value')
+            if out.returncode != 0:
+                return True  # logind unreadable: check everything, never hide drift
+            for sid in out.stdout.split():
+                kind = ask('show-session', sid, '-p', 'Type', '--value').stdout.strip()
+                if kind in ('wayland', 'x11', 'mir'):
+                    return True
+            return False
+        except (OSError, subprocess.TimeoutExpired):
+            return True  # unknown: check everything, never hide drift
+
     def pids(self, comm: str) -> list[int]:
         found = []
         for entry in self.proc.iterdir():
@@ -175,11 +191,20 @@ CHECKS = {'unit': check_unit, 'cgroup': check_cgroup, 'placement': check_placeme
 
 def audit(intent: dict, host: Host, groups: set[str] | None = None) -> list[dict]:
     rows = []
+    graphical = None
     for kind, check in CHECKS.items():
         for row in intent.get(kind, []):
             group = row.get('group', 'base')
             if groups and group not in groups:
                 continue
+            if group == 'ui' or (kind == 'placement' and row.get('comm') == 'Hyprland'):
+                # Desktop rules only mean something inside a graphical session. At the greeter the
+                # session units do not exist, so they read as drift and the law failed every run.
+                graphical = host.graphical() if graphical is None else graphical
+                if not graphical:
+                    rows.append({'kind': kind, 'group': group, 'ok': True, 'na': 'no graphical session',
+                                 'problems': [], 'why': row.get('why', '')})
+                    continue
             try:
                 problems = check(host, row)
             except Exception as error:  # an unreadable value is drift, never a pass
@@ -209,7 +234,9 @@ def main(argv=None) -> int:
         for row in drift:
             for problem in row['problems']:
                 print(f'DRIFT [{row["group"]}] {problem}')
-        print(f'memory-drift: {len(rows) - len(drift)}/{len(rows)} green'
+        na = sum(1 for row in rows if row.get('na'))
+        print(f'memory-drift: {len(rows) - len(drift) - na}/{len(rows)} green'
+              + (f'; {na} n/a (no graphical session)' if na else '')
               + ('' if not drift else f'; {len(drift)} DRIFT (exit 1)'))
     return 1 if drift else 0
 

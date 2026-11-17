@@ -13,6 +13,7 @@ LimitCORE=0
 Nice=10
 CPUQuota=25%
 IOWeight=25
+MemoryHigh=600M
 MemoryMax=768M
 NoNewPrivileges=true
 PrivateTmp=true

@@ -11,6 +11,7 @@ ExecStart=python -m z0int.policy.autoeval identities
 UMask=0077
 Nice=19
 IOSchedulingClass=idle
+MemoryHigh=200M
 MemoryMax=256M
 OOMPolicy=continue
 TasksMax=8

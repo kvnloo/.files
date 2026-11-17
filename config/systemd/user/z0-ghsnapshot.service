@@ -9,4 +9,5 @@ Environment=FACTORY_TOOLS=/mnt/zer0models/worktrees/oss-factory-substrate/tools/
 ExecStartPre=/usr/bin/curl -fsS --retry 15 --retry-connrefused --retry-delay 1 -o /dev/null http://127.0.0.1:18090/_ghcache/stats
 ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghsnapshot.py --workers 4 --keep-days 7
 Nice=10
+MemoryHigh=200M
 MemoryMax=256M

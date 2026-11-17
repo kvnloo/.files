@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# ensure-z0int-marketplace — install/refresh z0intelligence marketplace in all Claude config dirs
+# Source of truth: git@github.com:kvnloo/z0intelligence.git (or HTTPS mirror)
+# Runs idempotently; safe for systemd timer, onboarding, or manual invocation.
+
+set -euo pipefail
+
+# Config directories that need the marketplace (matches Z0INT_CLAUDE_PROJECTS_DIRS precedence)
+CONFIG_DIRS=(
+    "$HOME/.claude"
+    "$HOME/.claude-sub2"
+    "$HOME/.claude-ultra"
+    "$HOME/.claude-work"
+)
+
+# Upstream marketplace repo (HTTPS for unauthenticated clone; SSH if key available)
+MARKETPLACE_REPO_HTTPS="https://github.com/kvnloo/z0intelligence.git"
+MARKETPLACE_REPO_SSH="git@github.com:kvnloo/z0intelligence.git"
+
+# Local master checkout (used as reference for version pinning)
+MASTER_CHECKOUT="/mnt/zer0models/z0-wt/z0intelligence"
+
+log() { printf '[ensure-z0int-marketplace] %s\n' "$*" >&2; }
+err() { printf '[ensure-z0int-marketplace] ERROR: %s\n' "$*" >&2; }
+
+# Determine which remote to use
+choose_remote() {
+    if git ls-remote "$MARKETPLACE_REPO_SSH" >/dev/null 2>&1; then
+        printf '%s\n' "$MARKETPLACE_REPO_SSH"
+    else
+        printf '%s\n' "$MARKETPLACE_REPO_HTTPS"
+    fi
+}
+
+# Get the pinned commit from master checkout (if available)
+get_pinned_commit() {
+    if [[ -d "$MASTER_CHECKOUT/.git" ]]; then
+        git -C "$MASTER_CHECKOUT" rev-parse HEAD 2>/dev/null || true
+    fi
+}
+
+# Ensure marketplace exists in one config dir
+ensure_one_dir() {
+    local config_dir="$1"
+    local marketplace_dir="$config_dir/plugins/marketplaces/z0intelligence"
+    local remote
+    remote="$(choose_remote)"
+    local pinned_commit
+    pinned_commit="$(get_pinned_commit)"
+
+    mkdir -p "$config_dir/plugins/marketplaces"
+
+    if [[ -d "$marketplace_dir/.git" ]]; then
+        # Update existing clone
+        log "Updating marketplace in $config_dir"
+        git -C "$marketplace_dir" fetch origin --tags --prune 2>/dev/null || true
+        if [[ -n "$pinned_commit" ]]; then
+            # Explicitly fetch the pinned commit hash (not covered by --tags)
+            git -C "$marketplace_dir" fetch origin "$pinned_commit" --quiet 2>/dev/null || true
+            git -C "$marketplace_dir" checkout "$pinned_commit" --quiet 2>/dev/null || {
+                err "Failed to checkout pinned commit $pinned_commit in $config_dir; falling back to origin/HEAD"
+                git -C "$marketplace_dir" checkout origin/HEAD --quiet 2>/dev/null || true
+            }
+        else
+            git -C "$marketplace_dir" pull --ff-only --quiet 2>/dev/null || true
+        fi
+    else
+        # Fresh clone
+        log "Cloning marketplace into $config_dir"
+        git clone --depth=1 --quiet "$remote" "$marketplace_dir" 2>/dev/null || {
+            err "Failed to clone $remote into $marketplace_dir"
+            return 1
+        }
+        if [[ -n "$pinned_commit" ]]; then
+            git -C "$marketplace_dir" fetch origin "$pinned_commit" --quiet 2>/dev/null && \
+            git -C "$marketplace_dir" checkout "$pinned_commit" --quiet 2>/dev/null || true
+        fi
+    fi
+
+    # Verify the plugin manifest exists
+    if [[ ! -f "$marketplace_dir/harness-adapters/claude-code-z0intelligence/.claude-plugin/plugin.json" ]]; then
+        err "Plugin manifest missing after sync in $config_dir"
+        return 1
+    fi
+
+    log "Marketplace ready in $config_dir"
+    return 0
+}
+
+main() {
+    log "Starting marketplace ensure for ${#CONFIG_DIRS[@]} config dirs"
+    local failed=0
+    for dir in "${CONFIG_DIRS[@]}"; do
+        if [[ -d "$dir" ]]; then
+            ensure_one_dir "$dir" || failed=1
+        else
+            log "Config dir $dir does not exist, skipping"
+        fi
+    done
+
+    if [[ $failed -eq 0 ]]; then
+        log "All marketplaces ensured successfully"
+        exit 0
+    else
+        err "One or more marketplaces failed to ensure"
+        exit 1
+    fi
+}
+
+main "$@"

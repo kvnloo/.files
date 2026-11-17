@@ -7,5 +7,6 @@ Type=oneshot
 ExecStart=%h/.local/lib/host-storage/current/scripts/release-retention.py --apply
 Nice=19
 IOSchedulingClass=idle
+MemoryHigh=400M
 MemoryMax=512M
 TimeoutStartSec=45min
