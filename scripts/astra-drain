@@ -5,7 +5,7 @@ owner-data briefs). One contract per run (flock), gated by `burn-gate codex` as 
 Each contract {title, files, change, test} runs in its own git worktree on branch astra/<slug>;
 the drainer runs the test itself, commits on pass (Kevin's identity), never pushes.
 status: pending -> ready-review | applied | failed | needs-repo | refused | bad-contract (astra-lint, before fx)
-Optional contract fields: base (ref the worktree is cut from, default HEAD).
+Optional contract fields: base (ref the worktree is cut from, default origin/dev if present, else HEAD).
   astra-drain [--dry-run]
 """
 import fcntl, json, os, re, subprocess, sys, time
@@ -214,7 +214,9 @@ def main(dry):
     branch, wt = f"astra/{slug}-{time.strftime('%Y%m%d')}", WT_ROOT / f"astra-{slug}"
     if dry:
         print(f"astra-drain: would run '{job['title']}' in {repo} on {branch} ({wt}) with {MODEL}"); return 0
-    rc, out = sh(["git", "-C", repo, "worktree", "add", "-b", branch, str(wt), job.get("base") or "HEAD"])
+    base = job.get("base") or (
+        "origin/dev" if sh(["git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/dev"])[0] == 0 else "HEAD")
+    rc, out = sh(["git", "-C", repo, "worktree", "add", "-b", branch, str(wt), base])
     if rc != 0:
         if "No space left on device" in out or "cannot lock ref" in out:
             job["infra_retries"] = job.get("infra_retries", 0) + 1
