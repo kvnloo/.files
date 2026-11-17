@@ -152,6 +152,15 @@ class DecideTests(unittest.TestCase):
         self.assertNotIn(95, batch | disposable)
         self.assertIn(96, batch)
 
+    def test_artifact_leases_report_stays_at_the_floor(self):
+        # 2026-11-17 02:19 (t_fc6ab9d4): at adj 900 the 10 MB report was the first kill in
+        # a global OOM, freed nothing and failed the unit. Like TOOLING it stays at the floor.
+        procs = session_tree()
+        procs[97] = P(97, 1, 'python3', ['python3', 'artifact-lease-controller.py', '--monitor'],
+                      'python3', USER + '/app.slice/artifact-leases.service')
+        _, disposable, batch = policy.decide(procs, MAINS)
+        self.assertNotIn(97, batch | disposable)
+
     def test_dashboard_launched_as_module_is_a_root(self):
         procs = session_tree()
         procs[80] = P(80, 1, 'hermes', ['/x/python3', '-m', 'hermes_cli.main', 'dashboard'], 'python3.14',
