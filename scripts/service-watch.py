@@ -424,10 +424,34 @@ class Watch:
         self.store.set('watchlist', [{'unit': unit, 'scope': scope} for scope, unit in units])
         self.install_hooks()
 
+    @staticmethod
+    def per_connection(unit):
+        # Accept=yes sockets spawn one transient name@<conn>.service per client. A hook per
+        # instance left one drop-in dir per connection forever (734 for z0int-memory-mcp by
+        # 2026-11-02); the socket unit itself is watched instead.
+        return re.fullmatch(r'[^@]+@\d+-\d+-\d+_\d+-\d+\.service', unit) is not None
+
+    def prune_hooks(self, base):
+        # Remove hook-only drop-in dirs of per-connection instances; keep anything else a human wrote.
+        removed = 0
+        for d in base.glob('*@*.service.d'):
+            unit = d.name[:-2]
+            if not self.per_connection(unit) or (('user', unit) in self.units):
+                continue
+            names = [p.name for p in d.iterdir()]
+            if names == ['90-service-watch.conf']:
+                (d / names[0]).unlink()
+                d.rmdir()
+                removed += 1
+        return removed
+
     def install_hooks(self):
         changed = False
+        base = Path.home() / '.config/systemd/user'
+        if base.exists() and self.prune_hooks(base):
+            changed = True
         for scope, unit in self.units:
-            if scope != 'user' or unit.startswith('service-watch-failure@'):
+            if scope != 'user' or unit.startswith('service-watch-failure@') or self.per_connection(unit):
                 continue
             escaped = command(['systemd-escape', unit]).stdout.strip()
             target = Path.home() / '.config/systemd/user' / (unit + '.d') / '90-service-watch.conf'

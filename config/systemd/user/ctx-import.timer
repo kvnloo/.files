@@ -3,7 +3,10 @@ Description=ctx hourly history import
 [Timer]
 OnBootSec=10min
 # OnUnitActiveSec alone goes "elapsed" after a daemon-reload and never fires again (stopped after 21:14 on 2026-10-25).
-OnCalendar=hourly
+# 2026-11-02 memory-heal: every 15 min. The unit's ExecCondition (MemAvailable > 6 GiB, agentsview-sync idle)
+# skipped every hourly attempt from 10-26 to 11-02, so the index went 7 days stale. ctx-import-hourly itself
+# still refreshes at most once per 50 min, so the extra attempts cost a cheap check, not extra rebuilds.
+OnCalendar=*:00/15
 RandomizedDelaySec=5min
 Persistent=true
 [Install]

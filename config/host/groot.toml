@@ -1,5 +1,5 @@
 # Groot managed path inventory. Activation is preserved; secrets remain private.
-user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml"]
+user_release_closure = ["scripts/workspace_flow.py", "scripts/workspace_routines.py", "scripts/dash-log-watch-model.py", "scripts/service-watch-confirm.ts", "scripts/worktree-reaper.py", "scripts/artifact-leases.py", "config/boat/secret-allowlist.json", "config/host/groot-memory-intent.toml", "config/host/memory-system-intent.toml"]
 user_retired_files = [
   { live = "~/.config/systemd/user/fleet-health.service.d/50-admission-owner.conf", sha256 = "e091e2d63607c8a036aa3091e4fb25dacaccf8fe6b700989bd73c5451a2e1a4c", reason = "Use the stamped fleet command; retire the stale admission worktree override." },
   { live = "~/.config/systemd/user/dash-metro-native-8108.service", sha256 = "7add4e0087ba7304ea6e3cdddffa92cad616e65e0e1a04306baec2ad632d7b76", reason = "Superseded by PR88 canonical Dash units; captured environment retired." },
@@ -1147,7 +1147,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Preserve existing declaration and enablement without restart; host-hygiene/REPORT.md and DESKTOP-ADMISSION.md user audit."
-migration_sha256 = "9cd8197c80ac39aa5a38352ad7ee84deaa11ab8403084bd107a3119890871fe4"
+migration_sha256 = "f8b72f1e141a1a89de531307817c7bdca656f509e95a6d161523e287e984681b"
 
 [[user]]
 live = "~/.config/systemd/user/z0int-policy.service"
@@ -4566,6 +4566,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "Memory recall gate (canon reaches every turn, MCP finds owner words, harness sources reconciled); codified from the hand-placed unit, byte-identical."
+migration_sha256 = "b8f8b4b2794ad5a432a624d367687383a704e9723c6a00df04c6bef61b39583b"
 
 [[user]]
 live = "~/.config/systemd/user/memory-recall-check.timer"
@@ -4617,13 +4618,21 @@ reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window;
 migration_sha256 = "fc6bbd0cb63b39fd7b2ed04b3aa9f483dfd3d430c1dfacc87016b178492d2bb4"
 
 [[user]]
+live = "~/.config/systemd/user/timers.target.wants/ctx-import.timer"
+source = "config/systemd/user/ctx-import.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the timer was linked but never wanted, so it did not start after the 10-31 reboot; ctx history was 7 days stale."
+
+[[user]]
 live = "~/.config/systemd/user/ctx-import.timer"
 source = "config/systemd/user/ctx-import.timer"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "9265cb6a9bb50c325fdf7e78e867add21170ebfe4c564cde96c23301301b1495"
+migration_sha256 = "6f8ce5d725af7345b1755af4efb5118308c783afcdd23a61bf3b1f08cf06bb59"
 
 [[user]]
 live = "~/.config/systemd/user/ctx-import.service.d/90-service-watch.conf"
@@ -4650,7 +4659,7 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "ctx history freshness (runtime-audit-20261025 hourly auto-mode window; ctx indexing stays manual otherwise). Codified from the hand-placed copy, byte-identical."
-migration_sha256 = "00b4550b9e4e84095eecd2877ebb487959972b6aeda3a0f94557e19ba6f42794"
+migration_sha256 = "dfd9278fb883d98d2fb7be4f4842df428997ad0fbb22e3129f6aeba7f0ea123c"
 
 # ctx-import.timer is NOT enabled (no timers.target.wants link): ctx stays MANUAL per the 2026-10-25 decision
 # (perf-fixes-20261025 "Correction 21:25": the hourly refresh caused 162 global OOM kills). The unit and
@@ -4845,3 +4854,76 @@ scope = "user"
 install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "INFRA-1 2026-10-27: batch absorbs pressure (agent swap 4G) and the agentsview indexer swap is bounded; checked by memory-drift group batch."
+
+[[user]]
+live = "~/.local/bin/memory-heal"
+source = "scripts/memory-heal"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/memory-heal.service"
+source = "config/systemd/user/memory-heal.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/memory-heal.timer"
+source = "config/systemd/user/memory-heal.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/memory-heal.timer"
+source = "config/systemd/user/memory-heal.timer"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the unified memory system reconciler; detection without remedy left recall-check red for 6 days (clean profile unindexed)."
+
+[[user]]
+live = "~/.local/bin/memory-recall-check"
+source = "scripts/memory-recall-check"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: the recall check ran from an untracked operations-dir copy; code is tracked, questions/receipts stay private in RECALL_DIR."
+
+[[user]]
+live = "~/.config/systemd/user/graphrag-index.service"
+source = "config/systemd/user/graphrag-index.service"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: GraphRAG index runs died silently (10-20 stall, 11-02 OOM at 482/11350); a restartable unit resumes from the LLM cache."
+
+[[user]]
+live = "~/.config/systemd/user/ctx-import.service.d/63-memory-cap.conf"
+source = "config/systemd/user/ctx-import.service.d/63-memory-cap.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+migration_sha256 = "cebc2403c9c9efcf15792037c85253a051d098d9203eb6dae1af0294c2e2451c"
+reason = "memory-heal 2026-11-02: hand-written live drop-in brought under IaC; 6 GiB gate never opened (ctx 7 days stale), replaced by cap + OOM kill order."
+
+[[user]]
+live = "~/.config/systemd/user/agentsview.service.d/30-restart-always.conf"
+source = "config/systemd/user/agentsview.service.d/30-restart-always.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: memory daemons restart on any exit."
+
+[[user]]
+live = "~/.config/systemd/user/z0intelligence.service.d/30-restart-always.conf"
+source = "config/systemd/user/z0intelligence.service.d/30-restart-always.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "memory-heal 2026-11-02: memory daemons restart on any exit."

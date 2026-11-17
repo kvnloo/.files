@@ -8,6 +8,10 @@
 # Success = a new generation was published in this window.
 C=/home/kvn/.local/bin/ctx; R=/mnt/zer0models/host-offload/home_kvn_.ctx; LOG=/mnt/zer0models/workspace/zer0/data/operations/runtime-audit-20261025/ctx-import.log
 state() { $C --data-root $R index --format json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['lexical'].get('generation_id','')[:12], d.get('refresh',{}).get('physical_attempt_state','none'))"; }
+# 2026-11-02 memory-heal: the timer fires every 15 min so a refresh happens soon after memory frees up;
+# keep the hourly cadence by skipping when the last successful window is under 50 min old.
+last=$(grep 'wait_rc=0' $LOG 2>/dev/null | tail -1 | cut -d' ' -f1)
+if [ -n "$last" ] && [ $(( $(date +%s) - $(date -d "$last" +%s) )) -lt 3000 ]; then exit 0; fi
 read g0 s0 < <(state); t0=$(date +%s)
 $C --data-root $R index mode auto >/dev/null 2>&1
 sleep 20

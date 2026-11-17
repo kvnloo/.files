@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Install only the named manifest rows through scripts/apply-agent-oom's own user-layer installer.
+
+Use when the full user layer is blocked by unrelated live drift that belongs to someone else (the full
+install refuses, correctly, to overwrite it). Same stamping, verification, backups and daemon-reload;
+the manifest is narrowed to rows whose `live` path is listed. Usage:
+  install-user-rows [--apply] LIVE_PATH [LIVE_PATH ...]
+"""
+import importlib.machinery
+import importlib.util
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+loader = importlib.machinery.SourceFileLoader('apply_agent_oom', str(ROOT / 'scripts/apply-agent-oom'))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+mod = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = mod
+loader.exec_module(mod)
+
+args = sys.argv[1:]
+apply = '--apply' in args
+wanted = {a for a in args if a != '--apply'}
+if not wanted:
+    sys.exit(__doc__)
+real_loads = mod.tomllib.loads
+
+
+def narrowed(text):
+    manifest = real_loads(text)
+    rows = [r for r in manifest.get('user', []) if r['live'] in wanted]
+    missing = wanted - {r['live'] for r in rows}
+    if missing:
+        raise SystemExit(f'not manifest rows: {sorted(missing)}')
+    manifest['user'] = rows
+    for key in ('user_control_cleanup', 'user_retired_links', 'user_retired_files'):
+        manifest[key] = []
+    return manifest
+
+
+mod.tomllib.loads = narrowed
+sys.exit(mod.install_user_layer(ROOT, Path.home(), apply))

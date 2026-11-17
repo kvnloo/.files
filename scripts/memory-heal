@@ -1,0 +1,421 @@
+#!/usr/bin/env python3
+"""Reconcile the unified memory system with config/host/memory-system-intent.toml.
+
+Every run: observe -> check each invariant -> apply the one declared remedy for a known failure class ->
+re-observe -> escalate what is still failing (incident file + one bounded LLM diagnosis per day).
+Receipts: <state>/heal.jsonl and <state>/STATUS.md. `--check` observes and reports only.
+Exit 0 healthy (possibly after repair), 1 unresolved findings, 2 the checker itself failed.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import glob
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+import tomllib
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SPEC = HERE.parent / 'config/host/memory-system-intent.toml'
+
+
+def expand(p: str) -> Path:
+    return Path(os.path.expanduser(p))
+
+
+@dataclass
+class Finding:
+    invariant: str
+    subject: str
+    detail: str
+    remedy: str | None          # None = no known remedy: escalate
+    data: dict = field(default_factory=dict)
+
+    @property
+    def fingerprint(self) -> str:
+        return hashlib.sha256(f'{self.invariant}\0{self.subject}'.encode()).hexdigest()[:16]
+
+
+# ---------------------------------------------------------------- host access (replaced in tests)
+class Host:
+    def run(self, argv, timeout=60):
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            return r.returncode, r.stdout, r.stderr
+        except subprocess.TimeoutExpired:
+            return 124, '', 'timeout'
+
+    def unit(self, unit):
+        _, out, _ = self.run(['systemctl', '--user', 'show', unit, '-p', 'ActiveState', '-p', 'SubState',
+                              '-p', 'Result', '-p', 'UnitFileState', '-p', 'ExecMainStatus'])
+        return dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
+
+    def wanted(self, timer):
+        return (expand('~/.config/systemd/user/timers.target.wants') / timer).exists()
+
+    def journal(self, unit, lines=40):
+        _, out, _ = self.run(['journalctl', '--user', '-u', unit, '-n', str(lines), '--no-pager', '-o', 'cat'])
+        return out
+
+    def systemctl(self, *args):
+        return self.run(['systemctl', '--user', *args], timeout=120)
+
+    def now(self):
+        return time.time()
+
+    def read(self, path):
+        return Path(path).read_text()
+
+    def write(self, path, text):
+        tmp = Path(str(path) + '.memory-heal.tmp')
+        tmp.write_text(text)
+        os.chmod(tmp, os.stat(path).st_mode & 0o777 if Path(path).exists() else 0o600)
+        os.replace(tmp, path)
+
+    def hermes_profiles(self, hermes_home):
+        real = Path(os.path.realpath(expand(hermes_home)))
+        return sorted(Path(p).parent.name for p in glob.glob(str(real / 'profiles/*/state.db'))
+                      if os.path.getsize(p) > 0)
+
+    def native_newest(self, hermes_home, profile, before):
+        db = Path(os.path.realpath(expand(hermes_home))) / 'profiles' / profile / 'state.db'
+        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=10)
+        try:
+            # AgentsView archives only sessions with messages; empty acp/cron shells are not a lag.
+            try:
+                v = con.execute('select max(started_at) from sessions where started_at < ? and message_count > 0',
+                                (before,)).fetchone()[0]
+            except sqlite3.OperationalError:
+                v = con.execute('select max(started_at) from sessions where started_at < ?', (before,)).fetchone()[0]
+        finally:
+            con.close()
+        return float(v) if v else None
+
+    def archive_newest(self, archive, hermes_home):
+        con = sqlite3.connect(f'file:{os.path.realpath(expand(archive))}?mode=ro', uri=True, timeout=30)
+        real = os.path.realpath(expand(hermes_home))
+        try:
+            rows = con.execute("select file_path, max(started_at) from sessions where agent='hermes' "
+                               "and file_path like ? group by file_path", (real + '/profiles/%/state.db',)).fetchall()
+        finally:
+            con.close()
+        out = {}
+        for path, started in rows:
+            out[Path(path).parent.name] = dt.datetime.fromisoformat(started[:26].rstrip('Z')).replace(
+                tzinfo=dt.timezone.utc).timestamp()
+        return out
+
+    def mem_available_kib(self):
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            if line.startswith('MemAvailable:'):
+                return int(line.split()[1])
+        return 0
+
+    def empty_json(self, roots):
+        hits = []
+        for root in roots:
+            for path in expand(root).rglob('*.json'):
+                try:
+                    if path.is_file() and path.stat().st_size == 0:
+                        hits.append(path)
+                except OSError:
+                    pass
+        return hits
+
+
+# ---------------------------------------------------------------- pure helpers (unit tested)
+def hermes_dirs(spec, profiles):
+    a = spec['agentsview']
+    return list(a['fixed_dirs']) + [f"{a['hermes_home']}/profiles/{p}" for p in profiles]
+
+
+def render_hermes_block(config_text, dirs):
+    """Replace the dirs line of [agents.hermes] (and its comment block) with the generated list."""
+    line = ('    # GENERATED by scripts/memory-heal from config/host/memory-system-intent.toml; do not edit.\n'
+            '    dirs = [' + ', '.join(json.dumps(d) for d in dirs) + ']\n')
+    pattern = re.compile(r'(  \[agents\.hermes\]\n)(?:    #.*\n)*    dirs = \[[^\n]*\]\n')
+    if not pattern.search(config_text):
+        raise ValueError('agents.hermes dirs block not found')
+    return pattern.sub(lambda m: m.group(1) + line, config_text, count=1)
+
+
+def configured_dirs(config_text):
+    m = re.search(r'\[agents\.hermes\][^\[]*?dirs = (\[[^\n]*\])', config_text, re.S)
+    return json.loads(m.group(1)) if m else None
+
+
+def last_ctx_success(log_text):
+    stamps = [line.split(' ', 1)[0] for line in log_text.splitlines() if 'wait_rc=0' in line]
+    return dt.datetime.fromisoformat(stamps[-1]).timestamp() if stamps else None
+
+
+def classify_oneshot(journal_text):
+    if re.search(r'JSONDecodeError: Expecting value: line 1 column 1 \(char 0\)', journal_text):
+        return 'zero_byte_json'
+    if 'start-limit-hit' in journal_text:
+        return 'start_limit'
+    return None
+
+
+# ---------------------------------------------------------------- checks
+def check(spec, host: Host):
+    findings: list[Finding] = []
+    now = host.now()
+    for row in spec.get('daemon', []):
+        u = host.unit(row['unit'])
+        if u.get('ActiveState') != 'active':
+            findings.append(Finding('daemon_active', row['unit'], f"{u.get('ActiveState')}/{u.get('Result')}", 'restart'))
+    for row in spec.get('timer', []):
+        u = host.unit(row['unit'])
+        if not host.wanted(row["unit"]) or u.get('ActiveState') != 'active':
+            findings.append(Finding('timer_enabled', row['unit'],
+                                    f"wanted={host.wanted(row['unit'])} active={u.get('ActiveState')}", 'enable_now'))
+    for row in spec.get('oneshot', []):
+        u = host.unit(row['unit'])
+        if u.get('ActiveState') == 'failed':
+            cls = classify_oneshot(host.journal(row['unit']))
+            known = row.get('known', [])
+            if 'derived' in known:
+                findings.append(Finding('oneshot_ok', row['unit'], 'fails while another invariant fails', 'rerun_last',
+                                        {'class': 'derived'}))
+            elif cls in known:
+                findings.append(Finding('oneshot_ok', row['unit'], f'failed: {cls}', cls, {'class': cls}))
+            else:
+                findings.append(Finding('oneshot_ok', row['unit'],
+                                        f"failed (status {u.get('ExecMainStatus')}), class={cls or 'unknown'}", None,
+                                        {'journal_tail': host.journal(row['unit'], 25)[-3000:]}))
+    for row in spec.get('resumable', []):
+        if host.unit(row['unit']).get('ActiveState') == 'failed':
+            findings.append(Finding('resumable_running', row['unit'], 'failed; resumes from its cache', 'resume'))
+    for row in spec.get('expected_failed', []):
+        if host.unit(row['unit']).get('ActiveState') == 'failed':
+            findings.append(Finding('expected_failed', row['unit'], f"failed by design ({row['when']})", 'reset_failed'))
+    # archive coverage: config lists exactly the profiles that exist
+    a = spec['agentsview']
+    profiles = host.hermes_profiles(a['hermes_home'])
+    want = hermes_dirs(spec, profiles)
+    try:
+        have = configured_dirs(host.read(expand(a['config'])))
+    except OSError as e:
+        have = None
+        findings.append(Finding('agentsview_config', a['config'], f'unreadable: {e}', None))
+    if have is not None and have != want:
+        findings.append(Finding('agentsview_coverage', a['config'],
+                                f'configured {have} != generated {want}', 'regenerate_agentsview', {'dirs': want}))
+    # archive freshness per profile
+    try:
+        archived = host.archive_newest(a['archive'], a['hermes_home'])
+        horizon = now - a['max_lag_hours'] * 3600
+        for p in profiles:
+            # newest native session old enough that the archive must already hold it
+            native = host.native_newest(a['hermes_home'], p, horizon)
+            if native is None:
+                continue
+            lag_h = (native - archived.get(p, 0)) / 3600
+            if lag_h > 0.05:
+                findings.append(Finding('archive_fresh', f'hermes:{p}',
+                                        f'archive missing sessions up to {lag_h:.1f} h older than the profile\'s newest settled session', 'sync_archive', {'lag_h': round(lag_h, 1)}))
+    except sqlite3.Error as e:
+        findings.append(Finding('archive_readable', a['archive'], str(e), None))
+    # ctx freshness
+    c = spec['ctx']
+    try:
+        last = last_ctx_success(host.read(c['import_log']))
+    except OSError:
+        last = None
+    age_h = (now - last) / 3600 if last else None
+    if age_h is None or age_h > c['max_age_hours']:
+        findings.append(Finding('ctx_fresh', 'ctx-import', f"last successful refresh {age_h and round(age_h, 1)} h ago",
+                                'run_ctx_import', {'mem_available_kib': host.mem_available_kib()}))
+    # recall receipt
+    r = spec['recall']
+    try:
+        receipt = json.loads(host.read(r['receipt']))
+        at = dt.datetime.fromisoformat(receipt['at']).timestamp()
+        if not receipt.get('pass') or (now - at) / 3600 > r['max_age_hours']:
+            unresolved = (receipt.get('sources') or {}).get('unresolved', [])
+            # Any source the recall check finds behind disk is an archive-sync problem: same remedy.
+            lag = any('AgentsView' in u and 'behind disk' in u for u in unresolved)
+            findings.append(Finding('recall_pass', 'recall-check', f"pass={receipt.get('pass')} unresolved={unresolved[:4]}",
+                                    'sync_archive' if lag else 'derived', {'unresolved': unresolved}))
+    except (OSError, ValueError, KeyError) as e:
+        findings.append(Finding('recall_pass', 'recall-check', f'receipt unreadable: {e}', None))
+    # zero-byte JSON state anywhere it is known to break readers
+    for path in host.empty_json(spec['zero_byte_json']['roots']):
+        findings.append(Finding('state_json_nonempty', str(path), 'zero-byte JSON state file', 'zero_byte_json'))
+    return findings
+
+
+# ---------------------------------------------------------------- remedies
+def remedy(f: Finding, spec, host: Host, quarantine: Path) -> str:
+    name = f.remedy
+    if name == 'restart':
+        host.systemctl('reset-failed', f.subject)
+        rc, _, err = host.systemctl('restart', f.subject)
+        return f'restart rc={rc} {err.strip()[:200]}'
+    if name == 'enable_now':
+        rc, _, err = host.systemctl('enable', '--now', f.subject)
+        return f'enable --now rc={rc} {err.strip()[:200]}'
+    if name == 'reset_failed':
+        rc, _, _ = host.systemctl('reset-failed', f.subject)
+        return f'reset-failed rc={rc}'
+    if name == 'zero_byte_json':
+        moved = []
+        for path in host.empty_json(spec['zero_byte_json']['roots']):
+            dest = quarantine / str(path).lstrip('/')
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(path, dest)
+            moved.append(str(path))
+        if f.invariant == 'oneshot_ok':
+            host.systemctl('reset-failed', f.subject)
+            host.systemctl('start', '--no-block', f.subject)
+        return f'quarantined {len(moved)}: {moved[:5]}'
+    if name == 'regenerate_agentsview':
+        path = expand(spec['agentsview']['config'])
+        host.write(path, render_hermes_block(host.read(path), f.data['dirs']))
+        host.systemctl('restart', 'agentsview.service')
+        host.systemctl('start', '--no-block', 'agentsview-sync.service')
+        return f"wrote dirs={f.data['dirs']}; restarted agentsview; sync started"
+    if name == 'sync_archive':
+        if host.unit('agentsview-sync.service').get('ActiveState') in ('active', 'activating'):
+            return 'sync already running'
+        rc, _, _ = host.systemctl('start', '--no-block', 'agentsview-sync.service')
+        return f'sync started rc={rc}'
+    if name == 'run_ctx_import':
+        if host.unit('ctx-import.service').get('ActiveState') in ('active', 'activating'):
+            return 'import already running'
+        if f.data.get('mem_available_kib', 0) <= CTX_MIN_AVAILABLE_KIB:
+            # ctx-import's ExecCondition would skip the start: starting it is not a remedy attempt.
+            return f"waits for MemAvailable > {CTX_MIN_AVAILABLE_KIB // 1024} MiB (now {f.data['mem_available_kib'] // 1024} MiB)"
+        rc, _, _ = host.systemctl('start', '--no-block', 'ctx-import.service')
+        return f'import started rc={rc}'
+    if name == 'resume':
+        host.systemctl('reset-failed', f.subject)
+        rc, _, _ = host.systemctl('start', '--no-block', f.subject)
+        return f'resumed rc={rc}'
+    if name in ('derived', 'rerun_last'):
+        return 'waits for the underlying invariant'
+    raise ValueError(f'no such remedy: {name}')
+
+
+CTX_MIN_AVAILABLE_KIB = 6291456  # mirrors ctx-import.service.d/63-memory-cap.conf ExecCondition
+
+
+# ---------------------------------------------------------------- state, escalation, receipts
+def load_state(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {'attempts': {}, 'escalated': {}}
+
+
+def escalate(f: Finding, spec, state_dir: Path, host: Host, apply: bool):
+    inc = state_dir / 'incidents' / f'{f.fingerprint}.md'
+    if not apply:
+        return f'{inc} (not written: --check)'
+    inc.parent.mkdir(parents=True, exist_ok=True)
+    body = (f'# memory-heal incident {f.fingerprint}\n\n- invariant: `{f.invariant}`\n- subject: `{f.subject}`\n'
+            f'- detail: {f.detail}\n- first unresolved: {dt.datetime.now().isoformat(timespec="seconds")}\n\n'
+            f'```json\n{json.dumps(f.data, indent=1)[:6000]}\n```\n')
+    inc.write_text(body)
+    e = spec['escalation']
+    brief = (f'memory-heal could not repair a unified-memory invariant. Read {inc} and '
+             f'{SPEC} (the architecture as data) and the unified-memory-operations skill. Diagnose the root cause '
+             f'from live evidence (journals, configs, source). Do not change any service or config. Append to {inc}: '
+             f'## Diagnosis (cause with evidence), ## Proposed remedy (a new failure class + remedy for memory-heal, '
+             f'as a diff against scripts/memory-heal and config/host/memory-system-intent.toml in the .files repo). '
+             f'Say plainly if the evidence is insufficient.')
+    unit = f'memory-heal-llm-{f.fingerprint}'
+    # NOT sandboxed: a systemd sandbox on this unit does not confine Hermes' tools (tested 2026-11-02 with
+    # ProtectSystem=strict/ProtectHome=read-only/PrivateUsers=yes: a terminal-tool write outside the
+    # allowlist still succeeded), so read-only rests on the brief. Open gap: a Hermes read-only toolset.
+    host.run(['systemd-run', '--user', '--unit', unit, '--slice', 'agent.slice', '--collect',
+              f'--property=RuntimeMaxSec={e["timeout_s"]}', *e['command'], brief], timeout=30)
+    return f'{inc} (LLM diagnosis {unit})'
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--check', action='store_true', help='observe and report only')
+    ap.add_argument('--spec', type=Path, default=SPEC)
+    ap.add_argument('--settle', type=int, default=20, help='seconds to wait before re-checking')
+    args = ap.parse_args()
+    spec = tomllib.loads(args.spec.read_text())
+    host = Host()
+    state_dir = Path(spec['escalation']['state'])
+    if not args.check:
+        state_dir.mkdir(parents=True, exist_ok=True)
+    state_path = state_dir / 'state.json'
+    state = load_state(state_path)
+    lim = spec['limits']
+    now = host.now()
+    before = check(spec, host)
+    actions = []
+    if not args.check:
+        quarantine = state_dir / 'quarantine' / dt.date.today().isoformat()
+        for f in before:
+            if f.remedy is None:
+                continue
+            tries = [t for t in state['attempts'].get(f.fingerprint, []) if now - t < lim['window_hours'] * 3600]
+            if len(tries) >= lim['attempts_per_fingerprint']:
+                f.remedy, f.detail = None, f.detail + f' (remedy tried {len(tries)}x in {lim["window_hours"]} h)'
+                continue
+            try:
+                result = remedy(f, spec, host, quarantine)
+            except Exception as e:      # a remedy that throws is itself an incident
+                result = f'remedy error: {e!r}'
+                f.remedy = None
+            # Waiting on work already in flight is not a remedy attempt; only real actions count.
+            if not result.startswith(('waits for', 'sync already running', 'import already running')):
+                state['attempts'][f.fingerprint] = tries + [now]
+            actions.append({'fingerprint': f.fingerprint, 'invariant': f.invariant, 'subject': f.subject, 'result': result})
+        if actions:
+            time.sleep(args.settle)
+    after = check(spec, host) if actions else before
+    exhausted = {f.fingerprint for f in before if f.remedy is None}
+    unresolved = [f for f in after if f.remedy is None or f.fingerprint in exhausted]
+    escalations = []
+    for f in unresolved:
+        last = state['escalated'].get(f.fingerprint, 0)
+        if now - last > lim['escalate_once_per_hours'] * 3600:
+            escalations.append(escalate(f, spec, state_dir, host, apply=not args.check))
+            if not args.check:
+                state['escalated'][f.fingerprint] = now
+    row = {'ts': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'), 'mode': 'check' if args.check else 'heal',
+           'before': [asdict(f) | {'fingerprint': f.fingerprint} for f in before], 'actions': actions,
+           'after': [{'fingerprint': f.fingerprint, 'invariant': f.invariant, 'subject': f.subject, 'detail': f.detail}
+                     for f in after], 'escalations': escalations}
+    for f in row['before']:
+        f['data'] = {k: v for k, v in f['data'].items() if k != 'journal_tail'}
+    if not args.check:  # --check observes and reports only: no receipts, state or incidents
+        with (state_dir / 'heal.jsonl').open('a') as out:
+            out.write(json.dumps(row) + '\n')
+    if not args.check:
+        tmp = state_path.with_suffix('.tmp'); tmp.write_text(json.dumps(state)); os.replace(tmp, state_path)
+    lines = [f"# memory-heal {row['ts']}", '', f'{len(before)} findings, {len(actions)} remedies, {len(after)} still failing.', '']
+    open_fp = {f.fingerprint for f in after}
+    lines += [f"- [{'open' if f.fingerprint in open_fp else 'fixed'}] {f.invariant} {f.subject}: {f.detail}" for f in before]
+    lines += [f"- [new] {x['invariant']} {x['subject']}: {x['detail']}" for x in row['after']
+              if x['fingerprint'] not in {f.fingerprint for f in before}]
+    lines += ['', 'Actions:'] + [f"- {a['invariant']} {a['subject']}: {a['result']}" for a in actions]
+    lines += ['', 'Escalated:'] + [f'- {e}' for e in escalations]
+    if not args.check:
+        (state_dir / 'STATUS.md').write_text('\n'.join(lines) + '\n')
+    print('\n'.join(lines))
+    return 1 if after else 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        print(f'memory-heal failed: {exc!r}', file=sys.stderr)
+        sys.exit(2)

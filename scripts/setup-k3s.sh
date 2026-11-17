@@ -143,6 +143,9 @@ cmd_kueue() {
   curl -fsSL "https://github.com/kubernetes-sigs/kueue/releases/download/$KUEUE_VERSION/manifests.yaml" -o "$tmp"
   echo "$KUEUE_SHA256  $tmp" | sha256sum -c --quiet - || die "kueue $KUEUE_VERSION manifest hash mismatch"
   kc apply --server-side --force-conflicts -f "$tmp" >/dev/null
+  # 2026-11-02: the upstream 512Mi limit OOM-killed the controller 424 times in 13 days; its fail-closed
+  # deployment webhook then blocked every Deployment change cluster-wide (vllm-sr deploy failed).
+  kc -n kueue-system set resources deploy/kueue-controller-manager -c manager --limits=memory=1Gi
   kc -n kueue-system rollout status deploy/kueue-controller-manager --timeout=300s
   # The admission webhook can lag the rollout by a few seconds.
   local i; for i in 1 2 3 4 5 6; do kc apply -f "$CFG/kueue/" && return 0; sleep 10; done
