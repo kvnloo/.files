@@ -50,7 +50,9 @@ BATCH_ADJ = 900
 # the hourly tick 3 times in 8 h, so no tick finished under pressure. It keeps its
 # inherited score and is capped by its own unit instead (MemoryHigh=1.5G, Nice=19,
 # idle IO: z0int-loop-tick.service.d/40-relief-exempt.conf).
-BATCH_UNIT = re.compile(r'^(agentsview-sync|ctx-import|worktree-reaper|artifact-leases|z0-state-packet'
+# artifact-leases is absent too (2026-11-17, t_fc6ab9d4): its 10-30 MB report was the
+# first kill of a global OOM at adj 900, freed nothing and failed the unit (cf. TOOLING).
+BATCH_UNIT = re.compile(r'^(agentsview-sync|ctx-import|worktree-reaper|z0-state-packet'
                         r'|dev\.cribble\.agent\.sync|agent-telemetry-refresh'
                         r'|z0int-(policy|choice-[0-9a-f]+))\.service$')
 HARNESSES = frozenset({'hermes', 'claude', 'omp', 'codex', 'pi', 'opencode'})
