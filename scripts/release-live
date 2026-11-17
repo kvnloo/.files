@@ -84,6 +84,8 @@ def inspect_links(release, home, current):
             raise ValueError(f'duplicate live path: {live}')
         if host_layout.checkout_ancestor(live):
             raise ValueError(f'live path resolves through checkout directory link: {live}')
+        if live.is_symlink() and os.readlink(live) == '/dev/null':
+            continue  # systemctl mask: the owner switched this unit off, a release keeps it off.
         if live.exists() and not live.is_file():
             raise ValueError(f'not a regular file: {live}')
         data = live.read_bytes() if live.exists() else None

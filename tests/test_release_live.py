@@ -120,6 +120,14 @@ class ReleaseLiveTests(unittest.TestCase):
         self.assertFalse((release / 'config/outside').is_symlink())
         self.assertEqual(os.readlink(release / 'config/inside'), 'unit.service')
 
+    def test_masked_unit_stays_masked(self):
+        unit = self.home / self.paths[0]
+        unit.unlink()
+        unit.symlink_to('/dev/null')
+        result = self.run_cli('--apply')
+        self.assertEqual((result['links'], result['content_changes']), (1, 0))
+        self.assertEqual(os.readlink(unit), '/dev/null')
+
     def test_plan_is_read_only_and_honors_ref(self):
         before = self.snapshot()
         result = self.run_cli('--plan')
