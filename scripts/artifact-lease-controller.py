@@ -47,63 +47,15 @@ def native_transport(node):
 
 
 def native_inventory(node, apply):
+    from artifact_lease_native import inventory
     serial = native_transport(node)
-    # No Python on Android. No independent deletion implementation here: unknown
-    # process visibility and unclassified leases must never authorize deletion.
-    script = '''set -f
-printf 'IDENTITY\\t%s\\t%s\\n' "$(getprop ro.serialno)" "$(getprop ro.product.model)"
-printf 'SPACE\\t'; df -Pk /data/local/tmp | tail -n 1
-visibility=observed
-for proc in /proc/[0-9]*; do
-  [ -d "$proc" ] || continue
-  if ! cat "$proc/stat" >/dev/null 2>&1 || ! readlink "$proc/cwd" >/dev/null 2>&1; then
-    visibility=unknown
-    printf 'PROC_DENIED\\t%s\\n' "$proc"
-    break
-  fi
-done
-printf 'PROC_VISIBILITY\\t%s\\n' "$visibility"
-inspect_lease() {
-  if [ -f "$1/.artifact-lease.json" ] && [ ! -L "$1/.artifact-lease.json" ]; then
-    printf 'LEASE\\t%s\\t' "$1"
-    head -c 16384 "$1/.artifact-lease.json"
-    printf '\\n'
-  else
-    printf 'LEASE_MISSING_OR_UNREADABLE\\t%s\\n' "$1"
-  fi
-}
-for root in /data/local/tmp/fleet-jobs /data/local/tmp/edge-probe-*; do
-  [ -d "$root" ] && [ ! -L "$root" ] || continue
-  case "$root" in /data/local/tmp/fleet-jobs)
-    for item in "$root"/*; do
-      [ -d "$item" ] && [ ! -L "$item" ] || continue
-      bytes=$(du -sk "$item" 2>/dev/null) || exit 1
-      printf 'KEEP\\t%s\\t%s\\n' "$item" "$bytes"
-      inspect_lease "$item"
-    done;;
-  *) bytes=$(du -sk "$root" 2>/dev/null) || exit 1
-     printf 'KEEP\\t%s\\t%s\\n' "$root" "$bytes"
-     inspect_lease "$root";;
-  esac
-done
-'''
-    # Glob expansion is restricted to fixed roots, never supplied by a report.
-    script = script.replace('set -f\n', '')
-    raw = run([ADB, '-s', serial, 'shell', 'sh'], script)
-    first = raw.splitlines()[0].split('\t')
-    if first != ['IDENTITY', node['serial'], node['model']]:
-        raise RuntimeError('Android identity changed')
-    visibility = next((line.split('\t', 1)[1] for line in raw.splitlines()
-                       if line.startswith('PROC_VISIBILITY\t')), 'unknown')
-    return {'schema': 'z0.artifact-native-inventory.v1', 'identity': node['serial'],
-            'transport': serial, 'mode': 'safe-noop-apply' if apply else 'dry-run',
-            'proc_visibility': visibility, 'decision': 'KEEP',
-            'reason': 'native lease inventory has no verified deletion classifier; denied visibility is unknown',
-            'would_reap_bytes': 0, 'inventory': raw.splitlines()[1:]}
+    return inventory(ADB, serial, node, apply, run)
 
 
 def execute(name, node, apply, enroll, source):
     if node['transport'] == 'adb':
+        node = {**node, 'name': name}
+        apply = apply and node.get('apply_enabled', True)
         try:
             native = native_inventory(node, apply)
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:

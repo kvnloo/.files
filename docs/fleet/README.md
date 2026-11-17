@@ -1033,21 +1033,37 @@ Linux deletion policy. Core receipts remain at
 output directory. A node transport/identity failure is a nonzero controller
 result with a per-node error receipt, never permission to delete.
 
-Native Android has no Python requirement. Its shell inventory covers only
-`/data/local/tmp/fleet-jobs/*` and `/data/local/tmp/edge-probe-*`, excludes
-symlink entries, inspects lease sidecars and probes process stat/cwd visibility.
-Any denied process read is explicit unknown visibility; all native entries stay
-KEEP. Native `--apply` is an explicit safe no-op with zero would-reap bytes, not
-a claim that lease expiry or complete live-reference classification was established.
+Native Android needs no Python. `scripts/artifact_lease_native.py` adapts bounded
+adb shell inventory to the shared core's `validate` policy. Only direct
+`/data/local/tmp/fleet-jobs/*` and `/data/local/tmp/edge-probe-*` directories are
+eligible. Inventory records actual bytes, lease contents, directory/tree
+identity, terminal spool receipts and per-item keep reasons. `/proc` cwd/exe,
+fd and maps, mount records, and host/native serving configuration are references.
+Any denied/hidden process visibility or unavailable host serving config keeps
+all affected artifacts. Unleased, unexpired, queued, model/runtime, symlinked,
+mounted or live-referenced artifacts are not deletion candidates.
+
+Native `--apply` supports expired-oldest deletion only for validated, known
+nonLIVE spool/tmp/cache leases. It first streams lease/declared receipts and
+top-level logs to fsynced controller archives, then re-inventories and writes
+an intent receipt. The native actor locks, rechecks hardware/directory/lease
+identity and the full process/reference snapshot, pins cwd and uses physical
+`find -xdev -depth -delete`, never recursive removal through an absolute path.
+Actual actions are recorded under
+`~/.local/state/artifact-leases/native/NODE/TIMESTAMP/`.
+Unknown Android process visibility produces a legitimate zero-removal apply,
+not an unconditional no-op implementation.
 
 Phone reports nest `guest` (the same Python core over strict SSH) and `native`
 inventory, summing would-reap bytes. S25 guest is pinned to
 `root@100.104.42.85`, Python hostname `localhost`, home `/root`.
-S22 alias `s22` timed out during identity discovery; its null hostname is
-deliberately failclosed pending an observed identity and config update.
+S22 alias `s22` is also pinned from live Python observation to hostname
+`localhost`, owner `root`, home `/root`.
 Unavailable guest/native lanes retain the other lane's receipt and mark the
 report incomplete; incomplete reports produce a nonzero controller result.
 Repeatable `--node s22 --node s25` restricts a real apply to those nodes.
+S25 has `apply_enabled: false` in the fixed config while S25Disk owns its cleanup;
+both its guest and native lanes remain read-only until coordinated release.
 
 The report-only `artifact-leases.timer` checks every five minutes. It targets
 groot, MBP and S22 only; S25 is excluded pending its separate cleanup review.

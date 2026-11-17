@@ -10,7 +10,7 @@ exec 9>"$HOME/.local/state/artifact-leases/deploy.lock"
 flock -n 9 || { echo 'another artifact deployment owns lock' >&2; exit 1; }
 dest="/mnt/zer0models/releases/artifact-leases/$sha"
 mkdir -p "$dest/scripts" "$dest/config/fleet" "$dest/config/systemd/user"
-for file in scripts/artifact-leases.py scripts/worktree-reaper.py scripts/artifact-lease-controller.py config/fleet/artifact-leases.json config/systemd/user/artifact-leases.service config/systemd/user/artifact-leases.timer; do
+for file in scripts/artifact-leases.py scripts/worktree-reaper.py scripts/artifact-lease-controller.py scripts/artifact_lease_native.py config/fleet/artifact-leases.json config/systemd/user/artifact-leases.service config/systemd/user/artifact-leases.timer; do
   git -C "$repo" show "$sha:$file" > "$dest/$file"
 done
 chmod 755 "$dest/scripts/"*.py
@@ -29,5 +29,6 @@ for unit in artifact-leases.service artifact-leases.timer; do
 done
 ln -sfn "$dest" "$base/current"
 systemctl --user daemon-reload
+systemctl --user disable --now worktree-reaper.timer
 systemctl --user enable --now artifact-leases.timer
 printf 'Activated artifact-leases.timer source=%s backups=%s\n' "$sha" "$backup"

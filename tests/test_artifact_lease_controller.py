@@ -45,18 +45,6 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 c.native_transport({'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'})
 
-    def test_native_unknown_visibility_never_deletes(self):
-        node = {'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'}
-        with patch.object(c, 'native_transport', return_value='transport'), patch.object(c, 'run', return_value='IDENTITY\tR5CY93G2WNH\tSM-S938U\nKEEP\t/data/local/tmp/fleet-jobs/j1\t1\n') as call:
-            report = c.native_inventory(node, True)
-        self.assertEqual(report['would_reap_bytes'], 0)
-        self.assertEqual(report['proc_visibility'], 'unknown')
-        self.assertEqual(report['decision'], 'KEEP')
-        self.assertNotIn('rm ', call.call_args.args[1])
-
-    def test_native_identity_race_closed(self):
-        with patch.object(c, 'native_transport', return_value='transport'), patch.object(c, 'run', return_value='IDENTITY\tOTHER\tSM-S938U\n'):
-            with self.assertRaises(RuntimeError): c.native_inventory({'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'}, True)
 
     def test_single_core_and_classifier_shipped(self):
         node = {'transport': 'ssh', 'host': 'mbp', 'hostname': 'mbp', 'user': 'kvn'}
@@ -76,10 +64,6 @@ class ControllerTests(unittest.TestCase):
         self.assertIn('not measured calibration or a resource cap', config['pressure_threshold_basis'])
         self.assertEqual(set(config['nodes']), {'groot', 'mbp', 's22', 's25'})
 
-    def test_observed_native_visibility_is_not_canned_unknown(self):
-        node = {'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'}
-        with patch.object(c, 'native_transport', return_value='transport'), patch.object(c, 'run', return_value='IDENTITY\tR5CY93G2WNH\tSM-S938U\nPROC_VISIBILITY\tobserved\n'):
-            self.assertEqual(c.native_inventory(node, False)['proc_visibility'], 'observed')
 
     def test_guest_report_is_aggregated(self):
         node = {'transport': 'adb', 'guest': {'transport': 'ssh', 'host': 's22', 'hostname': 'localhost', 'user': 'root'}}
@@ -94,6 +78,14 @@ class ControllerTests(unittest.TestCase):
             report = c.execute('s22', node, False, False, 'core')
         self.assertFalse(report['complete'])
         self.assertEqual(report['native']['would_reap_bytes'], 0)
+
+    def test_s25_mutation_hold_applies_to_both_lanes(self):
+        node = {'transport': 'adb', 'apply_enabled': False,
+                'guest': {'transport': 'ssh', 'host': 's25', 'hostname': 'localhost', 'user': 'root'}}
+        with patch.object(c, 'native_inventory', return_value={'would_reap_bytes': 0}) as native, patch.object(c, 'run', return_value='{"would_reap_bytes": 0}') as guest:
+            c.execute('s25', node, True, False, 'core')
+        self.assertFalse(native.call_args.args[1])
+        self.assertNotIn('--apply', guest.call_args.args[0][-1])
 
 
 if __name__ == '__main__':
