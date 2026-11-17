@@ -12,9 +12,9 @@ from pathlib import Path
 
 OPS = Path(os.environ.get("FABLE_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
 OK_CMD = re.compile(r"^(!\s*)?(systemctl --user (is-active|show|status)|journalctl --user|grep|rg|jq|test|\[|wc|awk|"
-                    r"sqlite3 ['\"]?file:[^ ]*mode=ro|burn-pace --json|cat|head|tail|true|exit|for|do|done|then|fi|if|sort|uniq|cut)\b")
+                    r"sqlite3 ['\"]?file:[^ ]*mode=ro|burn-pace --json|cat|head|tail|true|exit|for|do|done|then|fi|if|sort|uniq|cut|date)\b")
 BAD = re.compile(r"(>\s*[^&=/]|\brm\b|\bmv\b|\bcp\b|\bcurl\b|\bwget\b|\bsudo\b|\bsystemctl --user (start|stop|restart|enable|disable)|"
-                 r"\bkill\b|\bdd\b|\bchmod\b|\btee\b|\bpython|\bbash -c|`)")
+                 r"\bkill\b|\bdd\b|\bchmod\b|\btee\b|\bpython|\bbash -c|`|\bdate\b[^|;&)]*\s(-s|--set)\b)")
 # inside quotes '>' is a comparison unless awk prints into it; system()/getline run commands
 BAD_QUOTED = re.compile(r"\bsystem\s*\(|\bgetline\b|\bprintf?\b[^;}|]*>|\|\s*\"")
 _SUBST = re.compile(r"\$\(([^()]*)\)")

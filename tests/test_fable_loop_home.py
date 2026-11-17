@@ -46,6 +46,17 @@ class FableLoopHome(unittest.TestCase):
             ingest.update(q, lambda data: data["jobs"].append({"id": "b", "status": "pending"}))
             self.assertEqual([j["id"] for j in json.loads(q.read_text())["jobs"]], ["a", "b"])
 
+    def test_tape_allowlist_reads_the_date_but_never_sets_it(self):
+        """F33's use `grep -c "^$(date +%F)..."` was rejected because date was not allowlisted,
+        which turned F0-no-new-rejected-tapes red. Reading the clock is read-only; setting it is not."""
+        safe = load("fable-ingest").safe
+        log = "/x/pacer.log"
+        self.assertTrue(safe(f'grep -c "^$(date +%F).*closer: closed=[1-9]" {log}'))
+        self.assertTrue(safe('jq -en --arg c "$(date -d "-24 hours" +%FT%T)" "true" /x/r.jsonl'))
+        for bad in ('date -s 2020-01-01', 'date --set=2020-01-01', 'grep -c "$(date -s now)" /x',
+                    'date +%F > /x/out'):
+            self.assertFalse(safe(bad), bad)
+
     def test_drain_path_unit_watches_the_queue_the_drain_reads(self):
         unit = (SCRIPTS.parent / "config/systemd/user/astra-drain.path").read_text()
         watched = re.findall(r"^PathChanged=(.+)$", unit, re.M)
