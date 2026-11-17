@@ -135,9 +135,9 @@ class DecideTests(unittest.TestCase):
     def test_background_maintenance_units_are_batch(self):
         procs = session_tree()
         for pid, unit in ((90, 'agentsview-sync.service'), (91, 'ctx-import.service'),
-                          (92, 'z0int-choice-ef6bedc1.service'), (93, 'agentsview.service')):
+                          (92, 'z0-state-packet.service'), (93, 'agentsview.service')):
             procs[pid] = P(pid, 1, 'x', ['x'], 'x', USER + '/app.slice/' + unit)
-        procs[94] = P(94, 92, 'python', ['python'], 'python', USER + '/app.slice/z0int-choice-ef6bedc1.service')
+        procs[94] = P(94, 92, 'python', ['python'], 'python', USER + '/app.slice/z0-state-packet.service')
         protected, disposable, batch = policy.decide(procs, MAINS)
         self.assertEqual(batch, {90, 91, 92, 94})
         self.assertFalse(batch & (protected | disposable))
@@ -160,6 +160,18 @@ class DecideTests(unittest.TestCase):
                       'python3', USER + '/app.slice/artifact-leases.service')
         _, disposable, batch = policy.decide(procs, MAINS)
         self.assertNotIn(97, batch | disposable)
+
+    def test_z0int_choice_waiter_stays_at_the_floor(self):
+        # 2026-11-17 02:19-03:21 (t_d7be963b): at adj 900 the 8-12 MB dispatch and
+        # groot-admit waiters of z0int-choice-<hash> were the first 6 kills of global OOMs,
+        # freed nothing and lost up to 1.5 h of queued admission. Size, not adj, picks the
+        # admitted 6.8 GB measure child, so the unit stays at the floor (cf. artifact-leases).
+        procs = session_tree()
+        unit = USER + '/app.slice/z0int-choice-ef6bedc1.service'
+        procs[98] = P(98, 1, 'python', ['python', '-m', 'z0int.policy.autoeval', 'dispatch'], 'python', unit)
+        procs[99] = P(99, 98, 'python3', ['python3', '/x/groot-admit', '--need-mb', '6843'], 'python3', unit)
+        _, disposable, batch = policy.decide(procs, MAINS)
+        self.assertFalse({98, 99} & (batch | disposable))
 
     def test_dashboard_launched_as_module_is_a_root(self):
         procs = session_tree()
