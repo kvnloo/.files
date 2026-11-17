@@ -98,5 +98,32 @@ class FixReplayCost(unittest.TestCase):
             self.assertNotIn("retired", (ops / "BOARD.md").read_text())
 
 
+class FixReplayAtomicState(unittest.TestCase):
+    def test_enospc_mid_write_keeps_the_previous_state_and_board(self):
+        # 2026-11-16 17:12: /mnt/zer0models hit ENOSPC. Path.write_text truncates first, so a failed write left
+        # fix-state.json empty/partial and the next hourly run's json.loads would crash every tape silently.
+        with tempfile.TemporaryDirectory() as tmp:
+            ops = Path(tmp) / "ops"
+            ops.mkdir()
+            (ops / "fix-tapes.json").write_text(json.dumps({"tapes": [{"id": "a", "tape": "true"}]}))
+            mod = load(ops)
+            mod.run()
+            state, board = (ops / "fix-state.json").read_text(), (ops / "BOARD.md").read_text()
+            real = Path.write_text
+
+            def full(self, data, *a, **k):
+                real(self, data[: len(data) // 2], *a, **k)
+                raise OSError(28, "No space left on device")
+
+            Path.write_text = full
+            try:
+                with self.assertRaises(OSError):
+                    mod.run()
+            finally:
+                Path.write_text = real
+            self.assertEqual((ops / "fix-state.json").read_text(), state)
+            self.assertEqual((ops / "BOARD.md").read_text(), board)
+            self.assertEqual(sorted(f.name for f in ops.iterdir() if ".tmp" in f.name), [])
+
 if __name__ == "__main__":
     unittest.main()

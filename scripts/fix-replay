@@ -18,6 +18,16 @@ GOAL_LAWS = OPS.parent / "intent-analyzer-20261104/goal-laws.json"
 DAY = 86400
 
 
+def put(path, text):
+    """tmp + rename: write_text truncates first, so ENOSPC (2026-11-16) left a 0-byte state that crashed every run."""
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def tapes():
     t = json.loads(TAPES.read_text())["tapes"]
     try:  # owner-canon incident tapes are fixes too; reuse them instead of copying
@@ -106,11 +116,11 @@ def run():
             row = {"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses,
                    "ms": int((time.monotonic() - t0) * 1000), "out": "" if ok else out}  # tape + use wall time
             log.write(json.dumps(row | ({"use_refused": True} if refused else {})) + "\n")
-    STATE.write_text(json.dumps(st, indent=1))
+    put(STATE, json.dumps(st, indent=1))
     for t, before, out in regressions:
         subprocess.run([str(Path.home() / ".local/bin/z0-phone-notify"), "fix-replay", f"REGRESSION {t['id']}",
                         f"was {before}: {t.get('what','')} | {out[:160]}"], timeout=60)
-    BOARD.write_text(board(st, now))
+    put(BOARD, board(st, now))
 
 
 def board(st, now):
