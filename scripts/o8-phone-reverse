@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Keep the S25's loopback o8 ports (47100 app, 47105 ws) tunneled to groot's o8 serve.
+# reuse-checked: hermes-mobile-serve -- tailscale serve breaks o8 mobile (hardcoded ws://127.0.0.1, loopback-only Host gate #4814); adb reverse keeps the phone on true loopback.
+set -u
+SERIAL_WANT="${O8_PHONE_SERIALNO:-R5CY93G2WNH}"
+PORTS=(47100 47105)
+for dev in $(adb devices | awk 'NR>1 && $2=="device"{print $1}'); do
+  [ "$(adb -s "$dev" shell getprop ro.serialno 2>/dev/null | tr -d '\r')" = "$SERIAL_WANT" ] || continue
+  have=$(adb -s "$dev" reverse --list 2>/dev/null)
+  for p in "${PORTS[@]}"; do
+    grep -q "tcp:$p tcp:$p" <<<"$have" || adb -s "$dev" reverse "tcp:$p" "tcp:$p" >/dev/null
+  done
+  echo "ok $dev"; exit 0
+done
+# An absent (asleep / off-wifi) phone is a finding, not a unit failure: it was 451 failures plus 451
+# failure-handler starts on 2026-11-15 alone. The line below stays in the journal; the next tick re-tunnels.
+echo "S25 ($SERIAL_WANT) not connected over adb" >&2; exit 0

@@ -8,14 +8,26 @@ proves nothing. State: streak start, passes, uses and the last failure, per tape
 Status ladder: open (failing now) -> fresh (<3 d) -> holding (3-14 d) -> hardened (>=14 d and >=20 uses,
 or >=14 d with no use command: 'hardened?' = time-only, unproven under load).
 A tape that fails after being holding/hardened is a REGRESSION and pages Kevin once per streak.
+A tape that has passed and then fails 2 runs in a row REOPENS: one kanban task per streak for the tape's
+`lane` (default reliability) with the last pass, first fail, output and what changed in between.
 """
-import json, os, re, subprocess, sys, time
+import json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 OPS = Path(os.environ.get("FIX_OPS", "/mnt/zer0models/workspace/zer0/data/operations/token-allocation-20261109"))
 TAPES, STATE, LOG, BOARD = OPS / "fix-tapes.json", OPS / "fix-state.json", OPS / "fix-replay.jsonl", OPS / "BOARD.md"
 GOAL_LAWS = OPS.parent / "intent-analyzer-20261104/goal-laws.json"
 DAY = 86400
+
+
+def put(path, text):
+    """tmp + rename: write_text truncates first, so ENOSPC (2026-11-16) left a 0-byte state that crashed every run."""
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def tapes():
@@ -53,6 +65,60 @@ def malformed(t):
                                          and all(isinstance(v, str) for v in t["env"].values())):
         return "malformed tape row: env must be an object of strings (put prose in note)"
     return ""
+
+
+REOPEN_AFTER = 2  # consecutive fails; one is a flake
+UNIT = re.compile(r"[\w@.-]+\.(?:service|timer|path|socket|mount)\b")
+STAMP = "%F %H:%M"
+
+
+def changed_between(t, since):
+    """What moved between the last pass and now: packages, .files commits, unit files touched."""
+    lo = time.strftime("%FT%T", time.localtime(since))
+    try:
+        pac = [l.rstrip() for l in open("/var/log/pacman.log", errors="replace")
+               if l[1:20] >= lo and "[ALPM]" in l and "transaction" not in l][-15:]
+    except OSError as e:
+        pac = [f"unreadable: {e}"]
+    _, git = sh(f"git -C {os.environ.get('FIX_GIT', '/workspace/.files')} log --all --oneline "
+                f"--since=@{int(since)} -15 2>&1 || true", timeout=30)
+    units = []
+    for u in sorted(set(UNIT.findall(t.get("tape", ""))))[:5]:
+        _, paths = sh(f"systemctl --user show -P FragmentPath -P DropInPaths {u} 2>/dev/null", timeout=10)
+        for p in paths.split():
+            try:
+                m = os.path.getmtime(p)
+                units.append(f"{p} mtime {time.strftime(STAMP, time.localtime(m))}" + (" (CHANGED)" if m >= since else ""))
+            except OSError:
+                pass
+    return (f"pacman.log since last pass:\n{chr(10).join(pac) or '(none)'}\n\n"
+            f"git log --all since last pass:\n{git or '(none)'}\n\nunit files:\n{chr(10).join(units) or '(none in tape)'}")
+
+
+def reopen(t, s, out):
+    """Open ONE kanban task for this regression streak. Returns the task id or '' (never raises)."""
+    tid, last = t["id"], s.get("last_pass_at")
+    when = lambda x: time.strftime(STAMP, time.localtime(x)) if x else "unknown (before reopen tracking)"
+    body = (f"fix-replay: tape `{tid}` passed before and has now failed {s['fail_run']} runs in a row.\n\n"
+            f"- what the fix promised: {t.get('what', '')}\n- class: {t.get('class', '')}  src: {t.get('src', '')}\n"
+            f"- last pass: {when(last)}\n- first fail: {when(s.get('first_fail_at'))}\n"
+            f"- totals: {s['passes']} pass / {s['fails'] + 1} fail\n- tape: `{t['tape'][:400]}`\n"
+            f"- tape record: {TAPES} (state {STATE}); read these, do not grep -r the ops tree\n\n"
+            f"Latest tape output:\n```\n{out}\n```\n\n{changed_between(t, last or s.get('first_fail_at') or time.time() - DAY)}\n\n"
+            "Done = the root cause is fixed and the tape is green on the live system again (fix-replay --board).")
+    # the ~/.local/bin/hermes wrapper sets up bws secrets and exits 1 under a timer's bare env; kanban needs none
+    direct = Path.home() / ".hermes/hermes-agent/.hermes/bin/hermes"
+    hermes = os.environ.get("FIX_REOPEN_HERMES") or (str(direct) if direct.exists() else shutil.which("hermes") or "hermes")
+    key = f"fix-replay-regression:{tid}:{int(s['first_fail_at'] * 1000)}"
+    try:
+        r = subprocess.run([hermes, "kanban", "--board", os.environ.get("FIX_REOPEN_BOARD", "zer0-company"), "create",
+                            f"fix did not stick: {tid} is red again", "--assignee", t.get("lane") or "reliability",
+                            "--idempotency-key", key, "--created-by", "fix-replay", "--body-file", "-", "--json"],
+                           input=body, capture_output=True, text=True, timeout=120)
+        out = r.stdout  # --json prints one indented object, possibly after helper chatter
+        return json.loads(out[out.index("{"):]).get("id", "") if r.returncode == 0 else ""
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return ""
 
 
 def status(s, now):
@@ -98,6 +164,20 @@ def run():
                 s["since"] = now
                 if before in ("holding", "hardened", "hardened?"):
                     regressions.append((t, before, out))
+            if ok:
+                s.update(fail_run=0, last_pass_at=now)
+                for k in ("reopened", "reopen_tries", "first_fail_at"):
+                    s.pop(k, None)
+            else:
+                s["fail_run"] = s.get("fail_run", 0) + 1
+                if s["ok"]:
+                    s["first_fail_at"] = now
+                # first_fail_at is only set on an observed pass->fail flip, so state that was already red before
+                # reopen tracking can't mass-open tasks; a failed create retries next hour, at most 6 times
+                if s["fail_run"] >= REOPEN_AFTER and s["passes"] and s.get("first_fail_at") \
+                        and not s.get("reopened") and s.get("reopen_tries", 0) < 6:
+                    s["reopen_tries"] = s.get("reopen_tries", 0) + 1
+                    s["reopened"] = reopen(t, s, out)
             s["ok"] = ok
             s["passes" if ok else "fails"] += 1
             if ok:
@@ -106,11 +186,11 @@ def run():
             row = {"ts": time.strftime("%FT%T"), "id": t["id"], "ok": ok, "uses": uses,
                    "ms": int((time.monotonic() - t0) * 1000), "out": "" if ok else out}  # tape + use wall time
             log.write(json.dumps(row | ({"use_refused": True} if refused else {})) + "\n")
-    STATE.write_text(json.dumps(st, indent=1))
+    put(STATE, json.dumps(st, indent=1))
     for t, before, out in regressions:
         subprocess.run([str(Path.home() / ".local/bin/z0-phone-notify"), "fix-replay", f"REGRESSION {t['id']}",
                         f"was {before}: {t.get('what','')} | {out[:160]}"], timeout=60)
-    BOARD.write_text(board(st, now))
+    put(BOARD, board(st, now))
 
 
 def board(st, now):
