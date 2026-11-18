@@ -13,6 +13,7 @@ BRANCHES=(${PHONE_SETUP_BRANCH:-master dev})
 
 command -v git >/dev/null || { echo "install git first" >&2; exit 1; }
 if [[ ! -d $DIR/.git ]]; then
+  mkdir -p -- "$(dirname -- "$DIR")"
   git clone -q --filter=blob:none "$REPO" "$DIR"
 fi
 git -C "$DIR" fetch -q origin
