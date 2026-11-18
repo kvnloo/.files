@@ -1,7 +1,14 @@
 [Unit]
-Description=Detect and repair the S22 sender ADB transport (no UI input), with receipts
+Description=Keep fleet phones' ADB transports alive: repair on the track-devices drop event (no UI input), with receipts
+After=adb.service
 
 [Service]
-Type=oneshot
-TimeoutStartSec=150
-ExecStart=%h/.local/bin/phone-adb-keeper
+Type=simple
+ExecStart=%h/.local/bin/phone-adb-keeper --watch
+Restart=always
+RestartSec=10
+# The watcher idles on a pipe; repairs are short adb calls.
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

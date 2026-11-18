@@ -2900,15 +2900,6 @@ reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy w
 migration_sha256 = "a2eb5356bd87729ac17aecde8a8cd1b7e4bbb3338bae1bbfe8da7a169dee1b32"
 
 [[user]]
-live = "~/.config/systemd/user/phone-adb-keeper.timer"
-source = "config/systemd/user/phone-adb-keeper.timer"
-scope = "user"
-install = "symlink-stamped"
-owner = "scripts/apply-agent-oom"
-reason = "Adopted 2026-11-16: landed in 065f207d but left as a plain live copy with no row, so repo edits never reached live."
-migration_sha256 = "b7b70f6224594de466c4923fda1e114d81287ecd6920601fe774570f8313ecbd"
-
-[[user]]
 live = "~/.config/systemd/user/phone-worker.timer"
 source = "config/systemd/user/phone-worker.timer"
 scope = "user"

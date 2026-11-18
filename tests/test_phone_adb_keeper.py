@@ -117,3 +117,44 @@ class RediscoveryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WatchTests(unittest.TestCase):
+    """Event-driven mode (11-18): react to `adb track-devices`, no timer."""
+
+    def test_parse_track_block(self):
+        self.assertEqual(keeper.parse_track('100.72.191.23:5555\tdevice\nX\toffline\n'),
+                         {'100.72.191.23:5555': 'device', 'X': 'offline'})
+
+    def test_drop_and_offline_are_detected_unattached_ignored(self):
+        owned = {'s22': '100.72.191.23:5555', 'carol-tablet': '100.94.207.126:5555', 's25': None}
+        current = {'100.72.191.23:5555': 'offline'}
+        self.assertEqual(sorted(keeper.dropped(owned, current)), ['carol-tablet', 's22'])
+        self.assertEqual(keeper.dropped(owned, {'100.72.191.23:5555': 'device',
+                                                '100.94.207.126:5555': 'device'}), [])
+
+    def test_backoff_caps_at_ten_minutes(self):
+        self.assertEqual([keeper.next_delay(n) for n in range(6)], [5, 30, 120, 600, 600, 600])
+
+    def test_track_wire_format_split_reads(self):
+        import io
+
+        class Trickle(io.RawIOBase):  # pipe that returns one byte per read, like a slow socket
+            def __init__(self, data):
+                self.data = data
+            def readable(self):
+                return True
+            def readinto(self, b):
+                if not self.data:
+                    return 0
+                b[0], self.data = self.data[0], self.data[1:]
+                return 1
+        body = b'S\tdevice\n'
+        blocks = list(keeper.read_track_blocks(Trickle(b'%04x' % len(body) + body + b'0000')))
+        self.assertEqual(blocks, ['S\tdevice\n', ''])
+
+    def test_s25_is_kept_but_never_required(self):
+        # Kevin turns S25 debugging off for banking apps; that must not alarm.
+        self.assertEqual(keeper.PHONES['s25']['serial'], 'R5CY93G2WNH')
+        self.assertFalse(keeper.PHONES['s25']['required'])
+        self.assertTrue(keeper.PHONES['s22'].get('required', True))

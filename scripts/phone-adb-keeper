@@ -6,7 +6,10 @@ random port when Wi-Fi disconnects/reconnects (seen 2026-11-04 09:46: Wi-Fi
 drop + MAC_CHANGE + band switch, uptime unchanged, so no reboot). Legacy
 tcpip mode on 5555 survives Wi-Fi changes but not a reboot or adbd restart.
 
-Each run (timer, every 2 min): detect -> repair -> append a receipt line.
+`--watch` (the service): follow `adb track-devices` and repair a phone the moment
+its transport drops; retry an unreachable phone on a 5 s -> 10 min backoff. No timer.
+Without --watch, one pass over every phone (manual check / tests).
+Each repair: detect -> repair -> append a receipt line.
   1. Find a live transport whose ro.serialno matches. If none, `adb connect`
      the fixed 5555 endpoints (tailnet, LAN) and the mDNS-advertised TLS port.
   2. If connected but adbd no longer listens on 5555, re-arm `adb tcpip 5555`,
@@ -32,7 +35,11 @@ PHONES = {'s22': {'serial': 'RFCTA1RZAQY', 'hosts': ['100.72.191.23', '192.168.1
                            # Paired (owner, 11-10) but often off or away from home (tailnet offline,
                            # LAN no route): it must not hold the unit red, or a real S22 drop never
                            # reaches failed-unit-watch.
-                           'required': False}}
+                           'required': False},
+          # Kevin's daily S25 Ultra (Tailscale node kevins-s25-ultra). He turns debugging off for
+          # banking apps, so off is a normal state: never required, never an alarm.
+          's25': {'serial': 'R5CY93G2WNH', 'hosts': ['100.117.226.39', '192.168.1.2'],
+                  'ui_lock': Path.home() / 'tmp/s25-ui.lock', 'required': False}}
 STATE = Path(os.environ.get('PHONE_ADB_KEEPER_STATE', Path.home() / '.local/state/fleet/health'))
 
 
@@ -212,28 +219,134 @@ def keep(name, phone, learned=None):
     return t, diag, actions, wireless
 
 
-def main():
+BACKOFF_S = (5, 30, 120, 600)  # retry delays for an unreachable phone; the last one repeats
+
+
+def next_delay(attempt):
+    return BACKOFF_S[min(attempt, len(BACKOFF_S) - 1)]
+
+
+def parse_track(block):
+    """One `adb track-devices` update ('serial\\tstate' lines) -> {transport: state}."""
+    rows = {}
+    for line in block.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            rows[parts[0]] = parts[1]
+    return rows
+
+
+def dropped(owned, current):
+    """Phones whose last good transport is gone or no longer 'device' in this update."""
+    return [name for name, t in owned.items() if t and current.get(t) != 'device']
+
+
+def read_exact(stream, n):
+    buf = b''
+    while len(buf) < n:
+        chunk = stream.read(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
+
+
+def read_track_blocks(stream):
+    """Yield update blocks from the track-devices wire format: 4 hex length chars, then payload.
+
+    `stream` must be unbuffered (Popen bufsize=0) so select() sees every pending block."""
+    while True:
+        head = read_exact(stream, 4)
+        if head is None:
+            return
+        size = int(head, 16)
+        body = read_exact(stream, size) if size else b''
+        if body is None:
+            return
+        yield body.decode(errors='replace')
+
+
+def watch():
+    """Event-driven keeper: idle while every phone is attached, repair on the drop event.
+
+    `adb track-devices` streams each change in the server's device list, so a drop is seen
+    the moment it happens instead of on a 2-minute poll. An unreachable phone retries on
+    BACKOFF_S. When the adb server restarts the stream ends and is reopened."""
+    import selectors
+    owned, attempts, due = {}, {}, {}
+
+    def repair(names):
+        receipts = run_once(names)
+        for r in receipts:
+            owned[r['phone']] = r['transport']
+            if r['transport']:
+                attempts.pop(r['phone'], None)
+                due.pop(r['phone'], None)
+            else:
+                n = attempts.get(r['phone'], 0)
+                attempts[r['phone']] = n + 1
+                due[r['phone']] = time.monotonic() + next_delay(n)
+
+    repair(list(PHONES))
+    while True:
+        proc = subprocess.Popen([ADB, 'track-devices'], stdout=subprocess.PIPE, bufsize=0)
+        sel = selectors.DefaultSelector()
+        sel.register(proc.stdout, selectors.EVENT_READ)
+        blocks = read_track_blocks(proc.stdout)
+        try:
+            while True:
+                wait = max(0.0, min(due.values()) - time.monotonic()) if due else None
+                if sel.select(wait):
+                    block = next(blocks, None)
+                    if block is None:
+                        break  # adb server went away; reopen the stream
+                    gone = dropped(owned, parse_track(block))
+                    if gone:
+                        time.sleep(2)  # let a transport that is reconnecting by itself settle
+                        repair(gone)
+                ready = [n for n, at in due.items() if at <= time.monotonic()]
+                if ready:
+                    repair(ready)
+                if any(attempts.get(n, 0) > len(BACKOFF_S) and p.get('required', True)
+                       for n, p in PHONES.items()):
+                    # A required phone stayed down through the whole backoff: fail the unit so
+                    # failed-unit-watch hears about it (systemd restarts the watcher).
+                    return 1
+        finally:
+            sel.close()
+            proc.kill()
+            proc.wait()
+        time.sleep(2)
+
+
+def run_once(names=None):
     STATE.mkdir(parents=True, exist_ok=True)
     last_path = STATE / 'phone-adb-keeper.last.json'
     last = json.loads(last_path.read_text()) if last_path.exists() else {}
-    rc = 0
-    for name, phone in PHONES.items():
+    receipts = []
+    for name in names or list(PHONES):
+        phone = PHONES[name]
         before = last.get(name, {})
         t, diag, actions, wireless = keep(name, phone, before.get('diag'))
         receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
                    'state': 'ok' if t else 'unreachable', 'was': before.get('state'),
                    'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
                    'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
-        if t is None and phone.get('required', True):
-            rc = 1
         if actions or receipt['state'] != before.get('state'):
             with open(STATE / 'phone-adb-keeper.jsonl', 'a') as fh:
                 fh.write(json.dumps(receipt) + '\n')
         last[name] = receipt
-        print(json.dumps(receipt))
+        receipts.append(receipt)
+        print(json.dumps(receipt), flush=True)
     last_path.write_text(json.dumps(last, indent=1))
-    return rc
+    return receipts
+
+
+def main():
+    receipts = run_once()
+    return 1 if any(r['transport'] is None and PHONES[r['phone']].get('required', True)
+                    for r in receipts) else 0
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(watch() if '--watch' in sys.argv[1:] else main())
