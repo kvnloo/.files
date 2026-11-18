@@ -1,4 +1,4 @@
-"""offsite-blobs runs as its own unit: chained behind offsite-sync it never ran when the sync was killed."""
+"""offsite-blobs runs as its own unit (offsite-sync was removed 11-18: it snapshotted dirty trees into git)."""
 import configparser
 from pathlib import Path
 
@@ -12,9 +12,8 @@ def _unit(name):
     return p
 
 
-def test_blobs_not_chained_behind_sync():
-    sync = (UNITS / "offsite.service").read_text()
-    assert "offsite-blobs" not in sync.split("[Service]")[1]
+def test_blobs_unit_stands_alone():
+    assert not (UNITS / "offsite.service").exists()
     assert "offsite-blobs" in _unit("offsite-blobs.service")["Service"]["ExecStart"]
     assert _unit("offsite-blobs.timer")["Timer"]["Persistent"] == "true"
     assert _unit("offsite-blobs.timer")["Install"]["WantedBy"] == "timers.target"
