@@ -86,7 +86,17 @@ GHCACHE = os.environ.get("GHCACHE_URL", "http://127.0.0.1:18090").rstrip("/")
 
 
 class CacheDown(RuntimeError):
-    pass
+    hold = False    # True: ghcache answered 503 on purpose (budget held / no fresh copy yet)
+
+
+class CacheHold(CacheDown):
+    hold = True
+
+
+# A held budget is ghcache backing off by design, so the 60 s poll skips quietly (exit 0) instead of
+# failing the unit (11-17: each hold tripped OnFailure and the fix-replay tape). Past this age the
+# skips stop being quiet: a stuck hold must still surface as a failed unit.
+HOLD_QUIET = timedelta(hours=2)
 
 
 def get(path):
@@ -103,7 +113,7 @@ def get(path):
     except urllib.error.HTTPError as e:
         h = {k.lower(): v for k, v in e.headers.items()}
         if e.code == 503:
-            raise CacheDown(f"ghcache holding the budget ({h.get('x-ghcache')})")
+            raise CacheHold(f"ghcache holding the budget ({h.get('x-ghcache')})")
         raise
     except (urllib.error.URLError, OSError) as e:
         raise CacheDown(f"ghcache not reachable at {GHCACHE}: {e}")
@@ -278,7 +288,11 @@ def cmd_poll():
     try:
         scan(last - timedelta(minutes=10), ping=True)
     except CacheDown as e:
-        sys.exit(f"gh-feedback-watch: {e}; not polling GitHub directly, retry next tick")
+        msg = f"gh-feedback-watch: {e}; not polling GitHub directly, retry next tick"
+        if e.hold and t0 - last < HOLD_QUIET:
+            print(msg)
+            return
+        sys.exit(msg + f" (last good poll {iso(last)})" if e.hold else msg)
     state = load(STATE, {})
     state["last_poll"] = iso(t0)
     save(STATE, state)
