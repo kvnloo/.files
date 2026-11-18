@@ -16,9 +16,14 @@ import sys
 import time
 import tomllib
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import host_admission  # noqa: E402
+import host_layout  # noqa: E402
+
 SCHEMA = 'host-drift.v1'
-PHYSICAL_RELEASE_ROOT = Path('/mnt/zer0models/releases/files-live')
-DEPLOYMENT_RELEASE_ROOT = Path('/mnt/zer0models/releases')
+# None until audit() resolves this host's fleet.toml layout; tests may pin them.
+PHYSICAL_RELEASE_ROOT = None
+DEPLOYMENT_RELEASE_ROOT = None
 PROPERTIES = {'MemoryMin', 'MemoryLow', 'MemoryHigh', 'MemoryMax', 'MemorySwapMax', 'CPUWeight', 'IOWeight',
               'ManagedOOMMemoryPressure', 'ManagedOOMSwap', 'OOMPolicy', 'Nice',
               'IOSchedulingClass', 'IOSchedulingPriority', 'TasksMax'}
@@ -46,12 +51,13 @@ def normalized(value):
             'realtime': '1'}.get(value, ' '.join(value.split()))
 
 
-def deployment_stamped(path, entry):
+def deployment_stamped(path, entry, releases=None):
     """Accept only a declared installer's exact Git-stamped source path."""
     name = entry.get('stamp_name')
-    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name):
+    releases = DEPLOYMENT_RELEASE_ROOT or releases
+    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*', name) or releases is None:
         return False
-    base = DEPLOYMENT_RELEASE_ROOT / name
+    base = releases / name
     resolved = path.resolve()
     if not resolved.is_relative_to(base):
         return False
@@ -64,7 +70,51 @@ def deployment_stamped(path, entry):
     return stamp.get('name') == name and stamp.get('source_sha') == parts[0]
 
 
-def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup')):
+def exec_paths(values, home):
+    """Absolute paths a unit executes from or runs in, from systemctl show output."""
+    for key in ('ExecStartPre', 'ExecStart', 'ExecStartPost', 'ExecStop'):
+        for match in re.finditer(r'(?:path|argv\[\])=([^;}]+)', values.get(key, '')):
+            for token in match[1].split():
+                if token.startswith('/') and not token.startswith(('/usr/', '/bin/', '/dev/', '/proc/')):
+                    yield Path(token)
+    directory = values.get('WorkingDirectory', '').lstrip('!-')
+    if directory.startswith('/'):
+        yield Path(directory)
+
+
+def checkout_root(path):
+    """Nearest enclosing git checkout of path (following links), or None."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return None
+    for parent in (resolved, *resolved.parents):
+        if parent == Path('/'):
+            return None
+        if (parent / '.git').exists():
+            return parent
+    return None
+
+
+def package_backups(db):
+    """Absolute paths of every installed package's backup files, or None when the local db is unreadable.
+    pacman writes a .pacnew only beside a file in some package's backup array."""
+    try:
+        paths = set()
+        for files in sorted(Path(db).glob('*/files')):
+            section = None
+            for line in files.read_text().splitlines():
+                if line.startswith('%') and line.endswith('%'):
+                    section = line
+                elif section == '%BACKUP%' and line:
+                    paths.add('/' + line.split('\t', 1)[0].lstrip('/'))
+        return paths if paths or any(Path(db).glob('*/desc')) else None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_root=Path('/sys/fs/cgroup'),
+          pacman_db=Path('/var/lib/pacman/local')):
     drift, unknown = [], []
     manifest = {}
     if run is command:
@@ -79,8 +129,12 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         rows.append(dict(kind=kind, path=str(path), detail=detail))
     def problem(kind, path, detail):
         add(drift, kind, path, detail)
+    releases = stamp_root = None
     try:
-        manifest = tomllib.loads((root / 'config/host/groot.toml').read_text())
+        layout = host_layout.resolve(root, home=home)
+        releases = layout.release_root
+        stamp_root = PHYSICAL_RELEASE_ROOT or (releases / 'files-live' if releases else None)
+        manifest = tomllib.loads((root / layout.manifest).read_text())
         entries = manifest.get('system', []) + manifest.get('user', [])
         if not entries or any(not isinstance(row, dict) or
                               not all(isinstance(row.get(key), str) and row[key] for key in
@@ -94,6 +148,8 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         add(unknown, 'manifest_unavailable', root, str(exc))
         entries, tracked = [], set()
     expected = {}
+    services = set()
+    not_applicable = []
     io_latency = {}
     for entry in entries:
         try:
@@ -117,6 +173,9 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                     problem('private_file_permissions', live, 'expected current-user ownership and mode 0600')
                 add(unknown, 'private_source_exception', live, 'tracked nonsecret declaration only; private content provenance not verified')
                 continue
+            through = host_layout.checkout_ancestor(live)
+            if through:
+                problem('checkout_directory_link', live, str(through))
             if live.is_symlink():
                 resolved = live.resolve()
                 if any(part in ('worktrees', 'z0-wt') for part in resolved.parts) or (resolved.parent / '.git').exists():
@@ -139,10 +198,10 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                     target = Path(os.path.normpath(link if link.is_absolute() else target.parent / link))
                     if any(target.is_relative_to(base) and
                            any(re.fullmatch(r'[0-9a-f]{64}', part) for part in target.relative_to(base).parts)
-                           for base in (library, PHYSICAL_RELEASE_ROOT)):
+                           for base in (library, stamp_root) if base):
                         stamped = True
                         break
-                if not stamped and not deployment_stamped(live, entry):
+                if not stamped and not deployment_stamped(live, entry, releases):
                     problem('unstamped_install', live, 'expected declared content/Git-stamped source installation')
             if not live.exists():
                 problem('missing_file', live, rel)
@@ -161,6 +220,8 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                     actual = run(['sysctl', '-n', key]).strip()
                     if normalized(actual) != normalized(value):
                         problem('sysctl_effective', key, dict(expected=value, actual=actual))
+            if '/systemd/' in str(live) and live.suffix == '.service':
+                services.add((entry['scope'], live.name))
             if '/systemd/' in str(live) and live.suffix in ('.conf', '.service', '.slice', '.timer'):
                 unit = live.parent.name[:-2] if live.parent.name.endswith('.d') else live.name
                 scope = entry['scope']
@@ -191,7 +252,6 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                 values.update(entry.get('effective', {}))
         except (OSError, KeyError, ValueError, TypeError, ArithmeticError, UnicodeError, subprocess.SubprocessError) as exc:
             add(unknown, 'observation_failed', entry.get('live', '?'), str(exc))
-    not_applicable = []
     instance_cache = {}
     def instances(scope, unit):
         key = (scope, unit)
@@ -224,6 +284,28 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
                 add(unknown, 'instance_inventory_unavailable', unit, str(exc))
         return expanded
+    # Effective execution (base unit plus every drop-in) must never come from a mutable checkout.
+    for scope, unit in sorted(services):
+        if '@.' in unit:
+            continue
+        try:
+            shown = run(['systemctl', '--user' if scope == 'user' else '--system', 'show', '-p', 'UnitFileState',
+                         '-p', 'ExecStartPre', '-p', 'ExecStart', '-p', 'ExecStartPost', '-p', 'ExecStop',
+                         '-p', 'WorkingDirectory', '--', unit])
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            add(unknown, 'exec_unavailable', unit, str(exc))
+            continue
+        values = dict(line.split('=', 1) for line in shown.splitlines() if '=' in line)
+        runnable = values.get('UnitFileState') not in ('disabled', 'masked', 'masked-runtime', 'bad', '')
+        for path in sorted(set(exec_paths(values, home))):
+            checkout = checkout_root(path)
+            if checkout is None:
+                continue
+            row = dict(path=str(path), checkout=str(checkout), state=values.get('UnitFileState'))
+            if runnable:
+                problem('exec_from_checkout', unit, row)
+            else:
+                not_applicable.append(dict(kind='exec_from_checkout_disabled', path=unit, detail=row))
     expected = expand_units(expected)
     io_latency = expand_units(io_latency, keep_empty=True)
     for (scope, unit), values in sorted(expected.items()):
@@ -329,6 +411,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
         except (OSError, ValueError, TypeError) as exc:
             add(unknown, 'control_unavailable', control, str(exc))
     # No whole-home or model-volume scan. Bound /etc by 20k entries/16 levels.
+    backups = package_backups(pacman_db) if pacnew_roots else None
     for base in pacnew_roots:
         try:
             count = 0
@@ -337,7 +420,14 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
                 try:
                     children = sorted(directory.iterdir())
                 except OSError as exc:
-                    add(unknown, 'pacnew_unavailable', directory, str(exc))
+                    # An unreadable directory can only hide a .pacnew beside some package's backup file.
+                    prefix = str(directory).rstrip('/') + '/'
+                    if backups is not None and not any(path.startswith(prefix) for path in backups):
+                        not_applicable.append(dict(kind='pacnew_impossible', path=str(directory),
+                                                   detail=f'{exc.strerror}; no installed package declares a '
+                                                          'backup file under it, so pacman cannot place a .pacnew'))
+                    else:
+                        add(unknown, 'pacnew_unavailable', directory, str(exc))
                     return
                 for path in children:
                     count += 1
@@ -375,7 +465,7 @@ def audit(root, home, runtime, lease_root, pacnew_roots, run=command, cgroup_roo
             if row['path'] == str(live) or row['path'] == unit or unit + '.d' in Path(row['path']).parts:
                 row.update(classification='owned-upstream', issue=entry['issue'])
     # Unknown takes precedence: drift is still retained and alertable.
-    status = 'unknown' if unknown else 'drift' if drift else 'clean'
+    status = host_admission.status(bool(unknown), bool(drift))
     return dict(schema=SCHEMA, status=status, drift=drift, unknown=unknown, budget=budget_observation,
                 not_applicable=not_applicable,
                 host=socket.gethostname(), observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -389,10 +479,12 @@ def main():
     parser.add_argument('--runtime', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', '/run/user/1000')))
     parser.add_argument('--leases', type=Path)
     parser.add_argument('--pacnew-root', type=Path, action='append')
+    parser.add_argument('--pacman-db', type=Path, default=Path('/var/lib/pacman/local'))
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     report = audit(args.root, args.home, args.runtime,
-                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')])
+                   args.leases or args.home / '.local/state/host-drift/leases', args.pacnew_root or [Path('/etc')],
+                   pacman_db=args.pacman_db)
     text = json.dumps(report, sort_keys=True, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

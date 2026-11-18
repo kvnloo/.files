@@ -25,3 +25,7 @@ The autotier implementation and tests are owned here in `.files`. Its old chief-
 `scripts/release-retention.py` lists release bytes per family before applying reversible offload. It keeps `current`, the newest other physical release for rollback, and references from user units, entrypoint/extension symlinks, every kvn-owned process's maps/cwd/exe, readable system units/cron/k3s configuration, and live Kubernetes hostPath volumes. Unknown user-process or Kubernetes visibility keeps every candidate. Authorized assumption: unreadable non-kvn processes have no private-home release dependency absent a readable system declaration or hostPath reference. Revalidated unused SHA directories move with checksum verification to `/mnt/zer0models/releases/<family>/<sha>` and retain their original path as a symlink; nothing is deleted.
 
 Detached backups are checksum-verified again before removal. Cleanup adds owner write/execute permission only to physical backup directories, never to the preserved destination or symlink targets. Failed verification retains the backup unchanged.
+
+## Private per-host values
+
+Host-specific roots and ports move out of this public repo into the private `z0-hosts` overlay; see [host-overlay.md](host-overlay.md).
