@@ -4421,3 +4421,11 @@ install = "symlink-stamped"
 owner = "scripts/apply-agent-oom"
 reason = "IOAccounting for every user service (per-unit IO attribution for idle-IO and host-io triage); written live 2026-11-05 with no source, adopted byte-identical."
 migration_sha256 = "647007ebfc71605307907311cc82429f1d491659a79ecc9456d88bab9d73e6ab"
+
+[[user]]
+live = "~/.config/systemd/user/z0-farm-llama.service.d/40-model-servers-slice.conf"
+source = "config/systemd/user/z0-farm-llama.service.d/40-model-servers-slice.conf"
+scope = "user"
+install = "symlink-stamped"
+owner = "scripts/apply-agent-oom"
+reason = "Adopted 2026-11-18: landed in .files#236 as a plain live copy with no row, so repo edits never reached live."
