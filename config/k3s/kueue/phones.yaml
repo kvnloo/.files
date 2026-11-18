@@ -1,0 +1,75 @@
+# Phone queue (docs/fleet/phone-queue.md). New objects only; existing queues are untouched.
+#
+# Node groot advertises the extended resource z0.dev/phone = 2 (one per attached phone;
+# services/phone-queue/advertise-phones does the documented node status patch). Every
+# phone Job requests z0.dev/phone: 1 and Kueue assigns it a per-phone flavor:
+#   phone-s22 / phone-s25, nominal quota 1 each  ->  at most one admitted job per phone;
+#   everything else waits in the queue (pending workload) until that phone frees up.
+# Device choice uses flavor taints that exist only in Kueue (nodes never carry them): a job
+# for s22 tolerates z0.dev/phone=s22, a job for "any" tolerates every phone whose gate is
+# open, so Kueue's flavor fungibility hands it the first free allowed phone. The runner
+# reads the assigned flavor from its Workload. Why one resource with two flavors instead of
+# two resources (z0.dev/phone-s22, z0.dev/phone-s25): a pod can only request fixed resource
+# names, so per-phone names cannot express "any phone"; per-phone flavors can.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: phone-s22
+spec:
+  nodeLabels: {kubernetes.io/hostname: groot}
+  nodeTaints:
+    - {key: z0.dev/phone, value: s22, effect: NoSchedule}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: phone-s25
+spec:
+  nodeLabels: {kubernetes.io/hostname: groot}
+  nodeTaints:
+    - {key: z0.dev/phone, value: s25, effect: NoSchedule}
+---
+# The runner pods' own small CPU/memory (adb RPC + fx), on groot where the phones attach.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: phones-groot
+spec:
+  nodeLabels: {kubernetes.io/hostname: groot}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: phones
+spec:
+  namespaceSelector:
+    matchLabels: {kubernetes.io/metadata.name: phones}
+  # A job waiting for the busy S22 must not hold back one that the free S25 could run.
+  queueingStrategy: BestEffortFIFO
+  preemption:
+    withinClusterQueue: Never   # a running phone job is never evicted mid-UI
+  resourceGroups:
+    - coveredResources: [z0.dev/phone]
+      flavors:
+        - name: phone-s22
+          resources: [{name: z0.dev/phone, nominalQuota: "1"}]
+        - name: phone-s25
+          resources: [{name: z0.dev/phone, nominalQuota: "1"}]
+    - coveredResources: [cpu, memory]
+      flavors:
+        - name: phones-groot
+          resources:
+            - {name: cpu, nominalQuota: "2"}
+            - {name: memory, nominalQuota: 2Gi}
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata: {name: phones, namespace: phones}
+spec: {clusterQueue: phones}
+---
+# Submitted with priority > 0: ahead of normal phone jobs (never preempts a running one).
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: WorkloadPriorityClass
+metadata: {name: phone-urgent}
+value: 50
+description: Phone-queue jobs submitted with priority > 0.
