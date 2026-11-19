@@ -21,6 +21,7 @@ local small models label each message, and Opus agents verify afterwards.
 | `phone_label.py` | pod / anywhere | One message in, `{flag, p_flag, cue, concepts, ask}` out. Modes: `full` and `flag` use chat completions with a JSON-schema grammar and logprobs for `p_flag`. `d1` uses the Liquid d1 `/v1/systemone` decision endpoint, which gives a calibrated P(yes). |
 | `phone_sweep.py` | pod `hre-label-<phone>` | Work-stealing sweep. The corpus is cut into 100-row chunks. A worker claims a chunk with an atomic `O_EXCL` claim file and writes `sweep/<job>/out/<chunk>.jsonl`. **A chunk is done only when its out file has a row for every id.** A claim with no progress for 15 min is taken over and resumed. |
 | `phone_embed.py` | pod `hre-embed-tab` | Embeds the corpus with Qwen3-Embedding-0.6B on the Lenovo tab into `embeddings/emb-tab.jsonl`, for T3 concept clustering. |
+| `assemble_labels.py` | CronJob `hre-assemble` (every 10 min) | Joins both sweeps into `/data/phone-labels.jsonl`, one row per id. Final flag = d1 `p_flag >= 0.10`, falling back to the LFM3 flag until d1 reaches the row. Appends a coverage and per-worker rows/hour line to `/data/coverage.jsonl`. |
 | `score_calib.py` | groot | Compares each candidate with the Opus gold labels. Reports flag recall, precision, AUC, the threshold that reaches recall ≥ 0.9, and concept precision and recall. |
 
 ## Models per phone (calibration 2026-11-18)
@@ -39,6 +40,14 @@ Notes:
 - The phones' old b11759 build is not used. b12527 loads the LFM3 architecture.
 - The Qwen3-1.7B baseline was dropped. Its flag AUC was 0.625.
 - d1 models are queried through `/v1/systemone`, a `noul` question that returns P(yes).
+
+## Crash restarts
+
+On the S25, b12527's HTP backend sometimes aborts with `ggml-hex: dspqueue_read failed: 0x68`. The shadow-s25 b11759 server does the same.
+
+`hre_slm_server.sh` therefore runs llama-server under an on-phone supervisor (`hre-sup.sh`):
+- It restarts the server only after a crash signal (rc 132/134/135/139), at most 30 times in a row. Each exit is logged to `server-PORT.exits`.
+- Any other exit ends the supervisor. That includes SIGTERM from `phone-worker off` and lmkd's SIGKILL, so the owner switch still stops the server.
 
 ## Owner gates
 
