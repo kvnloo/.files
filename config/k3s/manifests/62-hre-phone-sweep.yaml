@@ -1,0 +1,139 @@
+# HRE phone sweep (operations/history-research-engine-20261118): the phones do the exhaustive
+# first pass over every owner message. Pods run on mbp; the models run natively on the phones
+# (llama-server under adb shell, started by services/hre-phone/hre_slm_server.sh), so the pods
+# are thin HTTP drivers: owner text goes only pod -> phone over the tailnet, never to a cloud.
+#   hre-label-<phone>  phone_sweep.py: work-stealing chunks of owner-msgs.jsonl -> sweep/<job>/out
+#   hre-embed-tab      phone_embed.py: Qwen3-Embedding-0.6B on the Lenovo tab -> embeddings/
+# Data: hostPath /home/kvn/hre-phone on mbp (mode 700, uid 1000). Code: ConfigMap hre-phone-code
+# (services/hre-phone/render-configmap). Key: the phone SLM api key, Secret hre-phone-slm-key
+# (kubectl create secret generic hre-phone-slm-key -n phones --from-file=key=...; never committed).
+# hostNetwork: the phones are tailnet hosts; the pod uses mbp's tailscale route directly.
+# Namespace phones: 00-namespaces.yaml. Per-phone models/thresholds: docs/fleet/hre-phone-sweep.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hre-embed-tab, namespace: phones, labels: {app: hre-phone, role: embed, phone: tab}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: hre-phone, role: embed, phone: tab}}
+  template:
+    metadata: {labels: {app: hre-phone, role: embed, phone: tab}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: mbp}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: embed
+          image: python:3.13-slim
+          command: [sh, -c]
+          args:
+            - >-
+              python3 -u /app/phone_embed.py --url http://100.94.207.126:8081 --key-file /etc/hre/key
+              --in /data/owner-msgs.jsonl --out /data/embeddings/emb-tab.jsonl --batch 4 --max-chars 3000
+              && sleep infinity
+          env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+          resources: {requests: {cpu: 50m, memory: 192Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: code, mountPath: /app, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: key, mountPath: /etc/hre, readOnly: true}
+      volumes:
+        - {name: code, configMap: {name: hre-phone-code}}
+        - {name: data, hostPath: {path: /home/kvn/hre-phone, type: Directory}}
+        - {name: key, secret: {secretName: hre-phone-slm-key, defaultMode: 0440}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hre-label-s22, namespace: phones, labels: {app: hre-phone, role: label, phone: s22}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: hre-phone, role: label, phone: s22}}
+  template:
+    metadata: {labels: {app: hre-phone, role: label, phone: s22}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: mbp}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: label
+          image: python:3.13-slim
+          command: [sh, -c]
+          # adb (platform-tools, glibc-only) is used only for phone-worker's owner gate (call / idle).
+          args:
+            - >-
+              mkdir -p $HOME/.android && cp /etc/adbkey/adbkey /etc/adbkey/adbkey.pub $HOME/.android/ &&
+              chmod 600 $HOME/.android/adbkey && adb connect 100.72.191.23:5555;
+              exec python3 -u /app/phone_sweep.py --root /data --job flag-d1-2b --url http://100.72.191.23:8083 --key-file /etc/hre/key
+              --mode d1 --model-tag d1-2B-Q4_0 --worker s22-cpu --gate s22 --gate-serial 100.72.191.23:5555
+          env:
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - {name: HOME, value: /tmp/home}
+            - {name: PATH, value: "/opt/platform-tools:/usr/local/bin:/usr/bin:/bin"}
+            - {name: ANDROID_ADB_SERVER_PORT, value: "5047"}   # not the host adb server's 5037
+          resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {cpu: "1", memory: 768Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: code, mountPath: /app, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: key, mountPath: /etc/hre, readOnly: true}
+            - {name: adbkey, mountPath: /etc/adbkey, readOnly: true}
+            - {name: platform-tools, mountPath: /opt/platform-tools, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: code, configMap: {name: hre-phone-code}}
+        - {name: data, hostPath: {path: /home/kvn/hre-phone, type: Directory}}
+        - {name: key, secret: {secretName: hre-phone-slm-key, defaultMode: 0440}}
+        - {name: adbkey, secret: {secretName: phone-adbkey, defaultMode: 0440}}
+        - {name: platform-tools, hostPath: {path: /home/kvn/.local/share/hre-phone/platform-tools, type: Directory}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hre-label-s25, namespace: phones, labels: {app: hre-phone, role: label, phone: s25}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: hre-phone, role: label, phone: s25}}
+  template:
+    metadata: {labels: {app: hre-phone, role: label, phone: s25}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: mbp}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: label
+          image: python:3.13-slim
+          command: [sh, -c]
+          # adb (platform-tools, glibc-only) is used only for phone-worker's owner gate (call / idle).
+          args:
+            - >-
+              mkdir -p $HOME/.android && cp /etc/adbkey/adbkey /etc/adbkey/adbkey.pub $HOME/.android/ &&
+              chmod 600 $HOME/.android/adbkey && adb connect 100.117.226.39:5555;
+              exec python3 -u /app/phone_sweep.py --root /data --job full-lfm3 --url http://100.117.226.39:8082 --key-file /etc/hre/key
+              --mode full --model-tag LFM3-1.7B-QAD-Q4_0 --worker s25-htp --gate s25 --gate-serial 100.117.226.39:5555
+          env:
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - {name: HOME, value: /tmp/home}
+            - {name: PATH, value: "/opt/platform-tools:/usr/local/bin:/usr/bin:/bin"}
+            - {name: ANDROID_ADB_SERVER_PORT, value: "5047"}   # not the host adb server's 5037
+          resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {cpu: "1", memory: 768Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: code, mountPath: /app, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: key, mountPath: /etc/hre, readOnly: true}
+            - {name: adbkey, mountPath: /etc/adbkey, readOnly: true}
+            - {name: platform-tools, mountPath: /opt/platform-tools, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: code, configMap: {name: hre-phone-code}}
+        - {name: data, hostPath: {path: /home/kvn/hre-phone, type: Directory}}
+        - {name: key, secret: {secretName: hre-phone-slm-key, defaultMode: 0440}}
+        - {name: adbkey, secret: {secretName: phone-adbkey, defaultMode: 0440}}
+        - {name: platform-tools, hostPath: {path: /home/kvn/.local/share/hre-phone/platform-tools, type: Directory}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}

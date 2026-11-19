@@ -8,6 +8,10 @@
 #            no API token, drop ALL capabilities and no privilege escalation.
 #            Host toolchains mount read-only; agentjob HOME mounts read-write
 #            to preserve existing caches. This is a trusted-code lane.
+# phones:    phone workloads: the HRE phone sweep drivers (62-hre-phone-sweep.yaml) and,
+#            later, phone-queue. Trusted owner code; hostNetwork (phones are tailnet adb /
+#            llama-server hosts) and hostPath (sweep data, platform-tools) need privileged
+#            admission, in this namespace only.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -37,6 +41,15 @@ metadata:
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phones
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
 ---
 apiVersion: v1
 kind: ResourceQuota
