@@ -137,3 +137,41 @@ spec:
         - {name: adbkey, secret: {secretName: phone-adbkey, defaultMode: 0440}}
         - {name: platform-tools, hostPath: {path: /home/kvn/.local/share/hre-phone/platform-tools, type: Directory}}
         - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+---
+# Every 10 min: join sweep outputs into /data/phone-labels.jsonl + coverage line in /data/coverage.jsonl.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: hre-assemble, namespace: phones, labels: {app: hre-phone, role: assemble}}
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata: {labels: {app: hre-phone, role: assemble}}
+        spec:
+          restartPolicy: Never
+          nodeSelector: {kubernetes.io/hostname: mbp}
+          securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: assemble
+              image: python:3.13-slim
+              command: [sh, -c]
+              args:
+                - >-
+                  python3 /app/assemble_labels.py --sweep /data/sweep --corpus /data/owner-msgs.jsonl
+                  --out /data/phone-labels.jsonl >> /data/coverage.jsonl
+              env: [{name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+              resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts:
+                - {name: code, mountPath: /app, readOnly: true}
+                - {name: data, mountPath: /data}
+          volumes:
+            - {name: code, configMap: {name: hre-phone-code}}
+            - {name: data, hostPath: {path: /home/kvn/hre-phone, type: Directory}}
