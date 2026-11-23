@@ -17,19 +17,52 @@ A peer is listed when all of these hold:
     on its relay probes inside phone PRoot guests.
 
 Names and users come from ~/.config/tern/hosts.names ("<ip> <name> [user]");
-otherwise the name is the MagicDNS label and the user is kvn. The file is
-written atomically, and only when its contents change.
+otherwise the name is the MagicDNS label and the user is kvn. An <ip> may be a
+${KEY} reference into the private overlay ($DOTFILES_PRIVATE_DIR/private.env,
+default ~/.config/dotfiles/private.env); an unset key is an error, never skipped.
+The file is written atomically, and only when its contents change.
 
   tern-hosts-sync             sync once
   tern-hosts-sync --dry-run   print the file instead of writing it
   tern-hosts-sync --every N   sync every N seconds (runit hosts without systemd timers)
 """
-import json, os, subprocess, sys, tempfile, time
+import json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
 CFG = Path.home() / ".config/tern"
 HOSTS, NAMES, KNOWN = CFG / "hosts", CFG / "hosts.names", CFG / "known_hosts"
 PORT = 8376
+VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def private_env():
+    """KEY=VALUE pairs of the private overlay (this script is installed standalone on
+    phones, so it reads the file itself; same format as scripts/private_overlay.py)."""
+    base = Path(os.environ.get("DOTFILES_PRIVATE_DIR") or "~/.config/dotfiles").expanduser()
+    out = {}
+    try:
+        text = (base / "private.env").read_text()
+    except FileNotFoundError:
+        text = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = (s.strip() for s in line.split("=", 1))
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            out[key] = value
+    return {**out, **os.environ}, base / "private.env"
+
+
+def fill(token, env, source):
+    def value(m):
+        if not env.get(m.group(1)):
+            raise SystemExit(f"tern-hosts-sync: {NAMES}: {m.group(1)} is not set in {source} "
+                             "(see config/private.example.env in the .files repo)")
+        return env[m.group(1)]
+    return VAR.sub(value, token)
 
 
 def tailscale():
@@ -37,13 +70,16 @@ def tailscale():
                                      capture_output=True, text=True, timeout=20).stdout)
 
 
-def names():
+def names(path=None):
+    path = path or NAMES
     out = {}
-    if NAMES.exists():
-        for line in NAMES.read_text().splitlines():
+    if path.exists():
+        lines = path.read_text().splitlines()
+        env, source = private_env() if any(VAR.search(l.split("#", 1)[0]) for l in lines) else ({}, None)
+        for line in lines:
             parts = line.split("#", 1)[0].split()
             if len(parts) >= 2:
-                out[parts[0]] = (parts[1], parts[2] if len(parts) > 2 else None)
+                out[fill(parts[0], env, source)] = (parts[1], parts[2] if len(parts) > 2 else None)
     return out
 
 

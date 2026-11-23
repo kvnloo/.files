@@ -1,6 +1,9 @@
 # <tailscale-ip> <sidebar-name> [user] — optional overrides for tern-hosts-sync.
 # Shared by every machine; each machine leaves itself out automatically.
-100.113.138.100  groot  kvn
-100.78.215.21    mbp    kvn
-100.104.42.85    s25    root
-100.97.11.22     s22    root
+# Addresses are ${...} references into the untracked private overlay
+# (~/.config/dotfiles/private.env, see config/private.example.env): tern-hosts-sync
+# fills them at run time and fleet-phone-setup.sh installs a filled copy on phones.
+${GROOT_TAILNET_IP}  groot  kvn
+${MBP_TAILNET_IP}    mbp    kvn
+${S25_TAILNET_IP}    s25    root
+${S22_TAILNET_IP}    s22    root

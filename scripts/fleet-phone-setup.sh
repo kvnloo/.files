@@ -2,7 +2,7 @@
 # Install the polite host-job lane on a phone's Linux guest (Omalauncher PRoot,
 # Arch Linux ARM). Run on groot:
 #
-#   scripts/fleet-phone-setup.sh root@100.104.42.85 [--port 22] [--model SM-S938U] [--defer-adb]
+#   scripts/fleet-phone-setup.sh root@<guest-tailnet-ip> [--port 22] [--model SM-S938U] [--defer-adb]
 #
 # Writes guest fleet APIs and an executor service in an existing runsv tree.
 # It never restarts Tern, Tailscale, sshd or the legacy supervisor, or changes
@@ -34,7 +34,13 @@ serial=$("${SSH[@]}" "set -e
 }
 echo "==> adb device: $serial"
 
-tar -C "$REPO" -cf - scripts/fleet-polite-run scripts/fleet-node-probe scripts/fleet_phone.py scripts/fleet-phone-worker scripts/fleet-phone-supervisor scripts/fleet-phone-supervise config/fleet/phone/sv/fleet-worker/run config/fleet/phone/sv/tern-hosts/run scripts/tern-hosts-sync config/tern/hosts.names config/fleet/phone/sv/finish config/fleet/phone/sv/log-run config/fleet/phone/services.example.json | "${SSH[@]}" "set -e
+# hosts.names names tailnet addresses as ${KEY}; the phone gets them filled from this
+# controller's private overlay (scripts/private-overlay). A missing key stops here.
+stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
+mkdir -p "$stage/config/tern"
+"$REPO/scripts/private-overlay" render "$REPO/config/tern/hosts.names" > "$stage/config/tern/hosts.names"
+
+tar -C "$REPO" -cf - scripts/fleet-polite-run scripts/fleet-node-probe scripts/fleet_phone.py scripts/fleet-phone-worker scripts/fleet-phone-supervisor scripts/fleet-phone-supervise config/fleet/phone/sv/fleet-worker/run config/fleet/phone/sv/tern-hosts/run scripts/tern-hosts-sync config/fleet/phone/sv/finish config/fleet/phone/sv/log-run config/fleet/phone/services.example.json -C "$stage" config/tern/hosts.names | "${SSH[@]}" "set -e
   umask 022
   install -d ~/.local/lib/fleet ~/.config/fleet ~/fleet-jobs
   tmp=\$(mktemp -d); tar -xf - -C \$tmp

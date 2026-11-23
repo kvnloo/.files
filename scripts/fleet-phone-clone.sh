@@ -5,7 +5,7 @@
 # running from Omalauncher's PulseAudio session, then install the polite fleet lane there. Run on groot once the new
 # phone's guest answers ssh:
 #
-#   scripts/fleet-phone-clone.sh root@100.104.42.85 root@<new-guest-tailnet-ip> [--port 8022] [--model SM-S906U1]
+#   scripts/fleet-phone-clone.sh root@<s25-guest-tailnet-ip> root@<new-guest-tailnet-ip> [--port 8022] [--model SM-S906U1]
 #
 # --port is the target's ssh port (the source is reached with your ssh defaults).
 # Read-only on the source phone. On the target it writes only inside the guest:
