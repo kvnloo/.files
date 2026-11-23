@@ -8,7 +8,7 @@
     "-o",
     "ConnectTimeout=12",
     "-p22",
-    "root@100.104.42.85"
+    "root@<s25-guest-tailnet-ip>"
   ],
   "command": "/root/.local/lib/fleet/fleet-phone-worker submit no-caps-20261024t205239z --ttl 600",
   "spec": {

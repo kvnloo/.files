@@ -62,5 +62,6 @@ echo "==> keep-alive: guest supervisor + Android hardening (scripts/fleet-phone-
 
 echo "==> installing the polite fleet lane"
 "$REPO/scripts/fleet-phone-setup.sh" "$DST" --port "$PORT" "${MODEL_ARGS[@]}"
-echo "next: add the phone under nodes in config/fleet/nodes.yaml (kind: phone, ssh_port: $PORT),"
+echo "next: add the phone under nodes in config/fleet/nodes.yaml (kind: phone, ssh_port: $PORT)"
+echo "      and its tailnet_ip in ~/.config/dotfiles/hosts.private.yaml (never in the repo),"
 echo "      then: scripts/fleet nodes && scripts/fleet health --node <name>"
