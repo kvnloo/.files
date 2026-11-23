@@ -1,5 +1,5 @@
 [Unit]
-Description=z0 farm: bounded llama.cpp CUDA router on tailnet 100.113.138.100:11530
+Description=z0 farm: bounded llama.cpp CUDA router on groot's tailnet address, port 11530
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -8,7 +8,10 @@ StartLimitIntervalSec=0
 Type=simple
 # One resident model; idle children release resources after two minutes.
 # Keep the router itself running so existing clients retain the same endpoint.
-ExecStart=/workspace/z0-farm/llama.cpp-b11270/build/bin/llama-server --models-dir /workspace/z0-farm/models/router --models-max 1 --device CUDA0 -ngl 99 -c 8192 --parallel 2 --cache-ram 512 --host 100.113.138.100 --port 11530 --no-webui --reasoning off -t 4 --sleep-idle-seconds 120
+# Tailnet address from the untracked private overlay; a missing key stops the unit.
+EnvironmentFile=%h/.config/dotfiles/private.env
+ExecStartPre=/bin/sh -c 'test -n "$${GROOT_TAILNET_IP}" || { echo "GROOT_TAILNET_IP is not set in %h/.config/dotfiles/private.env (see config/private.example.env)" >&2; exit 1; }'
+ExecStart=/workspace/z0-farm/llama.cpp-b11270/build/bin/llama-server --models-dir /workspace/z0-farm/models/router --models-max 1 --device CUDA0 -ngl 99 -c 8192 --parallel 2 --cache-ram 512 --host ${GROOT_TAILNET_IP} --port 11530 --no-webui --reasoning off -t 4 --sleep-idle-seconds 120
 # Groot has 23.36 GiB RAM. Bound the whole router/child cgroup, not just its parent.
 MemoryAccounting=yes
 MemoryHigh=infinity
