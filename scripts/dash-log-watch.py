@@ -13,6 +13,9 @@ import sqlite3
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_overlay  # noqa: E402
+
 PACKAGE = "app.dash.mobile"
 MODEL = "gpt-6-luna"
 UNITS = {
@@ -53,7 +56,12 @@ def atomic(path, value):
 def validate(config):
     if config.get("package") != PACKAGE or config.get("model") != MODEL or config.get("provider") != "openai-codex":
         raise ValueError("explicit exact native identity/provider/model required")
-    if config.get("hardware_serial") != "R5CY93G2WNH" or config.get("phone_host") != "100.117.226.39":
+    try:
+        # The approved phone's Android Tailscale address lives in the private overlay.
+        approved_host = private_overlay.require("S25_ADB_HOST")
+    except private_overlay.PrivateOverlayError as exc:
+        raise ValueError(str(exc)) from exc
+    if config.get("hardware_serial") != "R5CY93G2WNH" or config.get("phone_host") != approved_host:
         raise ValueError("unapproved phone")
     if config.get("units") != UNITS:
         raise ValueError("explicit actual units required")
