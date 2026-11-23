@@ -1,0 +1,25 @@
+name: Public leak check
+
+# This repo is public: fail when a tracked file holds a tailnet address (100.64.0.0/10
+# outside the 100.64.0.x documentation slice), a tailnet name (*.ts.net other than
+# example.ts.net, tail<hex>) or a secret-shaped value. Real values belong in the
+# untracked private overlay (config/private.example.env). Findings name file, line
+# and rule only; matched values are never printed.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  leak-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scan tracked files
+        run: python3 scripts/public-leak-check --skip personal-path,mount-path,personal-email
