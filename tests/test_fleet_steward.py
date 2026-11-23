@@ -14,6 +14,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault('DOTFILES_PRIVATE_DIR', str(ROOT / 'tests/fixtures/private-overlay'))
 steward = importlib.machinery.SourceFileLoader('fleet_steward_tested', str(ROOT / 'scripts/fleet-steward')).load_module()
 
 
@@ -25,7 +27,7 @@ class Steward(unittest.TestCase):
         (self.state / 'runs').mkdir()
         (self.state / 'health').mkdir()
         self.registry = {'defaults': {'health': {'min_mem_available_mb': 1024, 'min_disk_free_gb': 15}},
-                         'nodes': {'mbp': {'tailnet_ip': '100.78.215.21', 'ssh_port': 2222}}}
+                         'nodes': {'mbp': {'tailnet_ip': '100.64.0.11', 'ssh_port': 2222}}}
         self.errors = []
 
     def job(self, job='job-a', node='mbp', command='bun test', code=0, metadata=None, body='', filename=None):
@@ -373,6 +375,20 @@ class Steward(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(steward.main(['--state', str(self.state), '--output', str(self.state / 'elsewhere')]), 75)
 
+    def test_registry_export_gains_private_address_from_overlay(self):
+        path = self.state / 'registry.json'
+        path.write_text(json.dumps({'nodes': {'mbp': {'ssh_port': 2222}}}))
+        registry = steward.read_registry(path, self.errors)
+        self.assertEqual(registry['nodes']['mbp']['tailnet_ip'], '100.64.0.11')
+        self.assertEqual(self.errors, [])
+
+    def test_prune_holds_without_private_address(self):
+        del self.registry['nodes']['mbp']['tailnet_ip']
+        with patch.object(steward.subprocess, 'run', side_effect=AssertionError('must not SSH')):
+            result = steward.cache_action(self.registry, True)
+        self.assertEqual(result['status'], 'held')
+        self.assertIn('private overlay', result['reason'])
+
     def test_prune_fails_closed_without_registry_or_wrong_user(self):
         with patch.object(steward.subprocess, 'run', side_effect=AssertionError('must not SSH')):
             self.assertEqual(steward.cache_action({}, True)['status'], 'held')
@@ -385,7 +401,7 @@ class Steward(unittest.TestCase):
             result = steward.cache_action(self.registry, True)
         self.assertEqual(result['status'], 'held')
         args = run.call_args.args[0]
-        self.assertIn('agentjob@100.78.215.21', args)
+        self.assertIn('agentjob@100.64.0.11', args)
         self.assertIn('2222', args)
         self.assertIn('/usr/local/bin/fleet-node-probe', args[-1])
         for path in steward.CACHE_PATHS:

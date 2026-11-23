@@ -358,7 +358,8 @@ def install_host_optimizer(source: Path, home: Path, apply: bool) -> int:
         'config/systemd/user/loc-index.timer': '.config/systemd/user/loc-index.timer',
     }
     closure = (*links, 'scripts/host_experiments.py', 'scripts/fleet-steward',
-               'scripts/fleet_steward_capacity.py', 'scripts/fleet_paths.py', 'config/fleet/storage.toml')
+               'scripts/fleet_steward_capacity.py', 'scripts/fleet_paths.py', 'scripts/private_overlay.py',
+               'config/fleet/storage.toml')
     for relative in closure:
         if not (source / relative).is_file():
             raise ValueError(f'missing optimizer closure: {relative}')

@@ -135,17 +135,17 @@ def deep_merge(base, overlay):
     return out
 
 
-def merge_registry(registry: dict, hosts: dict | None = None) -> dict:
+def merge_registry(registry: dict, hosts: dict | None = None, strict: bool = True) -> dict:
     """config/fleet/nodes.yaml with the `nodes` of hosts.private.yaml merged in.
 
     The overlay may only add values to nodes the public registry declares, so a typo
-    cannot enroll a phantom node.
+    cannot enroll a phantom node (strict); strict=False ignores them for partial exports.
     """
     hosts = load_hosts() if hosts is None else hosts
     private = hosts.get("nodes") or {}
     public = registry.get("nodes") or {}
     unknown = sorted(set(private) - set(public))
-    if unknown:
+    if unknown and strict:
         raise PrivateOverlayError(f"{private_dir() / HOSTS_FILE}: nodes {', '.join(unknown)} "
                                   "are not declared in config/fleet/nodes.yaml")
     merged = dict(registry)
