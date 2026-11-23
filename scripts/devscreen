@@ -15,7 +15,9 @@
 #
 # Overrides (optional), read from ~/.config/devscreen.env:
 #   DEVSCREEN_S25_SERIAL   wireless-debugging ip:port of the S25 (the port changes
-#                          when wireless debugging is re-enabled)
+#                          when wireless debugging is re-enabled); default
+#                          $S25_ADB_HOST:36065 from the private overlay
+#                          (~/.config/dotfiles/private.env, see config/private.example.env)
 #   DEVSCREEN_S22_SERIAL, DEVSCREEN_S22_SSH, DEVSCREEN_S22_ADB_PORT, DEVSCREEN_S22_SCRCPY_PORT
 #   DEVSCREEN_CODEC        h265 (default) | h264
 #   DEVSCREEN_MAX_SIZE     1600 (default)
@@ -28,13 +30,16 @@
 set -euo pipefail
 
 conf=${XDG_CONFIG_HOME:-$HOME/.config}/devscreen.env
+private=${DOTFILES_PRIVATE_DIR:-$HOME/.config/dotfiles}/private.env
+# shellcheck disable=SC1090
+[[ -r $private ]] && . "$private"
 # shellcheck disable=SC1090
 [[ -r $conf ]] && . "$conf"
 
 ADB_BIN=${DEVSCREEN_ADB:-/usr/bin/adb}
 SCRCPY_BIN=${DEVSCREEN_SCRCPY:-$(command -v scrcpy || echo /mnt/zer0models/apps/scrcpy/current/scrcpy)}
 GLIFF_BIN=${DEVSCREEN_GLIFF:-$(command -v gliff || echo "$HOME/.local/bin/gliff")}
-S25_SERIAL=${DEVSCREEN_S25_SERIAL:-100.117.226.39:36065}
+S25_SERIAL=${DEVSCREEN_S25_SERIAL:-${S25_ADB_HOST:+$S25_ADB_HOST:36065}}
 S22_SERIAL=${DEVSCREEN_S22_SERIAL:-adb-RFCTA1RZAQY-ZyDAxx._adb-tls-connect._tcp}
 S22_SSH=${DEVSCREEN_S22_SSH:-s22}
 S22_ADB_PORT=${DEVSCREEN_S22_ADB_PORT:-5038}
@@ -107,6 +112,7 @@ scrcpy_args() { # serial
 listening() { [[ -n $(ss -Htln "sport = :$1" 2>/dev/null) ]]; }
 
 run_s25() {
+  [[ -n $S25_SERIAL ]] || die "S25 address unknown: set S25_ADB_HOST in $private (see config/private.example.env) or DEVSCREEN_S25_SERIAL in $conf"
   local adb=("$ADB_BIN" -s "$S25_SERIAL") args
   if ! "$ADB_BIN" devices | grep -q "^$S25_SERIAL[[:space:]]*device"; then
     timeout 8 "$ADB_BIN" connect "$S25_SERIAL" >/dev/null 2>&1 || true
