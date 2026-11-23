@@ -11,6 +11,8 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_overlay  # noqa: E402
 ADB = str(Path.home() / 'android/sdk/platform-tools/adb')
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
        '-o', 'ConnectTimeout=8', '-o', 'ConnectionAttempts=1',
@@ -173,6 +175,11 @@ def main():
         for name, node in config['nodes'].items():
             if a.node and name not in a.node:
                 continue
+            # Guest addresses are ${KEY} references into the untracked private overlay.
+            try:
+                node = private_overlay.expand_tree(node)
+            except private_overlay.PrivateOverlayError as exc:
+                raise SystemExit(f'artifact-lease-controller: {name}: {exc}')
             state = a.output / (name + '.last-run')
             try:
                 try:

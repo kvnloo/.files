@@ -10,10 +10,11 @@ exec 9>"$HOME/.local/state/artifact-leases/deploy.lock"
 flock -n 9 || { echo 'another artifact deployment owns lock' >&2; exit 1; }
 dest="/mnt/zer0models/releases/artifact-leases/$sha"
 mkdir -p "$dest/scripts" "$dest/config/fleet" "$dest/config/systemd/user"
-for file in scripts/artifact-leases.py scripts/worktree-reaper.py scripts/artifact-lease-controller.py config/fleet/artifact-leases.json config/systemd/user/artifact-leases.service config/systemd/user/artifact-leases.timer; do
+for file in scripts/artifact-leases.py scripts/worktree-reaper.py scripts/artifact-lease-controller.py scripts/private_overlay.py config/fleet/artifact-leases.json config/systemd/user/artifact-leases.service config/systemd/user/artifact-leases.timer; do
   git -C "$repo" show "$sha:$file" > "$dest/$file"
 done
 chmod 755 "$dest/scripts/"*.py
+chmod 644 "$dest/scripts/private_overlay.py"
 printf '%s\n' "$sha" > "$dest/DEPLOYED_SHA"
 if [[ -e "$base/$sha" && ! -L "$base/$sha" ]]; then
   echo "refusing to replace existing artifact release $base/$sha" >&2
