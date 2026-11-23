@@ -2,12 +2,15 @@
 import configparser
 import importlib.machinery
 import importlib.util
+import os
 from pathlib import Path
 import shlex
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault('DOTFILES_PRIVATE_DIR', str(ROOT / 'tests/fixtures/private-overlay'))
 loader = importlib.machinery.SourceFileLoader('dash_install', str(ROOT / 'scripts/install-dash-services'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 module = importlib.util.module_from_spec(spec)
@@ -19,7 +22,9 @@ def unit(name):
     return config
 
 def environment(name):
-    return dict(line.split('=', 1) for line in shlex.split((ROOT / f'config/dash-services/{name}.env').read_text()))
+    """The env file as install-dash-services deploys it (private ${KEY} values filled)."""
+    text = module.render(ROOT, f'config/dash-services/{name}.env').decode()
+    return dict(line.split('=', 1) for line in shlex.split(text))
 
 def size(text):
     return int(text[:-1]) * {'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3}[text[-1]]
@@ -55,13 +60,19 @@ class DashServices(unittest.TestCase):
     def test_environment_is_explicit_nonsecret_configuration(self):
         self.assertEqual(set(environment('bridge')), {'DASH_HOST','DASH_PORT','DASH_CWD','DASH_EXPO_GO_URL','HERMES_HOME','PATH'})
         self.assertEqual(set(environment('metro')), {'CI','EXPO_PUBLIC_DASH_TURBO','REACT_NATIVE_PACKAGER_HOSTNAME','EXPO_NO_TELEMETRY','EXPO_PACKAGER_PROXY_URL','PATH'})
-        self.assertEqual(environment('bridge')['DASH_HOST'], '100.113.138.100')
+        self.assertEqual(environment('bridge')['DASH_HOST'], '100.64.0.10')
 
     def test_metro_loopback_and_tailnet_manifest_contract(self):
         command = shlex.split(unit('metro')['Service']['ExecStart'])
         self.assertIn('--localhost', command)
         self.assertEqual(command[command.index('--port') + 1], '18212')
-        self.assertEqual(environment('metro')['EXPO_PACKAGER_PROXY_URL'], 'http://100.113.138.100:8212')
+        self.assertEqual(environment('metro')['EXPO_PACKAGER_PROXY_URL'], 'http://100.64.0.10:8212')
+
+    def test_tracked_env_names_no_tailnet_address_and_missing_key_stops_install(self):
+        for name in ('bridge', 'metro'):
+            self.assertIn('${GROOT_TAILNET_IP}', (ROOT / f'config/dash-services/{name}.env').read_text())
+        with self.assertRaisesRegex(module.private_overlay.PrivateOverlayError, 'GROOT_TAILNET_IP'):
+            module.render(ROOT, 'config/dash-services/bridge.env', env={})
 
 if __name__ == '__main__':
     unittest.main()
