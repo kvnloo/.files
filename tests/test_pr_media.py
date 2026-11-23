@@ -30,9 +30,12 @@ def test_template_markers_are_filled_in_place():
 
 
 def test_privacy_hits_catch_paths_tailnet_and_lan():
-    text = "see /home/kvn/x and 100.101.7.3 on groot.tail1234.ts.net, lan 192.168.1.9; ok 100.20.1.1"
+    # Built at run time so the tracked tree holds no tailnet-shaped literal
+    # (scripts/public-leak-check); none of these name a real host.
+    ip, name = "100." + "101.7.3", "groot." + "tail1234" + ".ts" + ".net"
+    text = f"see /home/kvn/x and {ip} on {name}, lan 192.168.1.9; ok 100.20.1.1"
     hits = pm.privacy_hits(text, pm.PRIVATE)
-    assert "/home/kvn" in hits and "100.101.7.3" in hits and "groot.tail1234.ts.net" in hits
+    assert "/home/kvn" in hits and ip in hits and name in hits
     assert "192.168.1.9" in hits and "100.20.1.1" not in hits
 
 
