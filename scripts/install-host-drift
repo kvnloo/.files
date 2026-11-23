@@ -13,7 +13,7 @@ import tomllib
 
 CLOSURE = ('scripts/host-drift', 'scripts/service-watch.py', 'scripts/dash-log-watch.py',
            'scripts/dash-log-watch-model.py', 'scripts/service-watch-confirm.ts',
-           'scripts/worktree-reaper.py', 'scripts/artifact-leases.py',
+           'scripts/worktree-reaper.py', 'scripts/artifact-leases.py', 'scripts/private_overlay.py',
            'config/systemd/user/host-drift.service', 'config/systemd/user/host-drift.timer',
            'config/systemd/user/service-watch-failure@.service',
            'config/systemd/user/service-watch-heartbeat.service',

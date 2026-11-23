@@ -3908,6 +3908,7 @@ reason = "Expose required Metro only on tailnet, not an unauthenticated LAN wild
 [[user]]
 live = "~/.config/dash-services/bridge.env"
 source = "config/dash-services/bridge.env"
+render = "private-overlay"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-dash-services"
@@ -3916,6 +3917,7 @@ reason = "Minimal non-secret bridge launch configuration replaces captured deskt
 [[user]]
 live = "~/.config/dash-services/metro.env"
 source = "config/dash-services/metro.env"
+render = "private-overlay"
 scope = "user"
 install = "symlink-stamped"
 owner = "scripts/install-dash-services"
