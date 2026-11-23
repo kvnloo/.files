@@ -19,6 +19,7 @@ usage: limitless-sync [run|status|digest [--date YYYY-MM-DD]|report [N]] [--no-b
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -88,6 +89,20 @@ def adb(cfg: dict, *args: str, binary: bool = False, timeout: int = 40):
     return r.stdout if binary else r.stdout.decode(errors="replace")
 
 
+def adb_to_file(cfg: dict, dest: Path, *args: str, timeout: int = 40) -> None:
+    """Stream adb stdout to a 0600 file. Buffering the 184 MB NOOP db in RAM under MemoryMax=256M
+    swapped ~220 MB every 15 min (1.2 GB read per run). A failed pull leaves an empty file."""
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        try:
+            r = subprocess.run([cfg["adb"], "-s", cfg["serial"], *args], stdout=f, stderr=subprocess.DEVNULL, timeout=timeout)
+            ok = r.returncode == 0
+        except Exception:  # noqa: BLE001
+            ok = False
+        if not ok:
+            f.truncate(0)
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -98,6 +113,25 @@ def iso(dt: datetime) -> str:
 
 def parse_iso(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def resolve_s25_serial(cfg: dict) -> str | None:
+    """Find the S25 every run so a rotated wireless-debug port can never pin us to
+    a dead ip:port. Match the stable model token `adb devices -l` prints (works for
+    USB and wireless alike); never the rotating ip:port. Returns None when offline."""
+    want = cfg.get("s25Model")  # the phone's model token lives in config only
+    if not want:
+        return None
+    try:
+        out = subprocess.run([cfg["adb"], "devices", "-l"], capture_output=True,
+                             text=True, timeout=20).stdout
+    except Exception:  # noqa: BLE001
+        return None
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "device" and f"model:{want}" in parts:
+            return parts[0]
+    return None
 
 
 # ------------------------------------------------------------------ presence
@@ -112,6 +146,116 @@ def wifi_state(cfg: dict) -> str:
     if m and m.group(1) in set(cfg.get("homeSsids", [])):
         return "home"
     return "away"
+
+
+SLEEP_RULE = re.compile(r"ZenRule\[id=\w+,state=STATE_TRUE,enabled=TRUE,[^\n]*?name=Sleep,[^\n]*?creationTime=(\d+)")
+
+
+def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
+    """Samsung 'Sleep' mode = the owner's own nap/sleep marker (turned on for short naps and at night).
+    Appends on/off transitions to sleepmode.jsonl; `at` is the phone's own activation time when known."""
+    p = st / "sleepmode.jsonl"
+    rows = read_jsonl(p)
+    last = rows[-1] if rows else {}
+    try:  # `; true`: a non-zero rc now means the phone is unreachable, not "no Sleep rule"
+        txt = adb(cfg, "shell", "dumpsys notification | grep 'name=Sleep,' | cut -c1-900; true", timeout=30)
+    except (RuntimeError, subprocess.TimeoutExpired):
+        write_private(st / "sleepmode-poll.json", json.dumps({"at": iso(now), "ok": False}))
+        if last.get("on"):  # phone gone mid-nap: his own message after the start proves he is up
+            start = datetime.fromisoformat(last["at"].replace("Z", "+00:00"))
+            woke = first_owner_msg_after(start.timestamp() + 300)
+            if woke:
+                end = datetime.fromtimestamp(woke, timezone.utc).replace(microsecond=0)
+                append_jsonl(p, {"at": iso(end), "on": False, "seen": iso(now), "inferred": "owner message, phone unreachable"})
+                try:
+                    return "off (inferred) · " + nap_return(cfg, start, end)
+                except Exception as exc:  # noqa: BLE001
+                    return f"off (inferred) · return-msg error {type(exc).__name__}"
+        return "phone unreachable"
+    write_private(st / "sleepmode-poll.json", json.dumps({"at": iso(now), "ok": True}))
+    m = SLEEP_RULE.search(txt)
+    on = bool(m)
+    if on and not last.get("on"):
+        # Samsung recreates the rule on each activation, so creationTime = exact start
+        start = datetime.fromtimestamp(int(m.group(1)) / 1000, timezone.utc)
+        if not (now - timedelta(hours=14) < start <= now):
+            start = now
+        append_jsonl(p, {"at": iso(start), "on": True, "seen": iso(now)})
+        return "on"
+    if not on and last.get("on"):
+        # off time is known to the poll interval (limitless-sleepmode.timer, 2 min)
+        append_jsonl(p, {"at": iso(now), "on": False, "seen": iso(now)})
+        start = datetime.fromisoformat(last["at"].replace("Z", "+00:00"))
+        try:
+            return "off · " + nap_return(cfg, start, now)
+        except Exception as exc:  # noqa: BLE001 - the nap row is saved even if the message fails
+            return f"off · return-msg error {type(exc).__name__}"
+    return "on (unchanged)" if on else "off (unchanged)"
+
+
+def first_owner_msg_after(after: float) -> float | None:
+    """Timestamp of the owner's first own message (any Hermes profile) after `after`."""
+    best = None
+    for db in glob.glob(str(Path.home() / ".hermes/profiles/*/state.db")):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            row = c.execute("select min(m.timestamp) from messages m join sessions s on s.id=m.session_id "
+                            "where m.role='user' and m.timestamp>? and s.source in ('gui','local','acp','cli','tui','telegram','discord') "
+                            "and m.content not like '[%' and m.content not like '<%' and length(m.content) between 2 and 3000",
+                            (after,)).fetchone()
+        except sqlite3.Error:
+            continue
+        if row and row[0] and (best is None or row[0] < best):
+            best = row[0]
+    return best
+
+
+def last_thread(before: float) -> tuple[str, str] | None:
+    """The owner's last own message (any Hermes profile) in the 3 days before `before`: (session title, text).
+    The source filter and lower bound let SQLite seek idx_sessions_source_id + idx_messages_session;
+    without them it scanned every message (5.9 GB in clean) and counted agent-sent user turns."""
+    best = None
+    for db in glob.glob(str(Path.home() / ".hermes/profiles/*/state.db")):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            row = c.execute("select m.timestamp, coalesce(s.title, s.display_name, s.cwd, s.id), m.content from messages m join sessions s "
+                            "on s.id=m.session_id where m.role='user' and m.timestamp<? and m.timestamp>? "
+                            "and s.source in ('gui','local','acp','cli','tui','telegram','discord') and m.content not like '[%' "
+                            "and m.content not like '<%' and length(m.content) between 2 and 3000 "
+                            "order by m.timestamp desc limit 1", (before, before - 3 * 86400)).fetchone()
+        except sqlite3.Error:
+            continue
+        if row and (best is None or row[0] > best[0]):
+            best = row
+    return (best[1], " ".join(best[2].split())[:160]) if best else None
+
+
+def nap_return(cfg: dict, start: datetime, end: datetime) -> str:
+    """One Telegram message when Sleep mode turns off after a daytime nap: where you left off + held pushes.
+    Night sleep (> 2.5 h) is left to the wake-up brief."""
+    mins = round((end - start).total_seconds() / 60)
+    nap = 5 <= mins <= 150
+    tz = ZoneInfo(cfg["tz"])
+    lines = [f"Nap {mins} min ({start.astimezone(tz):%H:%M}-{end.astimezone(tz):%H:%M})."] if nap else []
+    lt = last_thread(start.timestamp()) if nap else None
+    if lt:
+        lines.append(f"You were on: {lt[0]} - \"{lt[1]}\"")
+        lines.append("Re-entry: reopen that pane first, before the phone.")
+    held = Path.home() / ".local/state/kevin-push/held.jsonl"
+    if held.exists():
+        rows = read_jsonl(held)
+        held.unlink()
+        if rows:
+            lines.append(f"Held while you slept ({len(rows)}):")
+            lines += [f"- {h['title']}: {h['body'][:200]}" for h in rows[-5:]]
+    if not lines:
+        return f"{mins} min (no message)"
+    # Same event key limitless-jobs passes (jobs_runner.once_key: nap:<Sleep-mode-off epoch s>), so one
+    # nap gets one message whichever sender goes first; a key left in the env is never passed on.
+    env = dict(os.environ, KEVIN_PUSH_ONCE=f"nap:{int(end.timestamp())}")
+    r = subprocess.run([str(Path.home() / ".local/bin/kevin-push"), "limitless", "Back from nap", "\n".join(lines)],
+                       capture_output=True, text=True, timeout=90, env=env)
+    return f"{mins} min, {r.stdout.strip()}"
 
 
 def sync_presence(cfg: dict, st: Path, now: datetime) -> str:
@@ -159,6 +303,49 @@ def remote_mtime(cfg: dict, path: str, run_as: str | None = None) -> str | None:
         return None
 
 
+FOCUS_SAFE_UNSET = 127   # rc when config has no focusSafeDir: nothing is opened
+
+
+def focus_safe_start(cfg: dict, component: str) -> int:
+    """Open an app's activity on the S25 agent display (never display 0, never the owner's focus).
+    The FocusSafe checkout (config focusSafeDir) and uv's cache (config uvCacheDir) are host specifics."""
+    where = cfg.get("focusSafeDir")
+    if not where:
+        return FOCUS_SAFE_UNSET
+    env = dict(os.environ)
+    if cfg.get("uvCacheDir"):
+        env["UV_CACHE_DIR"] = cfg["uvCacheDir"]
+    code = ("import sys,time;sys.path.insert(0,'.');from fsdisplay import FocusSafe\n"
+            f"with FocusSafe('s25') as fs: fs.start('{component}'); time.sleep(8)")
+    r = subprocess.run(["uv", "run", "-q", "--with", "uiautomator2", "python", "-c", code], cwd=Path(where),
+                       env=env, capture_output=True, timeout=120)
+    return r.returncode
+
+
+def revive_aw_server(cfg: dict) -> str:
+    """AW's export needs its in-app server on :5600, which Android doesn't restart after
+    killing the process (11-12 → 11-15 outage). Reopen it on the agent display, never display 0."""
+    try:
+        if ":15E0 " in adb(cfg, "shell", "cat /proc/net/tcp /proc/net/tcp6", timeout=15).upper():
+            return ""
+        return f" (aw server revived rc={focus_safe_start(cfg, 'net.activitywatch.android/.MainActivity')})"
+    except Exception as exc:  # noqa: BLE001
+        return f" (aw revive error {type(exc).__name__})"
+
+
+def revive_noop(cfg: dict) -> str:
+    """Same failure class: Android killed NOOP 11-12 05:22 and the strap stopped syncing for 3 days
+    while this loop said "unchanged". If the process is gone, reopen it; its launch starts the
+    foreground WhoopConnectionService."""
+    pkg = cfg["noopPackage"]
+    try:
+        if adb(cfg, "shell", f"pidof {pkg} || true", timeout=15).strip():
+            return ""
+        return f" (noop revived rc={focus_safe_start(cfg, cfg.get('noopActivity', pkg + '/com.noop.IconDefault'))})"
+    except Exception as exc:  # noqa: BLE001
+        return f" (noop revive error {type(exc).__name__})"
+
+
 def sync_aw(cfg: dict, st: Path) -> str:
     try:
         found = adb(cfg, "shell", f"find {AW_REMOTE_GLOB} -name '*.db'", timeout=15).split()
@@ -170,13 +357,26 @@ def sync_aw(cfg: dict, st: Path) -> str:
     mt = remote_mtime(cfg, remote)
     stamp = st / "aw-s25.stamp"
     if mt and stamp.exists() and stamp.read_text() == mt:
-        return "unchanged"
+        return "unchanged" + revive_aw_server(cfg)
     data = adb(cfg, "exec-out", "cat", remote, binary=True, timeout=120)
     if len(data) < 4096 or not data.startswith(b"SQLite format 3"):
         return "bad copy"
     write_private(st / "aw-s25.db", data)
     write_private(stamp, mt or "")
     return f"copied {len(data)}"
+
+
+def has_tables(db: Path) -> bool:
+    """False for a missing file and for the table-less file an empty pull folds into."""
+    if not db.exists():
+        return False
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        return con.execute("select count(*) from sqlite_master where type='table'").fetchone()[0] > 0
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        con.close()
 
 
 def sync_noop(cfg: dict, st: Path) -> str:
@@ -187,29 +387,38 @@ def sync_noop(cfg: dict, st: Path) -> str:
         return "unreachable"
     sig = "|".join(m or "" for m in mts)
     stamp = d / "stamp"
-    if stamp.exists() and stamp.read_text() == sig:
-        return "unchanged"
+    out = d / "noop_whoop.db"
+    if stamp.exists() and stamp.read_text() == sig and has_tables(out):
+        return "unchanged" + revive_noop(cfg)
     tmp = private_dir(d / "incoming")
-    for suf in ("", "-wal"):  # never copy -shm: a stale index can misread the WAL; SQLite rebuilds it
+    new = tmp / "noop_whoop.db"
+    good = False
+    for _ in range(3):  # a live app checkpoints mid-copy -> torn db+wal pair ("malformed"); recopy
+        for suf in ("", "-wal"):  # never copy -shm: a stale index can misread the WAL; SQLite rebuilds it
+            adb_to_file(cfg, tmp / f"noop_whoop.db{suf}", "exec-out", "run-as", pkg, "cat", f"databases/noop_whoop.db{suf}", timeout=120)
+        (tmp / "noop_whoop.db-shm").unlink(missing_ok=True)
+        # Fold the WAL in place into one rollback-journal file so readers can open it mode=ro.
+        # quick_check reads every page, catching the torn pairs VACUUM INTO used to, without a second full write.
+        con = sqlite3.connect(new)
         try:
-            data = adb(cfg, "exec-out", "run-as", pkg, "cat", f"databases/noop_whoop.db{suf}", binary=True, timeout=120)
-        except Exception:  # noqa: BLE001
-            data = b""
-        write_private(tmp / f"noop_whoop.db{suf}", data)
-    # Fold the WAL into one consistent private file so readers can open it mode=ro.
-    con = sqlite3.connect(tmp / "noop_whoop.db")
-    try:
-        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        out = d / "noop_whoop.db"
-        if out.exists():
-            out.unlink()
-        con.execute(f"VACUUM INTO '{out}'")
-    finally:
-        con.close()
-    os.chmod(d / "noop_whoop.db", 0o600)
+            con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            con.execute("PRAGMA journal_mode=DELETE")
+            good = con.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        except sqlite3.DatabaseError:
+            good = False
+        finally:
+            con.close()
+        if good:
+            break
+    # The phone can answer stat and then fail the cat. Such a pull has no tables: keep the
+    # last good copy and no stamp, so readers never see an empty file and the next run retries.
+    good = good and has_tables(new)
+    if good:
+        os.chmod(new, 0o600)
+        os.replace(new, out)
+        write_private(stamp, sig)
     shutil.rmtree(tmp)
-    write_private(stamp, sig)
-    return "copied"
+    return "copied" if good else "unreachable"
 
 
 # ------------------------------------------------------------------ digest
@@ -279,7 +488,7 @@ def night_screen(win, evening: datetime) -> dict:
 
 def noop_facts(st: Path, evening: datetime, tz: ZoneInfo) -> dict:
     db = st / "noop" / "noop_whoop.db"
-    if not db.exists():
+    if not has_tables(db):
         return {"available": False}
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
@@ -407,19 +616,71 @@ def maybe_brief(cfg: dict, st: Path, dg: dict, today: date) -> str:
         return "already sent"
     if not first_unlock_today(st, ZoneInfo(cfg["tz"]), today):
         return "waiting for first unlock"
+    # Wake-up brief v1 (limitless-brief): one screen, written to state/brief-latest.md and
+    # pushed as a Dash notice that opens the Notices inbox. Falls back to the v0 one-liner.
+    env = dict(os.environ, CIRCADIAN_CLASS="digest")
+    r = subprocess.run([str(Path.home() / ".local/bin/limitless-brief"), "send"], env=env,
+                       capture_output=True, text=True, timeout=150)
+    if r.returncode == 0:
+        try:
+            ok = json.loads(r.stdout).get("notify_rc") == 0
+        except ValueError:
+            ok = False
+        if ok:
+            write_private(sent, json.dumps({"day": today.isoformat(), "at": iso(utcnow()), "v": 1}))
+            return "sent v1"
     line = brief_line(dg)
     if not line:
         return "no proxy yet"
-    env = dict(os.environ, CIRCADIAN_CLASS="digest")
-    r = subprocess.run([str(Path.home() / ".local/bin/dash-report"), "Last night", line], env=env,
+    # rc 0 must mean delivered: kevin-push exits 0 for log-only/held sends unless strict, and a
+    # circadian hold also exits 0. 11-23 the held fallback was marked sent and the brief never went out.
+    strict = dict(env, KEVIN_PUSH_STRICT="1", CIRCADIAN_BYPASS="1")
+    r = subprocess.run([str(Path.home() / ".local/bin/dash-report"), "Last night", line], env=strict,
                        capture_output=True, timeout=60)
     if r.returncode == 0:
-        write_private(sent, json.dumps({"day": today.isoformat(), "at": iso(utcnow())}))
-        return "sent"
+        write_private(sent, json.dumps({"day": today.isoformat(), "at": iso(utcnow()), "v": 0}))
+        return "sent v0 (v1 failed)"
     return f"dash-report rc={r.returncode}"
 
 
 # ------------------------------------------------------------------ commands
+
+def input_health(st: Path, now: datetime) -> dict:
+    """Newest datum per input, in hours. A copy that is 'unchanged' can hide a dead producer
+    (AW 11-12..15, NOOP 11-12..15), so freshness is judged on the data itself, not on the copy."""
+    def q(db, sql, *a):
+        try:
+            c = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+            return c.execute(sql, a).fetchone()[0]
+        except sqlite3.Error:
+            return None
+    aw, nw = st / "aw-s25.db", st / "noop" / "noop_whoop.db"
+    newest = {
+        "phoneApps": q(aw, "select max(e.endtime) from events e join buckets b on b.id=e.bucketrow where b.name='aw-watcher-android'"),
+        "phoneUnlocks": q(aw, "select max(e.endtime) from events e join buckets b on b.id=e.bucketrow where b.name='aw-watcher-android-unlock'"),
+        "whoop": q(nw, "select max(ts) from hrSample where deviceId like 'whoop-%'"),
+        "oura": q(nw, "select max(ts) from hrSample where deviceId like 'oura-%'"),
+    }
+    try:
+        rows = read_jsonl(st / "flow-ledger.jsonl")
+        newest["ownerMessages"] = datetime.fromisoformat(rows[-1]["start"]).timestamp() + rows[-1]["minutes"] * 60 if rows else None
+    except (KeyError, ValueError):
+        newest["ownerMessages"] = None
+    sm = read_jsonl(st / "sleepmode.jsonl")
+    newest["sleepMode"] = parse_iso(sm[-1]["seen"]).timestamp() if sm else None
+    out = {}
+    for k, v in newest.items():
+        t = _ts(v) if v else None
+        out[k] = round((now.timestamp() - t) / 3600, 1) if t else None
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://127.0.0.1:5600/api/0/info", timeout=2)
+        out["desktopAW"] = "up"
+    except Exception:  # noqa: BLE001
+        out["desktopAW"] = "down"
+    write_private(st / "inputs.json", json.dumps({"at": iso(now), "ageHours": out}))
+    return out
+
 
 def run(cfg: dict, brief: bool = True) -> dict:
     st = private_dir(Path(cfg["state"]))
@@ -427,7 +688,14 @@ def run(cfg: dict, brief: bool = True) -> dict:
     now = utcnow()
     today = now.astimezone(tz).date()
     res = {"at": iso(now)}
+    resolved = resolve_s25_serial(cfg)  # self-heal past a rotated S25 port
+    if resolved:
+        cfg["serial"] = resolved
+        res["serial"] = resolved
+    else:
+        res["serial"] = f"unresolved (fallback {cfg.get('serial')})"
     for name, fn in (("presence", lambda: sync_presence(cfg, st, now)),
+                     ("sleepmode", lambda: sync_sleepmode(cfg, st, now)),
                      ("aw", lambda: sync_aw(cfg, st)),
                      ("noop", lambda: sync_noop(cfg, st))):
         try:
@@ -437,8 +705,27 @@ def run(cfg: dict, brief: bool = True) -> dict:
     dg = build_digest(cfg, st, today)
     save_digest(st, dg)
     res["digest"] = "proxy" if dg.get("phoneProxy") else "partial"
+    try:  # flow ledger: work blocks + feed leaks, rebuilt from existing data
+        r = subprocess.run([sys.executable, "-I", str(Path.home() / ".local/bin/flow-ledger")],
+                           capture_output=True, text=True, timeout=60)
+        res["flow"] = "ok" if r.returncode == 0 else f"rc={r.returncode}"
+    except Exception as exc:  # noqa: BLE001
+        res["flow"] = f"error {type(exc).__name__}"
+    try:
+        h = input_health(st, now)
+        stale = [k for k, v in h.items() if v == "down" or v is None or (isinstance(v, float) and v > 6
+                 and k not in ("ownerMessages", "sleepMode"))]
+        res["inputs"] = "ok" if not stale else "stale " + ",".join(stale)
+    except Exception as exc:  # noqa: BLE001
+        res["inputs"] = f"error {type(exc).__name__}"
     res["ramp"] = apply_ramp(cfg, today)
     res["brief"] = maybe_brief(cfg, st, dg, today) if brief else "skipped"
+    try:  # MIQ: ingest Dash replies, and the one opt-in wind-down prompt per night
+        r = subprocess.run([str(Path.home() / ".local/bin/miq"), "tick"], capture_output=True, text=True, timeout=150)
+        m = json.loads(r.stdout) if r.returncode == 0 else {}
+        res["miq"] = f"ingested {m.get('ingested')} prompt {m.get('prompt')}" if m else f"rc={r.returncode}"
+    except Exception as exc:  # noqa: BLE001
+        res["miq"] = f"error {type(exc).__name__}"
     append_jsonl(st / "runs.jsonl", res)
     return res
 
@@ -449,6 +736,10 @@ def main(argv: list[str]) -> int:
     st = Path(cfg["state"])
     if cmd == "run":
         print(json.dumps(run(cfg, brief="--no-brief" not in argv)))
+    elif cmd == "sleepmode":  # cheap 2-min poll (limitless-sleepmode.timer): nap start/end + return message
+        st = private_dir(st)
+        cfg["serial"] = resolve_s25_serial(cfg) or cfg.get("serial")
+        print(sync_sleepmode(cfg, st, utcnow()))
     elif cmd == "status":
         runs = read_jsonl(st / "runs.jsonl")
         print(json.dumps(runs[-1] if runs else {}, indent=1))
