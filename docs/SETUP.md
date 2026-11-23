@@ -148,6 +148,16 @@ cd ~/workspace/.files
 ./scripts/onboard status --json
 ```
 
+## Private network overlay
+
+Tailnet addresses and the tailnet name are not in this public repo. Scripts, units and
+deploy tools read them from `~/.config/dotfiles/private.env` and
+`~/.config/dotfiles/hosts.private.yaml` (directory overridable with
+`DOTFILES_PRIVATE_DIR`; both files are git-ignored). Start from
+`config/private.example.env` and `config/hosts.private.example.yaml`, then run
+`scripts/private-overlay check`. A missing key stops the reader with a message naming
+it. See [MIGRATION.md](../MIGRATION.md) for the units to restart after deploy.
+
 ## Tern remote reconnection
 
 Groot uses Tern's system `tern-remote.service`, installed by Tern and enabled
