@@ -42,7 +42,7 @@ The join token stays out of Git and off the clipboard:
 # on the agent, as root
 install -d -m 0755 /etc/rancher/k3s
 ssh kvn@0 'sudo cat /workspace/k3s-data/server/node-token' | install -m 0600 /dev/stdin /etc/rancher/k3s/join-token
-sudo scripts/setup-k3s.sh agent 100.113.138.100
+sudo scripts/setup-k3s.sh agent "$GROOT_TAILNET_IP"   # groot's tailnet address, from ~/.config/dotfiles/private.env
 ```
 
 ## Verify
@@ -56,8 +56,10 @@ kubectl -n factory logs job/<name>
 ```
 
 ```sh
-kubectl create -f config/k3s/smoke/isolation-job.yaml  # expect ISOLATION_OK: DNS and internet open; host, tailnet, LAN blocked
-kubectl create -f config/k3s/smoke/gateway-job.yaml    # expect GATEWAY_OK: only the token-gated factory gateway is reachable
+# These two probe groot's tailnet address; scripts/private-overlay fills it from the
+# untracked overlay (see config/private.example.env) and stops if it is missing.
+scripts/private-overlay render config/k3s/smoke/isolation-job.yaml | kubectl create -f -  # expect ISOLATION_OK: DNS and internet open; host, tailnet, LAN blocked
+scripts/private-overlay render config/k3s/smoke/gateway-job.yaml | kubectl create -f -    # expect GATEWAY_OK: only the token-gated factory gateway is reachable
 ```
 
 ```sh

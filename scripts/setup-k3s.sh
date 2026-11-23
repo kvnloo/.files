@@ -158,9 +158,14 @@ cmd_admit() {
   kc wait --for=condition=Ready "node/$node" --timeout=300s >/dev/null
   local i job spec
   for i in 1 2 3 4 5; do
-    spec=$(python3 - "$CFG/smoke/isolation-job.yaml" "$node" <<'PY'
+    spec=$(python3 - "$CFG/smoke/isolation-job.yaml" "$node" "$REPO/scripts" <<'PY'
 import sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
+sys.path.insert(0, sys.argv[3])
+import private_overlay  # the job probes groot's tailnet address, named only in the overlay
+try:
+    d = yaml.safe_load(private_overlay.expand(open(sys.argv[1]).read()))
+except private_overlay.PrivateOverlayError as exc:
+    sys.exit(f"setup-k3s: {exc}")
 s = d["spec"]["template"]["spec"]
 s["nodeSelector"] = {"kubernetes.io/hostname": sys.argv[2]}
 s["tolerations"] = [{"key": "z0.dev/onboarding", "operator": "Exists", "effect": "NoSchedule"}]
