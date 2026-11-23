@@ -31,6 +31,14 @@ config/sunshine/Sunshine.log
 .local/
 **/.local/state/dotfiles/
 
+# Private network overlay (tailnet addresses and names): lives in ~/.config/dotfiles
+# or $DOTFILES_PRIVATE_DIR, never here. Only the example files and the test fixture
+# (reserved example values) are tracked; scripts/public-leak-check guards the rest.
+private.env
+hosts.private.yaml
+!tests/fixtures/private-overlay/private.env
+!tests/fixtures/private-overlay/hosts.private.yaml
+
 # Generic secret patterns
 .env
 .env.*

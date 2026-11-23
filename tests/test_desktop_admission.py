@@ -10,6 +10,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault("DOTFILES_PRIVATE_DIR", str(ROOT / "tests/fixtures/private-overlay"))
 sys.path.insert(0, str(ROOT / "scripts"))
 fleet = importlib.machinery.SourceFileLoader('fleet_admission', str(ROOT/'scripts/fleet')).load_module()
 classifier = importlib.machinery.SourceFileLoader('agent_classifier', str(ROOT/'scripts/agent-resource-classify')).load_module()
@@ -184,7 +186,7 @@ class PhonePlacement(unittest.TestCase):
             self.assertEqual(argv[:4], [sys.executable, str(ROOT/"scripts/fleet-adb"),
                                        "run", "omarchy-phone"])
             self.assertEqual(argv[-2:], ["--", "true"])
-            self.assertNotIn("100.113.138.100", " ".join(argv))
+            self.assertNotIn(fleet.registry()[1]["groot"]["tailnet_ip"], " ".join(argv))
             self.assertFalse(any("ssh" in value for value in argv))
             # At 2% unplugged the native lane remains usable even with hot,
             # memory-starved guest telemetry: Android owns those resources.
