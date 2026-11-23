@@ -14,6 +14,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault('DOTFILES_PRIVATE_DIR', str(ROOT / 'tests/fixtures/private-overlay'))
 spec = importlib.util.spec_from_file_location('service_watch', ROOT / 'scripts/service-watch.py')
 sw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sw)
@@ -346,7 +348,7 @@ class Contracts(unittest.TestCase):
 
     def test_finite_projection_withholds_every_arbitrary_string(self):
         secrets = ['sk-secret-abcdef', 'Bearer abc.eyJWT.def', 'Cookie: session=SUPERSECRET',
-                   'kevin@example.com', '100.117.226.39', 'https://example.test/?token=secret',
+                   'kevin@example.com', '100.64.0.13', 'https://example.test/?token=secret',
                    '/home/kvn/private/account.json', '123 Main Street', 'Chicago',
                    '41.8781,-87.6298', 'SERIAL-R5CY93G2WNH', 'account_9123456']
         result = sw.project([sw.event('failed', count=7)], secrets)
@@ -721,6 +723,17 @@ class Contracts(unittest.TestCase):
         data = json.loads(self.watch.store.db.execute('SELECT data FROM incidents WHERE id=?', (ident,)).fetchone()[0])
         self.assertEqual(data['decision']['severity'], 'severe')
         self.assertFalse(data['severe_confirmed'])
+
+    def test_local_route_comes_from_private_overlay(self):
+        self.assertEqual(sw.LOCAL_URL, 'http://100.64.0.10:11530/v1/chat/completions')
+        self.assertIsNone(sw.LOCAL_ROUTE_ERROR)
+
+    def test_missing_private_key_disables_local_route_loudly(self):
+        with patch.object(sw, 'LOCAL_ROUTE_ERROR', 'missing private key(s) GROOT_TAILNET_IP'), \
+             patch.object(sw.urllib.request, 'build_opener') as opener:
+            with self.assertRaisesRegex(sw.private_overlay.PrivateOverlayError, 'GROOT_TAILNET_IP'):
+                sw.post(sw.LOCAL_URL, {'raw': 'synthetic secret'})
+            opener.assert_not_called()
 
     def test_raw_route_fails_closed_if_host_does_not_own_address(self):
         with patch.object(sw, 'command', return_value=subprocess.CompletedProcess([], 0, '[{\"addr_info\":[{\"local\":\"127.0.0.1\"}]}]', '')), patch.object(sw.urllib.request, 'build_opener') as opener:
