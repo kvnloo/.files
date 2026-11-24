@@ -62,3 +62,6 @@ config/waybar/scripts/*.so
 # Unified theme manager: wire-step symlinks into the generated directory
 config/noctalia/colorschemes/Unified
 config/dunst/dunstrc.d/50-theme.conf
+
+# Host migration audit output names private repos and paths; it lives in kvnloo/home.
+STUDIO-MIGRATION.md

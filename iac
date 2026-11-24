@@ -11,6 +11,10 @@ case "$cmd" in
     shift
     exec python3 "$repo_root/scripts/iac/plan.py" "$@"
     ;;
+  studio-audit)
+    shift
+    exec python3 -I "$repo_root/scripts/iac/studio_audit.py" "$@"
+    ;;
   links)
     shift
     exec python3 "$repo_root/scripts/iac/links.py" "$@"
@@ -23,6 +27,8 @@ commands:
   collect        collect read-only live machine state
   plan           compare observed state with fleet.toml
   links scan     inventory .files-owned symlinks and generate rollout scripts
+  studio-audit   read-only macOS migration audit -> STUDIO-MIGRATION.md
+                 (the report names private repos: keep it out of this public repo)
 
 No mutating apply command exists yet. Destructive transitions are never part of
 normal convergence.
