@@ -15,7 +15,10 @@ Each run (timer, every 2 min): detect -> repair -> append a receipt line.
 Diagnostics per receipt (uptime, adb_wifi_enabled, BSSID, tcp port) let the
 next drop be attributed: uptime reset = reboot, BSSID change = Wi-Fi roam,
 adb_wifi_enabled=0 with same uptime = Android turned wireless debugging off.
-If nothing reconnects, the receipt says `unreachable` (diag says whether LAN or tailnet answered).
+If nothing reconnects, the receipt says `unreachable` (diag says whether LAN or tailnet answered)
+and a required phone fails the unit. After OFFLINE_AFTER misses in a row it says `offline`
+(one log line, unit green) and the full repair runs every OFFLINE_RECHECK_S; a transport that
+comes back on its own is still picked up on the next tick.
 DHCP moves the LAN IP (S22 went .31 -> .8), so every run learns wlan0's IPv4
 and the next run tries it; a USB-only transport also gets a :5555 Wi-Fi peer
 so unplugging the cable never drops the phone. `wireless` names that peer.
@@ -212,6 +215,31 @@ def keep(name, phone, learned=None):
     return t, diag, actions, wireless
 
 
+# A phone unreachable for OFFLINE_AFTER full checks in a row is marked 'offline': one log line,
+# the unit goes green, and the full repair (connect + /24 sweep, ~60 s) runs only every
+# OFFLINE_RECHECK_S. Why: the S22 went off the tailnet on 11-19 and the unit failed every tick
+# for 4 days (~1,860 journal failure lines a day, one service-watch alert per tick), which buried
+# every other unit's failures. A phone that was 'ok' still fails the unit on its first miss.
+OFFLINE_AFTER = int(os.environ.get('PHONE_ADB_KEEPER_OFFLINE_AFTER', 5))
+OFFLINE_RECHECK_S = int(os.environ.get('PHONE_ADB_KEEPER_OFFLINE_RECHECK_S', 1800))
+
+
+def due(before, now):
+    """Run the full repair this tick? Always, unless the phone is offline and not yet due."""
+    return before.get('state') != 'offline' or now >= before.get('next_check', 0)
+
+
+def classify(before, found, now, required=True):
+    """(state, misses, next_check, fails_unit) after a full check."""
+    if found:
+        return 'ok', 0, None, False
+    misses = before.get('misses', 0) + 1
+    # A drop from 'ok' always fails the unit at least once, whatever OFFLINE_AFTER says.
+    if before.get('state') != 'ok' and (before.get('state') == 'offline' or misses >= OFFLINE_AFTER):
+        return 'offline', misses, now + OFFLINE_RECHECK_S, False
+    return 'unreachable', misses, None, required
+
+
 def main():
     STATE.mkdir(parents=True, exist_ok=True)
     last_path = STATE / 'phone-adb-keeper.last.json'
@@ -219,18 +247,35 @@ def main():
     rc = 0
     for name, phone in PHONES.items():
         before = last.get(name, {})
+        now = time.time()
+        # Offline and not due: only look for a transport that came back on its own (USB plug,
+        # mDNS auto-connect). No connects, no sweep, no output.
+        if not due(before, now) and live_transport(phone) is None:
+            continue
         t, diag, actions, wireless = keep(name, phone, before.get('diag'))
-        receipt = {'ts': time.time(), 'phone': name, 'serial': phone['serial'], 'transport': t,
-                   'state': 'ok' if t else 'unreachable', 'was': before.get('state'),
+        state, misses, next_check, fails_unit = classify(before, t, now, phone.get('required', True))
+        receipt = {'ts': now, 'phone': name, 'serial': phone['serial'], 'transport': t,
+                   'state': state, 'was': before.get('state'), 'misses': misses,
                    'cause': attribute(before.get('diag'), diag) if before.get('state') != 'ok' or actions else None,
                    'wireless': wireless, 'diag': diag or before.get('diag'), 'actions': actions}
-        if t is None and phone.get('required', True):
+        if next_check:
+            receipt['next_check'] = next_check
+        if fails_unit:
             rc = 1
-        if actions or receipt['state'] != before.get('state'):
+        changed = state != before.get('state')
+        if changed or (state == 'ok' and actions):
             with open(STATE / 'phone-adb-keeper.jsonl', 'a') as fh:
                 fh.write(json.dumps(receipt) + '\n')
         last[name] = receipt
-        print(json.dumps(receipt))
+        if state == 'offline':
+            when = time.strftime('%H:%M', time.localtime(next_check))
+            if changed:
+                print(f'{name} ({phone["serial"]}) offline after {misses} unreachable checks; '
+                      f'rechecking every {OFFLINE_RECHECK_S // 60} min, next {when}')
+            else:
+                print(f'{name} still offline ({misses} checks); next {when}')
+        else:
+            print(json.dumps(receipt))
     last_path.write_text(json.dumps(last, indent=1))
     return rc
 

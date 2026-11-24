@@ -115,5 +115,100 @@ class RediscoveryTests(unittest.TestCase):
             keeper.time.sleep = orig_sleep
 
 
+class OfflineBackoffTests(unittest.TestCase):
+    """S22 off the tailnet from 11-19: the unit failed every 2-3 min for 4 days."""
+
+    def setUp(self):
+        import contextlib, io, json, tempfile
+        self.json, self.io, self.contextlib = json, io, contextlib
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.keep_calls = []
+        self.found = None          # transport keep() returns
+        self.live = None           # transport live_transport() sees
+        self.clock = 1000.0
+        self.saved = {k: getattr(keeper, k) for k in ('STATE', 'PHONES', 'keep', 'live_transport')}
+        self.saved_time = keeper.time.time
+        keeper.STATE = self.tmp
+        keeper.PHONES = {'s22': {'serial': 'S22', 'hosts': [], 'ui_lock': pathlib.Path('/dev/null')}}
+        keeper.keep = lambda name, phone, learned: (self.keep_calls.append(name), (self.found, None, [{'connect': 'x'}], None))[1]
+        keeper.live_transport = lambda phone: self.live
+        keeper.time.time = lambda: self.clock
+
+    def tearDown(self):
+        for k, v in self.saved.items():
+            setattr(keeper, k, v)
+        keeper.time.time = self.saved_time
+
+    def tick(self, advance=150):
+        self.clock += advance
+        out = self.io.StringIO()
+        with self.contextlib.redirect_stdout(out):
+            rc = keeper.main()
+        return rc, out.getvalue().splitlines()
+
+    def last(self):
+        return self.json.loads((self.tmp / 'phone-adb-keeper.last.json').read_text())['s22']
+
+    def test_drop_from_ok_fails_the_unit_immediately(self):
+        self.found = '192.168.1.18:5555'
+        self.assertEqual(self.tick()[0], 0)
+        self.found = None
+        rc, lines = self.tick()
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.last()['state'], 'unreachable')
+
+    def test_marked_offline_after_n_misses_with_one_line_then_backoff(self):
+        rcs = [self.tick()[0] for _ in range(keeper.OFFLINE_AFTER - 1)]
+        self.assertEqual(rcs, [1] * (keeper.OFFLINE_AFTER - 1))
+        rc, lines = self.tick()
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(lines), 1)
+        self.assertIn('offline after', lines[0])
+        self.assertEqual(self.last()['state'], 'offline')
+        calls = len(self.keep_calls)
+        # Not due: no repair, no output, unit green.
+        for _ in range(5):
+            self.assertEqual(self.tick(), (0, []))
+        self.assertEqual(len(self.keep_calls), calls)
+        # Due after the backoff: one full check, still green, one short line.
+        rc, lines = self.tick(keeper.OFFLINE_RECHECK_S)
+        self.assertEqual((rc, len(self.keep_calls)), (0, calls + 1))
+        self.assertEqual(len(lines), 1)
+        self.assertIn('still offline', lines[0])
+
+    def test_offline_phone_that_comes_back_is_seen_next_tick(self):
+        for _ in range(keeper.OFFLINE_AFTER):
+            self.tick()
+        self.assertEqual(self.last()['state'], 'offline')
+        self.live = self.found = 'RFCTA1RZAQY'
+        rc, lines = self.tick()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.last()['state'], 'ok')
+        self.assertEqual(self.last()['was'], 'offline')
+
+    def test_offline_then_drop_again_fails_again(self):
+        for _ in range(keeper.OFFLINE_AFTER):
+            self.tick()
+        self.live = self.found = 'RFCTA1RZAQY'
+        self.tick()
+        self.live = self.found = None
+        self.assertEqual(self.tick()[0], 1)
+
+    def test_legacy_unreachable_state_counts_misses_from_zero(self):
+        (self.tmp / 'phone-adb-keeper.last.json').write_text(self.json.dumps({'s22': {'state': 'unreachable'}}))
+        rcs = [self.tick()[0] for _ in range(keeper.OFFLINE_AFTER)]
+        self.assertEqual(rcs, [1] * (keeper.OFFLINE_AFTER - 1) + [0])
+
+    def test_unreachable_repeats_do_not_grow_the_receipt_log(self):
+        for _ in range(keeper.OFFLINE_AFTER + 3):
+            self.tick(keeper.OFFLINE_RECHECK_S)
+        rows = (self.tmp / 'phone-adb-keeper.jsonl').read_text().splitlines()
+        self.assertEqual([self.json.loads(r)['state'] for r in rows], ['unreachable', 'offline'])
+
+    def test_optional_phone_never_fails_the_unit(self):
+        keeper.PHONES['s22']['required'] = False
+        self.assertEqual(self.tick()[0], 0)
+
+
 if __name__ == '__main__':
     unittest.main()
