@@ -213,8 +213,10 @@ def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
                 end = datetime.fromtimestamp(min(up, now.timestamp()), timezone.utc).replace(microsecond=0)
                 append_jsonl(p, {"at": iso(end), "on": False, "seen": iso(now),
                                  "inferred": "Sleep left on, owner up", "left_on": rule})
+                # measured from the rule's own start: a reopened row must not read as a short nap
+                begun = datetime.fromtimestamp(int(rule) // 1000, timezone.utc)
                 try:
-                    return "off (left on) · " + nap_return(cfg, start, end)
+                    return "off (left on) · " + nap_return(cfg, min(start, begun), end)
                 except Exception as exc:  # noqa: BLE001
                     return f"off (left on) · return-msg error {type(exc).__name__}"
     if not on and last.get("on"):
