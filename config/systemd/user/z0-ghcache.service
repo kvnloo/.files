@@ -1,5 +1,5 @@
 [Unit]
-Description=z0 factory ghcache: shared caching, budgeted GitHub read proxy (127.0.0.1:18090; pods via 10.42.0.1:18091)
+Description=z0 factory ghcache: shared caching, budgeted GitHub read proxy (127.0.0.1:18090)
 Documentation=https://github.com/kvnloo/oss-factory/blob/main/factory/EXECUTION_SUBSTRATE.md
 After=network-online.target
 
@@ -11,10 +11,11 @@ Environment=GHCACHE_STATE=%h/.local/state/z0-factory
 # Short-lived handler threads would each keep a glibc malloc arena: 136 MiB RSS after a
 # 200-agent burst without this.
 Environment=MALLOC_ARENA_MAX=2
-# --pod-listen binds groot's cni0 address so only cluster pods (through the
-# factory-gateway forwarder in namespace z0) can reach the token-gated pod listener.
-# The process retries the bind until k3s has created cni0.
-ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghcache.py --listen 127.0.0.1:18090 --pod-listen 10.42.0.1:18091 --core-per-hour 3000 --reserve 500 --max-upstream 3
+# No --pod-listen (2026-11-24): the k3s server moved to mbp, groot's node is NotReady/cordoned,
+# cni0 (10.42.0.1) no longer exists here and z0/factory-gateway is scaled to 0. To serve pods
+# again, add `--pod-listen <cni0 IP>:18091` on the host that runs them (kvnloo/oss-factory#455:
+# the bind now backs off and gives up instead of logging every 30 s forever).
+ExecStart=/usr/bin/python3 -u ${FACTORY_TOOLS}/ghcache.py --listen 127.0.0.1:18090 --core-per-hour 3000 --reserve 500 --max-upstream 3
 Restart=on-failure
 RestartSec=10
 # X2b 2026-11-07 (t_0c86492a): throttle at the old cap (MemoryHigh), hard stop at 1.5x.
