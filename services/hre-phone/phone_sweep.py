@@ -44,10 +44,18 @@ def gate_reason():
         return None
     import re, subprocess
     try:
-        out = subprocess.run(["adb", "-s", a.gate_serial, "shell",
-                              "cat /proc/uptime; dumpsys telephony.registry | grep mCallState=; "
-                              "dumpsys power | grep -E 'mLastUserActivityTime'"],
-                             capture_output=True, text=True, timeout=30).stdout
+        def probe():
+            return subprocess.run(["adb", "-s", a.gate_serial, "shell",
+                                   "cat /proc/uptime; dumpsys telephony.registry | grep mCallState=; "
+                                   "dumpsys power | grep -E 'mLastUserActivityTime'"],
+                                  capture_output=True, text=True, timeout=30).stdout
+        out = probe()
+        if ":" in a.gate_serial and "mCallState=" not in out:
+            # The pod's own adb server never re-attaches a TCP phone after a reboot or Wi-Fi drop:
+            # the S25 gate read 'device not found' from 11-18 to 11-24 and stayed shut. Re-attach
+            # once per check (no UI, no settings change), then read again.
+            subprocess.run(["adb", "connect", a.gate_serial], capture_output=True, text=True, timeout=20)
+            out = probe()
     except Exception as e:  # noqa: BLE001
         return f"presence unavailable: {type(e).__name__}"
     calls = re.findall(r"mCallState=(\d)", out)
