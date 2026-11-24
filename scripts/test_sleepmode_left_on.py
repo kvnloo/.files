@@ -72,6 +72,15 @@ class LeftOn(unittest.TestCase):
         self.assertEqual(last["left_on"], str(int(created.timestamp() * 1000)))
         self.assertEqual(len(self.returns), 1)
 
+    def test_a_reopened_row_is_measured_from_the_rule_so_no_short_nap_is_claimed(self):
+        created = NOW - timedelta(hours=20)
+        self.seed_on(created, at=NOW - timedelta(minutes=30))   # an earlier poll reopened the old rule
+        self.phone = rule_text(created)
+        self.unlocks = [(NOW - timedelta(minutes=10)).timestamp()]
+        self.mod.sync_sleepmode(self.cfg, self.st, NOW)
+        (start, end), = self.returns
+        self.assertEqual(start, created.replace(microsecond=0))
+
     def test_the_same_rule_still_on_after_closing_is_ignored(self):
         created = NOW - timedelta(hours=20)
         self.seed_on(created)
