@@ -1,3 +1,9 @@
+[user]
+	name = Kevin Rajan
+	email = kvnloo@users.noreply.github.com
+	# Refuse to commit with a guessed identity (user@hostname) on any host
+	# that has no identity configured.
+	useConfigOnly = true
 [alias]
 	random = !"git add -A; git commit -am \"$(echo $(curl -s https://whatthecommit.com/index.txt))\"; git push"
 [core]
