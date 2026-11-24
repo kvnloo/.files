@@ -149,6 +149,22 @@ def wifi_state(cfg: dict) -> str:
 
 
 SLEEP_RULE = re.compile(r"ZenRule\[id=\w+,state=STATE_TRUE,enabled=TRUE,[^\n]*?name=Sleep,[^\n]*?creationTime=(\d+)")
+# A Sleep rule on longer than this was left on: no night's sleep lasts it. Once the owner shows he is up
+# after that mark (his own message or a phone unlock), the rule is closed and that activation is ignored.
+LEFT_ON_H = 14
+
+
+def owner_up_after(st: Path, after: float) -> float | None:
+    """Earliest sign the owner is up after `after`: his own message or a phone unlock (the AW copy)."""
+    seen = [first_owner_msg_after(after)]
+    try:
+        ev = aw_events(st)
+    except sqlite3.Error:
+        ev = None
+    if ev:
+        seen += [u for u in ev[0] if u > after]
+    seen = [s for s in seen if s]
+    return min(seen) if seen else None
 
 
 def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
@@ -166,7 +182,10 @@ def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
             woke = first_owner_msg_after(start.timestamp() + 300)
             if woke:
                 end = datetime.fromtimestamp(woke, timezone.utc).replace(microsecond=0)
-                append_jsonl(p, {"at": iso(end), "on": False, "seen": iso(now), "inferred": "owner message, phone unreachable"})
+                off = {"at": iso(end), "on": False, "seen": iso(now), "inferred": "owner message, phone unreachable"}
+                if last.get("rule"):  # he is up: the same activation, if still on later, was left on
+                    off["left_on"] = last["rule"]
+                append_jsonl(p, off)
                 try:
                     return "off (inferred) · " + nap_return(cfg, start, end)
                 except Exception as exc:  # noqa: BLE001
@@ -175,13 +194,29 @@ def sync_sleepmode(cfg: dict, st: Path, now: datetime) -> str:
     write_private(st / "sleepmode-poll.json", json.dumps({"at": iso(now), "ok": True}))
     m = SLEEP_RULE.search(txt)
     on = bool(m)
+    rule = m.group(1) if m else None
+    if on and not last.get("on") and rule == last.get("left_on"):
+        return "on (left on, ignored)"
     if on and not last.get("on"):
         # Samsung recreates the rule on each activation, so creationTime = exact start
-        start = datetime.fromtimestamp(int(m.group(1)) / 1000, timezone.utc)
+        start = datetime.fromtimestamp(int(rule) / 1000, timezone.utc)
         if not (now - timedelta(hours=14) < start <= now):
             start = now
-        append_jsonl(p, {"at": iso(start), "on": True, "seen": iso(now)})
+        append_jsonl(p, {"at": iso(start), "on": True, "seen": iso(now), "rule": rule})
         return "on"
+    if on and last.get("on"):
+        mark = int(rule) / 1000 + LEFT_ON_H * 3600
+        if now.timestamp() > mark:
+            start = datetime.fromisoformat(last["at"].replace("Z", "+00:00"))
+            up = owner_up_after(st, max(mark, start.timestamp() + 300))
+            if up:
+                end = datetime.fromtimestamp(min(up, now.timestamp()), timezone.utc).replace(microsecond=0)
+                append_jsonl(p, {"at": iso(end), "on": False, "seen": iso(now),
+                                 "inferred": "Sleep left on, owner up", "left_on": rule})
+                try:
+                    return "off (left on) · " + nap_return(cfg, start, end)
+                except Exception as exc:  # noqa: BLE001
+                    return f"off (left on) · return-msg error {type(exc).__name__}"
     if not on and last.get("on"):
         # off time is known to the poll interval (limitless-sleepmode.timer, 2 min)
         append_jsonl(p, {"at": iso(now), "on": False, "seen": iso(now)})
