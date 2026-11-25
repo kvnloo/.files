@@ -2,21 +2,38 @@ schema = 1
 
 # Stable logical host ids. Host-specific implementation layers should use these
 # names where practical; match_hostnames keeps older/live hostnames compatible.
+#
+# Placement (which host runs which service and data set) is decided from
+# measurements in kvnloo/home docs/placement.md. Each host only points there;
+# `role` is the one-line summary, the doc is the source.
 
 [hosts.desktop]
 match_hostnames = ["0", "groot"]
 platform = "cachyos"
+role = "GPU + bulk storage/cache (8 GB RAM on one DIMM since 2026-11-17)"
+placement = "kvnloo/home:docs/placement.md"
 package_groups = ["core", "nvidia", "desktop", "modal-keyboard", "audio", "dev", "apps", "shell", "fonts", "flatpak"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home", "audio-evolution"]
 system_services = ["docker.service", "tailscaled.service", "tern-remote.service", "keyd.service", "earlyoom.service"]
 system_timers = ["tern-remote-refresh.timer", "fstrim.timer"]
 system_sockets = ["keyd-layers.socket"]
-user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service"]
+user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service", "agent-oom-guard.service"]
 user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 # Managed-path manifest read by apply-agent-oom, host-drift and install-host-drift.
 manifest = "config/host/groot.toml"
+
+# 2026-11-17 single-DIMM safe-boot ran `systemctl --user disable` on 175 units
+# (list: ~/.local/state/safe-boot/disabled.txt on groot). For units installed as
+# links into a release, disable deletes the link, so they read not-found and
+# safe-boot/restore.sh cannot re-enable them. The declarations above stay: re-link
+# through the owners below, one unit at a time, while RAM stays at 8 GB.
+[hosts.desktop.memory_guard]
+service = "agent-oom-guard.service"
+source = "scripts/agent-oom-guard"
+classification = "scripts/agent_oom_policy.py"
+deployment = "scripts/apply-agent-oom"
 
 [hosts.desktop.storage]
 release_root = "/mnt/zer0models/releases"
@@ -61,6 +78,8 @@ runtime_packages = ["bubblewrap", "ffmpeg", "ffmpegthumbnailer", "fontconfig", "
 [hosts.mbp]
 match_hostnames = ["mbp"]
 platform = "cachyos"
+role = "control plane (k3s server)"
+placement = "kvnloo/home:docs/placement.md"
 package_groups = ["core", "desktop", "dev", "shell", "fonts"]
 onboard_modules = ["core-links", "agent-skills", "agent-tools", "tailnet-ssh", "nix-home"]
 system_services = ["tailscaled.service"]
@@ -75,6 +94,43 @@ manifest = "config/host/mbp.toml"
 release_root = "~/.local/lib/releases"
 # No model volume: report-only operations state (service-watch incidents, digests) stays in the home.
 operations_root = "~/.local/state/z0/operations"
+
+# Mac Studio (arrived 2026-11-18). .files has no macOS installer and no manifest,
+# so host_layout.resolve() refuses here (fail closed) and nothing in .files writes
+# to this host. The entries below are an inventory of what runs, and which repo
+# owns each launchd job, so placement decisions read one file.
+[hosts.studio]
+match_hostnames = ["studio", "studio.local"]
+platform = "macos"
+role = "compute + AgentsView primary"
+placement = "kvnloo/home:docs/placement.md"
+package_groups = []
+onboard_modules = []
+system_services = []
+user_services = []
+user_timers = []
+
+# ~/Library/LaunchAgents, 2026-11-25. owner: repo:path of the tracked plist or
+# generator, or "loose" (no repo holds it yet).
+[hosts.studio.launchd]
+"com.kvn.home-census-status" = "kvnloo/home:tools/launchd/com.kvn.home-census-status.plist (not yet on main)"
+"com.kvn.fleet-idle" = "kvnloo/home:tools/launchd/com.kvn.fleet-idle.plist"
+"com.kvn.disk-guard" = "kvnloo/home:disk/studio/com.kvn.disk-guard.plist"
+"com.kvn.hermes-pc" = "loose (runs z0live deploy/macos/run.sh)"
+"com.kvn.hermes-dashboard" = "loose"
+"com.kvn.claude-sub-pick" = "loose"
+"com.kvn.repostat" = "loose"
+"com.kvn.a0260-pitch-site" = "loose"
+"com.kvn.otelcol" = "loose (~/.local/state/observability)"
+"com.kvn.victoriametrics" = "loose (~/.local/state/observability)"
+"com.kvn.victorialogs" = "loose (~/.local/state/observability)"
+"com.zer0.z0live.core" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.hermes" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.lanes" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.proxy" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.voice" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.voice-next" = "z0live:deploy/macos/install.sh"
+"com.zer0.z0live.hermes-tek" = "loose (not in z0live install.sh)"
 
 # Omalauncher runs Arch ARM in PRoot, without a systemd service manager.
 # Use the explicit logical id: the guest kernel hostname is "localhost".
