@@ -18,7 +18,7 @@ system_services = ["docker.service", "tailscaled.service", "tern-remote.service"
 system_timers = ["tern-remote-refresh.timer", "fstrim.timer"]
 system_sockets = ["keyd-layers.socket"]
 user_services = ["hermes-gateway.service", "service-watch.service", "uniichat-luna.service", "agent-oom-guard.service"]
-user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer"]
+user_timers = ["bws-secrets-sync.timer", "z0int-loop-tick.timer", "night-filter.timer", "service-watch-heartbeat.timer", "worktree-reaper.timer", "fleet-source-retention.timer", "release-retention.timer", "zer0-storage-autotier.timer", "tmp-evict.timer"]
 nix_profile = "desktop"
 hypr_host = "0"
 # Managed-path manifest read by apply-agent-oom, host-drift and install-host-drift.

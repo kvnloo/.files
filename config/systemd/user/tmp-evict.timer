@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly /tmp tmpfs eviction (tmp-evict)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target
