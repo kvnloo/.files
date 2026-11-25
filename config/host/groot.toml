@@ -4072,6 +4072,33 @@ owner = "scripts/install-host-storage.sh"
 reason = "Enable approved reversible release offload schedule."
 
 [[user]]
+live = "~/.config/systemd/user/tmp-evict.service"
+source = "config/systemd/user/tmp-evict.service"
+scope = "user"
+install = "symlink-stamped"
+stamp_name = "host-storage"
+owner = "scripts/install-host-storage.sh"
+reason = "Move idle /tmp (tmpfs, RAM) entries to disk-backed agent-tmp; never deletes. Was loose in operations/storage-maintenance/runs/t_b730ad52 until 2026-11-25."
+
+[[user]]
+live = "~/.config/systemd/user/tmp-evict.timer"
+source = "config/systemd/user/tmp-evict.timer"
+scope = "user"
+install = "symlink-stamped"
+stamp_name = "host-storage"
+owner = "scripts/install-host-storage.sh"
+reason = "Hourly /tmp eviction; /tmp is a 3.9G tmpfs on an 8 GB host."
+
+[[user]]
+live = "~/.config/systemd/user/timers.target.wants/tmp-evict.timer"
+source = "config/systemd/user/tmp-evict.timer"
+scope = "user"
+install = "symlink-stamped"
+stamp_name = "host-storage"
+owner = "scripts/install-host-storage.sh"
+reason = "Enable the hourly /tmp eviction schedule (owner enabled it 2026-11-25)."
+
+[[user]]
 live = "~/.local/bin/fleet"
 source = "scripts/fleet"
 scope = "user"

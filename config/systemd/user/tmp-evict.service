@@ -1,0 +1,11 @@
+[Unit]
+Description=Move idle kvn /tmp entries off tmpfs to agent-tmp (symlink left, never deletes)
+Documentation=file:///home/kvn/.local/lib/host-storage/current/scripts/tmp-evict.py
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+# A move copies through page cache (2.8G peak on 11-25); throttle instead of growing.
+MemoryHigh=512M
+ExecStart=/usr/bin/python3 -I %h/.local/lib/host-storage/current/scripts/tmp-evict.py
