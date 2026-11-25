@@ -67,8 +67,11 @@ spec:
             - >-
               mkdir -p $HOME/.android && cp /etc/adbkey/adbkey /etc/adbkey/adbkey.pub $HOME/.android/ &&
               chmod 600 $HOME/.android/adbkey && adb connect 100.72.191.23:5555;
-              exec python3 -u /app/phone_sweep.py --root /data --job flag-d1-2b --url http://100.72.191.23:8083 --key-file /etc/hre/key
-              --mode d1 --model-tag d1-2B-Q4_0 --worker s22-cpu --gate s22 --gate-serial 100.72.191.23:5555
+              exec python3 -u /app/phone_sweep.py --root /data --job full-lfm3 --url http://100.72.191.23:8084 --key-file /etc/hre/key
+              --mode full --model-tag LFM3-1.7B-QAD-Q4_0 --worker s22-cpu-lfm3 --gate s22 --gate-serial 100.72.191.23:5555
+          # flag-d1-2b finished all 330 chunks 11-24 16:57 (server :8083 d1-2B-Q4_0 still up). The S22 then
+          # joined full-lfm3 on :8084 (LFM3 on CPU: hre_slm_server.sh SERIAL 8084 LFM3-1.7B-QAD-Q4_0.gguf
+          # --device none -c 4096 -b 2048 -ub 512 -t 6 --reasoning off). New corpus rows: switch back.
           env:
             - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
             - {name: HOME, value: /tmp/home}
