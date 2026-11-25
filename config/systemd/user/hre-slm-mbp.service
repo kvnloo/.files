@@ -1,0 +1,21 @@
+[Unit]
+Description=HRE labelling llama-server on the MBP CPU (LFM3-1.7B, 127.0.0.1:8090) for the full-lfm3 sweep worker hre-label-mbp
+Documentation=file:docs/fleet/hre-phone-sweep.md
+After=network-online.target
+
+[Service]
+Type=simple
+# Same b12527 build and model the S25 runs (staged from groot /mnt/zer0models/models/phone-slm-20261118).
+Environment=LD_LIBRARY_PATH=%h/.local/share/hre-phone/llama-b12527
+ExecStart=%h/.local/share/hre-phone/llama-b12527/llama-server -m %h/.local/share/hre-phone/models/LFM3-1.7B-QAD-Q4_0.gguf \
+  --host 127.0.0.1 --port 8090 --api-key-file %h/.local/state/phone-native-inference/api-key \
+  -c 4096 -b 2048 -ub 512 -t 5 --reasoning off
+Restart=always
+RestartSec=15
+# Leave room for vllm-sr and k3s on the 8-core / 15 GB MBP.
+Nice=10
+CPUQuota=500%
+MemoryMax=3G
+
+[Install]
+WantedBy=default.target
