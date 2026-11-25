@@ -1,0 +1,12 @@
+#!/bin/sh
+# Install unit-allowlist from this checkout; rerun after editing config/host/groot-units.allow.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+dst="$HOME/.local/lib/unit-allowlist"
+mkdir -p "$dst" "$HOME/.config/systemd/user"
+install -m755 "$root/scripts/unit-allowlist" "$dst/unit-allowlist"
+install -m644 "$root/config/host/groot-units.allow" "$dst/groot-units.allow"
+install -m644 "$root/config/systemd/user/unit-allowlist.service" "$root/config/systemd/user/unit-allowlist.timer" "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now unit-allowlist.timer
+systemctl --user start unit-allowlist.service || true
