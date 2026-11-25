@@ -67,8 +67,11 @@ spec:
             - >-
               mkdir -p $HOME/.android && cp /etc/adbkey/adbkey /etc/adbkey/adbkey.pub $HOME/.android/ &&
               chmod 600 $HOME/.android/adbkey && adb connect 100.72.191.23:5555;
-              exec python3 -u /app/phone_sweep.py --root /data --job flag-d1-2b --url http://100.72.191.23:8083 --key-file /etc/hre/key
-              --mode d1 --model-tag d1-2B-Q4_0 --worker s22-cpu --gate s22 --gate-serial 100.72.191.23:5555
+              exec python3 -u /app/phone_sweep.py --root /data --job full-lfm3 --url http://100.72.191.23:8084 --key-file /etc/hre/key
+              --mode full --model-tag LFM3-1.7B-QAD-Q4_0 --worker s22-cpu-lfm3 --gate s22 --gate-serial 100.72.191.23:5555
+          # flag-d1-2b finished all 330 chunks 11-24 16:57 (server :8083 d1-2B-Q4_0 still up). The S22 then
+          # joined full-lfm3 on :8084 (LFM3 on CPU: hre_slm_server.sh SERIAL 8084 LFM3-1.7B-QAD-Q4_0.gguf
+          # --device none -c 4096 -b 2048 -ub 512 -t 6 --reasoning off). New corpus rows: switch back.
           env:
             - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
             - {name: HOME, value: /tmp/home}
@@ -136,6 +139,44 @@ spec:
         - {name: key, secret: {secretName: hre-phone-slm-key, defaultMode: 0440}}
         - {name: adbkey, secret: {secretName: phone-adbkey, defaultMode: 0440}}
         - {name: platform-tools, hostPath: {path: /home/kvn/.local/share/hre-phone/platform-tools, type: Directory}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+---
+# MBP CPU worker on the same full-lfm3 job (N138, 11-24: the MBP had no lane while the S25 alone had ~21 h
+# of chunks left). Its model server is the host unit hre-slm-mbp.service (config/systemd/user), not a
+# container: the b12527 x64 build needs libgomp/brotli/zstd that python:3.13-slim lacks. No owner gate.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hre-label-mbp, namespace: phones, labels: {app: hre-phone, role: label, phone: mbp}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: hre-phone, role: label, phone: mbp}}
+  template:
+    metadata: {labels: {app: hre-phone, role: label, phone: mbp}}
+    spec:
+      nodeSelector: {kubernetes.io/hostname: mbp}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext: {runAsUser: 1000, runAsGroup: 1000, runAsNonRoot: true, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: label
+          image: python:3.13-slim
+          command: [python3, -u, /app/phone_sweep.py, --root, /data, --job, full-lfm3, --url, "http://127.0.0.1:8090",
+                    --key-file, /etc/hre/key, --mode, full, --model-tag, LFM3-1.7B-QAD-Q4_0, --worker, mbp-cpu, --gate, none]
+          env:
+            - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+            - {name: HOME, value: /tmp/home}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: code, mountPath: /app, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: key, mountPath: /etc/hre, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: code, configMap: {name: hre-phone-code}}
+        - {name: data, hostPath: {path: /home/kvn/hre-phone, type: Directory}}
+        - {name: key, secret: {secretName: hre-phone-slm-key, defaultMode: 0440}}
         - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
 ---
 # Every 10 min: join sweep outputs into /data/phone-labels.jsonl + coverage line in /data/coverage.jsonl.
