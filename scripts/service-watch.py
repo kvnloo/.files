@@ -27,9 +27,24 @@ ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('dash_watch', ROOT / 'dash-log-watch.py')
 dash = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dash)
-DEFAULT = Path('/mnt/zer0models/workspace/zer0/data/operations/service-watch')
-INVENTORY = Path('/mnt/zer0models/workspace/zer0/data/operations/host-hygiene/units.json')
-REAPER_STATUS = DEFAULT.parent / 'worktree-reaper/latest.json'
+# The desktop's historical operations root; a host declaring storage.operations_root in fleet.toml uses its own.
+LEGACY_OPERATIONS = Path('/mnt/zer0models/workspace/zer0/data/operations')
+
+
+def operations_root(release=ROOT.parent, home=None):
+    """This host's report-only operations root. Without a fleet.toml beside the release (an older closure),
+    keep the desktop path; a fleet that does not match this host still fails closed in host_layout."""
+    if not (release / 'fleet.toml').is_file():
+        return LEGACY_OPERATIONS
+    sys.path.insert(0, str(ROOT))
+    import host_layout
+    return host_layout.resolve(release, home=home).operations_root or LEGACY_OPERATIONS
+
+
+OPERATIONS = operations_root()
+DEFAULT = OPERATIONS / 'service-watch'
+INVENTORY = OPERATIONS / 'host-hygiene/units.json'
+REAPER_STATUS = OPERATIONS / 'worktree-reaper/latest.json'
 CODES = {'failed', 'restart_loop', 'journal_error_rate', 'journal_gap', 'stale_file',
          'receipt_error_share', 'error_file_growth', 'timer_stale', 'timer_failed',
          'silent_noop', 'invariant_unavailable', 'unexpected_state', 'heartbeat_stale',

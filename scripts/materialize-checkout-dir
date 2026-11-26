@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Replace a live directory link into a git checkout with an identical real directory.
+
+Dry run unless --apply. Copies every entry exactly (symlinks stay symlinks), verifies
+the copy byte for byte, then swaps it in and records the old link for rollback. It
+never edits the checkout, reloads systemd or restarts anything; afterwards the host
+installer can replace managed files with content-stamped links one by one.
+"""
+import argparse
+import filecmp
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import host_layout  # noqa: E402
+
+
+def entries(root):
+    for base, dirs, files in os.walk(root, followlinks=False):
+        for name in sorted(dirs + files):
+            yield (Path(base) / name).relative_to(root)
+
+
+def same(left, right):
+    if left.is_symlink() or right.is_symlink():
+        return left.is_symlink() and right.is_symlink() and os.readlink(left) == os.readlink(right)
+    if left.is_dir():
+        return right.is_dir() and not right.is_symlink()
+    return (right.is_file() and filecmp.cmp(left, right, shallow=False)
+            and left.stat().st_mode & 0o7777 == right.stat().st_mode & 0o7777)
+
+
+def materialize(live, home, apply):
+    live = Path(os.path.abspath(live))
+    if not live.is_relative_to(home) or not live.is_symlink():
+        raise ValueError(f'not a home directory link: {live}')
+    # Only the exact failure this repairs: the link itself resolves into a checkout.
+    if host_layout.checkout_ancestor(live / 'probe') != live:
+        raise ValueError(f'not a directory link into a git checkout: {live}')
+    target = live.resolve(strict=True)
+    names = list(entries(target))
+    print(f'{"APPLY" if apply else "DRY RUN"}: {live} -> {target}; {len(names)} entries copied exactly; no reload or restart')
+    if not apply:
+        return 0
+    staging = live.with_name(f'.{live.name}.materialize-{os.getpid()}')
+    shutil.copytree(target, staging, symlinks=True, copy_function=shutil.copy2)
+    try:
+        mismatched = [str(n) for n in names if not same(target / n, staging / n)]
+        if mismatched or list(entries(staging)) != names:
+            raise ValueError(f'copy mismatch; nothing swapped: {mismatched[:5]}')
+        backup = home / '.local/state/host-user/backups' / f'materialize-{int(time.time())}-{os.getpid()}'
+        backup.mkdir(parents=True)
+        record = dict(schema='host-user.materialize.v1', live=str(live), link=os.readlink(live),
+                      target=str(target), entries=len(names))
+        (backup / 'record.json').write_text(json.dumps(record, indent=2) + '\n')
+        saved = backup / 'link'
+        os.rename(live, saved)
+        try:
+            os.rename(staging, live)
+        except OSError:
+            os.rename(saved, live)
+            raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    print(f'MATERIALIZED: {live}; rollback: rm -r {live} && mv {saved} {live}')
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('live', type=Path)
+    parser.add_argument('--apply', action='store_true')
+    args = parser.parse_args()
+    return materialize(args.live, Path.home(), args.apply)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
