@@ -1,0 +1,18 @@
+{
+ "schema": "phoneq.eval.models.v1",
+ "note": "job_model is the exact string sent as POST /v1/jobs model. probe tells the runner how to check availability before submitting; a model that fails its probe or whose jobs fail with an availability error is recorded as unavailable, never as 0.",
+ "models": [
+  {"key": "luna",  "job_model": "openai-codex/gpt-6-luna",   "class": "llm", "role": "default driver", "billing": "ChatGPT subscription (owner: Luna/Terra on free promo)", "probe": {"type": "queue"}},
+  {"key": "terra", "job_model": "openai-codex/gpt-6.1-terra", "class": "llm", "role": "mid tier", "billing": "ChatGPT subscription (owner: free promo)", "probe": {"type": "queue"}},
+  {"key": "sol",   "job_model": "openai-codex/gpt-6.1-sol",   "class": "llm", "role": "ceiling", "billing": "ChatGPT subscription", "probe": {"type": "queue"}},
+  {"key": "qwen3-0.6b",  "job_model": "groot-router/qwen3-0.6b-q8",   "class": "slm", "params_b": 0.6, "quant": "Q8_0",   "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "qwen3-0.6b-q8"}},
+  {"key": "qwen3-1.7b",  "job_model": "groot-router/qwen3-1.7b-q4km", "class": "slm", "params_b": 1.7, "quant": "Q4_K_M", "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "qwen3-1.7b-q4km"}},
+  {"key": "qwen3-4b",    "job_model": "groot-router/qwen3-4b-q4km",   "class": "slm", "params_b": 4,   "quant": "Q4_K_M", "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "qwen3-4b-q4km"}},
+  {"key": "qwen3-8b",    "job_model": "groot-router/qwen3-8b-q4km",   "class": "slm", "params_b": 8,   "quant": "Q4_K_M", "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "qwen3-8b-q4km"}},
+  {"key": "qwen3-14b",   "job_model": "groot-router/qwen3-14b-q4km",  "class": "slm", "params_b": 14,  "quant": "Q4_K_M", "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "qwen3-14b-q4km"}},
+  {"key": "nemotron-orch-8b", "job_model": "groot-router/nemotron-orchestrator-8b-q4km", "class": "slm", "params_b": 8, "quant": "Q4_K_M", "endpoint": "http://100.113.138.100:11530/v1", "probe": {"type": "openai_models", "url": "http://100.113.138.100:11530/v1/models", "id": "nemotron-orchestrator-8b-q4km"}},
+  {"key": "qwen2.5vl-3b", "job_model": "ollama/qwen2.5vl:3b", "class": "slm", "params_b": 3, "quant": "ollama default (Q4_K_M)", "vision": true, "endpoint": "http://127.0.0.1:11434", "probe": {"type": "ollama_tags", "url": "http://127.0.0.1:11434/api/tags", "id": "qwen2.5vl:3b"}},
+  {"key": "qwen3-4b-instruct-2507", "job_model": "ollama/qwen3:4b-instruct-2507-q4_K_M", "class": "slm", "params_b": 4, "quant": "Q4_K_M", "endpoint": "http://127.0.0.1:11434", "probe": {"type": "ollama_tags", "url": "http://127.0.0.1:11434/api/tags", "id": "qwen3:4b-instruct-2507-q4_K_M"}},
+  {"key": "gateway-small", "job_model": "gateway/meta/llama-3.1-8b", "class": "slm", "params_b": 8, "probe": {"type": "env", "var": "AI_GATEWAY_API_KEY"}, "default_off": true, "why_off": "no AI_GATEWAY_API_KEY on groot or mbp env (2026-10-28); fx gateway auth expired"}
+ ]
+}
