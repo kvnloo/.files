@@ -634,10 +634,11 @@ For the RTX 2080 Super PC, the Oracle VM, and cursor/cos once identified:
 2. From groot, prove access: `ssh root@<tailnet-ip> true` (Tailscale SSH; approve
    the check URL once) or put groot's key in `/root/.ssh/authorized_keys`.
 3. Add the node under `nodes:` in `config/fleet/nodes.yaml` (copy mbp; set
-   `tailnet_ip`, `ssh_port: 22` for the first enroll, `arch`, `classes`,
+   `ssh_port: 22` for the first enroll, `arch`, `classes`,
    `capabilities`/`toolchains` if it should build, kubelet reservations sized
    to its RAM) and a `node-<name>` flavor in
-   `config/k3s/kueue/queues.yaml`.
+   `config/k3s/kueue/queues.yaml`. Its `tailnet_ip` goes only in the untracked
+   `~/.config/dotfiles/hosts.private.yaml` (see `config/hosts.private.example.yaml`).
 4. Join k3s (docs/k3s/ONBOARDING.md "Joining an agent"), then from groot:
    ```sh
    scripts/fleet enroll <name> --port 22     # hardening; opens 2222 for groot
@@ -732,14 +733,14 @@ The corrected copy-mode job `20261023-165805-1b96` passed 19 study tests,
 three manifest tests and the real producer/consumer check in 30.88 seconds.
 These are peer-reported qualification results, not tests rerun by PhoneFleet.
 
-S22 uses key-only SSH at `100.97.11.22:8022` (`ssh s22`), even when its Android
+S22 uses key-only SSH at `$S22_TAILNET_IP:8022` (`ssh s22`), even when its Android
 Tailscale app is offline. Self-ADB uses `_adb-tls-connect._tcp` mDNS.
 Never touch its launcher UI for a build. Worker affinity excludes core 7.
 
 S25 guest SSH/Tailscale and its audio supervisor were already reachable.
 Pinned ADB port 36065 was stale. Read-only
 `avahi-browse -rt _adb-tls-connect._tcp` found port 38547.
-Guest `adb connect 100.117.226.39:38547` and `getprop ro.product.model` confirmed
+Guest `adb connect $S25_ADB_HOST:38547` and `getprop ro.product.model` confirmed
 SM-S938U before pinning the new serial. Starting only the existing worker runsv
 restored fleet-worker without restarting Tern or SSH. Its tracer was the
 persistent PulseAudio PRoot.
@@ -804,8 +805,8 @@ confirm the model and update the pinned serial.
 
 The spare S22+ (SM-S906U1) runs the same polite lane as the S25. Differences:
 
-- Its guest is the tailnet node `localhost-0` (100.97.11.22); the Android
-  Tailscale app node `galaxy-s22` (100.72.191.23) is the same phone. There is no
+- Its guest is the tailnet node `localhost-0` (`S22_TAILNET_IP`); the Android
+  Tailscale app node `galaxy-s22` (`S22_ADB_HOST`) is the same phone. There is no
   Tailscale SSH in this guest: groot reaches it with key-only OpenSSH on port 8022
   (`ssh s22`; the host key is pinned in groot's `~/.ssh/known_hosts`). The
   registry says `ssh_port: 8022`.
@@ -819,7 +820,8 @@ The spare S22+ (SM-S906U1) runs the same polite lane as the S25. Differences:
 Rebuild or repair it from groot (idempotent):
 
 ```sh
-scripts/fleet-phone-clone.sh root@100.104.42.85 root@100.97.11.22 --port 8022 --model SM-S906U1
+. ~/.config/dotfiles/private.env   # tailnet addresses: see config/private.example.env
+scripts/fleet-phone-clone.sh "root@$S25_TAILNET_IP" "root@$S22_TAILNET_IP" --port 8022 --model SM-S906U1
 scripts/fleet nodes && scripts/fleet health --node s22
 scripts/fleet run s22 --no-src -- uname -a
 ```
@@ -992,8 +994,9 @@ helps; disabling the freezer phone-wide would not keep Linux alive.
    `adb connect <IP:port on the Wireless debugging screen>`; `adb devices` must
    list it as `device`.
 4. From groot: `pacman -S --needed python` in the guest if missing, then
-   `scripts/fleet-phone-clone.sh root@100.104.42.85 root@<guest-ip> --port <port> --model <model>`.
-   Add the phone under `nodes:` (copy `galaxy-s22plus`).
+   `scripts/fleet-phone-clone.sh "root@$S25_TAILNET_IP" root@<guest-ip> --port <port> --model <model>`.
+   Add the phone under `nodes:` (copy `galaxy-s22plus`) and its `tailnet_ip` to the
+   untracked `~/.config/dotfiles/hosts.private.yaml` (see `config/hosts.private.example.yaml`).
 
 ## Tailscale SSH
 
@@ -1052,7 +1055,7 @@ a claim that lease expiry or complete live-reference classification was establis
 
 Phone reports nest `guest` (the same Python core over strict SSH) and `native`
 inventory, summing would-reap bytes. S25 guest is pinned to
-`root@100.104.42.85`, Python hostname `localhost`, home `/root`.
+`root@${S25_TAILNET_IP}` (filled from the private overlay), Python hostname `localhost`, home `/root`.
 S22 alias `s22` timed out during identity discovery; its null hostname is
 deliberately failclosed pending an observed identity and config update.
 Unavailable guest/native lanes retain the other lane's receipt and mark the

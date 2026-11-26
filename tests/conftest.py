@@ -1,4 +1,10 @@
 """Keep operator-machine checks separate from the clean-runner suite."""
+import os
+from pathlib import Path
+
+# The clean-runner suite reads the reserved-example private overlay, never the operator's
+# real ~/.config/dotfiles (tailnet addresses stay out of test output and assertions).
+PRIVATE_FIXTURE = Path(__file__).resolve().parent / "fixtures/private-overlay"
 
 
 def pytest_addoption(parser):
@@ -11,6 +17,8 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    if not config.getoption("--run-live-system"):
+        os.environ["DOTFILES_PRIVATE_DIR"] = str(PRIVATE_FIXTURE)
     config.addinivalue_line(
         "markers",
         "live_system: checks deployed host state or real provider accounts (explicit opt-in)",

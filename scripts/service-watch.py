@@ -203,14 +203,29 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError('redirect_refused')
 
 
-LOCAL_URL = 'http://100.113.138.100:11530/v1/chat/completions'
+sys.path.insert(0, str(ROOT))
+import private_overlay  # noqa: E402
+
+# groot's llama.cpp router (config/systemd/user/z0-farm-llama.service) listens on groot's
+# tailnet address, which only the untracked private overlay names. Without it the raw
+# local tier is disabled loudly (startup log + every triage tier records the reason);
+# there is no hard-coded fallback address.
+LOCAL_PORT = 11530
+try:
+    LOCAL_HOST = private_overlay.require('GROOT_TAILNET_IP')
+    LOCAL_URL = f'http://{LOCAL_HOST}:{LOCAL_PORT}/v1/chat/completions'
+    LOCAL_ROUTE_ERROR = None
+except private_overlay.PrivateOverlayError as exc:
+    LOCAL_HOST, LOCAL_URL, LOCAL_ROUTE_ERROR = None, 'http://private-overlay-unset.invalid/', str(exc)
 
 
 def post(url, body, timeout=40):
     if url == LOCAL_URL:
+        if LOCAL_ROUTE_ERROR:
+            raise private_overlay.PrivateOverlayError(LOCAL_ROUTE_ERROR)
         addresses = command(['ip', '-j', 'address', 'show'], 5)
         if addresses.returncode or not any(
-                address.get('local') == '100.113.138.100'
+                address.get('local') == LOCAL_HOST
                 for interface in json.loads(addresses.stdout)
                 for address in interface.get('addr_info', [])):
             raise ValueError('raw_local_route_is_not_on_this_host')
@@ -923,8 +938,9 @@ class Watch:
             # Do not persist or forward local free text: it may repeat private input.
             tiers.append({'model': 'qwen3-0.6b-q8', 'ok': True, 'severity': local['severity'],
                           'confidence': local['confidence'], 'latency_ms': (time.monotonic() - start) * 1000})
-        except Exception:
-            tiers.append({'model': 'qwen3-0.6b-q8', 'ok': False, 'latency_ms': (time.monotonic() - start) * 1000})
+        except Exception as exc:
+            tiers.append({'model': 'qwen3-0.6b-q8', 'ok': False, 'latency_ms': (time.monotonic() - start) * 1000,
+                          **({'reason': 'private_overlay_missing'} if isinstance(exc, private_overlay.PrivateOverlayError) else {})})
         projected = None
         sampled = self.store.get('quality_samples', 0)
         if raw and sampled < 20:
@@ -1109,6 +1125,8 @@ def main():
     parser.add_argument('target', nargs='?')
     parser.add_argument('--scope', choices=['user', 'system'], default='user')
     args = parser.parse_args()
+    if LOCAL_ROUTE_ERROR and args.action == 'run':
+        print(f'service-watch: local raw-log triage disabled: {LOCAL_ROUTE_ERROR}', file=sys.stderr, flush=True)
     if args.action == 'status':
         path = args.state / 'status.json'
         status = json.loads(path.read_text()) if path.exists() else {}

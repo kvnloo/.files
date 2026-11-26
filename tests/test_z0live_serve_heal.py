@@ -41,9 +41,9 @@ def _jq_filter() -> str:
 
 @pytest.mark.skipif(not shutil.which('jq'), reason='jq not installed')
 @pytest.mark.parametrize('web, present', [
-    ({'h.ts.net:8791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:8791'}}}}, True),
-    ({'h.ts.net:18791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:8791'}}}}, False),
-    ({'h.ts.net:8791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:1'}}}}, False),
+    ({'h.example.ts.net:8791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:8791'}}}}, True),
+    ({'h.example.ts.net:18791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:8791'}}}}, False),
+    ({'h.example.ts.net:8791': {'Handlers': {'/': {'Proxy': 'http://127.0.0.1:1'}}}}, False),
     (None, False),
 ])
 def test_check_detects_missing_or_wrong_route(web, present):

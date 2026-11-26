@@ -2,7 +2,8 @@
 # Expect GATEWAY_OK: gateway reachable, an unauthenticated GitHub read refused (401),
 # the host listener behind it, the API, the tailnet and the LAN all blocked.
 # Needs ghcache running on groot (oss-factory tools/factory/install-user-units.sh).
-#   kubectl create -f config/k3s/smoke/gateway-job.yaml
+#   scripts/private-overlay render config/k3s/smoke/gateway-job.yaml | kubectl create -f -
+# (groot's tailnet address is filled from the untracked private overlay.)
 # Pin to a node: add spec.template.spec.nodeSelector {kubernetes.io/hostname: mbp}.
 apiVersion: batch/v1
 kind: Job
@@ -30,7 +31,7 @@ spec:
         - -c
         - "fail=0\nexpect() { want=$1; shift; if \"$@\" >/dev/null 2>&1; then got=open; else got=blocked; fi\n  echo \"$want/$got $*\"; [ \"$want\" = \"$got\" ] || fail=1; }\necho node=$NODE_NAME\nexpect\
           \ open    nc -z -w 5 factory-gateway.z0.svc 8080\nexpect open    wget -q -O /dev/null -T 5 http://factory-gateway.z0.svc:8080/healthz\nexpect blocked wget -q -O /dev/null -T 5 http://factory-gateway.z0.svc:8080/gh/repos/kvnloo/.files\n\
-          expect blocked nc -z -w 5 10.42.0.1 18091\nexpect blocked nc -z -w 5 10.42.0.1 18090\nexpect blocked nc -z -w 5 100.113.138.100 6443\nexpect blocked nc -z -w 5 \"$KUBERNETES_SERVICE_HOST\" \"\
+          expect blocked nc -z -w 5 10.42.0.1 18091\nexpect blocked nc -z -w 5 10.42.0.1 18090\nexpect blocked nc -z -w 5 ${GROOT_TAILNET_IP} 6443\nexpect blocked nc -z -w 5 \"$KUBERNETES_SERVICE_HOST\" \"\
           $KUBERNETES_SERVICE_PORT\"\nexpect blocked nc -z -w 5 192.168.1.1 80\n[ $fail = 0 ] && echo GATEWAY_OK || { echo GATEWAY_FAIL; exit 1; }\n"
         env:
         - name: NODE_NAME

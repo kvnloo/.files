@@ -46,6 +46,7 @@ import fleet_boat_pool as boat_pool
 from artifact_lease import create as create_artifact_lease, shell_create as artifact_lease_command, terminal_command
 from fleet_source import source_snapshot
 from fleet_queue_health import reconcile as reconcile_queue_health, recovery_ready
+import private_overlay
 
 BOAT = shutil.which("boat") or str(Path.home() / ".local/bin/boat")  # systemd PATH lacks ~/.local/bin
 REPO = Path(__file__).resolve().parent.parent
@@ -69,7 +70,15 @@ def merge(a, b):
 
 
 def registry():
-    reg = yaml.safe_load(REGISTRY.read_text())
+    """nodes.yaml merged with the untracked hosts.private.yaml (tailnet addresses)."""
+    try:
+        reg = private_overlay.merge_registry(yaml.safe_load(REGISTRY.read_text()))
+    except private_overlay.PrivateOverlayError as exc:
+        die(str(exc))
+    missing = private_overlay.missing_node_keys(
+        reg["nodes"], {name: ["tailnet_ip"] for name, n in reg["nodes"].items() if n.get("kind") != "boat"})
+    if missing:
+        die(str(private_overlay.hosts_error(missing)))
     nodes = {}
     for name, n in reg["nodes"].items():
         defaults = {} if n.get("kind") == "phone" else {

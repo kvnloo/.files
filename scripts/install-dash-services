@@ -5,7 +5,11 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_overlay  # noqa: E402
 
 BRIDGE = 'f0362444cbb885d25e30f2818a1be78990690df1'
 APP = 'd5c4c17e50a22eef71c821663d07072c113f0ecf'
@@ -18,6 +22,15 @@ FILES = {
     'config/dash-services/metro.env': '.config/dash-services/metro.env',
     'scripts/dash-wait-tailnet': '.local/lib/dash-services/current/dash-wait-tailnet',
 }
+
+def render(repo, source, env=None):
+    """Installed bytes of a tracked file. systemd's EnvironmentFile= does not expand
+    variables, so ${KEY} in config/dash-services/*.env is filled from the private overlay
+    here, at deploy time; a missing key stops the install before anything is linked."""
+    data = (repo / source).read_bytes()
+    if source.endswith('.env'):
+        data = private_overlay.expand(data.decode(), env).encode()
+    return data
 
 def run(*args, **kwargs):
     subprocess.run(args, check=True, **kwargs)
@@ -36,6 +49,10 @@ def main():
     args = parser.parse_args()
     home = Path.home()
     repo = Path(__file__).resolve().parent.parent
+    try:
+        rendered = {source: render(repo, source) for source in FILES}
+    except private_overlay.PrivateOverlayError as exc:
+        raise SystemExit(f'install-dash-services: {exc}')
     base = home / '.local/lib/dash'
     base.mkdir(parents=True, exist_ok=True)
     args.release_root.mkdir(parents=True, exist_ok=True)
@@ -57,13 +74,13 @@ def main():
     digest = hashlib.sha256()
     for source in sorted(FILES):
         digest.update(source.encode())
-        digest.update((repo / source).read_bytes())
+        digest.update(rendered[source])
     stamp = home / '.local/lib/dash-services' / digest.hexdigest()
     stamp.mkdir(parents=True, exist_ok=True)
     for source in FILES:
         target = stamp / Path(source).name
-        target.write_bytes((repo / source).read_bytes())
-        target.chmod(0o755 if source.startswith('scripts/') else 0o644)
+        target.write_bytes(rendered[source])
+        target.chmod(0o755 if source.startswith('scripts/') else 0o600 if source.endswith('.env') else 0o644)
     link(stamp, stamp.parent / 'current')
     for source, target in FILES.items():
         if source.startswith('scripts/'):

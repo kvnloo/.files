@@ -1,7 +1,7 @@
 {
   "package": "app.dash.mobile",
   "hardware_serial": "R5CY93G2WNH",
-  "phone_host": "100.117.226.39",
+  "phone_host": "100.64.0.13",
   "phone_state": "/home/kvn/.local/state/z0live/phone-adb.json",
   "phone_reconnect": "/home/kvn/.local/bin/phone-adb",
   "provider": "openai-codex",

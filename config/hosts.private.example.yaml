@@ -1,0 +1,28 @@
+# Structured private host data: copy to ~/.config/dotfiles/hosts.private.yaml (or
+# $DOTFILES_PRIVATE_DIR/hosts.private.yaml). Never committed (.gitignore).
+#
+# scripts/fleet deep-merges `nodes` over config/fleet/nodes.yaml, so only the values the
+# public registry leaves out belong here. A node listed here must exist in nodes.yaml.
+# Any string may be a ${KEY} reference into private.env, so each address is written once;
+# an unset ${KEY} is an error. Literal placeholder values are shown in comments.
+#
+# Required: tailnet_ip for every node in nodes.yaml except kind: boat.
+# Optional: android.adb_host (the phone's Android Tailscale app address; informational,
+#           read by operators and `fleet nodes --json` consumers).
+nodes:
+  groot:
+    tailnet_ip: ${GROOT_TAILNET_IP}        # e.g. 100.64.0.10
+  mbp:
+    tailnet_ip: ${MBP_TAILNET_IP}          # e.g. 100.64.0.11
+  omarchy-phone:
+    tailnet_ip: ${S25_TAILNET_IP}          # e.g. 100.64.0.12 (Omarchy guest)
+    android:
+      adb_host: ${S25_ADB_HOST}            # e.g. 100.64.0.13 (Android Tailscale app)
+  galaxy-s22plus:
+    tailnet_ip: ${S22_TAILNET_IP}          # e.g. 100.64.0.14 (localhost-0 guest)
+    android:
+      adb_host: ${S22_ADB_HOST}            # e.g. 100.64.0.15
+  lenovo-tab:
+    tailnet_ip: ${TAB_TAILNET_IP}          # e.g. 100.64.0.16
+    android:
+      adb_host: ${TAB_TAILNET_IP}

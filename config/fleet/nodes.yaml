@@ -1,5 +1,9 @@
 # Fleet registry: the one place that says which tailnet devices take work and how.
-# Read by scripts/fleet (on groot). No secrets here; tailnet IPs are not secrets.
+# Read by scripts/fleet (on groot). No secrets and no tailnet identity here: every
+# node's tailnet_ip (and a phone's android.adb_host) comes from the untracked
+# $DOTFILES_PRIVATE_DIR/hosts.private.yaml (default ~/.config/dotfiles), which
+# scripts/fleet merges over this file. See config/hosts.private.example.yaml.
+# A non-boat node without a tailnet_ip there is an error, never a default.
 #
 # role:      server | worker
 # ssh:       host lane access as the locked-down `agentjob` user (key-only sshd on
@@ -48,7 +52,6 @@ nodes:
       tasks_max: 4096
   mbp:
     role: worker
-    tailnet_ip: 100.78.215.21
     ssh_port: 2222
     arch: amd64
     classes: [cpu-heavy, build, render]
@@ -104,7 +107,6 @@ nodes:
     kind: phone
     aliases: [s25]
     transport: adb
-    tailnet_ip: 100.104.42.85
     ssh_user: root          # PRoot fake root = the Omalauncher app's Android uid
     ssh_port: 22            # verified existing guest listener; not Android's SSH
     arch: arm64
@@ -118,7 +120,7 @@ nodes:
       bun: 1.3.14
     phone_packages: [go, rust, gcc]
     android:                # groot's adb to the phone itself (fleet health; read-only)
-      adb_host: 100.117.226.39   # Android Tailscale app IP; wireless-debugging port changes
+      # adb_host (hosts.private.yaml): Android Tailscale app IP; wireless-debugging port changes
       serial: R5CY93G2WNH       # hardware identity, not a pinned adb endpoint
       revive: false         # true: reopen Omalauncher when its service is gone and the screen is off
     health:
@@ -132,7 +134,6 @@ nodes:
     kind: phone
     aliases: [s22, localhost-0]
     transport: adb
-    tailnet_ip: 100.97.11.22
     ssh_user: root
     ssh_port: 8022
     arch: arm64
@@ -143,7 +144,6 @@ nodes:
     model: SM-S906U1
     phone_packages: [nodejs, bun, go, rust, gcc]
     android:
-      adb_host: 100.72.191.23
       serial: RFCTA1RZAQY       # discovery verifies every transport with ro.serialno
       revive: false
     health:
@@ -158,14 +158,13 @@ nodes:
     kind: phone
     aliases: [tab]
     transport: adb
-    tailnet_ip: 100.94.207.126   # Android Tailscale app; adb over the tailnet on :5555
+    # tailnet_ip (hosts.private.yaml): the Android Tailscale app; adb over the tailnet on :5555
     arch: arm64
     classes: [phone, test]
     capabilities: [android-native, adb-host-lane]
     taints: []
     model: TB350FU
     android:
-      adb_host: 100.94.207.126
       serial: HVA5TTYB
       revive: false
     health:
@@ -175,7 +174,6 @@ nodes:
     lane: {}
   groot:
     role: server
-    tailnet_ip: 100.113.138.100
     arch: amd64
     classes: [render]
     # groot is the owner's desktop and the control plane: report only, never cordon

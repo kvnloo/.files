@@ -2,4 +2,11 @@
 # O10 applies before a phone cap can enter a commit.
 set -eu
 root=$(git rev-parse --show-toplevel)
+# No tailnet address, tailnet name or secret-shaped value enters a commit of a repo
+# that carries the check (.files does; the private overlay lives in ~/.config/dotfiles).
+# Path/mount/email rules stay off until their existing findings are cleaned up.
+if [ -x "$root/scripts/public-leak-check" ]; then
+  (cd "$root" && scripts/public-leak-check --skip personal-path,mount-path,personal-email) ||
+    { echo 'pre-commit: public-leak-check found private values (file:line:rule above); move them to the private overlay' >&2; exit 1; }
+fi
 exec z0-guard phone-caps --root "$root"

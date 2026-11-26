@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+# Vendored from kvnloo/z0 scripts/public-leak-check at c45d3661726debfe5026a4a2c8dfc5ed0b41acd8.
+# Same author; this file keeps z0's license (GPL-3.0, see https://github.com/kvnloo/z0).
+# Local change: --skip RULE[,RULE] (this repo still has known personal-path,
+# mount-path and personal-email findings; tailnet and secret rules are enforced).
+"""Fail when a public tree holds host-specific or secret values.
+
+Usage:
+  scripts/public-leak-check [PATH ...] [--denylist FILE] [--skip RULE[,RULE...]]
+
+With no PATH it scans the git-tracked files of the current repository; a PATH may be
+a file or a directory (walked, .git skipped). Patterns are generic (they name no real
+host): tailnet addresses (100.64.0.0/10 and the Tailscale IPv6 range), tailnet names
+(*.ts.net, tail<hex>), secret-shaped values, personal home paths (/home/<user>,
+/Users/<user>), mount paths (/mnt/<x>) and personal email addresses. Documentation
+fixtures stay allowed: 100.64.0.x, 100.100.100.100 (Tailscale's fixed service address,
+the same on every tailnet), example.ts.net, placeholder users and example/noreply mail.
+
+--denylist FILE adds one literal per line (blank lines and # comments skipped).
+--overlay [DIR] adds every private literal of a z0-hosts instance (absolute paths and
+device serials from hosts/*/*.toml; default DIR: $Z0_HOSTS_DIR or ~/.config/z0-hosts),
+so the private values never need to be written down a second time.
+
+Findings name the file, the line and the rule only. A matched value is never printed:
+the output of a check on a public repo can itself be public (CI logs).
+
+Exit 0 clean, 1 on findings, 2 on usage errors. Stdlib only (Python 3.10+).
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+TAILNET_V4 = re.compile(r"(?<![\d.])100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.(\d{1,3})\.(\d{1,3})(?!\d)")
+TS_NAME = re.compile(r"(?i)\b([a-z0-9][a-z0-9-]*)\.ts\.net\b")
+RULES = {
+    "tailnet-ipv6": re.compile(r"(?i)(?<![0-9a-f:])fd7a:115c:a1e0:[0-9a-f:]*[0-9a-f]"),
+    "tailnet-id": re.compile(r"(?i)\btail[0-9a-f]{4,}\b"),
+    "tailscale-auth-key": re.compile(r"\btskey-[A-Za-z0-9-]{10,}"),
+    "private-key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    "github-token": re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,})"),
+    "anthropic-key": re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}"),
+    "openai-style-key": re.compile(r"\bsk-[A-Za-z0-9]{32,}"),
+    "aws-access-key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    "slack-token": re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
+    "google-api-key": re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+}
+PLACEHOLDER_USERS = r"(?:user|username|runner|example|someone|alice|bob|you|me|name|USER|USERNAME)"
+RULES.update({
+    "personal-path": re.compile(
+        r"(?<![\w.-])/(?:home|Users)/(?!" + PLACEHOLDER_USERS + r"(?![\w.-]))[A-Za-z_][\w.-]*"),
+    "mount-path": re.compile(r"(?<![\w.-])/mnt/[A-Za-z0-9][\w.-]*"),
+    "personal-email": re.compile(
+        r"(?i)\b[a-z0-9._%+-]+@(?!(?:[a-z0-9-]+\.)*(?:example\.(?:com|org|net)|example|localhost|"
+        r"users\.noreply\.github\.com|noreply\.github\.com|anthropic\.com)\b)"
+        r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|me|co|us|edu)\b"),
+})
+ALLOWED_V4 = {"100.100.100.100"}
+MAX_BYTES = 5 * 1024 * 1024
+
+
+def findings_in_text(text: str, denylist=(), skip=frozenset()):
+    """Yield (line_no, rule) for each finding. The matched value is never returned."""
+    yield from ((no, rule) for no, rule in _findings(text, denylist) if rule not in skip)
+
+
+def _findings(text: str, denylist=()):
+    found = []
+    for m in TAILNET_V4.finditer(text):
+        if not (m.group(1) == "64" and m.group(2) == "0") and m.group(0) not in ALLOWED_V4:
+            found.append((m.start(), "tailnet-ipv4"))
+    for m in TS_NAME.finditer(text):
+        if m.group(1).lower() != "example":
+            found.append((m.start(), "tailnet-name"))
+    for rule, rx in RULES.items():
+        found += [(m.start(), rule) for m in rx.finditer(text)
+                  if not (rule == "personal-email" and m.group(0).lower().endswith(".ts.net"))]
+    for lit in denylist:
+        pos = text.find(lit)
+        while pos != -1:
+            # An absolute path literal must start a path: "/srv/x" is not found in "~/srv/x".
+            if not (lit.startswith("/") and pos and (text[pos - 1].isalnum() or text[pos - 1] in "~._-")):
+                found.append((pos, "denylist"))
+            pos = text.find(lit, pos + 1)
+    for pos, rule in sorted(found):
+        yield text.count("\n", 0, pos) + 1, rule
+
+
+def tracked_files(cwd: Path):
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=cwd, capture_output=True, check=True)
+    return [cwd / p for p in out.stdout.decode().split("\0") if p]
+
+
+def walk(path: Path):
+    if path.is_file():
+        yield path
+        return
+    for dirpath, dirnames, filenames in os.walk(path):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        for name in filenames:
+            yield Path(dirpath) / name
+
+
+def read_denylist(path: str):
+    lines = Path(path).read_text().splitlines()
+    return [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")]
+
+
+def _flat_toml(text: str) -> dict:
+    """Python 3.10 fallback: `key = "string"` and `key = ["s", ...]` pairs only (all the
+    overlay schema holds), flattened; anything else is ignored."""
+    out: dict = {}
+    for line in text.splitlines():
+        m = re.match(r'\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$', line)
+        if not m:
+            continue
+        strings = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(2))
+        if strings:
+            out.setdefault(m.group(1), []).extend(strings)
+    return {k: v[0] if len(v) == 1 else v for k, v in out.items()}
+
+
+def overlay_literals(root: Path):
+    """Private literals of a z0-hosts instance: absolute paths and device serials."""
+    try:
+        import tomllib
+        loads = tomllib.loads
+    except ModuleNotFoundError:  # Python 3.10: a denylist must never silently go empty
+        loads = _flat_toml
+    out = set()
+
+    def visit(node, key=""):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                visit(v, k)
+        elif isinstance(node, list):
+            for v in node:
+                visit(v, key)
+        elif isinstance(node, str) and len(node) >= 6 and (node.startswith("/") or key == "serial"):
+            out.add(node.rstrip("/"))
+
+    for f in sorted(root.glob("hosts/*/*.toml")):
+        try:
+            visit(loads(f.read_text()))
+        except (OSError, ValueError):
+            continue
+    return sorted(out)
+
+
+def scan(paths, denylist=(), skip=frozenset()):
+    results = []
+    for path in paths:
+        try:
+            if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_BYTES:
+                continue
+            text = path.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        results += [(path, no, rule) for no, rule in findings_in_text(text, denylist, skip)]
+    return results
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="public-leak-check", description=__doc__.splitlines()[0])
+    ap.add_argument("paths", nargs="*", help="files or directories (default: git-tracked files)")
+    ap.add_argument("--denylist", metavar="FILE", help="private literals that must not appear")
+    ap.add_argument("--overlay", metavar="DIR", nargs="?", const="",
+                    help="also deny the private literals of a z0-hosts instance "
+                         "(default DIR: $Z0_HOSTS_DIR or ~/.config/z0-hosts)")
+    ap.add_argument("--skip", metavar="RULE[,RULE]", action="append", default=[],
+                    help="rules not to report (repeatable)")
+    args = ap.parse_args(argv)
+    known = {"tailnet-ipv4", "tailnet-name", "denylist", *RULES}
+    skip = {r for value in args.skip for r in value.split(",") if r}
+    if skip - known:
+        print(f"public-leak-check: unknown rule(s): {', '.join(sorted(skip - known))}", file=sys.stderr)
+        return 2
+    try:
+        denylist = read_denylist(args.denylist) if args.denylist else []
+    except OSError as exc:
+        print(f"public-leak-check: cannot read denylist: {exc.strerror}", file=sys.stderr)
+        return 2
+    if args.overlay is not None:
+        root = Path(args.overlay or os.environ.get("Z0_HOSTS_DIR") or "~/.config/z0-hosts").expanduser()
+        if not (root / "hosts").is_dir():
+            print(f"public-leak-check: no z0-hosts instance at {root}", file=sys.stderr)
+            return 2
+        denylist += overlay_literals(root)
+    if args.paths:
+        missing = [p for p in args.paths if not Path(p).exists()]
+        if missing:
+            print(f"public-leak-check: no such path: {', '.join(missing)}", file=sys.stderr)
+            return 2
+        files = [f for p in args.paths for f in walk(Path(p))]
+    else:
+        try:
+            files = tracked_files(Path.cwd())
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("public-leak-check: not a git repository; pass PATH", file=sys.stderr)
+            return 2
+    results = scan(files, denylist, skip)
+    for path, no, rule in results:
+        print(f"{path}:{no}: {rule}")
+    print(f"public-leak-check: {len(files)} file(s), {len(denylist)} denylist literal(s), "
+          f"{len(skip)} skipped rule(s), {len(results)} finding(s)", file=sys.stderr)
+    return 1 if results else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

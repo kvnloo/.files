@@ -62,6 +62,21 @@ class DriftTests(unittest.TestCase):
         self.live.unlink()
         self.assertEqual(self.run_audit()['drift'][0]['kind'], 'missing_file')
 
+    def test_private_overlay_render_compares_filled_source(self):
+        (self.root / self.source).write_text('HOST=${GROOT_TAILNET_IP}\n')
+        self.manifest('render="private-overlay"\n')
+        with patch.dict(drift.os.environ, {'GROOT_TAILNET_IP': '100.64.0.10'}):
+            self.live.write_text('HOST=100.64.0.10\n')
+            self.assertEqual(self.run_audit()['status'], 'clean')
+            self.live.write_text('HOST=100.64.0.99\n')
+            self.assertEqual(self.run_audit()['drift'][0]['kind'], 'changed_file')
+        with tempfile.TemporaryDirectory() as empty, \
+             patch.dict(drift.os.environ, {'DOTFILES_PRIVATE_DIR': empty}):
+            drift.os.environ.pop('GROOT_TAILNET_IP', None)
+            report = self.run_audit()
+        self.assertEqual(report['drift'][0]['kind'], 'missing_private_key')
+        self.assertIn('GROOT_TAILNET_IP', report['drift'][0]['detail'])
+
     def test_missing_manifest_unknown_not_clean(self):
         (self.root / 'config/host/groot.toml').unlink()
         self.assertEqual(self.run_audit()['status'], 'unknown')

@@ -1,10 +1,13 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import patch
 
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault('DOTFILES_PRIVATE_DIR', str(Path(__file__).resolve().parents[1] / 'tests/fixtures/private-overlay'))
 SPEC = importlib.util.spec_from_file_location('lease_controller', Path(__file__).resolve().parents[1] / 'scripts/artifact-lease-controller.py')
 c = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(c)
@@ -61,6 +64,13 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(config['pressure_free_percent'], 10)
         self.assertIn('not measured calibration or a resource cap', config['pressure_threshold_basis'])
         self.assertEqual(set(config['nodes']), {'groot', 'mbp', 's22', 's25'})
+
+    def test_guest_address_comes_from_private_overlay(self):
+        config = json.loads((c.ROOT / 'config/fleet/artifact-leases.json').read_text())
+        self.assertEqual(config['nodes']['s25']['guest']['host'], 'root@${S25_TAILNET_IP}')
+        self.assertEqual(c.private_overlay.expand_tree(config['nodes']['s25'])['guest']['host'], 'root@100.64.0.12')
+        with self.assertRaisesRegex(c.private_overlay.PrivateOverlayError, 'S25_TAILNET_IP'):
+            c.private_overlay.expand_tree(config['nodes']['s25'], env={})
 
     def test_observed_native_visibility_is_not_canned_unknown(self):
         node = {'serial': 'R5CY93G2WNH', 'model': 'SM-S938U'}

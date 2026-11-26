@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault('DOTFILES_PRIVATE_DIR', str(ROOT / 'tests/fixtures/private-overlay'))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import fleet_phone_python as python_jobs
 
@@ -125,17 +127,17 @@ class StagingSelectionTests(unittest.TestCase):
 
     def test_phone_pool_skips_full_guest_for_this_source_size(self):
         selected, measurements = self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1024})
-        self.assertEqual(selected, 'root@100.97.11.22')
+        self.assertEqual(selected, 'root@100.64.0.14')
         self.assertEqual(measurements, 1)
 
     def test_phone_pool_accepts_exact_fit_and_holds_when_no_guest_fits(self):
         self.assertEqual(self.selection({'omarchy-phone': 1024, 'galaxy-s22plus': 2048})[0],
-                         'root@100.104.42.85')
+                         'root@100.64.0.12')
         self.assertIsNone(self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1023})[0])
 
     def test_pinned_phone_does_not_gain_a_resource_admission_floor(self):
         selected, measurements = self.selection({'omarchy-phone': 0, 'galaxy-s22plus': 1024}, pinned=True)
-        self.assertEqual(selected, 'root@100.104.42.85')
+        self.assertEqual(selected, 'root@100.64.0.12')
         self.assertEqual(measurements, 0)
 
 

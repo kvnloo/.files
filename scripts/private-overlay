@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Read the untracked private network overlay (see scripts/private_overlay.py).
+
+  private-overlay get KEY            print one private.env value (exit 1 when unset)
+  private-overlay render FILE|-      print FILE with every ${KEY} filled (exit 1 on any unset key)
+  private-overlay check              every key of config/private.example.env and every node of
+                                     config/hosts.private.example.yaml is filled; values are
+                                     never printed
+  private-overlay path               print the overlay directory
+
+Example: scripts/private-overlay render config/k3s/smoke/isolation-job.yaml | kubectl create -f -
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_overlay as po  # noqa: E402
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+def check() -> int:
+    problems = []
+    example = po.parse_env((REPO / po.EXAMPLE_ENV).read_text(), po.EXAMPLE_ENV)
+    env = po.values()
+    problems += [f"{po.ENV_FILE}: {key} unset" for key in example if not env.get(key)]
+    try:
+        import yaml
+        wanted = yaml.safe_load((REPO / po.EXAMPLE_HOSTS).read_text())["nodes"]
+        registry = po.merge_registry(yaml.safe_load((REPO / "config/fleet/nodes.yaml").read_text()))
+        needs = {name: ["tailnet_ip"] for name, node in registry["nodes"].items() if node.get("kind") != "boat"}
+        for name, node in wanted.items():
+            if isinstance(node.get("android"), dict) and "adb_host" in node["android"]:
+                needs.setdefault(name, []).append("android.adb_host")
+        problems += [f"{po.HOSTS_FILE}: {path} unset" for path in po.missing_node_keys(registry["nodes"], needs)]
+    except po.PrivateOverlayError as exc:
+        problems.append(str(exc))
+    for line in problems:
+        print(f"private-overlay: {line}", file=sys.stderr)
+    print(f"private-overlay: {po.private_dir()}: {len(problems)} problem(s)", file=sys.stderr)
+    return 1 if problems else 0
+
+
+def main(argv) -> int:
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0 if argv else 2
+    try:
+        if argv[0] == "get" and len(argv) == 2:
+            print(po.require(argv[1]))
+        elif argv[0] == "render" and len(argv) == 2:
+            text = sys.stdin.read() if argv[1] == "-" else Path(argv[1]).read_text()
+            sys.stdout.write(po.expand(text))
+        elif argv[0] == "check" and len(argv) == 1:
+            return check()
+        elif argv[0] == "path" and len(argv) == 1:
+            print(po.private_dir())
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except po.PrivateOverlayError as exc:
+        print(f"private-overlay: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

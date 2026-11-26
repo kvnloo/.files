@@ -25,6 +25,8 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_overlay  # noqa: E402
 STATE = Path(os.environ.get('FLEET_STATE', Path.home() / '.local/state/fleet'))
 AUTHORITY = 'historical observation; current goal_lock overrides'
 CACHE_PATHS = ('/home/agentjob/.cache/uv', '/home/agentjob/.npm/_cacache',
@@ -90,7 +92,12 @@ def read_registry(path, errors):
     if not isinstance(registry.get('nodes'), dict):
         errors.append(f'{path}: expected fleet registry object with nodes mapping')
         return {}
-    return registry
+    # Tailnet addresses live only in the untracked hosts.private.yaml (never in exports).
+    try:
+        return private_overlay.merge_registry(registry, strict=False)
+    except private_overlay.PrivateOverlayError as exc:
+        errors.append(f'private overlay: {exc}')
+        return registry
 
 
 def node_settings(registry, node, section):
@@ -656,7 +663,8 @@ def cache_action(registry, apply=False):
         if not 1 <= port <= 65535:
             raise ValueError('bad port')
     except ValueError:
-        return {'status': 'held', 'reason': 'valid mbp registry address and port required'}
+        return {'status': 'held', 'reason': 'valid mbp registry address and port required '
+                '(tailnet_ip comes from the private overlay hosts.private.yaml)'}
     remote = 'python3 -c ' + shlex.quote(PRUNE_PROGRAM) + ' ' + shlex.quote(str(threshold))
     command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'IdentitiesOnly=yes',
                '-i', os.environ.get('FLEET_SSH_KEY', str(Path.home() / '.ssh/id_ed25519')),

@@ -10,6 +10,8 @@ import time
 import unittest
 from unittest.mock import patch
 
+# Reserved example tailnet addresses (fixture overlay), also under plain `unittest`.
+os.environ.setdefault("DOTFILES_PRIVATE_DIR", str(Path(__file__).resolve().parents[1] / "tests/fixtures/private-overlay"))
 SPEC = importlib.util.spec_from_file_location("dashwatch", Path(__file__).resolve().parents[1] / "scripts/dash-log-watch.py")
 assert SPEC is not None and SPEC.loader is not None
 w = importlib.util.module_from_spec(SPEC)
@@ -26,16 +28,22 @@ class GateTests(unittest.TestCase):
             qualification.write_text(json.dumps({"ok": True, "provider": "openai-codex", "requested_model": w.MODEL,
                 "returned_model": w.MODEL, "catalog": {"slug": w.MODEL, "fresh": True}}))
             config = {"package": w.PACKAGE, "model": w.MODEL, "provider": "openai-codex",
-                "hardware_serial": "R5CY93G2WNH", "phone_host": "100.117.226.39", "units": w.UNITS,
+                "hardware_serial": "R5CY93G2WNH", "phone_host": "100.64.0.13", "units": w.UNITS,
                 "concurrency": 3, "calls_per_hour": 6, "reserved_tokens_per_hour": 30000, "debounce_seconds": 2,
                 "helper": str(helper), "helper_sha256": hashlib.sha256(helper.read_bytes()).hexdigest(),
                 "qualification": str(qualification)}
             w.validate(config)
             for key, invalid in (("package", "host.exp.exponent"), ("provider", "nous"),
                                  ("model", "openai-codex/gpt-6-luna"), ("concurrency", 4),
-                                 ("hardware_serial", "OTHER"), ("helper_sha256", "bad")):
+                                 ("hardware_serial", "OTHER"), ("helper_sha256", "bad"),
+                                 ("phone_host", "100.64.0.99")):
                 with self.assertRaises(ValueError):
                     w.validate({**config, key: invalid})
+            with tempfile.TemporaryDirectory() as empty, \
+                 patch.dict(os.environ, {"DOTFILES_PRIVATE_DIR": empty}):
+                os.environ.pop("S25_ADB_HOST", None)
+                with self.assertRaisesRegex(ValueError, "S25_ADB_HOST"):
+                    w.validate(config)
             qualification.write_text(json.dumps({"ok": False, "returned_model": "other"}))
             with self.assertRaises(ValueError):
                 w.validate(config)
@@ -216,12 +224,12 @@ class WatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_track_devices_wire_framing_and_loss(self):
         reader = asyncio.StreamReader()
-        payload = b"100.117.226.39:39815\tdevice\n"
+        payload = b"100.64.0.13:39815\tdevice\n"
         reader.feed_data(f"{len(payload):04x}".encode() + payload)
         class Proc:
             stdout = reader
             returncode = 0
-        self.watch.endpoint = lambda: "100.117.226.39:39815"
+        self.watch.endpoint = lambda: "100.64.0.13:39815"
         with patch.object(w.asyncio, "create_subprocess_exec", return_value=Proc()):
             task = asyncio.create_task(self.watch.transport())
             await asyncio.sleep(0.01)
