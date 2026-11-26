@@ -1,0 +1,9 @@
+# Hermes kanban WIP caps (studio). Kanban t_fb06f52c, Kevin approved 2026-11-26 ("ya").
+# Policy: kvnloo/home docs/KANBAN.md "WIP caps".
+# Applied to the `kanban:` block of ~/.hermes/config.yaml (default) and of profiles
+# tek, poteto, kun, z0, cfg, pc. Other keys in each block are left as they are.
+# Dispatcher reads these at gateway start: restart the gateway when idle (check `lsof -i :9168`).
+# Undo: delete the two keys, then restart the gateway when idle.
+kanban:
+  max_in_progress: 8            # host-wide, all boards share it
+  max_in_progress_per_profile: 3
